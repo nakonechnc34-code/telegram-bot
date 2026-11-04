@@ -1,9 +1,11 @@
 import asyncio
 import os
 import sqlite3
+import threading
+import http.server
+import socketserver
 from datetime import datetime
 
-from aiohttp import web
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
@@ -98,11 +100,11 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
     row = db_get(user_id)
 
-    if row and row[0]:
+    if row and row:
         await message.answer("Выбери действие:", reply_markup=FULL_MENU)
         return
 
-    if row and row[3]:
+    if row and row: [3](https://web.learnmodernpython.com/build-a-service-health-checker-python-requests-and-apscheduler/)
         await message.answer("Сначала заверши регистрацию 👇", reply_markup=REGISTER_ONLY)
         return
 
@@ -124,12 +126,12 @@ async def start_registration(callback: types.CallbackQuery, state: FSMContext):
 async def show_profile_callback(callback: types.CallbackQuery):
     await callback.answer()
     row = db_get(callback.from_user.id)
-    if row and row[0]:
+    if row and row:
         await callback.message.answer(
             "Твой профиль:\n\n"
-            f"👤 ФИО: {row[0]}\n"
-            f"📞 Телефон: {row[1]}\n"
-            f"🎂 Дата рождения: {row[2]}"
+            f"👤 ФИО: {row}\n"
+            f"📞 Телефон: {row}\n" [1](https://render.com/docs/troubleshooting-deploys)
+            f"🎂 Дата рождения: {row}" [2](https://us-pycon-2019-tutorial.readthedocs.io/aiohttp_server.html)
         )
     else:
         await callback.message.answer("Ты ещё не зарегистрирован.\nНажми «✍️ Зарегистрироваться».")
@@ -231,41 +233,39 @@ async def process_birth_date(message: types.Message, state: FSMContext):
         f"🎂 Дата рождения: {birth_date.strftime('%d.%m.%Y')}\n\n"
         "Теперь можешь в любой момент открыть меню (/start)."
     )
-    await message.answer("Выбери действие:", reply_markup=FULL_MENU)
 
-@dp.message(Command("profile"))
-async def cmd_profile(message: types.Message):
-    row = db_get(message.from_user.id)
-    if row and row[0]:
-        await message.answer(
-            "Твой профиль:\n\n"
-            f"👤 ФИО: {row[0]}\n"
-            f"📞 Телефон: {row[1]}\n"
-            f"🎂 Дата рождения: {row[2]}"
-        )
-    else:
-        await message.answer("Ты ещё не зарегистрирован. Напиши /start и нажми «✍️ Зарегистрироваться».")
+# --- БЛОК ДЛЯ RENDER (ВЕБ-СЕРВЕР) ---
 
-# --- Мини-сервер для Render: отвечает на health check ---
-async def health(request):
-    return web.Response(text="Bot is running")
+def run_http_server(port):
+    """Запускает простой HTTP сервер, который отвечает 'OK' на любой запрос."""
+    class HealthHandler(http.server.SimpleHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"OK")
+        
+        def log_message(self, format, *args):
+            # Отключаем спам в логах от самого сервера, чтобы не засорять
+            pass
 
-async def start_web_server():
-    app = web.Application()
-    app.router.add_get("/", health)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    port = int(os.getenv("PORT", 10000))
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
+    with socketserver.TCPServer(("0.0.0.0", port), HealthHandler) as httpd:
+        print(f"✅ Health Check server started on port {port}")
+        httpd.serve_forever()
 
 async def main():
-    await asyncio.gather(
-        dp.start_polling(bot),
-        start_web_server(),
-    )
+    # 1. Сначала запускаем веб-сервер в отдельном потоке
+    # Render должен увидеть, что порт занят, ДО того как начнет проверять health check
+    port = int(os.getenv("PORT", 10000))
+    server_thread = threading.Thread(target=run_http_server, args=(port,), daemon=True)
+    server_thread.start()
+    
+    # Небольшая пауза, чтобы сервер точно успел стартовать (на Render это критично)
+    await asyncio.sleep(2)
+    
+    # 2. Запускаем бота
+    print("🚀 Starting bot polling...")
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-

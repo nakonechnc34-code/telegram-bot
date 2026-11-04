@@ -26,15 +26,15 @@ if not TOKEN:
     print("❌ ОШИБКА: Переменная BOT_TOKEN не задана!")
     raise ValueError("BOT_TOKEN is not set")
 
-# --- ID администратора (кому слать уведомления) ---
+# --- ID администратора ---
 ADMIN_ID = os.getenv("ADMIN_ID")
 if not ADMIN_ID:
-    print("⚠️ ПРЕДУПРЕЖДЕНИЕ: Переменная ADMIN_ID не задана — уведомления о регистрации отключены.")
+    print("⚠️ ПРЕДУПРЕЖДЕНИЕ: Переменная ADMIN_ID не задана — уведомления и админ-команды отключены.")
     ADMIN_ID = None
 else:
     ADMIN_ID = int(ADMIN_ID)
 
-# --- Подключение к базе (Supabase) ---
+# --- Подключение к базе ---
 DB_URL = os.getenv("DATABASE_URL")
 if not DB_URL:
     print("❌ ОШИБКА: Переменная DATABASE_URL не задана!")
@@ -43,7 +43,7 @@ if not DB_URL:
 def get_conn():
     return psycopg2.connect(DB_URL)
 
-# Создаём таблицу при старте, если её ещё нет
+# Создаём таблицу и колонку блокировки при старте
 with get_conn() as conn:
     with conn.cursor() as cur:
         cur.execute("""
@@ -52,17 +52,23 @@ with get_conn() as conn:
                 full_name TEXT,
                 phone TEXT,
                 birth_date TEXT,
-                welcomed BOOLEAN DEFAULT FALSE
+                welcomed BOOLEAN DEFAULT FALSE,
+                is_blocked BOOLEAN DEFAULT FALSE
             )
+        """)
+        # Если таблица уже была создана раньше без is_blocked — добавим колонку
+        cur.execute("""
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE
         """)
     conn.commit()
 print("🗄️ База данных подключена, таблица готова.")
 
+# --- Функции базы ---
 def db_get(user_id: int):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT full_name, phone, birth_date, welcomed FROM users WHERE user_id = %s",
+                "SELECT full_name, phone, birth_date, welcomed, is_blocked FROM users WHERE user_id = %s",
                 (user_id,)
             )
             return cur.fetchone()
@@ -88,6 +94,40 @@ def db_save_profile(user_id: int, full_name: str, phone: str, birth_date: str):
                 (user_id, full_name, phone, birth_date, full_name, phone, birth_date)
             )
         conn.commit()
+
+def db_is_blocked(user_id: int) -> bool:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT is_blocked FROM users WHERE user_id = %s", (user_id,))
+            row = cur.fetchone()
+            return bool(row and row[0])
+
+def db_list_users():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT user_id, full_name, phone, welcomed, is_blocked
+                FROM users
+                ORDER BY user_id
+            """)
+            return cur.fetchall()
+
+def db_delete_user(user_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM users WHERE user_id = %s", (user_id,))
+        conn.commit()
+        return cur.rowcount > 0
+
+def db_set_blocked(user_id: int, blocked: bool):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE users SET is_blocked = %s WHERE user_id = %s",
+                (blocked, user_id)
+            )
+        conn.commit()
+        return cur.rowcount > 0
 
 # --- Бот и диспетчер ---
 bot = Bot(token=TOKEN)
@@ -117,8 +157,6 @@ def phone_kb():
     )
 
 def profile_text(row):
-    """Собирает красивый текст профиля из строки базы.
-    row — кортеж: (full_name, phone, birth_date, welcomed)"""
     full_name, phone, birth_date = row[0], row[1], row[2]
     return (
         "Твой профиль:\n\n"
@@ -127,8 +165,12 @@ def profile_text(row):
         f"🎂 Дата рождения: {birth_date}"
     )
 
+# --- Проверка блокировки ---
+def is_admin(user_id: int) -> bool:
+    return ADMIN_ID is not None and user_id == ADMIN_ID
+
+# --- Уведомление админу о регистрации ---
 async def notify_admin_about_registration(user: types.User, full_name: str, phone: str, birth_date: str):
-    """Отправляет админу уведомление о новой регистрации."""
     if not ADMIN_ID:
         return
     username = f"@{user.username}" if user.username else "нет username"
@@ -145,15 +187,115 @@ async def notify_admin_about_registration(user: types.User, full_name: str, phon
         await bot.send_message(ADMIN_ID, text, parse_mode="HTML")
         print(f"📨 Уведомление о регистрации отправлено админу ({user.id})")
     except Exception as e:
-        # Не роняем бота, если уведомление не ушло
         print(f"⚠️ Не удалось отправить уведомление админу: {e}")
+
+# ===== АДМИН-КОМАНДЫ =====
+
+@dp.message(Command("users"))
+async def cmd_users(message: types.Message):
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ Эта команда доступна только администратору.")
+        return
+    rows = db_list_users()
+    if not rows:
+        await message.answer("📭 Пока никто не зарегистрирован.")
+        return
+    lines = [f"📋 Всего записей: {len(rows)}\n"]
+    for user_id, full_name, phone, welcomed, is_blocked in rows:
+        status = "🚫 ЗАБЛОКИРОВАН" if is_blocked else ("✅" if full_name else "⏳ (не завершил)")
+        lines.append(
+            f"{status} <code>{user_id}</code>\n"
+            f"   👤 {full_name or '—'}\n"
+            f"   📞 {phone or '—'}\n"
+        )
+    # Telegram ограничивает длину сообщения ~4096 символов — режем на части
+    text = ""
+    for line in lines:
+        if len(text) + len(line) > 3800:
+            await message.answer(text, parse_mode="HTML")
+            text = ""
+        text += line
+    if text:
+        await message.answer(text, parse_mode="HTML")
+    await message.answer(
+        "ℹ️ Команды:\n"
+        "/ban ID — заблокировать доступ\n"
+        "/unban ID — разблокировать\n"
+        "/delete ID — удалить пользователя из базы"
+    )
+
+@dp.message(Command("ban"))
+async def cmd_ban(message: types.Message):
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ Эта команда доступна только администратору.")
+        return
+    parts = message.text.split()
+    if len(parts) != 2 or not parts[1].lstrip("-").isdigit():
+        await message.answer("Формат: /ban 123456789")
+        return
+    target_id = int(parts[1])
+    if target_id == ADMIN_ID:
+        await message.answer("😅 Нельзя заблокировать самого себя.")
+        return
+    if db_set_blocked(target_id, True):
+        await message.answer(f"🚫 Пользователь <code>{target_id}</code> заблокирован.", parse_mode="HTML")
+        try:
+            await bot.send_message(target_id, "⛔ Доступ к боту ограничен. Обратитесь к администратору.")
+        except Exception:
+            pass  # пользователь мог не начать диалог — это нормально
+    else:
+        await message.answer(f"Пользователь <code>{target_id}</code> не найден в базе.", parse_mode="HTML")
+
+@dp.message(Command("unban"))
+async def cmd_unban(message: types.Message):
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ Эта команда доступна только администратору.")
+        return
+    parts = message.text.split()
+    if len(parts) != 2 or not parts[1].lstrip("-").isdigit():
+        await message.answer("Формат: /unban 123456789")
+        return
+    target_id = int(parts[1])
+    if db_set_blocked(target_id, False):
+        await message.answer(f"✅ Пользователь <code>{target_id}</code> разблокирован.", parse_mode="HTML")
+    else:
+        await message.answer(f"Пользователь <code>{target_id}</code> не найден в базе.", parse_mode="HTML")
+
+@dp.message(Command("delete"))
+async def cmd_delete(message: types.Message):
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ Эта команда доступна только администратору.")
+        return
+    parts = message.text.split()
+    if len(parts) != 2 or not parts[1].lstrip("-").isdigit():
+        await message.answer("Формат: /delete 123456789")
+        return
+    target_id = int(parts[1])
+    if target_id == ADMIN_ID:
+        await message.answer("😅 Нельзя удалить самого себя.")
+        return
+    if db_delete_user(target_id):
+        await message.answer(
+            f"🗑 Пользователь <code>{target_id}</code> удалён из базы.\n\n"
+            "⚠️ Важно: он сможет пройти регистрацию заново. "
+            "Если нужно именно закрыть доступ — используй /ban.",
+            parse_mode="HTML"
+        )
+    else:
+        await message.answer(f"Пользователь <code>{target_id}</code> не найден в базе.", parse_mode="HTML")
+
+# ===== ЛОГИКА БОТА =====
 
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-    current_state = await state.get_state()
 
-    # Если пользователь в середине регистрации — подсказываем, на каком он шаге
+    # Проверка блокировки
+    if db_is_blocked(user_id):
+        await message.answer("⛔ Доступ к боту ограничен. Обратитесь к администратору.")
+        return
+
+    current_state = await state.get_state()
     if current_state:
         if current_state == Registration.full_name.state:
             await message.answer("Шаг 1 из 3.\nНапиши своё ФИО (например: Иванов Иван Иванович)")
@@ -166,17 +308,14 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
     row = db_get(user_id)
 
-    # Уже зарегистрирован (ФИО заполнено) — сразу полное меню
     if row and row[0]:
         await message.answer("Выбери действие:", reply_markup=FULL_MENU)
         return
 
-    # Был в боте, но регистрацию не завершил
     if row and row[3]:
         await message.answer("Сначала заверши регистрацию 👇", reply_markup=REGISTER_ONLY)
         return
 
-    # Первый визит
     db_set_welcomed(user_id)
     await message.answer(
         f"👋 {message.from_user.first_name}, добро пожаловать в Wokker!\n\n"
@@ -187,6 +326,9 @@ async def cmd_start(message: types.Message, state: FSMContext):
 
 @dp.callback_query(lambda c: c.data == "register")
 async def start_registration(callback: types.CallbackQuery, state: FSMContext):
+    if db_is_blocked(callback.from_user.id):
+        await callback.answer("⛔ Доступ ограничен", show_alert=True)
+        return
     await callback.answer()
     await state.set_state(Registration.full_name)
     await callback.message.answer("Шаг 1 из 3.\nНапиши своё ФИО (например: Иванов Иван Иванович)")
@@ -194,6 +336,9 @@ async def start_registration(callback: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(lambda c: c.data == "show_profile")
 async def show_profile_callback(callback: types.CallbackQuery):
     await callback.answer()
+    if db_is_blocked(callback.from_user.id):
+        await callback.message.answer("⛔ Доступ к боту ограничен.")
+        return
     row = db_get(callback.from_user.id)
     if row and row[0]:
         await callback.message.answer(profile_text(row))
@@ -203,20 +348,33 @@ async def show_profile_callback(callback: types.CallbackQuery):
 @dp.callback_query(lambda c: c.data == "restaurants")
 async def show_restaurants(callback: types.CallbackQuery):
     await callback.answer()
+    if db_is_blocked(callback.from_user.id):
+        await callback.message.answer("⛔ Доступ к боту ограничен.")
+        return
     await callback.message.answer("🏙️ Наши рестораны\n\nСкоро здесь появится список адресов, часы работы и карта.")
 
 @dp.callback_query(lambda c: c.data == "standards")
 async def show_standards(callback: types.CallbackQuery):
     await callback.answer()
+    if db_is_blocked(callback.from_user.id):
+        await callback.message.answer("⛔ Доступ к боту ограничен.")
+        return
     await callback.message.answer("📚 Библиотека стандартов\n\nЗдесь будут инструкции, чек-листы и стандарты качества Wokker.")
 
 @dp.callback_query(lambda c: c.data == "faq")
 async def show_faq(callback: types.CallbackQuery):
     await callback.answer()
+    if db_is_blocked(callback.from_user.id):
+        await callback.message.answer("⛔ Доступ к боту ограничен.")
+        return
     await callback.message.answer("❓ Вопрос/ответ\n\nЧастые вопросы и ответы по работе с ботом и ресторанами.")
 
 @dp.message(Registration.full_name)
 async def process_name(message: types.Message, state: FSMContext):
+    if db_is_blocked(message.from_user.id):
+        await message.answer("⛔ Доступ к боту ограничен.")
+        await state.clear()
+        return
     if not message.text:
         await message.answer("Пожалуйста, отправь именно текст с ФИО.")
         return
@@ -255,6 +413,10 @@ async def process_phone_text(message: types.Message, state: FSMContext):
 
 @dp.message(Registration.birth_date)
 async def process_birth_date(message: types.Message, state: FSMContext):
+    if db_is_blocked(message.from_user.id):
+        await message.answer("⛔ Доступ к боту ограничен.")
+        await state.clear()
+        return
     if not message.text:
         await message.answer("Пожалуйста, отправь дату текстом в формате ДД.ММ.ГГГГ.")
         return
@@ -281,13 +443,15 @@ async def process_birth_date(message: types.Message, state: FSMContext):
     )
     await message.answer("Выбери действие:", reply_markup=FULL_MENU)
 
-    # Уведомляем админа о новой регистрации
     await notify_admin_about_registration(
         message.from_user, full_name, phone, birth_date.strftime("%d.%m.%Y")
     )
 
 @dp.message(Command("profile"))
 async def cmd_profile(message: types.Message):
+    if db_is_blocked(message.from_user.id):
+        await message.answer("⛔ Доступ к боту ограничен.")
+        return
     row = db_get(message.from_user.id)
     if row and row[0]:
         await message.answer(profile_text(row))
@@ -324,3 +488,4 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
+

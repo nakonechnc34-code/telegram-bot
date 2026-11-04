@@ -3,6 +3,7 @@ import os
 import sqlite3
 from datetime import datetime
 
+from aiohttp import web
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
@@ -58,23 +59,15 @@ class Registration(StatesGroup):
     phone = State()
     birth_date = State()
 
-# Меню: каждая кнопка — отдельная строка (вертикально)
-MENU_KEYBOARD = InlineKeyboardMarkup(inline_keyboard=[
-    [
-        InlineKeyboardButton(text="✍️ Зарегистрироваться", callback_data="register"),
-    ],
-    [
-        InlineKeyboardButton(text="👤 Профиль", callback_data="show_profile"),
-    ],
-    [
-        InlineKeyboardButton(text="🏙️ Наши рестораны", callback_data="restaurants"),
-    ],
-    [
-        InlineKeyboardButton(text="📚 Библиотека стандартов", callback_data="standards"),
-    ],
-    [
-        InlineKeyboardButton(text="❓ Вопрос/ответ", callback_data="faq"),
-    ]
+FULL_MENU = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="👤 Профиль", callback_data="show_profile")],
+    [InlineKeyboardButton(text="🏙️ Наши рестораны", callback_data="restaurants")],
+    [InlineKeyboardButton(text="📚 Библиотека стандартов", callback_data="standards")],
+    [InlineKeyboardButton(text="❓ Вопрос/ответ", callback_data="faq")],
+])
+
+REGISTER_ONLY = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="✍️ Зарегистрироваться", callback_data="register")],
 ])
 
 @dp.message(CommandStart())
@@ -82,7 +75,6 @@ async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     current_state = await state.get_state()
 
-    # Если пользователь в процессе регистрации — не сбрасываем состояние
     if current_state:
         if current_state == Registration.full_name.state:
             await message.answer("Шаг 1 из 3.\nНапиши своё ФИО (например: Иванов Иван Иванович)")
@@ -103,23 +95,24 @@ async def cmd_start(message: types.Message, state: FSMContext):
             )
         return
 
+    await state.clear()
     row = db_get(user_id)
 
-    # Уже видел приветствие — сразу меню, без приветствия
-    if row and row[3]:
-        await state.clear()
-        await message.answer("Выбери действие:", reply_markup=MENU_KEYBOARD)
+    if row and row[0]:
+        await message.answer("Выбери действие:", reply_markup=FULL_MENU)
         return
 
-    # Первое знакомство: приветствие + меню
-    await state.clear()
+    if row and row[3]:
+        await message.answer("Сначала заверши регистрацию 👇", reply_markup=REGISTER_ONLY)
+        return
+
     db_set_welcomed(user_id)
     await message.answer(
         f"👋 {message.from_user.first_name}, добро пожаловать в Wokker!\n\n"
         "Мы готовим паназиатские блюда на воке — быстро и со вкусом.\n"
-        "Нажми кнопку, чтобы продолжить."
+        "Для начала зарегистрируйся 👇"
     )
-    await message.answer("Что хочешь сделать?", reply_markup=MENU_KEYBOARD)
+    await message.answer("Что хочешь сделать? Пока доступна только регистрация.", reply_markup=REGISTER_ONLY)
 
 @dp.callback_query(lambda c: c.data == "register")
 async def start_registration(callback: types.CallbackQuery, state: FSMContext):
@@ -139,10 +132,7 @@ async def show_profile_callback(callback: types.CallbackQuery):
             f"🎂 Дата рождения: {row[2]}"
         )
     else:
-        await callback.message.answer(
-            "Ты ещё не зарегистрирован.\n"
-            "Нажми «✍️ Зарегистрироваться» или напиши /start и выбери эту кнопку."
-        )
+        await callback.message.answer("Ты ещё не зарегистрирован.\nНажми «✍️ Зарегистрироваться».")
 
 @dp.callback_query(lambda c: c.data == "restaurants")
 async def show_restaurants(callback: types.CallbackQuery):
@@ -239,8 +229,9 @@ async def process_birth_date(message: types.Message, state: FSMContext):
         f"👤 ФИО: {full_name}\n"
         f"📞 Телефон: {phone}\n"
         f"🎂 Дата рождения: {birth_date.strftime('%d.%m.%Y')}\n\n"
-        "Теперь можешь в любой момент открыть меню (/start) и нажать «👤 Профиль»."
+        "Теперь можешь в любой момент открыть меню (/start)."
     )
+    await message.answer("Выбери действие:", reply_markup=FULL_MENU)
 
 @dp.message(Command("profile"))
 async def cmd_profile(message: types.Message):
@@ -255,8 +246,24 @@ async def cmd_profile(message: types.Message):
     else:
         await message.answer("Ты ещё не зарегистрирован. Напиши /start и нажми «✍️ Зарегистрироваться».")
 
+# --- Мини-сервер для Render: отвечает на health check ---
+async def health(request):
+    return web.Response(text="Bot is running")
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get("/", health)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.getenv("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
 async def main():
-    await dp.start_polling(bot)
+    await asyncio.gather(
+        dp.start_polling(bot),
+        start_web_server(),
+    )
 
 if __name__ == "__main__":
     asyncio.run(main())

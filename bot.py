@@ -1,14 +1,9 @@
-import asyncio
 import os
-import sqlite3
-import threading
-import http.server
-import socketserver
+import asyncio
+import logging
 from datetime import datetime
 
-# --- ПРИНТЫ ДЛЯ ОТЛАДКИ (чтобы видеть в логах Render) ---
-print("📦 STARTING BOT SCRIPT...")
-
+from aiohttp import web
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
@@ -20,48 +15,75 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
 )
+import psycopg2
 
+# --- Логирование ---
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+# --- Токен бота ---
 TOKEN = os.getenv("BOT_TOKEN")
-
 if not TOKEN:
-    print("❌ ERROR: BOT_TOKEN is not set in Environment Variables!")
-    raise ValueError("Переменная BOT_TOKEN не задана!")
+    print("❌ ОШИБКА: Переменная BOT_TOKEN не задана!")
+    raise ValueError("BOT_TOKEN is not set")
 
-print("✅ BOT_TOKEN found.")
+# --- Подключение к базе (база запоминания) ---
+DB_URL = os.getenv("DATABASE_URL")
+if not DB_URL:
+    print("❌ ОШИБКА: Переменная DATABASE_URL не задана!")
+    raise ValueError("DATABASE_URL is not set")
 
-bot = Bot(token=TOKEN)
-dp = Dispatcher()
+def get_conn():
+    return psycopg2.connect(DB_URL)
 
-# --- База данных SQLite ---
-DB_PATH = "wokker.db"
-db = sqlite3.connect(DB_PATH, check_same_thread=False)
-db.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY,
-        full_name TEXT,
-        phone TEXT,
-        birth_date TEXT,
-        welcomed INTEGER DEFAULT 0
-    )
-""")
-db.commit()
-print("🗄️ SQLite database initialized.")
+# Создаём таблицу при старте, если её ещё нет
+with get_conn() as conn:
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id BIGINT PRIMARY KEY,
+                full_name TEXT,
+                phone TEXT,
+                birth_date TEXT,
+                welcomed BOOLEAN DEFAULT FALSE
+            )
+        """)
+    conn.commit()
+print("🗄️ База данных подключена, таблица готова.")
 
 def db_get(user_id: int):
-    cur = db.execute("SELECT full_name, phone, birth_date, welcomed FROM users WHERE user_id = ?", (user_id,))
-    return cur.fetchone()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT full_name, phone, birth_date, welcomed FROM users WHERE user_id = %s",
+                (user_id,)
+            )
+            return cur.fetchone()
 
 def db_set_welcomed(user_id: int):
-    db.execute("INSERT INTO users (user_id, welcomed) VALUES (?, 1) ON CONFLICT(user_id) DO UPDATE SET welcomed = 1", (user_id,))
-    db.commit()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO users (user_id, welcomed) VALUES (%s, TRUE) "
+                "ON CONFLICT (user_id) DO UPDATE SET welcomed = TRUE",
+                (user_id,)
+            )
+        conn.commit()
 
 def db_save_profile(user_id: int, full_name: str, phone: str, birth_date: str):
-    db.execute(
-        "INSERT INTO users (user_id, full_name, phone, birth_date, welcomed) VALUES (?, ?, ?, ?, 1) "
-        "ON CONFLICT(user_id) DO UPDATE SET full_name = ?, phone = ?, birth_date = ?, welcomed = 1",
-        (user_id, full_name, phone, birth_date, full_name, phone, birth_date)
-    )
-    db.commit()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO users (user_id, full_name, phone, birth_date, welcomed) "
+                "VALUES (%s, %s, %s, %s, TRUE) "
+                "ON CONFLICT (user_id) DO UPDATE SET "
+                "full_name = %s, phone = %s, birth_date = %s, welcomed = TRUE",
+                (user_id, full_name, phone, birth_date, full_name, phone, birth_date)
+            )
+        conn.commit()
+
+# --- Бот и диспетчер ---
+bot = Bot(token=TOKEN)
+dp = Dispatcher()
 
 class Registration(StatesGroup):
     full_name = State()
@@ -79,43 +101,53 @@ REGISTER_ONLY = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="✍️ Зарегистрироваться", callback_data="register")],
 ])
 
+def phone_kb():
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="📱 Поделиться номером", request_contact=True)]],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+def profile_text(row):
+    """Собирает красивый текст профиля из строки базы.
+    row — кортеж: (full_name, phone, birth_date, welcomed)"""
+    full_name, phone, birth_date = row[0], row[1], row[2]
+    return (
+        "Твой профиль:\n\n"
+        f"👤 ФИО: {full_name}\n"
+        f"📞 Телефон: {phone}\n"
+        f"🎂 Дата рождения: {birth_date}"
+    )
+
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     current_state = await state.get_state()
 
+    # Если пользователь в середине регистрации — подсказываем, на каком он шаге
     if current_state:
         if current_state == Registration.full_name.state:
             await message.answer("Шаг 1 из 3.\nНапиши своё ФИО (например: Иванов Иван Иванович)")
         elif current_state == Registration.phone.state:
-            phone_kb = ReplyKeyboardMarkup(
-                keyboard=[[KeyboardButton(text="📱 Поделиться номером", request_contact=True)]],
-                resize_keyboard=True,
-                one_time_keyboard=True,
-            )
-            await message.answer(
-                "Шаг 2 из 3.\nОтправь свой номер телефона — можно кнопкой ниже.",
-                reply_markup=phone_kb
-            )
+            await message.answer("Шаг 2 из 3.\nОтправь свой номер телефона — можно кнопкой ниже.", reply_markup=phone_kb())
         elif current_state == Registration.birth_date.state:
-            await message.answer(
-                "Шаг 3 из 3.\nНапиши дату рождения в формате ДД.ММ.ГГГГ (например: 01.01.2000)",
-                reply_markup=ReplyKeyboardRemove()
-            )
+            await message.answer("Шаг 3 из 3.\nНапиши дату рождения в формате ДД.ММ.ГГГГ (например: 01.01.2000)", reply_markup=ReplyKeyboardRemove())
         return
 
     await state.clear()
     row = db_get(user_id)
 
-    # Исправление возможной ошибки индексации в предыдущем коде
-    if row:
-        if row: # welcomed flag
-             await message.answer("Сначала заверши регистрацию 👇", reply_markup=REGISTER_ONLY)
-             return
-        if row: # full_name exists
-            await message.answer("Выбери действие:", reply_markup=FULL_MENU)
-            return
+    # Уже зарегистрирован (ФИО заполнено) — сразу полное меню
+    if row and row[0]:
+        await message.answer("Выбери действие:", reply_markup=FULL_MENU)
+        return
 
+    # Был в боте, но регистрацию не завершил
+    if row and row[3]:
+        await message.answer("Сначала заверши регистрацию 👇", reply_markup=REGISTER_ONLY)
+        return
+
+    # Первый визит
     db_set_welcomed(user_id)
     await message.answer(
         f"👋 {message.from_user.first_name}, добро пожаловать в Wokker!\n\n"
@@ -134,30 +166,25 @@ async def start_registration(callback: types.CallbackQuery, state: FSMContext):
 async def show_profile_callback(callback: types.CallbackQuery):
     await callback.answer()
     row = db_get(callback.from_user.id)
-    if row and row:
-        await callback.message.answer(
-            "Твой профиль:\n\n"
-            f"👤 ФИО: {row}\n"
-            f"📞 Телефон: {row}\n"
-            f"🎂 Дата рождения: {row}"
-        )
+    if row and row[0]:
+        await callback.message.answer(profile_text(row))
     else:
-        await callback.message.answer("Ты ещё не зарегистрирован.\nНажми «✍️ Зарегистрироваться».")
+        await callback.message.answer("Ты ещё не зарегистрирован.\nНажми /start и «✍️ Зарегистрироваться».")
 
 @dp.callback_query(lambda c: c.data == "restaurants")
 async def show_restaurants(callback: types.CallbackQuery):
     await callback.answer()
-    await callback.message.answer("🏙️ Наши рестораны\n\nСкоро здесь появится список адресов.")
+    await callback.message.answer("🏙️ Наши рестораны\n\nСкоро здесь появится список адресов, часы работы и карта.")
 
 @dp.callback_query(lambda c: c.data == "standards")
 async def show_standards(callback: types.CallbackQuery):
     await callback.answer()
-    await callback.message.answer("📚 Библиотека стандартов\n\nЗдесь будут инструкции.")
+    await callback.message.answer("📚 Библиотека стандартов\n\nЗдесь будут инструкции, чек-листы и стандарты качества Wokker.")
 
 @dp.callback_query(lambda c: c.data == "faq")
 async def show_faq(callback: types.CallbackQuery):
     await callback.answer()
-    await callback.message.answer("❓ Вопрос/ответ\n\nЧастые вопросы и ответы.")
+    await callback.message.answer("❓ Вопрос/ответ\n\nЧастые вопросы и ответы по работе с ботом и ресторанами.")
 
 @dp.message(Registration.full_name)
 async def process_name(message: types.Message, state: FSMContext):
@@ -169,17 +196,8 @@ async def process_name(message: types.Message, state: FSMContext):
         await message.answer("Похоже, этого мало. Напиши хотя бы имя и фамилию через пробел.")
         return
     await state.update_data(full_name=name)
-
-    phone_kb = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="📱 Поделиться номером", request_contact=True)]],
-        resize_keyboard=True,
-        one_time_keyboard=True,
-    )
     await state.set_state(Registration.phone)
-    await message.answer(
-        "Шаг 2 из 3.\nОтправь свой номер телефона — можно кнопкой ниже.",
-        reply_markup=phone_kb
-    )
+    await message.answer("Шаг 2 из 3.\nОтправь свой номер телефона — можно кнопкой ниже.", reply_markup=phone_kb())
 
 @dp.message(Registration.phone, lambda m: m.contact is not None)
 async def process_phone_button(message: types.Message, state: FSMContext):
@@ -197,7 +215,7 @@ async def process_phone_text(message: types.Message, state: FSMContext):
         return
     digits = message.text.replace("+", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
     if not digits.isdigit() or len(digits) < 10:
-        await message.answer("Это не похоже на номер. Попробуй ещё раз.")
+        await message.answer("Это не похоже на номер. Попробуй ещё раз, например: +79001234567")
         return
     await state.update_data(phone=message.text.strip())
     await state.set_state(Registration.birth_date)
@@ -237,56 +255,38 @@ async def process_birth_date(message: types.Message, state: FSMContext):
 @dp.message(Command("profile"))
 async def cmd_profile(message: types.Message):
     row = db_get(message.from_user.id)
-    if row and row:
-        await message.answer(
-            "Твой профиль:\n\n"
-            f"👤 ФИО: {row}\n"
-            f"📞 Телефон: {row}\n"
-            f"🎂 Дата рождения: {row}"
-        )
+    if row and row[0]:
+        await message.answer(profile_text(row))
     else:
-        await message.answer("Ты ещё не зарегистрирован. Напиши /start.")
+        await message.answer("Ты ещё не зарегистрирован. Напиши /start и нажми «✍️ Зарегистрироваться».")
 
-# --- БЛОК ДЛЯ RENDER (ВЕБ-СЕРВЕР) ---
+# --- HTTP-сервер для Render (health check) ---
+async def health_check_server():
+    app = web.Application()
 
-def run_http_server(port):
-    """Запускает простой HTTP сервер, который отвечает 'OK' на любой запрос."""
-    class HealthHandler(http.server.SimpleHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.send_header("Content-type", "text/plain")
-            self.end_headers()
-            self.wfile.write(b"OK")
-        
-        def log_message(self, format, *args):
-            # Отключаем спам в логах
-            pass
+    async def handle(request):
+        return web.Response(text="OK")
 
-    print(f"🌐 Starting Health Check server on port {port}...")
-    try:
-        with socketserver.TCPServer(("0.0.0.0", port), HealthHandler) as httpd:
-            print(f"✅ Health Check server is LIVE on port {port}")
-            httpd.serve_forever()
-    except OSError as e:
-        print(f"❌ Failed to bind port {port}: {e}")
-        raise e
+    app.router.add_get('/', handle)
+    port = int(os.environ.get('PORT', 8080))
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    print(f"✅ Health Check server is LIVE on port {port}")
+    return runner
 
 async def main():
-    # 1. Получаем порт от Render
-    port = int(os.getenv("PORT", 8000))
-    print(f"🔌 Render assigned port: {port}")
-    
-    # 2. Запускаем веб-сервер в отдельном потоке (чтобы не блокировать бота)
-    server_thread = threading.Thread(target=run_http_server, args=(port,), daemon=True)
-    server_thread.start()
-    
-    # 3. Ждем 3 секунды, чтобы Render успел просканировать порт
-    print("⏳ Waiting 3 seconds for Render port scan...")
-    await asyncio.sleep(3)
-    
-    # 4. Запускаем бота
-    print("🚀 Starting bot polling...")
-    await dp.start_polling(bot)
+    runner = await health_check_server()
+    print("📦 STARTING BOT SCRIPT...")
+    bot_task = asyncio.create_task(dp.start_polling(bot))
+    print("🚀 Bot polling started. Waiting for updates...")
+    try:
+        await asyncio.gather(bot_task)
+    finally:
+        await runner.cleanup()
+        await bot.session.close()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     asyncio.run(main())

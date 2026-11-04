@@ -1,67 +1,31 @@
-import asyncio
 import os
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import telebot
 
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+TOKEN = os.getenv('BOT_TOKEN')
+bot = telebot.TeleBot(TOKEN)
 
-# Токен берём из переменных окружения — НЕ вставляем в код!
-TOKEN = os.getenv("BOT_TOKEN")
+@bot.message_handler(commands=['start'])
+def send_start(message):
+    bot.reply_to(message, 'Привет! Я твой бот. Попробуй /help')
 
-if not TOKEN:
-    raise ValueError("Переменная BOT_TOKEN не задана! Добавь её в настройках хостинга.")
+@bot.message_handler(commands=['help'])
+def send_help(message):
+    bot.reply_to(message, 'Доступные команды:\n/start — приветствие\n/echo — повторит твоё сообщение\n/ping — проверка связи')
 
-bot = Bot(token=TOKEN)
-dp = Dispatcher()
+@bot.message_handler(commands=['ping'])
+def send_ping(message):
+    bot.reply_to(message, 'PONG! Бот онлайн ✅')
 
-keyboard = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="Нажми меня!", callback_data="pressed")]
-])
+@bot.message_handler(commands=['echo'])
+def send_echo_prompt(message):
+    msg = bot.send_message(message.chat.id, 'Отправь любое сообщение — я повторю:')
+    bot.register_next_step_handler(msg, process_echo)
 
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    await message.answer("Привет! Я твой бот. Я уже работаю!", reply_markup=keyboard)
+def process_echo(message):
+    bot.reply_to(message, f'Ты написал: {message.text}')
 
-@dp.message(Command("help"))
-async def cmd_help(message: types.Message):
-    await message.answer(
-        "Я умею:\n"
-        "— отвечать на /start\n"
-        "— показывать эту справку (/help)\n"
-        "— повторять то, что ты пишешь\n"
-        "— реагировать на кнопку 🙂"
-    )
+@bot.message_handler(func=lambda m: True)
+def echo_all(message):
+    bot.reply_to(message, 'Я пока не знаю такой команды. Попробуй /help')
 
-@dp.callback_query(lambda c: c.data == "pressed")
-async def process_callback(callback_query: types.CallbackQuery):
-    await callback_query.answer("Ты нажал кнопку! 🎉")
-
-@dp.message()
-async def echo_handler(message: types.Message):
-    if message.text:
-        await message.answer(f"Ты написал: {message.text}")
-
-# ------- Хитрость против «засыпания»: маленький веб-сервер -------
-class PingHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"I am alive")
-
-    def log_message(self, *args):
-        pass  # чтобы логи не засорялись
-
-def run_http():
-    port = int(os.getenv("PORT", 10000))  # Render подставляет свой PORT
-    HTTPServer(("0.0.0.0", port), PingHandler).serve_forever()
-
-threading.Thread(target=run_http, daemon=True).start()
-# -------------------------------------------------------------------
-
-async def main():
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())  # на сервере — asyncio.run, а не await
+bot.infinity_polling()

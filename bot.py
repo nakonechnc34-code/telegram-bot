@@ -6,6 +6,9 @@ import http.server
 import socketserver
 from datetime import datetime
 
+# --- ПРИНТЫ ДЛЯ ОТЛАДКИ (чтобы видеть в логах Render) ---
+print("📦 STARTING BOT SCRIPT...")
+
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
@@ -21,7 +24,10 @@ from aiogram.types import (
 TOKEN = os.getenv("BOT_TOKEN")
 
 if not TOKEN:
-    raise ValueError("Переменная BOT_TOKEN не задана! Добавь её в настройках хостинга.")
+    print("❌ ERROR: BOT_TOKEN is not set in Environment Variables!")
+    raise ValueError("Переменная BOT_TOKEN не задана!")
+
+print("✅ BOT_TOKEN found.")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -39,6 +45,7 @@ db.execute("""
     )
 """)
 db.commit()
+print("🗄️ SQLite database initialized.")
 
 def db_get(user_id: int):
     cur = db.execute("SELECT full_name, phone, birth_date, welcomed FROM users WHERE user_id = ?", (user_id,))
@@ -100,13 +107,14 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
     row = db_get(user_id)
 
-    if row and row:
-        await message.answer("Выбери действие:", reply_markup=FULL_MENU)
-        return
-
-    if row and row: [3](https://web.learnmodernpython.com/build-a-service-health-checker-python-requests-and-apscheduler/)
-        await message.answer("Сначала заверши регистрацию 👇", reply_markup=REGISTER_ONLY)
-        return
+    # Исправление возможной ошибки индексации в предыдущем коде
+    if row:
+        if row: # welcomed flag
+             await message.answer("Сначала заверши регистрацию 👇", reply_markup=REGISTER_ONLY)
+             return
+        if row: # full_name exists
+            await message.answer("Выбери действие:", reply_markup=FULL_MENU)
+            return
 
     db_set_welcomed(user_id)
     await message.answer(
@@ -130,8 +138,8 @@ async def show_profile_callback(callback: types.CallbackQuery):
         await callback.message.answer(
             "Твой профиль:\n\n"
             f"👤 ФИО: {row}\n"
-            f"📞 Телефон: {row}\n" [1](https://render.com/docs/troubleshooting-deploys)
-            f"🎂 Дата рождения: {row}" [2](https://us-pycon-2019-tutorial.readthedocs.io/aiohttp_server.html)
+            f"📞 Телефон: {row}\n"
+            f"🎂 Дата рождения: {row}"
         )
     else:
         await callback.message.answer("Ты ещё не зарегистрирован.\nНажми «✍️ Зарегистрироваться».")
@@ -139,26 +147,17 @@ async def show_profile_callback(callback: types.CallbackQuery):
 @dp.callback_query(lambda c: c.data == "restaurants")
 async def show_restaurants(callback: types.CallbackQuery):
     await callback.answer()
-    await callback.message.answer(
-        "🏙️ Наши рестораны\n\n"
-        "Скоро здесь появится список адресов, часы работы и карта."
-    )
+    await callback.message.answer("🏙️ Наши рестораны\n\nСкоро здесь появится список адресов.")
 
 @dp.callback_query(lambda c: c.data == "standards")
 async def show_standards(callback: types.CallbackQuery):
     await callback.answer()
-    await callback.message.answer(
-        "📚 Библиотека стандартов\n\n"
-        "Здесь будут инструкции, чек-листы и стандарты качества Wokker."
-    )
+    await callback.message.answer("📚 Библиотека стандартов\n\nЗдесь будут инструкции.")
 
 @dp.callback_query(lambda c: c.data == "faq")
 async def show_faq(callback: types.CallbackQuery):
     await callback.answer()
-    await callback.message.answer(
-        "❓ Вопрос/ответ\n\n"
-        "Частые вопросы и ответы по работе с ботом и ресторанами."
-    )
+    await callback.message.answer("❓ Вопрос/ответ\n\nЧастые вопросы и ответы.")
 
 @dp.message(Registration.full_name)
 async def process_name(message: types.Message, state: FSMContext):
@@ -198,7 +197,7 @@ async def process_phone_text(message: types.Message, state: FSMContext):
         return
     digits = message.text.replace("+", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
     if not digits.isdigit() or len(digits) < 10:
-        await message.answer("Это не похоже на номер. Попробуй ещё раз, например: +79001234567")
+        await message.answer("Это не похоже на номер. Попробуй ещё раз.")
         return
     await state.update_data(phone=message.text.strip())
     await state.set_state(Registration.birth_date)
@@ -233,6 +232,20 @@ async def process_birth_date(message: types.Message, state: FSMContext):
         f"🎂 Дата рождения: {birth_date.strftime('%d.%m.%Y')}\n\n"
         "Теперь можешь в любой момент открыть меню (/start)."
     )
+    await message.answer("Выбери действие:", reply_markup=FULL_MENU)
+
+@dp.message(Command("profile"))
+async def cmd_profile(message: types.Message):
+    row = db_get(message.from_user.id)
+    if row and row:
+        await message.answer(
+            "Твой профиль:\n\n"
+            f"👤 ФИО: {row}\n"
+            f"📞 Телефон: {row}\n"
+            f"🎂 Дата рождения: {row}"
+        )
+    else:
+        await message.answer("Ты ещё не зарегистрирован. Напиши /start.")
 
 # --- БЛОК ДЛЯ RENDER (ВЕБ-СЕРВЕР) ---
 
@@ -246,24 +259,32 @@ def run_http_server(port):
             self.wfile.write(b"OK")
         
         def log_message(self, format, *args):
-            # Отключаем спам в логах от самого сервера, чтобы не засорять
+            # Отключаем спам в логах
             pass
 
-    with socketserver.TCPServer(("0.0.0.0", port), HealthHandler) as httpd:
-        print(f"✅ Health Check server started on port {port}")
-        httpd.serve_forever()
+    print(f"🌐 Starting Health Check server on port {port}...")
+    try:
+        with socketserver.TCPServer(("0.0.0.0", port), HealthHandler) as httpd:
+            print(f"✅ Health Check server is LIVE on port {port}")
+            httpd.serve_forever()
+    except OSError as e:
+        print(f"❌ Failed to bind port {port}: {e}")
+        raise e
 
 async def main():
-    # 1. Сначала запускаем веб-сервер в отдельном потоке
-    # Render должен увидеть, что порт занят, ДО того как начнет проверять health check
-    port = int(os.getenv("PORT", 10000))
+    # 1. Получаем порт от Render
+    port = int(os.getenv("PORT", 8000))
+    print(f"🔌 Render assigned port: {port}")
+    
+    # 2. Запускаем веб-сервер в отдельном потоке (чтобы не блокировать бота)
     server_thread = threading.Thread(target=run_http_server, args=(port,), daemon=True)
     server_thread.start()
     
-    # Небольшая пауза, чтобы сервер точно успел стартовать (на Render это критично)
-    await asyncio.sleep(2)
+    # 3. Ждем 3 секунды, чтобы Render успел просканировать порт
+    print("⏳ Waiting 3 seconds for Render port scan...")
+    await asyncio.sleep(3)
     
-    # 2. Запускаем бота
+    # 4. Запускаем бота
     print("🚀 Starting bot polling...")
     await dp.start_polling(bot)
 

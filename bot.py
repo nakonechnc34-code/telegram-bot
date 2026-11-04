@@ -1,8 +1,7 @@
 import asyncio
 import os
-import threading
+import sqlite3
 from datetime import datetime
-from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command, CommandStart
@@ -24,27 +23,69 @@ if not TOKEN:
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
+# --- База данных SQLite ---
+DB_PATH = "wokker.db"
+db = sqlite3.connect(DB_PATH, check_same_thread=False)
+db.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        user_id INTEGER PRIMARY KEY,
+        full_name TEXT,
+        phone TEXT,
+        birth_date TEXT,
+        welcomed INTEGER DEFAULT 0
+    )
+""")
+db.commit()
+
+def db_get(user_id: int):
+    cur = db.execute("SELECT full_name, phone, birth_date, welcomed FROM users WHERE user_id = ?", (user_id,))
+    return cur.fetchone()
+
+def db_set_welcomed(user_id: int):
+    db.execute("INSERT INTO users (user_id, welcomed) VALUES (?, 1) ON CONFLICT(user_id) DO UPDATE SET welcomed = 1", (user_id,))
+    db.commit()
+
+def db_save_profile(user_id: int, full_name: str, phone: str, birth_date: str):
+    db.execute(
+        "INSERT INTO users (user_id, full_name, phone, birth_date, welcomed) VALUES (?, ?, ?, ?, 1) "
+        "ON CONFLICT(user_id) DO UPDATE SET full_name = ?, phone = ?, birth_date = ?, welcomed = 1",
+        (user_id, full_name, phone, birth_date, full_name, phone, birth_date)
+    )
+    db.commit()
+
 class Registration(StatesGroup):
     full_name = State()
     phone = State()
     birth_date = State()
 
-# Хранилище анкет (в памяти: при перезапуске очищается)
-users = {}
-# Хранилище тех, кто уже видел приветствие
-seen_welcome = set()
+# Меню: каждая кнопка — отдельная строка (вертикально)
+MENU_KEYBOARD = InlineKeyboardMarkup(inline_keyboard=[
+    [
+        InlineKeyboardButton(text="✍️ Зарегистрироваться", callback_data="register"),
+    ],
+    [
+        InlineKeyboardButton(text="👤 Профиль", callback_data="show_profile"),
+    ],
+    [
+        InlineKeyboardButton(text="🏙️ Наши рестораны", callback_data="restaurants"),
+    ],
+    [
+        InlineKeyboardButton(text="📚 Библиотека стандартов", callback_data="standards"),
+    ],
+    [
+        InlineKeyboardButton(text="❓ Вопрос/ответ", callback_data="faq"),
+    ]
+])
 
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     current_state = await state.get_state()
 
-    # Если пользователь в процессе регистрации — не сбрасываем состояние и не показываем меню.
-    # Вместо этого показываем подсказку для текущего шага.
+    # Если пользователь в процессе регистрации — не сбрасываем состояние
     if current_state:
         if current_state == Registration.full_name.state:
             await message.answer("Шаг 1 из 3.\nНапиши своё ФИО (например: Иванов Иван Иванович)")
-            return
         elif current_state == Registration.phone.state:
             phone_kb = ReplyKeyboardMarkup(
                 keyboard=[[KeyboardButton(text="📱 Поделиться номером", request_contact=True)]],
@@ -55,41 +96,30 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 "Шаг 2 из 3.\nОтправь свой номер телефона — можно кнопкой ниже.",
                 reply_markup=phone_kb
             )
-            return
         elif current_state == Registration.birth_date.state:
             await message.answer(
                 "Шаг 3 из 3.\nНапиши дату рождения в формате ДД.ММ.ГГГГ (например: 01.01.2000)",
                 reply_markup=ReplyKeyboardRemove()
             )
-            return
+        return
 
-    # Если не в регистрации — обычная логика: приветствие 1 раз, потом меню
+    row = db_get(user_id)
+
+    # Уже видел приветствие — сразу меню, без приветствия
+    if row and row[3]:
+        await state.clear()
+        await message.answer("Выбери действие:", reply_markup=MENU_KEYBOARD)
+        return
+
+    # Первое знакомство: приветствие + меню
     await state.clear()
-    
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✍️ Зарегистрироваться", callback_data="register"),
-            InlineKeyboardButton(text="👤 Профиль", callback_data="show_profile"),
-        ],
-        [
-            InlineKeyboardButton(text="🏙️ Наши рестораны", callback_data="restaurants"),
-            InlineKeyboardButton(text="📚 Библиотека стандартов", callback_data="standards"),
-        ],
-        [
-            InlineKeyboardButton(text="❓ Вопрос/ответ", callback_data="faq"),
-        ]
-    ])
-
-    if user_id not in seen_welcome:
-        seen_welcome.add(user_id)
-        await message.answer(
-            f"👋 {message.from_user.first_name}, добро пожаловать в Wokker!\n\n"
-            "Мы готовим паназиатские блюда на воке — быстро и со вкусом.\n"
-            "Нажми кнопку, чтобы продолжить."
-        )
-        await message.answer("Что хочешь сделать?", reply_markup=keyboard)
-    else:
-        await message.answer("Выбери действие:", reply_markup=keyboard)
+    db_set_welcomed(user_id)
+    await message.answer(
+        f"👋 {message.from_user.first_name}, добро пожаловать в Wokker!\n\n"
+        "Мы готовим паназиатские блюда на воке — быстро и со вкусом.\n"
+        "Нажми кнопку, чтобы продолжить."
+    )
+    await message.answer("Что хочешь сделать?", reply_markup=MENU_KEYBOARD)
 
 @dp.callback_query(lambda c: c.data == "register")
 async def start_registration(callback: types.CallbackQuery, state: FSMContext):
@@ -100,13 +130,13 @@ async def start_registration(callback: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(lambda c: c.data == "show_profile")
 async def show_profile_callback(callback: types.CallbackQuery):
     await callback.answer()
-    data = users.get(callback.from_user.id)
-    if data:
+    row = db_get(callback.from_user.id)
+    if row and row[0]:
         await callback.message.answer(
             "Твой профиль:\n\n"
-            f"👤 ФИО: {data['full_name']}\n"
-            f"📞 Телефон: {data['phone']}\n"
-            f"🎂 Дата рождения: {data['birth_date']}"
+            f"👤 ФИО: {row[0]}\n"
+            f"📞 Телефон: {row[1]}\n"
+            f"🎂 Дата рождения: {row[2]}"
         )
     else:
         await callback.message.answer(
@@ -114,15 +144,12 @@ async def show_profile_callback(callback: types.CallbackQuery):
             "Нажми «✍️ Зарегистрироваться» или напиши /start и выбери эту кнопку."
         )
 
-# --- Новые кнопки: заглушки (можно позже заменить на реальную логику) ---
-
 @dp.callback_query(lambda c: c.data == "restaurants")
 async def show_restaurants(callback: types.CallbackQuery):
     await callback.answer()
     await callback.message.answer(
         "🏙️ Наши рестораны\n\n"
-        "Скоро здесь появится список адресов, часы работы и карта.\n"
-        "А пока загляни в профиль или зарегистрируйся!"
+        "Скоро здесь появится список адресов, часы работы и карта."
     )
 
 @dp.callback_query(lambda c: c.data == "standards")
@@ -130,8 +157,7 @@ async def show_standards(callback: types.CallbackQuery):
     await callback.answer()
     await callback.message.answer(
         "📚 Библиотека стандартов\n\n"
-        "Здесь будут инструкции, чек-листы и стандарты качества Wokker.\n"
-        "Функционал в разработке — скоро всё появится!"
+        "Здесь будут инструкции, чек-листы и стандарты качества Wokker."
     )
 
 @dp.callback_query(lambda c: c.data == "faq")
@@ -139,10 +165,8 @@ async def show_faq(callback: types.CallbackQuery):
     await callback.answer()
     await callback.message.answer(
         "❓ Вопрос/ответ\n\n"
-        "Частые вопросы и ответы по работе с ботом и ресторанами.\n"
-        "Раздел готовится к запуску — спасибо за терпение!"
+        "Частые вопросы и ответы по работе с ботом и ресторанами."
     )
-# --------------------------------------------------------------------
 
 @dp.message(Registration.full_name)
 async def process_name(message: types.Message, state: FSMContext):
@@ -204,51 +228,37 @@ async def process_birth_date(message: types.Message, state: FSMContext):
         await message.answer("Такой даты не бывает. Проверь и напиши ещё раз: ДД.ММ.ГГГГ")
         return
 
-    data = await state.update_data(birth_date=birth_date.strftime("%d.%m.%Y"))
-    users[message.from_user.id] = data
+    data = await state.get_data()
+    full_name = data.get("full_name", "")
+    phone = data.get("phone", "")
+    db_save_profile(message.from_user.id, full_name, phone, birth_date.strftime("%d.%m.%Y"))
     await state.clear()
 
     await message.answer(
         "Регистрация завершена! 🎉\n\n"
-        f"👤 ФИО: {data['full_name']}\n"
-        f"📞 Телефон: {data['phone']}\n"
-        f"🎂 Дата рождения: {data['birth_date']}\n\n"
+        f"👤 ФИО: {full_name}\n"
+        f"📞 Телефон: {phone}\n"
+        f"🎂 Дата рождения: {birth_date.strftime('%d.%m.%Y')}\n\n"
         "Теперь можешь в любой момент открыть меню (/start) и нажать «👤 Профиль»."
     )
 
 @dp.message(Command("profile"))
 async def cmd_profile(message: types.Message):
-    data = users.get(message.from_user.id)
-    if data:
+    row = db_get(message.from_user.id)
+    if row and row[0]:
         await message.answer(
-            f"Твой профиль:\n\n"
-            f"👤 ФИО: {data['full_name']}\n"
-            f"📞 Телефон: {data['phone']}\n"
-            f"🎂 Дата рождения: {data['birth_date']}"
+            "Твой профиль:\n\n"
+            f"👤 ФИО: {row[0]}\n"
+            f"📞 Телефон: {row[1]}\n"
+            f"🎂 Дата рождения: {row[2]}"
         )
     else:
         await message.answer("Ты ещё не зарегистрирован. Напиши /start и нажми «✍️ Зарегистрироваться».")
-
-class PingHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"I am alive")
-
-    def log_message(self, *args):
-        pass
-
-def run_http():
-    port = int(os.getenv("PORT", 10000))
-    HTTPServer(("0.0.0.0", port), PingHandler).serve_forever()
-
-threading.Thread(target=run_http, daemon=True).start()
 
 async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
-
 
 

@@ -1,6 +1,7 @@
 import asyncio
 import os
 import threading
+from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from aiogram import Bot, Dispatcher, types
@@ -10,6 +11,9 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
 )
 
 TOKEN = os.getenv("BOT_TOKEN")
@@ -33,8 +37,7 @@ users = {}
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
-    
-    # Кнопки: регистрация и профиль
+
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="✍️ Зарегистрироваться", callback_data="register"),
@@ -45,9 +48,10 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await message.answer(
         f"Привет, {message.from_user.first_name}! 👋\n\n"
         "Я твой бот. Чтобы пользоваться всеми функциями, пройди короткую регистрацию.\n"
-        "Или сразу посмотри свой профиль, если уже регистрировался."
+        "Или сразу посмотри свой профиль, если уже регистрировался.\n\n"
+        "Выбери действие:"
     )
-    await message.answer("Выбери действие:", reply_markup=keyboard)
+    await message.answer("Меню:", reply_markup=keyboard)
 
 # --- Начало регистрации по кнопке ---
 @dp.callback_query(lambda c: c.data == "register")
@@ -58,8 +62,8 @@ async def start_registration(callback: types.CallbackQuery, state: FSMContext):
 
 # --- Показать профиль по кнопке ---
 @dp.callback_query(lambda c: c.data == "show_profile")
-async def show_profile_callback(callback: types.CallbackQuery, state: FSMContext):
-    await callback.answer()  # убираем «часики» после нажатия
+async def show_profile_callback(callback: types.CallbackQuery):
+    await callback.answer()
     data = users.get(callback.from_user.id)
     if data:
         await callback.message.answer(
@@ -71,22 +75,27 @@ async def show_profile_callback(callback: types.CallbackQuery, state: FSMContext
     else:
         await callback.message.answer(
             "Ты ещё не зарегистрирован.\n"
-            "Нажми «✍️ Зарегистрироваться» или напиши /start и выбери эту кнопку."
+            "Напиши /start и нажми «✍️ Зарегистрироваться»."
         )
 
 # --- Ввод ФИО ---
 @dp.message(Registration.full_name)
 async def process_name(message: types.Message, state: FSMContext):
+    if not message.text:
+        await message.answer("Напиши ФИО именно текстом 🙂")
+        return
     name = message.text.strip()
     if len(name.split()) < 2:
         await message.answer("Похоже, этого мало 🙂 Напиши хотя бы имя и фамилию через пробел.")
         return
     await state.update_data(full_name=name)
 
-    # Кнопка «поделиться телефоном»
-    phone_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📱 Поделиться номером", request_contact=True)]
-    ])
+    # Запрос контакта работает ТОЛЬКО через обычную клавиатуру
+    phone_kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="📱 Поделиться номером", request_contact=True)]],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
     await state.set_state(Registration.phone)
     await message.answer(
         "Шаг 2 из 3.\nОтправь свой номер телефона — можно кнопкой ниже.",
@@ -98,13 +107,18 @@ async def process_name(message: types.Message, state: FSMContext):
 async def process_phone_button(message: types.Message, state: FSMContext):
     await state.update_data(phone=message.contact.phone_number)
     await state.set_state(Registration.birth_date)
+    # Убираем клавиатуру с кнопкой контакта
     await message.answer(
-        "Отлично, номер получен ✅\nШаг 3 из 3.\nНапиши дату рождения в формате ДД.ММ.ГГГГ (например: 01.01.2000)"
+        "Отлично, номер получен ✅\nШаг 3 из 3.\nНапиши дату рождения в формате ДД.ММ.ГГГГ (например: 01.01.2000)",
+        reply_markup=ReplyKeyboardRemove()
     )
 
 # --- Ввод телефона текстом ---
 @dp.message(Registration.phone)
 async def process_phone_text(message: types.Message, state: FSMContext):
+    if not message.text:
+        await message.answer("Отправь номер текстом или кнопкой 🙂")
+        return
     digits = message.text.replace("+", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
     if not digits.isdigit() or len(digits) < 10:
         await message.answer("Это не похоже на номер. Попробуй ещё раз, например: +79001234567")
@@ -112,22 +126,25 @@ async def process_phone_text(message: types.Message, state: FSMContext):
     await state.update_data(phone=message.text.strip())
     await state.set_state(Registration.birth_date)
     await message.answer(
-        "Номер записал ✅\nШаг 3 из 3.\nНапиши дату рождения в формате ДД.ММ.ГГГГ (например: 01.01.2000)"
+        "Номер записал ✅\nШаг 3 из 3.\nНапиши дату рождения в формате ДД.ММ.ГГГГ (например: 01.01.2000)",
+        reply_markup=ReplyKeyboardRemove()
     )
 
 # --- Ввод даты рождения и финал ---
 @dp.message(Registration.birth_date)
 async def process_birth_date(message: types.Message, state: FSMContext):
-    parts = message.text.strip().split(".")
-    if len(parts) != 3 or not all(p.isdigit() for p in parts) or len(parts[2]) != 4:
-        await message.answer("Не понял дату 🤔 Напиши в формате ДД.ММ.ГГГГ, например: 01.01.2000")
+    if not message.text:
+        await message.answer("Напиши дату именно текстом 🙂")
         return
-    day, month, year = map(int, parts)
-    if not (1 <= day <= 31 and 1 <= month <= 12 and 1900 <= year <= 2026):
+    try:
+        birth_date = datetime.strptime(message.text.strip(), "%d.%m.%Y").date()
+        if birth_date.year < 1900 or birth_date > datetime.now().date():
+            raise ValueError
+    except ValueError:
         await message.answer("Такой даты не бывает 🙂 Проверь и напиши ещё раз: ДД.ММ.ГГГГ")
         return
 
-    data = await state.update_data(birth_date=message.text.strip())
+    data = await state.update_data(birth_date=birth_date.strftime("%d.%m.%Y"))
     users[message.from_user.id] = data
     await state.clear()
 
@@ -136,10 +153,10 @@ async def process_birth_date(message: types.Message, state: FSMContext):
         f"👤 ФИО: {data['full_name']}\n"
         f"📞 Телефон: {data['phone']}\n"
         f"🎂 Дата рождения: {data['birth_date']}\n\n"
-        "Теперь можешь в любой момент нажать «👤 Профиль» в меню, чтобы увидеть свои данные."
+        "Теперь можешь в любой момент открыть меню (/start) и нажать «👤 Профиль»."
     )
 
-# --- Команда /profile (для совместимости) ---
+# --- Команда /profile ---
 @dp.message(Command("profile"))
 async def cmd_profile(message: types.Message):
     data = users.get(message.from_user.id)

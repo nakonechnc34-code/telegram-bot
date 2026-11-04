@@ -29,23 +29,43 @@ class Registration(StatesGroup):
     phone = State()
     birth_date = State()
 
+# Хранилище анкет (в памяти: при перезапуске очищается)
 users = {}
+# Хранилище тех, кто уже видел приветствие
+seen_welcome = set()
 
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
+    user_id = message.from_user.id
+    
+    # Формируем расширенное меню
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="✍️ Зарегистрироваться", callback_data="register"),
             InlineKeyboardButton(text="👤 Профиль", callback_data="show_profile"),
+        ],
+        [
+            InlineKeyboardButton(text="🏙️ Наши рестораны", callback_data="restaurants"),
+            InlineKeyboardButton(text="📚 Библиотека стандартов", callback_data="standards"),
+        ],
+        [
+            InlineKeyboardButton(text="❓ Вопрос/ответ", callback_data="faq"),
         ]
     ])
-    await message.answer(
-        f"Привет, {message.from_user.first_name}! 👋\n\n"
-        "Я твой бот. Чтобы пользоваться всеми функциями, пройди короткую регистрацию.\n"
-        "Или сразу посмотри свой профиль, если уже регистрировался."
-    )
-    await message.answer("Выбери действие:", reply_markup=keyboard)
+
+    # Если пользователь видит /start впервые — показываем полное приветствие
+    if user_id not in seen_welcome:
+        seen_welcome.add(user_id)
+        await message.answer(
+            f"👋 {message.from_user.first_name}, добро пожаловать в Wokker!\n\n"
+            "Мы готовим паназиатские блюда на воке — быстро и со вкусом.\n"
+            "Нажми кнопку, чтобы продолжить."
+        )
+        await message.answer("Что хочешь сделать?", reply_markup=keyboard)
+    else:
+        # Если уже видел приветствие — сразу расширенное меню
+        await message.answer("Выбери действие:", reply_markup=keyboard)
 
 @dp.callback_query(lambda c: c.data == "register")
 async def start_registration(callback: types.CallbackQuery, state: FSMContext):
@@ -67,8 +87,38 @@ async def show_profile_callback(callback: types.CallbackQuery):
     else:
         await callback.message.answer(
             "Ты ещё не зарегистрирован.\n"
-            "Напиши /start и нажми «✍️ Зарегистрироваться»."
+            "Нажми «✍️ Зарегистрироваться» или напиши /start и выбери эту кнопку."
         )
+
+# --- Новые кнопки: заглушки (можно позже заменить на реальную логику) ---
+
+@dp.callback_query(lambda c: c.data == "restaurants")
+async def show_restaurants(callback: types.CallbackQuery):
+    await callback.answer()
+    await callback.message.answer(
+        "🏙️ Наши рестораны\n\n"
+        "Скоро здесь появится список адресов, часы работы и карта.\n"
+        "А пока загляни в профиль или зарегистрируйся!"
+    )
+
+@dp.callback_query(lambda c: c.data == "standards")
+async def show_standards(callback: types.CallbackQuery):
+    await callback.answer()
+    await callback.message.answer(
+        "📚 Библиотека стандартов\n\n"
+        "Здесь будут инструкции, чек-листы и стандарты качества Wokker.\n"
+        "Функционал в разработке — скоро всё появится!"
+    )
+
+@dp.callback_query(lambda c: c.data == "faq")
+async def show_faq(callback: types.CallbackQuery):
+    await callback.answer()
+    await callback.message.answer(
+        "❓ Вопрос/ответ\n\n"
+        "Частые вопросы и ответы по работе с ботом и ресторанами.\n"
+        "Раздел готовится к запуску — спасибо за терпение!"
+    )
+# --------------------------------------------------------------------
 
 @dp.message(Registration.full_name)
 async def process_name(message: types.Message, state: FSMContext):
@@ -175,5 +225,6 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
 

@@ -29,7 +29,7 @@ if not TOKEN:
 # --- ID администратора ---
 ADMIN_ID = os.getenv("ADMIN_ID")
 if not ADMIN_ID:
-    print("⚠️ ПРЕДУПРЕЖДЕНИЕ: Переменная ADMIN_ID не задана — уведомления и админ-команды отключены.")
+    print("⚠️ ПРЕДУПРЕЖДЕНИЕ: Переменная ADMIN_ID не задана — админ-панель отключена.")
     ADMIN_ID = None
 else:
     ADMIN_ID = int(ADMIN_ID)
@@ -56,7 +56,6 @@ with get_conn() as conn:
                 is_blocked BOOLEAN DEFAULT FALSE
             )
         """)
-        # Если таблица уже была создана раньше без is_blocked — добавим колонку
         cur.execute("""
             ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE
         """)
@@ -133,6 +132,9 @@ def db_set_blocked(user_id: int, blocked: bool):
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
+def is_admin(user_id: int) -> bool:
+    return ADMIN_ID is not None and user_id == ADMIN_ID
+
 class Registration(StatesGroup):
     full_name = State()
     phone = State()
@@ -165,10 +167,6 @@ def profile_text(row):
         f"🎂 Дата рождения: {birth_date}"
     )
 
-# --- Проверка блокировки ---
-def is_admin(user_id: int) -> bool:
-    return ADMIN_ID is not None and user_id == ADMIN_ID
-
 # --- Уведомление админу о регистрации ---
 async def notify_admin_about_registration(user: types.User, full_name: str, phone: str, birth_date: str):
     if not ADMIN_ID:
@@ -189,100 +187,158 @@ async def notify_admin_about_registration(user: types.User, full_name: str, phon
     except Exception as e:
         print(f"⚠️ Не удалось отправить уведомление админу: {e}")
 
-# ===== АДМИН-КОМАНДЫ =====
+# ===== АДМИН-ПАНЕЛЬ С КНОПКАМИ =====
 
-@dp.message(Command("users"))
-async def cmd_users(message: types.Message):
-    if not is_admin(message.from_user.id):
-        await message.answer("⛔ Эта команда доступна только администратору.")
-        return
-    rows = db_list_users()
+def admin_menu_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📋 Список пользователей", callback_data="adm_users")],
+        [InlineKeyboardButton(text="🔄 Обновить", callback_data="adm_menu")],
+    ])
+
+def users_list_kb(rows):
+    """Клавиатура со списком пользователей: у каждого — бан/удаление."""
+    kb = []
+    for user_id, full_name, phone, welcomed, is_blocked in rows:
+        if is_blocked:
+            icon = "🚫"
+            action = ("✅ Разбанить", f"adm_unban:{user_id}")
+        elif full_name:
+            icon = "✅"
+            action = ("🚫 Забанить", f"adm_ban:{user_id}")
+        else:
+            icon = "⏳"
+            action = ("🚫 Забанить", f"adm_ban:{user_id}")
+        kb.append([
+            InlineKeyboardButton(text=f"{icon} {full_name or 'Без имени'} · {phone or user_id}", callback_data="noop"),
+            InlineKeyboardButton(text=action[0], callback_data=action[1]),
+            InlineKeyboardButton(text="🗑", callback_data=f"adm_del:{user_id}"),
+        ])
+    kb.append([InlineKeyboardButton(text="🔙 В админ-меню", callback_data="adm_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+def users_list_text(rows):
     if not rows:
-        await message.answer("📭 Пока никто не зарегистрирован.")
-        return
+        return "📭 Пока никто не зарегистрирован."
     lines = [f"📋 Всего записей: {len(rows)}\n"]
     for user_id, full_name, phone, welcomed, is_blocked in rows:
-        status = "🚫 ЗАБЛОКИРОВАН" if is_blocked else ("✅" if full_name else "⏳ (не завершил)")
+        status = "🚫 заблокирован" if is_blocked else ("✅" if full_name else "⏳ не завершил")
         lines.append(
             f"{status} <code>{user_id}</code>\n"
-            f"   👤 {full_name or '—'}\n"
-            f"   📞 {phone or '—'}\n"
+            f"   👤 {full_name or '—'} · 📞 {phone or '—'}\n"
         )
-    # Telegram ограничивает длину сообщения ~4096 символов — режем на части
-    text = ""
-    for line in lines:
-        if len(text) + len(line) > 3800:
-            await message.answer(text, parse_mode="HTML")
-            text = ""
-        text += line
-    if text:
-        await message.answer(text, parse_mode="HTML")
+    return "\n".join(lines)
+
+@dp.message(Command("admin"))
+async def cmd_admin(message: types.Message):
+    if not is_admin(message.from_user.id):
+        # Обычному пользователю ведём себя так, будто команды не существует
+        return
     await message.answer(
-        "ℹ️ Команды:\n"
-        "/ban ID — заблокировать доступ\n"
-        "/unban ID — разблокировать\n"
-        "/delete ID — удалить пользователя из базы"
+        "🛠 <b>Админ-панель</b>\n\nВыбери действие:",
+        parse_mode="HTML",
+        reply_markup=admin_menu_kb()
     )
 
-@dp.message(Command("ban"))
-async def cmd_ban(message: types.Message):
-    if not is_admin(message.from_user.id):
-        await message.answer("⛔ Эта команда доступна только администратору.")
+@dp.callback_query(lambda c: c.data == "adm_menu")
+async def adm_menu(callback: types.CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
         return
-    parts = message.text.split()
-    if len(parts) != 2 or not parts[1].lstrip("-").isdigit():
-        await message.answer("Формат: /ban 123456789")
+    await callback.answer()
+    await callback.message.answer("🛠 Админ-панель", reply_markup=admin_menu_kb())
+
+@dp.callback_query(lambda c: c.data == "adm_users")
+async def adm_users(callback: types.CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
         return
-    target_id = int(parts[1])
+    await callback.answer()
+    rows = db_list_users()
+    text = users_list_text(rows)
+    kb = users_list_kb(rows)
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("adm_ban:"))
+async def adm_ban(callback: types.CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
+        return
+    target_id = int(callback.data.split(":")[1])
     if target_id == ADMIN_ID:
-        await message.answer("😅 Нельзя заблокировать самого себя.")
+        await callback.answer("😅 Нельзя заблокировать самого себя", show_alert=True)
         return
     if db_set_blocked(target_id, True):
-        await message.answer(f"🚫 Пользователь <code>{target_id}</code> заблокирован.", parse_mode="HTML")
+        await callback.answer("🚫 Заблокирован")
         try:
             await bot.send_message(target_id, "⛔ Доступ к боту ограничен. Обратитесь к администратору.")
         except Exception:
-            pass  # пользователь мог не начать диалог — это нормально
+            pass
     else:
-        await message.answer(f"Пользователь <code>{target_id}</code> не найден в базе.", parse_mode="HTML")
+        await callback.answer("Пользователь не найден", show_alert=True)
+    # Обновляем список
+    rows = db_list_users()
+    try:
+        await callback.message.edit_text(users_list_text(rows), parse_mode="HTML", reply_markup=users_list_kb(rows))
+    except Exception:
+        pass
 
-@dp.message(Command("unban"))
-async def cmd_unban(message: types.Message):
-    if not is_admin(message.from_user.id):
-        await message.answer("⛔ Эта команда доступна только администратору.")
+@dp.callback_query(lambda c: c.data and c.data.startswith("adm_unban:"))
+async def adm_unban(callback: types.CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
         return
-    parts = message.text.split()
-    if len(parts) != 2 or not parts[1].lstrip("-").isdigit():
-        await message.answer("Формат: /unban 123456789")
-        return
-    target_id = int(parts[1])
+    target_id = int(callback.data.split(":")[1])
     if db_set_blocked(target_id, False):
-        await message.answer(f"✅ Пользователь <code>{target_id}</code> разблокирован.", parse_mode="HTML")
+        await callback.answer("✅ Разблокирован")
     else:
-        await message.answer(f"Пользователь <code>{target_id}</code> не найден в базе.", parse_mode="HTML")
+        await callback.answer("Пользователь не найден", show_alert=True)
+    rows = db_list_users()
+    try:
+        await callback.message.edit_text(users_list_text(rows), parse_mode="HTML", reply_markup=users_list_kb(rows))
+    except Exception:
+        pass
 
-@dp.message(Command("delete"))
-async def cmd_delete(message: types.Message):
-    if not is_admin(message.from_user.id):
-        await message.answer("⛔ Эта команда доступна только администратору.")
+@dp.callback_query(lambda c: c.data and c.data.startswith("adm_del:"))
+async def adm_del_ask(callback: types.CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
         return
-    parts = message.text.split()
-    if len(parts) != 2 or not parts[1].lstrip("-").isdigit():
-        await message.answer("Формат: /delete 123456789")
-        return
-    target_id = int(parts[1])
+    target_id = int(callback.data.split(":")[1])
     if target_id == ADMIN_ID:
-        await message.answer("😅 Нельзя удалить самого себя.")
+        await callback.answer("😅 Нельзя удалить самого себя", show_alert=True)
         return
+    await callback.answer()
+    confirm_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"adm_del_yes:{target_id}"),
+            InlineKeyboardButton(text="❌ Отмена", callback_data="adm_users"),
+        ]
+    ])
+    await callback.message.answer(
+        f"🗑 Удалить пользователя <code>{target_id}</code> из базы?\n\n"
+        "⚠️ Он сможет зарегистрироваться заново. Если нужно закрыть доступ — используй блокировку.",
+        parse_mode="HTML",
+        reply_markup=confirm_kb
+    )
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("adm_del_yes:"))
+async def adm_del_yes(callback: types.CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
+        return
+    target_id = int(callback.data.split(":")[1])
     if db_delete_user(target_id):
-        await message.answer(
-            f"🗑 Пользователь <code>{target_id}</code> удалён из базы.\n\n"
-            "⚠️ Важно: он сможет пройти регистрацию заново. "
-            "Если нужно именно закрыть доступ — используй /ban.",
-            parse_mode="HTML"
-        )
+        await callback.answer("🗑 Удалён")
+        await callback.message.answer(f"🗑 Пользователь <code>{target_id}</code> удалён.", parse_mode="HTML")
     else:
-        await message.answer(f"Пользователь <code>{target_id}</code> не найден в базе.", parse_mode="HTML")
+        await callback.answer("Пользователь не найден", show_alert=True)
+
+@dp.callback_query(lambda c: c.data == "noop")
+async def adm_noop(callback: types.CallbackQuery):
+    if is_admin(callback.from_user.id):
+        await callback.answer()  # просто закрываем "часики" на строке-заголовке
+    else:
+        await callback.answer("⛔ Недоступно", show_alert=True)
 
 # ===== ЛОГИКА БОТА =====
 
@@ -290,7 +346,6 @@ async def cmd_delete(message: types.Message):
 async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
 
-    # Проверка блокировки
     if db_is_blocked(user_id):
         await message.answer("⛔ Доступ к боту ограничен. Обратитесь к администратору.")
         return
@@ -456,7 +511,7 @@ async def cmd_profile(message: types.Message):
     if row and row[0]:
         await message.answer(profile_text(row))
     else:
-        await message.answer("Ты ещё не зарегистрирован. Напиши /start и нажми «✍️ Зарегистрироваться».")
+        await message.answer("Ты ещё не зарегистрирован. Нажми /start и «✍️ Зарегистрироваться».")
 
 # --- HTTP-сервер для Render (health check) ---
 async def health_check_server():
@@ -488,4 +543,3 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
-

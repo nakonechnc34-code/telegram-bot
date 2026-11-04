@@ -36,10 +36,36 @@ seen_welcome = set()
 
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
-    await state.clear()
     user_id = message.from_user.id
+    current_state = await state.get_state()
+
+    # Если пользователь в процессе регистрации — не сбрасываем состояние и не показываем меню.
+    # Вместо этого показываем подсказку для текущего шага.
+    if current_state:
+        if current_state == Registration.full_name.state:
+            await message.answer("Шаг 1 из 3.\nНапиши своё ФИО (например: Иванов Иван Иванович)")
+            return
+        elif current_state == Registration.phone.state:
+            phone_kb = ReplyKeyboardMarkup(
+                keyboard=[[KeyboardButton(text="📱 Поделиться номером", request_contact=True)]],
+                resize_keyboard=True,
+                one_time_keyboard=True,
+            )
+            await message.answer(
+                "Шаг 2 из 3.\nОтправь свой номер телефона — можно кнопкой ниже.",
+                reply_markup=phone_kb
+            )
+            return
+        elif current_state == Registration.birth_date.state:
+            await message.answer(
+                "Шаг 3 из 3.\nНапиши дату рождения в формате ДД.ММ.ГГГГ (например: 01.01.2000)",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            return
+
+    # Если не в регистрации — обычная логика: приветствие 1 раз, потом меню
+    await state.clear()
     
-    # Формируем расширенное меню
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="✍️ Зарегистрироваться", callback_data="register"),
@@ -54,7 +80,6 @@ async def cmd_start(message: types.Message, state: FSMContext):
         ]
     ])
 
-    # Если пользователь видит /start впервые — показываем полное приветствие
     if user_id not in seen_welcome:
         seen_welcome.add(user_id)
         await message.answer(
@@ -64,7 +89,6 @@ async def cmd_start(message: types.Message, state: FSMContext):
         )
         await message.answer("Что хочешь сделать?", reply_markup=keyboard)
     else:
-        # Если уже видел приветствие — сразу расширенное меню
         await message.answer("Выбери действие:", reply_markup=keyboard)
 
 @dp.callback_query(lambda c: c.data == "register")

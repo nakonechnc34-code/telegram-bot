@@ -26,7 +26,15 @@ if not TOKEN:
     print("❌ ОШИБКА: Переменная BOT_TOKEN не задана!")
     raise ValueError("BOT_TOKEN is not set")
 
-# --- Подключение к базе (база запоминания) ---
+# --- ID администратора (кому слать уведомления) ---
+ADMIN_ID = os.getenv("ADMIN_ID")
+if not ADMIN_ID:
+    print("⚠️ ПРЕДУПРЕЖДЕНИЕ: Переменная ADMIN_ID не задана — уведомления о регистрации отключены.")
+    ADMIN_ID = None
+else:
+    ADMIN_ID = int(ADMIN_ID)
+
+# --- Подключение к базе (Supabase) ---
 DB_URL = os.getenv("DATABASE_URL")
 if not DB_URL:
     print("❌ ОШИБКА: Переменная DATABASE_URL не задана!")
@@ -118,6 +126,27 @@ def profile_text(row):
         f"📞 Телефон: {phone}\n"
         f"🎂 Дата рождения: {birth_date}"
     )
+
+async def notify_admin_about_registration(user: types.User, full_name: str, phone: str, birth_date: str):
+    """Отправляет админу уведомление о новой регистрации."""
+    if not ADMIN_ID:
+        return
+    username = f"@{user.username}" if user.username else "нет username"
+    text = (
+        "🔔 Новая регистрация!\n\n"
+        f"👤 ФИО: {full_name}\n"
+        f"📞 Телефон: {phone}\n"
+        f"🎂 Дата рождения: {birth_date}\n"
+        f"🆔 Telegram ID: <code>{user.id}</code>\n"
+        f"🔗 Username: {username}\n"
+        f"🕐 Время: {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+    )
+    try:
+        await bot.send_message(ADMIN_ID, text, parse_mode="HTML")
+        print(f"📨 Уведомление о регистрации отправлено админу ({user.id})")
+    except Exception as e:
+        # Не роняем бота, если уведомление не ушло
+        print(f"⚠️ Не удалось отправить уведомление админу: {e}")
 
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
@@ -251,6 +280,11 @@ async def process_birth_date(message: types.Message, state: FSMContext):
         "Теперь можешь в любой момент открыть меню (/start)."
     )
     await message.answer("Выбери действие:", reply_markup=FULL_MENU)
+
+    # Уведомляем админа о новой регистрации
+    await notify_admin_about_registration(
+        message.from_user, full_name, phone, birth_date.strftime("%d.%m.%Y")
+    )
 
 @dp.message(Command("profile"))
 async def cmd_profile(message: types.Message):

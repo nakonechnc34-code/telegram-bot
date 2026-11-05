@@ -4,8 +4,9 @@ import logging
 import json
 import hmac
 import hashlib
+import re
 import aiohttp
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import unquote
 
 from aiohttp import web
@@ -23,13 +24,19 @@ from aiogram.types import (
 )
 import psycopg2
 
+try:
+    from zoneinfo import ZoneInfo
+    MOSCOW_TZ = ZoneInfo("Europe/Moscow")
+except Exception:
+    MOSCOW_TZ = None
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     print("ОШИБКА: Переменная BOT_TOKEN не задана!")
     raise ValueError("BOT_TOKEN is not set")
-TOKEN = TOKEN.strip()  # на случай пробела или переноса строки в переменной окружения
+TOKEN = TOKEN.strip()
 
 ADMIN_ID = os.getenv("ADMIN_ID")
 if not ADMIN_ID:
@@ -92,8 +99,6 @@ with get_conn() as conn:
             )
         """)
         cur.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS level TEXT DEFAULT 'normal'")
-        # Если таблица новостей пуста — кладём демо-новости, чтобы вкладка не была пустой.
-        # Их можно удалить через админку. Демо-новости рассылку не запускают.
         cur.execute("SELECT COUNT(*) FROM news")
         if cur.fetchone()[0] == 0:
             cur.execute(
@@ -105,10 +110,9 @@ with get_conn() as conn:
                 ("Обновление меню", "В сезоне осень появились новые позиции — уточните состав у шеф-повара на смене.", False, "normal")
             )
     conn.commit()
-print("База данных подключена, таблица готова.")
+print("База данных подключена, таблицы готовы.")
 
 
-# Данные ресторанов нужны для шага регистрации и для Mini App (/api/restaurants).
 # Поле "org" — путь карточки на Яндекс Картах (yandex.ru/maps/org/<org>).
 # ВНИМАНИЕ: у части ресторанов номера-заглушки, помечены комментарием "ЗАГЛУШКА" — замени!
 # "ОФИС" доступен только при регистрации и НЕ показывается во вкладке «Рестораны» приложения.
@@ -186,7 +190,7 @@ RESTAURANTS = [
     {
         "key": "metropolis",
         "name": "Метрополис",
-        "address": "Москва, Ленинградское ш., д. 16А, стр. 4, ТРЦ «Метрополis», этаж 3",
+        "address": "Москва, Ленинградское ш., д. 16А, стр. 4, ТРЦ «Метрополис», этаж 3",
         "hours": "Пн–вс: 10:00–23:00",
         "lat": 55.8120,
         "lon": 37.5060,
@@ -276,7 +280,6 @@ RESTAURANTS = [
     },
 ]
 
-# Список ресторанов для вкладки «Рестораны» мини-приложения (без ОФИСА)
 RESTAURANTS_FOR_APP = [r for r in RESTAURANTS if r["key"] != "office"]
 
 POSITIONS = [
@@ -285,8 +288,6 @@ POSITIONS = [
     "Управляющий сменой",
     "Территориальный управляющий",
 ]
-
-# ================== КОНТЕНТ ДЛЯ ПРИЛОЖЕНИЯ ==================
 
 STANDARDS = [
     {
@@ -334,6 +335,82 @@ FAQ = [
 ]
 
 
+# ================== СТАТУС РЕСТОРАНОВ ПО РЕЖИМУ РАБОТЫ ==================
+
+DAY_MAP = {"пн": 0, "вт": 1, "ср": 2, "чт": 3, "пт": 4, "сб": 5, "вс": 6}
+DAY_NAMES = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
+
+
+def parse_hours(hours_text: str):
+    """Разбирает текст часов в расписание: {0..6: (открытие_мин, закрытие_мин)}."""
+    schedule = {}
+    if not hours_text:
+        return schedule
+    for line in hours_text.split("\n"):
+        line = line.strip()
+        if not line or ":" not in line:
+            continue
+        days_part, _, times_part = line.partition(":")
+        m = re.search(r"(\d{1,2}):(\d{2})\s*[–\-—]\s*(\d{1,2}):(\d{2})", times_part)
+        if not m:
+            continue
+        open_m = int(m.group(1)) * 60 + int(m.group(2))
+        close_m = int(m.group(3)) * 60 + int(m.group(4))
+        if close_m == 0:
+            close_m = 1440  # 24:00 = полночь
+        days = set()
+        for chunk in days_part.replace(";", ",").split(","):
+            chunk = chunk.strip().lower()
+            if not chunk:
+                continue
+            rng = re.findall(r"[а-яё]{2}", chunk)
+            if len(rng) >= 2 and ("–" in chunk or "-" in chunk or "—" in chunk):
+                if rng[0] in DAY_MAP and rng[-1] in DAY_MAP:
+                    d1, d2 = DAY_MAP[rng[0]], DAY_MAP[rng[-1]]
+                    if d1 <= d2:
+                        days.update(range(d1, d2 + 1))
+                    else:
+                        days.update(list(range(d1, 7)) + list(range(0, d2 + 1)))
+            elif rng and rng[0] in DAY_MAP:
+                days.add(DAY_MAP[rng[0]])
+        for d in days:
+            schedule[d] = (open_m, close_m)
+    return schedule
+
+
+def _fmt_minutes(total_min: int) -> str:
+    return f"{total_min // 60:02d}:{total_min % 60:02d}"
+
+
+def restaurant_status(hours_text: str):
+    """Возвращает (status, status_text) по текущему московскому времени."""
+    schedule = parse_hours(hours_text)
+    if MOSCOW_TZ:
+        now = datetime.now(MOSCOW_TZ)
+    else:
+        now = datetime.utcnow() + timedelta(hours=3)
+    cur = now.hour * 60 + now.minute
+    dow = now.weekday()
+
+    today = schedule.get(dow)
+    if today:
+        o, c = today
+        if o <= cur < c:
+            return "open", f"Открыто до {_fmt_minutes(c)}"
+
+    for add in range(0, 8):
+        d = (dow + add) % 7
+        s = schedule.get(d)
+        if not s:
+            continue
+        o, c = s
+        if add == 0 and o > cur:
+            return "closed", f"Закрыто · откроется в {_fmt_minutes(o)}"
+        if add > 0:
+            return "closed", f"Закрыто · откроется в {DAY_NAMES[d]} {_fmt_minutes(o)}"
+    return "closed", "Закрыто"
+
+
 # ================== БАЗА ДАННЫХ ==================
 
 def db_get(user_id: int):
@@ -359,7 +436,6 @@ def db_set_welcomed(user_id: int):
 
 
 def db_save_profile(user_id: int, full_name: str, phone: str, birth_date: str, position: str, restaurant):
-    # Страховка: если случайно передали словарь ресторана — берём из него ключ
     if isinstance(restaurant, dict):
         restaurant = restaurant.get("key", "")
     if restaurant is not None:
@@ -381,7 +457,6 @@ def db_save_profile(user_id: int, full_name: str, phone: str, birth_date: str, p
 
 
 def db_update_user(user_id: int, field: str, value: str) -> bool:
-    """Обновляет одно поле пользователя (только из разрешённого списка)."""
     allowed = ("full_name", "phone", "birth_date", "position", "restaurant")
     if field not in allowed:
         return False
@@ -412,7 +487,6 @@ def db_list_users():
 
 
 def db_list_active_users():
-    """Все зарегистрированные и не заблокированные пользователи (для рассылки)."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -457,8 +531,6 @@ def get_report_stats():
     }
 
 
-# --- новости ---
-
 def db_add_news(title: str, body: str, level: str) -> int:
     if level not in ("urgent", "important", "normal"):
         level = "normal"
@@ -500,8 +572,6 @@ def db_delete_news(news_id: int) -> bool:
         return cur.rowcount > 0
 
 
-# --- учёт сообщений бота для автоочистки чата ---
-
 def db_add_bot_msg(user_id: int, message_id: int):
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -513,7 +583,6 @@ def db_add_bot_msg(user_id: int, message_id: int):
 
 
 def db_get_and_trim_bot_msgs(user_id: int, keep: int = 1):
-    """Возвращает ID старых сообщений бота (кроме последних keep) и удаляет их из учёта."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -521,7 +590,7 @@ def db_get_and_trim_bot_msgs(user_id: int, keep: int = 1):
                 (user_id,)
             )
             ids = [r[0] for r in cur.fetchall()]
-            to_delete = ids[keep:]  # всё, кроме последних keep сообщений
+            to_delete = ids[keep:]
             for mid in to_delete:
                 cur.execute(
                     "DELETE FROM bot_messages WHERE user_id = %s AND message_id = %s",
@@ -530,8 +599,6 @@ def db_get_and_trim_bot_msgs(user_id: int, keep: int = 1):
         conn.commit()
     return to_delete
 
-
-# --- учёт сообщений пользователя (последнее всегда остаётся) ---
 
 def db_add_user_msg(user_id: int, message_id: int):
     with get_conn() as conn:
@@ -544,7 +611,6 @@ def db_add_user_msg(user_id: int, message_id: int):
 
 
 def db_get_and_trim_user_msgs(user_id: int, keep: int = 1):
-    """Возвращает ID старых сообщений пользователя (кроме последних keep) и удаляет их из учёта."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -569,7 +635,6 @@ dp = Dispatcher()
 # ================== ОЧИСТКА ЧАТА ==================
 
 async def cleanup_chat(user_id: int, keep: int = 1):
-    """Удаляет старые сообщения бота, оставляя последнее (по умолчанию keep=1)."""
     for mid in db_get_and_trim_bot_msgs(user_id, keep=keep):
         try:
             await bot.delete_message(user_id, mid)
@@ -578,8 +643,6 @@ async def cleanup_chat(user_id: int, keep: int = 1):
 
 
 async def delete_incoming(message: types.Message):
-    """Подчищает сообщения пользователя, оставляя только последнее.
-    Сообщение, которое пришло прямо сейчас, сохраняем и оставляем в чате."""
     if message is None:
         return
     user_id = message.from_user.id
@@ -592,7 +655,6 @@ async def delete_incoming(message: types.Message):
 
 
 async def send_tracked(chat_id: int, user_id: int, text: str, **kwargs) -> types.Message:
-    """Отправляет сообщение и запоминает его ID для будущей очистки."""
     msg = await bot.send_message(chat_id, text, **kwargs)
     db_add_bot_msg(user_id, msg.message_id)
     return msg
@@ -625,7 +687,6 @@ class EditUser(StatesGroup):
 # ================== ПРОВЕРКА MINI APP (initData) ==================
 
 def _parse_user_field(pairs_dict: dict):
-    """Декодирует и разбирает поле user. Возвращает dict или None."""
     try:
         return json.loads(unquote(pairs_dict.get("user", "{}")))
     except Exception as e:
@@ -634,14 +695,6 @@ def _parse_user_field(pairs_dict: dict):
 
 
 def validate_init_data(init_data: str):
-    """
-    Проверяет подпись initData из Mini App по спецификации Telegram.
-    Возвращает dict пользователя или None.
-
-    Сначала пробует «сырой» вариант (как требует документация),
-    затем — декодированный (на случай перекодирования по пути).
-    При неудаче пишет отпечаток токена для диагностики.
-    """
     if not init_data:
         logging.warning("initData: пустая строка")
         return None
@@ -665,23 +718,20 @@ def validate_init_data(init_data: str):
 
     secret_key = hmac.new(b"WebAppData", TOKEN.encode(), hashlib.sha256).digest()
 
-    # Вариант 1: строка из «сырых» (не декодированных) значений — как требует Telegram
     data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(pairs) if k != "hash")
     computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
 
     if hmac.compare_digest(computed_hash, received_hash):
         return _parse_user_field(pairs_dict)
 
-    # Вариант 2 (страховка): вдруг строку где-то перекодировали
     decoded_string = "\n".join(f"{k}={unquote(v)}" for k, v in sorted(pairs) if k != "hash")
     decoded_hash = hmac.new(secret_key, decoded_string.encode(), hashlib.sha256).hexdigest()
 
     if hmac.compare_digest(decoded_hash, received_hash):
-        logging.warning("initData: подпись сошлась только для ДЕКОДИРОВАННОЙ строки — initData перекодирован по пути")
+        logging.warning("initData: подпись сошлась только для ДЕКОДИРОВАННОЙ строки")
         return _parse_user_field(pairs_dict)
 
     logging.warning("initData: ПОДПИСЬ НЕ СОВПАЛА ни в одном варианте — вероятнее всего, BOT_TOKEN не тот")
-    logging.warning(f"  TOKEN fingerprint: длина={len(TOKEN)}, начало={TOKEN[:5]!r}, конец={TOKEN[-4:]!r}")
     return None
 
 
@@ -712,7 +762,6 @@ def positions_kb():
 
 
 def restaurants_pick_kb():
-    # Полный список, включая ОФИС — только для выбора при регистрации
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=r["name"], callback_data=f"restpick:{r['key']}")]
         for r in RESTAURANTS
@@ -762,10 +811,7 @@ def news_admin_kb(rows):
     for news_id, title, body, important, level, created_at in rows:
         icon = "🔴" if level == "urgent" else ("🟡" if level == "important" else "🔵")
         kb.append([
-            InlineKeyboardButton(
-                text=f"{icon} {title[:30]}",
-                callback_data="noop"
-            ),
+            InlineKeyboardButton(text=f"{icon} {title[:30]}", callback_data="noop"),
             InlineKeyboardButton(text="🗑", callback_data=f"news_del:{news_id}"),
             InlineKeyboardButton(text="📢 Разослать", callback_data=f"news_send:{news_id}"),
         ])
@@ -874,10 +920,8 @@ def restaurants_edit_kb(user_id: int):
 # ================== РАССЫЛКА НОВОСТЕЙ ==================
 
 async def broadcast_news(title: str, body: str, level: str):
-    """Разошлёт новость всем активным пользователям с кнопкой «Скрыть уведомление»."""
     icon = "🔴" if level == "urgent" else ("🟡" if level == "important" else "🔵")
 
-    # Кнопка, которая удалит это сообщение из чата сотрудника
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🗑 Скрыть уведомление", callback_data="hide_notification")]
     ])
@@ -898,7 +942,6 @@ async def broadcast_news(title: str, body: str, level: str):
             sent += 1
         except Exception:
             failed += 1
-        # Пауза каждые 25 сообщений — безопасный темп для Telegram
         if (i + 1) % 25 == 0:
             await asyncio.sleep(1)
 
@@ -958,8 +1001,6 @@ async def adm_users(callback: types.CallbackQuery):
         users_list_text(rows), parse_mode="HTML", reply_markup=users_list_kb(rows)
     )
 
-
-# --- карточка пользователя и редактирование ---
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("adm_user:"))
 async def adm_user_card(callback: types.CallbackQuery, state: FSMContext):
@@ -1297,7 +1338,6 @@ async def news_send(callback: types.CallbackQuery):
         return
     title, body, level = row
 
-    # Запускаем рассылку в фоне — админ не ждёт её завершения
     asyncio.create_task(broadcast_news(title, body, level))
 
     await cleanup_chat(callback.from_user.id)
@@ -1312,7 +1352,6 @@ async def news_send(callback: types.CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "hide_notification")
 async def hide_notification(callback: types.CallbackQuery):
-    """Удаляет сообщение-уведомление у сотрудника по нажатию кнопки."""
     try:
         await callback.message.delete()
     except Exception as e:
@@ -1461,7 +1500,6 @@ async def cmd_start(message: types.Message, state: FSMContext):
         await send_tracked(message.chat.id, user_id, "⛔ Доступ к боту ограничен. Обратитесь к администратору.")
         return
 
-    # Удаляем /start (остаётся в чате до следующего действия) и старые сообщения бота
     await delete_incoming(message)
     await cleanup_chat(user_id)
 
@@ -1687,7 +1725,6 @@ async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMConte
     birth_date = data.get("birth_date", "")
     position = data.get("position", "")
 
-    # 1. Сохраняем профиль. Если база упала — сообщаем и не оставляем пользователя в тишине.
     try:
         db_save_profile(callback.from_user.id, full_name, phone, birth_date, position, restaurant["key"])
     except Exception as e:
@@ -1701,7 +1738,6 @@ async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMConte
 
     await state.clear()
 
-    # 2. Сообщение об успехе с кнопкой запуска приложения
     await send_tracked(
         callback.message.chat.id, callback.from_user.id,
         "🎉 <b>Регистрация завершена!</b>\n\n"
@@ -1715,7 +1751,6 @@ async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMConte
         reply_markup=FULL_MENU
     )
 
-    # 3. Уведомление админу — отдельно, чтобы сбой отправки не ломал регистрацию
     if ADMIN_ID:
         username = f"@{callback.from_user.username}" if callback.from_user.username else "нет username"
         try:
@@ -1778,7 +1813,6 @@ def avatar_cache_get(user_id):
 
 
 async def handle_index(request):
-    """Отдаёт главную страницу Mini App из frontend/index.html."""
     index_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "index.html")
     if os.path.exists(index_path):
         return web.FileResponse(index_path)
@@ -1786,8 +1820,16 @@ async def handle_index(request):
 
 
 async def handle_restaurants(request):
-    # В приложение отдаём список без ОФИСА — он только для регистрации
-    return web.json_response(RESTAURANTS_FOR_APP, dumps=json_dumps)
+    """Список ресторанов (без ОФИСА) со статусом «открыто/закрыто» по московскому времени.
+    Статус пересчитывается при каждом запросе — вкладка всегда актуальна."""
+    out = []
+    for r in RESTAURANTS_FOR_APP:
+        status, status_text = restaurant_status(r["hours"])
+        item = dict(r)
+        item["status"] = status
+        item["status_text"] = status_text
+        out.append(item)
+    return web.json_response(out, dumps=json_dumps)
 
 
 async def handle_news(request):
@@ -1815,7 +1857,6 @@ async def handle_faq(request):
 
 
 async def handle_profile(request):
-    """Возвращает профиль сотрудника. Требует валидный initData из Mini App."""
     try:
         payload = await request.json()
     except Exception:
@@ -1866,7 +1907,6 @@ async def handle_avatar(request):
     if db_is_blocked(user_id):
         return web.json_response({"error": "blocked"}, status=403, dumps=json_dumps)
 
-    # 1. Кэш — если фото недавно уже забирали, не дёргаем Telegram
     cached = avatar_cache_get(user_id)
     if cached:
         data, content_type = cached
@@ -1875,12 +1915,11 @@ async def handle_avatar(request):
     try:
         photos = await bot.get_user_profile_photos(user_id, limit=1)
         if not photos.total_count:
-            return web.Response(status=204)  # фото нет — фронт покажет букву
-        file_id = photos.photos[0][-1].file_id  # самый крупный размер
+            return web.Response(status=204)
+        file_id = photos.photos[0][-1].file_id
         file = await bot.get_file(file_id)
         tg_url = f"https://api.telegram.org/file/bot{TOKEN}/{file.file_path}"
 
-        # 2. Таймаут 5 секунд — чтобы медленный Telegram не подвешивал вкладку
         timeout = aiohttp.ClientTimeout(total=5)
         async with aiohttp.ClientSession(timeout=timeout) as s:
             async with s.get(tg_url) as r:
@@ -1895,7 +1934,6 @@ async def handle_avatar(request):
 
 
 async def handle_questions(request):
-    """Принимает вопрос сотрудника из мини-приложения и пересылает админу."""
     try:
         payload = await request.json()
     except Exception:

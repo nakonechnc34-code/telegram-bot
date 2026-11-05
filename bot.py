@@ -58,6 +58,29 @@ def get_conn():
     return psycopg2.connect(DB_URL)
 
 
+# Стартовые данные ресторанов. Дальше всё редактируется через админку,
+# этот список используется только для первичного заполнения таблицы.
+RESTAURANTS_SEED = [
+    {"key": "mega_belaya_dacha", "name": "Мега Белая Дача", "address": "Московская область, Котельники, 1-й Покровский проезд, 5, ТРЦ Мега, этаж 1", "hours": "Пн–чт: 10:00–22:00\nПт–вс: 10:00–23:00", "lat": 55.6578, "lon": 37.8891, "org": "vokker/128833821207", "phone": ""},
+    {"key": "belyaevo", "name": "Беляево", "address": "Москва, ул. Миклухо-Маклая, 32А, ТЦ «Капитолий», этаж 2", "hours": "Пн–вс: 10:00–22:00", "lat": 55.6470, "lon": 37.5420, "org": "vokker/13122472923", "phone": ""},
+    {"key": "vernadka", "name": "Вернадка", "address": "Москва, проспект Вернадского, 6, ТЦ «Капитолий Вернадского», этаж 3", "hours": "Пн–вс: 10:00–22:00", "lat": 55.6840, "lon": 37.4980, "org": "vokker/91626648547", "phone": ""},
+    {"key": "erevan_plaza", "name": "Ереван Плаза", "address": "Москва, ул. Большая Тульская, д. 13, ТРЦ «Ереван Плаза», этаж 3", "hours": "Пн–вс: 10:00–22:00", "lat": 55.7030, "lon": 37.6210, "org": "vokker/102264079721", "phone": ""},
+    {"key": "kuzminki_mall", "name": "Кузьминки Молл", "address": "Москва, ул. Зеленодольская, д. 42, ТРЦ «Кузьминки Молл», этаж 3", "hours": "Пн–вс: 10:00–22:00", "lat": 55.6980, "lon": 37.7750, "org": "vokker/24262320480", "phone": ""},
+    {"key": "mega_teplyy_stan", "name": "Мега Тёплый стан", "address": "Москва, Калужское шоссе, 21-й километр, с1, ТЦ «Мега Тёплый Стан»", "hours": "Пн–вс: 10:00–22:00", "lat": 55.5790, "lon": 37.4870, "org": "vokker/1485953945", "phone": ""},
+    {"key": "mega_himki", "name": "Мега Химки", "address": "Московская обл., г. Химки, микрорайон ИКЕА, к1, ТЦ «Мега Химки», этаж 1", "hours": "Пн–чт, вс: 10:00–23:00\nПт–сб: 10:00–24:00", "lat": 55.8970, "lon": 37.4120, "org": "vokker/132066311330", "phone": ""},
+    {"key": "metropolis", "name": "Метрополис", "address": "Москва, Ленинградское ш., д. 16А, стр. 4, ТРЦ «Метрополис», этаж 3", "hours": "Пн–вс: 10:00–23:00", "lat": 55.8120, "lon": 37.5060, "org": "vokker/1298559872", "phone": ""},
+    {"key": "moskva_city", "name": "Москва-Сити", "address": "Москва, 1-й Красногвардейский пр., д. 22, стр. 1 (Neva Towers), этаж 2, фуд-корт", "hours": "Пн–вс: 10:00–22:00", "lat": 55.7490, "lon": 37.5380, "org": "vokker/25826174821", "phone": ""},
+    {"key": "okeaniya", "name": "Океания", "address": "Москва, Кутузовский пр., д. 57, ТРЦ «Океания», этаж 3", "hours": "Пн–чт, вс: 10:00–22:00\nПт–сб: 10:00–23:00", "lat": 55.7330, "lon": 37.4950, "org": "vokker/9739651477", "phone": ""},
+    {"key": "polkovaya", "name": "Полковая", "address": "Москва, ул. Полковая, д. 3, стр. 5, БЦ «Шереметьевский», этаж 1", "hours": "Пн–вс: 10:00–22:00", "lat": 55.8010, "lon": 37.5920, "org": "vokker/84984433800", "phone": ""},
+    {"key": "cdm", "name": "ЦДМ", "address": "Москва, Театральный пр., д. 5, стр. 1, «ЦДМ на Лубянке», этаж 6", "hours": "Пн–чт, вс: 10:00–22:00\nПт–сб: 10:00–23:00", "lat": 55.7580, "lon": 37.6230, "org": "vokker/31463245515", "phone": ""},
+    {"key": "tsvetnoy", "name": "Цветной", "address": "Москва, Цветной бульвар, д. 15, стр. 1, ТРЦ «Цветной», этаж 5", "hours": "Пн–сб: 10:00–22:00\nВс: 11:00–22:00", "lat": 55.7670, "lon": 37.6180, "org": "vokker/110848206544", "phone": ""},
+    {"key": "shchelkovskaya", "name": "Щёлковская", "address": "Москва, Щёлковское шоссе, 75, ТРЦ «Щёлковский», этаж 5", "hours": "Пн–чт, вс: 10:00–22:00\nПт–сб: 10:00–23:00", "lat": 55.8050, "lon": 37.7920, "org": "vokker/25844145312", "phone": ""},
+    {"key": "shuka", "name": "Щука", "address": "Москва, ул. Щукинская, д. 42, ТРК «Щука», этаж 4", "hours": "Пн–вс: 10:00–22:00", "lat": 55.8020, "lon": 37.4650, "org": "vokker/1357579873", "phone": ""},
+    # ОФИС — только для выбора при регистрации, в приложении не показывается
+    {"key": "office", "name": "ОФИС", "address": "Центральный офис (уточните адрес у HR)", "hours": "Пн–пт: 09:00–18:00", "lat": None, "lon": None, "org": "", "phone": ""},
+]
+
+
 with get_conn() as conn:
     with conn.cursor() as cur:
         cur.execute("""
@@ -100,6 +123,20 @@ with get_conn() as conn:
             )
         """)
         cur.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS level TEXT DEFAULT 'normal'")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS restaurants (
+                key TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                address TEXT,
+                hours TEXT,
+                lat REAL,
+                lon REAL,
+                org TEXT,
+                phone TEXT DEFAULT '',
+                force_status TEXT,   -- NULL = авто по часам; 'open' = принудительно открыта; 'closed' = принудительно закрыта
+                sort INT DEFAULT 100
+            )
+        """)
         cur.execute("SELECT COUNT(*) FROM news")
         if cur.fetchone()[0] == 0:
             cur.execute(
@@ -110,162 +147,18 @@ with get_conn() as conn:
                 "INSERT INTO news (title, body, important, level) VALUES (%s, %s, %s, %s)",
                 ("Обновление меню", "В сезоне осень появились новые позиции — уточните состав у шеф-повара на смене.", False, "normal")
             )
+        cur.execute("SELECT COUNT(*) FROM restaurants")
+        if cur.fetchone()[0] == 0:
+            for i, r in enumerate(RESTAURANTS_SEED):
+                sort = 999 if r["key"] == "office" else i
+                cur.execute(
+                    "INSERT INTO restaurants (key, name, address, hours, lat, lon, org, phone, sort) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    (r["key"], r["name"], r["address"], r["hours"], r["lat"], r["lon"], r["org"], r["phone"], sort)
+                )
     conn.commit()
 print("База данных подключена, таблицы готовы.")
 
-
-# Поле "org" — путь карточки на Яндекс Картах (yandex.ru/maps/org/<org>).
-# "ОФИС" доступен только при регистрации и НЕ показывается во вкладке «Рестораны» приложения.
-# Телефоны точек не храним: звонки убрали, адрес и маршрут — на Яндекс Картах.
-RESTAURANTS = [
-    {
-        "key": "mega_belaya_dacha",
-        "name": "Мега Белая Дача",
-        "address": "Московская область, Котельники, 1-й Покровский проезд, 5, ТРЦ Мега, этаж 1",
-        "hours": "Пн–чт: 10:00–22:00\nПт–вс: 10:00–23:00",
-        "lat": 55.6578,
-        "lon": 37.8891,
-        "org": "vokker/128833821207",
-    },
-    {
-        "key": "belyaevo",
-        "name": "Беляево",
-        "address": "Москва, ул. Миклухо-Маклая, 32А, ТЦ «Капитолий», этаж 2",
-        "hours": "Пн–вс: 10:00–22:00",
-        "lat": 55.6470,
-        "lon": 37.5420,
-        "org": "vokker/13122472923",
-    },
-    {
-        "key": "vernadka",
-        "name": "Вернадка",
-        "address": "Москва, проспект Вернадского, 6, ТЦ «Капитолий Вернадского», этаж 3",
-        "hours": "Пн–вс: 10:00–22:00",
-        "lat": 55.6840,
-        "lon": 37.4980,
-        "org": "vokker/91626648547",
-    },
-    {
-        "key": "erevan_plaza",
-        "name": "Ереван Плаза",
-        "address": "Москва, ул. Большая Тульская, д. 13, ТРЦ «Ереван Плаза», этаж 3",
-        "hours": "Пн–вс: 10:00–22:00",
-        "lat": 55.7030,
-        "lon": 37.6210,
-        "org": "vokker/102264079721",
-    },
-    {
-        "key": "kuzminki_mall",
-        "name": "Кузьминки Молл",
-        "address": "Москва, ул. Зеленодольская, д. 42, ТРЦ «Кузьминки Молл», этаж 3",
-        "hours": "Пн–вс: 10:00–22:00",
-        "lat": 55.6980,
-        "lon": 37.7750,
-        "org": "vokker/24262320480",
-    },
-    {
-        "key": "mega_teplyy_stan",
-        "name": "Мега Тёплый стан",
-        "address": "Москва, Калужское шоссе, 21-й километр, с1, ТЦ «Мега Тёплый Стан»",
-        "hours": "Пн–вс: 10:00–22:00",
-        "lat": 55.5790,
-        "lon": 37.4870,
-        "org": "vokker/1485953945",
-    },
-    {
-        "key": "mega_himki",
-        "name": "Мега Химки",
-        "address": "Московская обл., г. Химки, микрорайон ИКЕА, к1, ТЦ «Мега Химки», этаж 1",
-        "hours": "Пн–чт, вс: 10:00–23:00\nПт–сб: 10:00–24:00",
-        "lat": 55.8970,
-        "lon": 37.4120,
-        "org": "vokker/132066311330",
-    },
-    {
-        "key": "metropolis",
-        "name": "Метрополис",
-        "address": "Москва, Ленинградское ш., д. 16А, стр. 4, ТРЦ «Метрополис», этаж 3",
-        "hours": "Пн–вс: 10:00–23:00",
-        "lat": 55.8120,
-        "lon": 37.5060,
-        "org": "vokker/1298559872",
-    },
-    {
-        "key": "moskva_city",
-        "name": "Москва-Сити",
-        "address": "Москва, 1-й Красногвардейский пр., д. 22, стр. 1 (Neva Towers), этаж 2, фуд-корт",
-        "hours": "Пн–вс: 10:00–22:00",
-        "lat": 55.7490,
-        "lon": 37.5380,
-        "org": "vokker/25826174821",
-    },
-    {
-        "key": "okeaniya",
-        "name": "Океания",
-        "address": "Москва, Кутузовский пр., д. 57, ТРЦ «Океания», этаж 3",
-        "hours": "Пн–чт, вс: 10:00–22:00\nПт–сб: 10:00–23:00",
-        "lat": 55.7330,
-        "lon": 37.4950,
-        "org": "vokker/9739651477",
-    },
-    {
-        "key": "polkovaya",
-        "name": "Полковая",
-        "address": "Москва, ул. Полковая, д. 3, стр. 5, БЦ «Шереметьевский», этаж 1",
-        "hours": "Пн–вс: 10:00–22:00",
-        "lat": 55.8010,
-        "lon": 37.5920,
-        "org": "vokker/84984433800",
-    },
-    {
-        "key": "cdm",
-        "name": "ЦДМ",
-        "address": "Москва, Театральный пр., д. 5, стр. 1, «ЦДМ на Лубянке», этаж 6",
-        "hours": "Пн–чт, вс: 10:00–22:00\nПт–сб: 10:00–23:00",
-        "lat": 55.7580,
-        "lon": 37.6230,
-        "org": "vokker/31463245515",
-    },
-    {
-        "key": "tsvetnoy",
-        "name": "Цветной",
-        "address": "Москва, Цветной бульвар, д. 15, стр. 1, ТРЦ «Цветной», этаж 5",
-        "hours": "Пн–сб: 10:00–22:00\nВс: 11:00–22:00",
-        "lat": 55.7670,
-        "lon": 37.6180,
-        "org": "vokker/110848206544",
-    },
-    {
-        "key": "shchelkovskaya",
-        "name": "Щёлковская",
-        "address": "Москва, Щёлковское шоссе, 75, ТРЦ «Щёлковский», этаж 5",
-        "hours": "Пн–чт, вс: 10:00–22:00\nПт–сб: 10:00–23:00",
-        "lat": 55.8050,
-        "lon": 37.7920,
-        "org": "vokker/25844145312",
-    },
-    {
-        "key": "shuka",
-        "name": "Щука",
-        "address": "Москва, ул. Щукинская, д. 42, ТРК «Щука», этаж 4",
-        "hours": "Пн–вс: 10:00–22:00",
-        "lat": 55.8020,
-        "lon": 37.4650,
-        "org": "vokker/1357579873",
-    },
-    # ОФИС — только для выбора при регистрации, в приложении не показывается
-    {
-        "key": "office",
-        "name": "ОФИС",
-        "address": "Центральный офис (уточните адрес у HR)",
-        "hours": "Пн–пт: 09:00–18:00",
-        "lat": None,
-        "lon": None,
-        "org": "",
-    },
-]
-
-RESTAURANTS_FOR_APP = [r for r in RESTAURANTS if r["key"] != "office"]
 
 POSITIONS = [
     "Холодный Цех",
@@ -325,6 +218,15 @@ FAQ = [
 DAY_MAP = {"пн": 0, "вт": 1, "ср": 2, "чт": 3, "пт": 4, "сб": 5, "вс": 6}
 DAY_NAMES = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
 
+# Кэш списка ресторанов для Mini App. Сбрасывается при любом изменении из админки.
+REST_CACHE = {"data": None, "ts": 0.0}
+REST_CACHE_TTL = 60  # секунд
+
+
+def invalidate_rest_cache():
+    REST_CACHE["data"] = None
+    REST_CACHE["ts"] = 0.0
+
 
 def parse_hours(hours_text: str):
     """Разбирает текст часов в расписание: {0..6: (открытие_мин, закрытие_мин)}."""
@@ -342,7 +244,7 @@ def parse_hours(hours_text: str):
         open_m = int(m.group(1)) * 60 + int(m.group(2))
         close_m = int(m.group(3)) * 60 + int(m.group(4))
         if close_m == 0:
-            close_m = 1440  # 24:00 = полночь
+            close_m = 1440
         days = set()
         for chunk in days_part.replace(";", ",").split(","):
             chunk = chunk.strip().lower()
@@ -396,7 +298,66 @@ def restaurant_status(hours_text: str):
     return "closed", "Закрыто"
 
 
+def restaurant_status_for(r: dict):
+    """Статус с учётом ручного переопределения из админки."""
+    fs = r.get("force_status")
+    if fs == "open":
+        return "open", "Открыто (администратором)"
+    if fs == "closed":
+        return "closed", "Закрыто (администратором)"
+    return restaurant_status(r.get("hours") or "")
+
+
 # ================== БАЗА ДАННЫХ ==================
+
+RESTAURANT_DB_FIELDS = ("name", "address", "phone", "hours", "org")
+
+
+def db_restaurants_all():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT key, name, address, hours, lat, lon, org, phone, force_status, sort "
+                "FROM restaurants ORDER BY sort, name"
+            )
+            cols = ["key", "name", "address", "hours", "lat", "lon", "org", "phone", "force_status", "sort"]
+            return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+
+def db_restaurants_for_app():
+    return [r for r in db_restaurants_all() if r["key"] != "office"]
+
+
+def db_restaurant(key: str):
+    rows = db_restaurants_all()
+    for r in rows:
+        if r["key"] == key:
+            return r
+    return None
+
+
+def db_restaurant_update(key: str, field: str, value: str) -> bool:
+    if field not in RESTAURANT_DB_FIELDS:
+        return False
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"UPDATE restaurants SET {field} = %s WHERE key = %s", (value, key))
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def db_restaurant_set_status(key: str, force_status) -> bool:
+    if force_status not in (None, "open", "closed"):
+        return False
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE restaurants SET force_status = %s WHERE key = %s",
+                (force_status, key)
+            )
+        conn.commit()
+        return cur.rowcount > 0
+
 
 def db_get(user_id: int):
     with get_conn() as conn:
@@ -669,6 +630,10 @@ class EditUser(StatesGroup):
     birth_date = State()
 
 
+class RestEdit(StatesGroup):
+    value = State()
+
+
 # ================== ПРОВЕРКА MINI APP (initData) ==================
 
 def _parse_user_field(pairs_dict: dict):
@@ -721,9 +686,7 @@ def validate_init_data(init_data: str):
 
 
 async def get_auth_user(request):
-    """Единая проверка доступа для API Mini App.
-    Расшифровывает initData и проверяет блокировку.
-    Возвращает (user_id, None) при успехе или (None, 401/403) при отказе."""
+    """Единая проверка доступа для API Mini App."""
     try:
         payload = await request.json()
     except Exception:
@@ -768,22 +731,21 @@ def positions_kb():
 def restaurants_pick_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=r["name"], callback_data=f"restpick:{r['key']}")]
-        for r in RESTAURANTS
+        for r in db_restaurants_all()
     ])
 
 
 def restaurant_name_by_key(key):
-    rest = next((r for r in RESTAURANTS if r["key"] == key), None)
-    return rest["name"] if rest else key
+    r = db_restaurant(key)
+    return r["name"] if r else key
 
 
 def restaurants_miniapp_kb():
     """Список ресторанов для бота: одна точка — одна кнопка.
-    Кнопка web_app должна стоять в строке одна (ограничение Telegram).
-    Каждая кнопка открывает Mini App сразу на карточке этой точки."""
+    Кнопка web_app должна стоять в строке одна (ограничение Telegram)."""
     kb = []
-    for r in RESTAURANTS_FOR_APP:
-        status, _ = restaurant_status(r["hours"])
+    for r in db_restaurants_for_app():
+        status, _ = restaurant_status_for(r)
         icon = "🟢" if status == "open" else "🔴"
         url = f"{MINI_APP_URL}?rest={r['key']}"
         kb.append([InlineKeyboardButton(
@@ -814,171 +776,110 @@ def profile_text(row):
 def admin_menu_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📋 Список пользователей", callback_data="adm_users")],
+        [InlineKeyboardButton(text="🏪 Рестораны", callback_data="adm_rests")],
         [InlineKeyboardButton(text="📰 Новости", callback_data="adm_news")],
         [InlineKeyboardButton(text="📊 Отчёты", callback_data="adm_reports")],
         [InlineKeyboardButton(text="🔄 Обновить", callback_data="adm_menu")],
     ])
 
 
-LEVEL_LABELS = {
-    "urgent": "🔴 Срочная",
-    "important": "🟡 Важная",
-    "normal": "🔵 Обычная",
+# ================== АДМИНКА РЕСТОРАНОВ ==================
+
+FIELD_LABELS = {
+    "name": "Название",
+    "address": "Адрес",
+    "phone": "Телефон",
+    "hours": "Часы работы",
+    "org": "Ссылка на Яндекс Картах",
+}
+
+FIELD_PROMPTS = {
+    "name": "✏️ Напиши новое название точки (например: Мега Химки)",
+    "address": "✏️ Напиши новый адрес (например: Москва, ул. Ленина, 5, ТЦ «Пример», этаж 2)",
+    "phone": "📞 Напиши новый телефон в формате +79001234567 (или «нет», чтобы скрыть)",
+    "hours": "🕒 Напиши часы работы в формате:\nПн–чт: 10:00–22:00\nПт–вс: 10:00–23:00",
+    "org": "🗺 Напиши путь карточки Яндекс Карт (например: vokker/1234567890)\nили «нет», чтобы искать по адресу",
 }
 
 
-def news_admin_kb(rows):
-    kb = []
-    for news_id, title, body, important, level, created_at in rows:
-        icon = "🔴" if level == "urgent" else ("🟡" if level == "important" else "🔵")
-        kb.append([
-            InlineKeyboardButton(text=f"{icon} {title[:30]}", callback_data="noop"),
-            InlineKeyboardButton(text="🗑", callback_data=f"news_del:{news_id}"),
-            InlineKeyboardButton(text="📢 Разослать", callback_data=f"news_send:{news_id}"),
-        ])
-    kb.append([InlineKeyboardButton(text="➕ Добавить новость", callback_data="news_add")])
-    kb.append([InlineKeyboardButton(text="🔙 В админ-меню", callback_data="adm_menu")])
-    return InlineKeyboardMarkup(inline_keyboard=kb)
+def rest_status_label(r: dict) -> str:
+    status, status_text = restaurant_status_for(r)
+    if r.get("force_status") == "open":
+        return f"🟢 {status_text}"
+    if r.get("force_status") == "closed":
+        return f"🔴 {status_text}"
+    return f"♻️ Авто: {status_text}"
 
 
-def news_admin_text(rows):
-    if not rows:
-        return "📰 Новостей пока нет.\n\nДобавь первую — она сразу появится у сотрудников во вкладке «Новости»."
-    lines = [f"📰 Всего новостей: {len(rows)}\n"]
-    for news_id, title, body, important, level, created_at in rows:
-        date_str = created_at.strftime("%d.%m.%Y") if created_at else "—"
-        lines.append(f"• {LEVEL_LABELS.get(level, '🔵 Обычная')} — <b>{title}</b> ({date_str})")
-    return "\n".join(lines)
+def rest_card_text(r: dict) -> str:
+    phone = r.get("phone") or "—"
+    return (
+        f"🏪 <b>{r['name']}</b>\n"
+        f"{'🟢' if restaurant_status_for(r)[0] == 'open' else '🔴'} Статус: {rest_status_label(r)}\n"
+        "──────────────────────────────\n"
+        f"📍 Адрес: {r.get('address') or '—'}\n"
+        f"📞 Телефон: {phone}\n"
+        f"🕒 Часы: {(r.get('hours') or '—').replace(chr(10), ' / ')}\n"
+        f"🗺 Яндекс Карты: {r.get('org') or 'по адресу'}"
+    )
 
 
-def news_important_kb():
+def rest_card_kb(r: dict) -> InlineKeyboardMarkup:
+    fs = r.get("force_status")
+    if fs == "open":
+        status_btn = InlineKeyboardButton(text="♻️ Вернуть авто-статус", callback_data=f"restset:{r['key']}:auto")
+    elif fs == "closed":
+        status_btn = InlineKeyboardButton(text="🟢 Открыть (вручную)", callback_data=f"restset:{r['key']}:open")
+    else:
+        status_btn = InlineKeyboardButton(text="🔴 Закрыть (вручную)", callback_data=f"restset:{r['key']}:closed")
+
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔴 Срочная", callback_data="news_imp:urgent")],
-        [InlineKeyboardButton(text="🟡 Важная", callback_data="news_imp:important")],
-        [InlineKeyboardButton(text="🔵 Обычная", callback_data="news_imp:normal")],
+        [
+            InlineKeyboardButton(text="✏️ Название", callback_data=f"restedit:{r['key']}:name"),
+            InlineKeyboardButton(text="✏️ Адрес", callback_data=f"restedit:{r['key']}:address"),
+        ],
+        [
+            InlineKeyboardButton(text="✏️ Телефон", callback_data=f"restedit:{r['key']}:phone"),
+            InlineKeyboardButton(text="✏️ Часы", callback_data=f"restedit:{r['key']}:hours"),
+        ],
+        [status_btn],
+        [InlineKeyboardButton(text="🔙 К списку ресторанов", callback_data="adm_rests")],
     ])
 
 
-def users_list_kb(rows):
+def rests_list_kb(rests):
     kb = []
-    for user_id, full_name, phone, position, restaurant, welcomed, is_blocked in rows:
-        if is_blocked:
-            icon = "🚫"
-            action_text = "✅ Разбанить"
-            action_data = f"adm_unban:{user_id}"
-        else:
-            icon = "✅" if full_name else "⏳"
-            action_text = "🚫 Забанить"
-            action_data = f"adm_ban:{user_id}"
+    for r in rests:
+        status, _ = restaurant_status_for(r)
+        icon = "🟢" if status == "open" else "🔴"
         kb.append([
             InlineKeyboardButton(
-                text=f"{icon} {full_name or 'Без имени'} · {phone or user_id}",
-                callback_data=f"adm_user:{user_id}"
+                text=f"{icon} {r['name']}",
+                callback_data=f"restadm:{r['key']}"
             ),
-            InlineKeyboardButton(text=action_text, callback_data=action_data),
-            InlineKeyboardButton(text="🗑", callback_data=f"adm_del:{user_id}"),
+            InlineKeyboardButton(
+                text=("🔓" if r.get("force_status") == "closed" else "🔒"),
+                callback_data=f"restset:{r['key']}:{'open' if r.get('force_status') == 'closed' else 'closed'}"
+            ),
+            InlineKeyboardButton(text="✏️", callback_data=f"restadm:{r['key']}"),
         ])
     kb.append([InlineKeyboardButton(text="🔙 В админ-меню", callback_data="adm_menu")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 
-def users_list_text(rows):
-    if not rows:
-        return "📭 Пока никто не зарегистрирован."
-    lines = [f"📋 Всего записей: {len(rows)}\n"]
-    for user_id, full_name, phone, position, restaurant, welcomed, is_blocked in rows:
-        status = "🚫 заблокирован" if is_blocked else ("✅" if full_name else "⏳ не завершил")
-        rest_name = restaurant_name_by_key(restaurant) if restaurant else "—"
-        lines.append(
-            f"{status} <code>{user_id}</code>\n"
-            f"   👤 {full_name or '—'} · 📞 {phone or '—'}\n"
-            f"   💼 {position or '—'} · 📍 {rest_name}\n"
-        )
+def rests_list_text(rests):
+    if not rests:
+        return "🏪 Список ресторанов пуст."
+    lines = [f"🏪 Всего точек: {len(rests)}\n"]
+    for r in rests:
+        status, _ = restaurant_status_for(r)
+        icon = "🟢" if status == "open" else "🔴"
+        fs = r.get("force_status")
+        mark = " (вручную)" if fs else ""
+        lines.append(f"{icon} <b>{r['name']}</b>{mark} — {r.get('address') or '—'}")
+    lines.append("\nНажми на точку — откроется карточка редактирования. 🔒/🔓 — быстрое закрытие/открытие.")
     return "\n".join(lines)
 
-
-def user_card_text(user_id: int, row):
-    full_name, phone, birth_date, position, restaurant, welcomed, is_blocked = row
-    rest_name = restaurant_name_by_key(restaurant) if restaurant else "—"
-    status = "🚫 Заблокирован" if is_blocked else "✅ Активен"
-    return (
-        f"👤 <b>Пользователь</b>\n"
-        f"🆔 <code>{user_id}</code> · {status}\n"
-        "──────────────────────────────\n"
-        f"👤 ФИО: <b>{full_name or '—'}</b>\n"
-        f"💼 Должность: {position or '—'}\n"
-        f"📍 Ресторан: {rest_name}\n"
-        f"📞 Телефон: {phone or '—'}\n"
-        f"🎂 Дата рождения: {birth_date or '—'}"
-    )
-
-
-def user_edit_kb(user_id: int):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✏️ ФИО", callback_data=f"edit_field:{user_id}:full_name")],
-        [InlineKeyboardButton(text="📞 Телефон", callback_data=f"edit_field:{user_id}:phone")],
-        [InlineKeyboardButton(text="🎂 Дата рождения", callback_data=f"edit_field:{user_id}:birth_date")],
-        [InlineKeyboardButton(text="💼 Должность", callback_data=f"edit_pos:{user_id}")],
-        [InlineKeyboardButton(text="📍 Ресторан", callback_data=f"edit_rest:{user_id}")],
-        [InlineKeyboardButton(text="🔙 К списку пользователей", callback_data="adm_users")],
-    ])
-
-
-def positions_edit_kb(user_id: int):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=pos, callback_data=f"editsetpos:{user_id}:{idx}")]
-        for idx, pos in enumerate(POSITIONS)
-    ] + [[InlineKeyboardButton(text="🔙 Назад", callback_data=f"adm_user:{user_id}")]])
-
-
-def restaurants_edit_kb(user_id: int):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=r["name"], callback_data=f"editsetrest:{user_id}:{r['key']}")]
-        for r in RESTAURANTS
-    ] + [[InlineKeyboardButton(text="🔙 Назад", callback_data=f"adm_user:{user_id}")]])
-
-
-# ================== РАССЫЛКА НОВОСТЕЙ ==================
-
-async def broadcast_news(title: str, body: str, level: str):
-    icon = "🔴" if level == "urgent" else ("🟡" if level == "important" else "🔵")
-
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🗑 Скрыть уведомление", callback_data="hide_notification")]
-    ])
-
-    text = (
-        f"{icon} <b>Новая новость</b>\n\n"
-        f"<b>{title}</b>\n"
-        f"{body}"
-    )
-
-    sent = 0
-    failed = 0
-    recipients = db_list_active_users()
-
-    for i, uid in enumerate(recipients):
-        try:
-            await bot.send_message(uid, text, parse_mode="HTML", reply_markup=kb)
-            sent += 1
-        except Exception:
-            failed += 1
-        if (i + 1) % 25 == 0:
-            await asyncio.sleep(1)
-
-    logging.info(f"Рассылка завершена: доставлено {sent}, не доставлено {failed}")
-    if ADMIN_ID:
-        try:
-            await bot.send_message(
-                ADMIN_ID,
-                f"📨 Рассылка новости завершена\n\n✅ Доставлено: {sent}\n❌ Не доставлено: {failed}",
-                parse_mode="HTML"
-            )
-        except Exception:
-            pass
-
-
-# ================== АДМИНКА ==================
 
 @dp.message(Command("admin"))
 async def cmd_admin(message: types.Message):
@@ -992,6 +893,166 @@ async def cmd_admin(message: types.Message):
         parse_mode="HTML",
         reply_markup=admin_menu_kb()
     )
+
+
+@dp.callback_query(lambda c: c.data == "adm_rests")
+async def adm_rests(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
+        return
+    await callback.answer()
+    await state.clear()
+    await cleanup_chat(callback.from_user.id)
+    rests = db_restaurants_all()
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
+        rests_list_text(rests), parse_mode="HTML", reply_markup=rests_list_kb(rests)
+    )
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("restadm:"))
+async def rest_card_view(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
+        return
+    await callback.answer()
+    await state.clear()
+    key = callback.data.split(":")[1]
+    r = db_restaurant(key)
+    await cleanup_chat(callback.from_user.id)
+    if not r:
+        await send_tracked(callback.message.chat.id, callback.from_user.id, "❌ Ресторан не найден.")
+        return
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
+        rest_card_text(r), parse_mode="HTML", reply_markup=rest_card_kb(r)
+    )
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("restset:"))
+async def rest_set_status(callback: types.CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
+        return
+    _, key, new_status = callback.data.split(":")
+    if new_status == "auto":
+        new_status = None
+    if db_restaurant_set_status(key, new_status):
+        invalidate_rest_cache()
+        r = db_restaurant(key)
+        if r:
+            await callback.answer("Статус обновлён")
+            await cleanup_chat(callback.from_user.id)
+            await send_tracked(
+                callback.message.chat.id, callback.from_user.id,
+                rest_card_text(r), parse_mode="HTML", reply_markup=rest_card_kb(r)
+            )
+            return
+    await callback.answer("Не удалось изменить статус", show_alert=True)
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("restedit:"))
+async def rest_edit_start(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
+        return
+    await callback.answer()
+    _, key, field = callback.data.split(":")
+    if field not in RESTAURANT_DB_FIELDS:
+        await callback.answer("Неизвестное поле", show_alert=True)
+        return
+    await state.set_state(RestEdit.value)
+    await state.update_data(rest_key=key, rest_field=field)
+    await cleanup_chat(callback.from_user.id)
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
+        f"{FIELD_PROMPTS[field]}\n\nИли нажми «Отменить»:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отменить", callback_data=f"restedit_cancel:{key}")]
+        ])
+    )
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("restedit_cancel:"))
+async def rest_edit_cancel(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
+        return
+    await callback.answer("Отменено")
+    await state.clear()
+    key = callback.data.split(":")[1]
+    r = db_restaurant(key)
+    await cleanup_chat(callback.from_user.id)
+    if r:
+        await send_tracked(
+            callback.message.chat.id, callback.from_user.id,
+            rest_card_text(r), parse_mode="HTML", reply_markup=rest_card_kb(r)
+        )
+
+
+@dp.message(RestEdit.value)
+async def rest_edit_value(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    data = await state.get_data()
+    rest_key = data.get("rest_key")
+    rest_field = data.get("rest_field")
+    if not rest_key or not rest_field:
+        await state.clear()
+        return
+
+    value = (message.text or "").strip()
+
+    # Валидация по полю
+    if rest_field == "name":
+        if len(value) < 2:
+            await delete_incoming(message)
+            await cleanup_chat(message.from_user.id)
+            await send_tracked(message.chat.id, message.from_user.id, "Название слишком короткое. Попробуй ещё раз:")
+            return
+    elif rest_field == "address":
+        if len(value) < 5:
+            await delete_incoming(message)
+            await cleanup_chat(message.from_user.id)
+            await send_tracked(message.chat.id, message.from_user.id, "Адрес слишком короткий. Попробуй ещё раз:")
+            return
+    elif rest_field == "phone":
+        if value.lower() in ("нет", "-", "—", ""):
+            value = ""
+        else:
+            digits = value.replace("+", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+            if not digits.isdigit() or len(digits) < 10:
+                await delete_incoming(message)
+                await cleanup_chat(message.from_user.id)
+                await send_tracked(message.chat.id, message.from_user.id, "Это не похоже на номер. Пример: +79001234567. Или напиши «нет», чтобы скрыть.")
+                return
+    elif rest_field == "hours":
+        if not re.search(r"\d{1,2}:\d{2}\s*[–\-—]\s*\d{1,2}:\d{2}", value):
+            await delete_incoming(message)
+            await cleanup_chat(message.from_user.id)
+            await send_tracked(message.chat.id, message.from_user.id, "Не вижу времени в записи. Пример:\nПн–чт: 10:00–22:00\nПт–вс: 10:00–23:00")
+            return
+    elif rest_field == "org":
+        if value.lower() in ("нет", "-", "—", ""):
+            value = ""
+
+    await delete_incoming(message)
+    await cleanup_chat(message.from_user.id)
+    await state.clear()
+
+    db_restaurant_update(rest_key, rest_field, value)
+    invalidate_rest_cache()
+    await send_tracked(
+        message.chat.id, message.from_user.id,
+        f"✅ {FIELD_LABELS[rest_field]} обновлено: <b>{value if value else '—'}</b>",
+        parse_mode="HTML"
+    )
+    r = db_restaurant(rest_key)
+    if r:
+        await send_tracked(
+            message.chat.id, message.from_user.id,
+            rest_card_text(r), parse_mode="HTML", reply_markup=rest_card_kb(r)
+        )
 
 
 @dp.callback_query(lambda c: c.data == "adm_menu")
@@ -1509,7 +1570,7 @@ async def adm_noop(callback: types.CallbackQuery):
         await callback.answer("⛔ Недоступно", show_alert=True)
 
 
-# ================== СПИСОК РЕСТОРАНОВ (вариант 3: Mini App) ==================
+# ================== СПИСОК РЕСТОРАНОВ (Mini App) ==================
 
 @dp.callback_query(lambda c: c.data == "rest_list")
 async def rest_list(callback: types.CallbackQuery, state: FSMContext):
@@ -1523,7 +1584,7 @@ async def rest_list(callback: types.CallbackQuery, state: FSMContext):
         callback.message.chat.id, callback.from_user.id,
         "🏙 <b>Рестораны Wokker</b>\n\n"
         "🟢 — открыто, 🔴 — закрыто.\n"
-        "Нажми на точку — откроется карточка с адресом, часами и картой.",
+        "Нажми на точку — откроется карточка с адресом, часами, телефоном и картой.",
         parse_mode="HTML",
         reply_markup=restaurants_miniapp_kb()
     )
@@ -1596,6 +1657,8 @@ async def cmd_start(message: types.Message, state: FSMContext):
             await send_tracked(message.chat.id, user_id, "✍️ Напиши новый номер телефона:")
         elif current_state == EditUser.birth_date.state:
             await send_tracked(message.chat.id, user_id, "✍️ Напиши новую дату рождения (ДД.ММ.ГГГГ):")
+        elif current_state == RestEdit.value.state:
+            await send_tracked(message.chat.id, user_id, "✍️ Напиши новое значение — или нажми «Отменить» в карточке:")
         return
 
     await state.clear()
@@ -1767,7 +1830,7 @@ async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMConte
         return
     await callback.answer()
     key = callback.data.split(":")[1]
-    restaurant = next((r for r in RESTAURANTS if r["key"] == key), None)
+    restaurant = db_restaurant(key)
     if not restaurant:
         await callback.answer("Ресторан не найден, выбери из списка", show_alert=True)
         return
@@ -1852,20 +1915,13 @@ def json_dumps(data) -> str:
 
 
 def denied_response(status: int):
-    """Ответ при отказе доступа (401 — не авторизован, 403 — заблокирован)."""
     if status == 403:
         return web.json_response({"error": "blocked"}, status=403, dumps=json_dumps)
     return web.json_response({"error": "unauthorized"}, status=401, dumps=json_dumps)
 
 
-# Кэш аватаров: user_id -> (bytes, content_type, время сохранения)
 AVATAR_CACHE = {}
-AVATAR_TTL = 600  # секунд, 10 минут
-
-# Кэш списка ресторанов со статусами: пересчитываем раз в минуту,
-# а не на каждый запрос — вкладка открывается мгновенно.
-REST_CACHE = {"data": None, "ts": 0.0}
-REST_CACHE_TTL = 60  # секунд
+AVATAR_TTL = 600
 
 
 def avatar_cache_get(user_id):
@@ -1889,16 +1945,16 @@ async def handle_index(request):
 
 
 def build_restaurants_payload():
-    """Собирает список ресторанов со статусами. Вызывается не чаще раза в REST_CACHE_TTL."""
     out = []
-    for r in RESTAURANTS_FOR_APP:
-        status, status_text = restaurant_status(r["hours"])
+    for r in db_restaurants_for_app():
+        status, status_text = restaurant_status_for(r)
         out.append({
             "key": r["key"],
             "name": r["name"],
             "address": r["address"],
             "hours": r["hours"],
             "org": r["org"],
+            "phone": r.get("phone") or "",
             "status": status,
             "status_text": status_text,
         })

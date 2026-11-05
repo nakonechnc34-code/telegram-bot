@@ -26,7 +26,6 @@
   summary { font-weight: 600; cursor: pointer; }
   details p { margin-top: 8px; color: #3a3a3c; }
 
-  /* ===== Профиль ===== */
   .profile-card {
     background: #fff; border-radius: 18px; margin: 0 12px 12px;
     overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,.07);
@@ -64,7 +63,6 @@
   }
   .profile-footer button:active { opacity: .7; }
 
-  /* Бейдж ресторана */
   .badge-rest {
     display: inline-block; padding: 2px 10px; border-radius: 12px;
     font-size: 12px; font-weight: 600; color: #fff;
@@ -72,13 +70,11 @@
   .badge-rest.office { background: var(--gray); }
   .badge-rest.normal { background: var(--green); }
 
-  /* Двухколоночная раскладка на широких экранах */
   @media (min-width: 600px) {
     .info-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 8px 14px 10px; }
     .info-row { border-bottom: none; padding: 8px 0; }
   }
 
-  /* ===== Уровни новостей ===== */
   .news-date { color: #8e8e93; font-size: 12px; margin-top: 4px; }
   .level-urgent { border-left: 3px solid #ff3b30; padding-left: 8px; }
   .level-urgent b::before { content: "🔴 "; }
@@ -89,7 +85,7 @@
 </head>
 <body>
 
-<div class="section" id="sec-profile">
+<div class="section active" id="sec-profile">
   <div id="profile-box">Загрузка профиля…</div>
 </div>
 
@@ -123,17 +119,23 @@
 </nav>
 
 <script>
-const tg = window.Telegram.WebApp;
-tg.ready();
-tg.expand();
+// Защита: если telegram-web-app.js не загрузился, приложение всё равно откроется
+const tg = window.Telegram ? window.Telegram.WebApp : null;
+if (tg) {
+  tg.ready();
+  tg.expand();
+}
 
-// ===== Загрузчики секций. Каждая вкладка при открытии обновляет данные =====
+function getInitData() {
+  return (tg && tg.initData) ? tg.initData : '';
+}
+
 const sectionLoaders = {
-  sec-profile: loadProfile,
-  sec-restaurants: loadRestaurants,
-  sec-news: loadNews,
-  sec-standards: loadStandards,
-  sec-faq: loadFaq,
+  'sec-profile': loadProfile,
+  'sec-restaurants': loadRestaurants,
+  'sec-news': loadNews,
+  'sec-standards': loadStandards,
+  'sec-faq': loadFaq,
 };
 
 document.querySelectorAll('.tabs button').forEach(btn => {
@@ -143,7 +145,6 @@ document.querySelectorAll('.tabs button').forEach(btn => {
     btn.classList.add('active');
     document.getElementById(btn.dataset.sec).classList.add('active');
     window.scrollTo(0, 0);
-    // При каждом открытии вкладки подтягиваем свежие данные
     const loader = sectionLoaders[btn.dataset.sec];
     if (loader) loader();
   });
@@ -154,13 +155,13 @@ const esc = s => (s || '').replace(/[&<>"']/g, c =>
 
 function tgUserInfo() {
   try {
-    const u = tg.initDataUnsafe && tg.initDataUnsafe.user;
-    return u || null;
+    if (!tg || !tg.initDataUnsafe) return null;
+    return tg.initDataUnsafe.user || null;
   } catch (e) { return null; }
 }
 
 function avatarHtml(initial) {
-  return `<div class="avatar">${esc(initial)}</div>`;
+  return '<div class="avatar">' + esc(initial) + '</div>';
 }
 
 function initialFor(name) {
@@ -171,18 +172,16 @@ function initialFor(name) {
   return '👤';
 }
 
-// ===== Ожидание initData: Telegram отдаёт его не мгновенно после старта =====
-// Пока initData пуст, запросы к защищённым API бесполезны — ждём и повторяем.
 function waitInitData(maxAttempts = 20, delayMs = 250) {
   return new Promise(resolve => {
     let attempt = 0;
     const check = () => {
-      if (tg.initData) { resolve(true); return; }
+      if (getInitData()) { resolve(true); return; }
       attempt++;
-      if (attempt >= maxAttempts) { resolve(false); return; } // ~5 секунд, дальше как есть
+      if (attempt >= maxAttempts) { resolve(false); return; }
       setTimeout(check, delayMs);
     };
-    if (tg.initData) { resolve(true); return; }
+    if (getInitData()) { resolve(true); return; }
     check();
   });
 }
@@ -191,27 +190,24 @@ async function fillAvatar() {
   const el = document.querySelector('#profile-box .avatar');
   if (!el) return;
   const u = tgUserInfo();
-  // Приоритет 1: photo_url из initData (если Telegram его передал)
   if (u && u.photo_url) {
-    el.style.backgroundImage = `url('${esc(u.photo_url)}')`;
+    el.style.backgroundImage = "url('" + esc(u.photo_url) + "')";
     el.textContent = '';
     return;
   }
-  // Приоритет 2: тянем публичное фото профиля через наш API
   try {
     const resp = await fetch('/api/avatar', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ initData: tg.initData })
+      body: JSON.stringify({ initData: getInitData() })
     });
     if (resp.ok) {
       const blob = await resp.blob();
       if (blob.size > 0) {
-        el.style.backgroundImage = `url('${URL.createObjectURL(blob)}')`;
+        el.style.backgroundImage = "url('" + URL.createObjectURL(blob) + "')";
         el.textContent = '';
       }
     }
-    // 204 или ошибка — остаётся буква, это нормальное поведение
   } catch (e) { /* остаётся буква */ }
 }
 
@@ -221,7 +217,7 @@ async function loadProfile() {
     const resp = await fetch('/api/profile', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ initData: tg.initData })
+      body: JSON.stringify({ initData: getInitData() })
     });
     const data = await resp.json();
     if (resp.ok && data.registered) {
@@ -229,36 +225,25 @@ async function loadProfile() {
       const isOffice = p.restaurant === 'ОФИС';
       const restBadge = isOffice ? 'office' : 'normal';
 
-      box.innerHTML = `
-      <div class="profile-card">
-        <div class="profile-header">
-          ${avatarHtml(initialFor(p.full_name))}
-          <div class="p-name">${esc(p.full_name)}</div>
-          <div class="p-pos">${esc(p.position)}</div>
-          <span class="badge">✅ Активен</span>
-        </div>
-        <div class="info-list">
-          <div class="info-row">
-            <span class="ico">📍</span>
-            <span class="lbl">Ресторан</span>
-            <span class="val"><span class="badge-rest ${restBadge}">${esc(p.restaurant)}</span></span>
-          </div>
-          <div class="info-row">
-            <span class="ico">📞</span>
-            <span class="lbl">Телефон</span>
-            <span class="val"><a href="tel:${esc(p.phone)}">${esc(p.phone)}</a></span>
-          </div>
-          <div class="info-row">
-            <span class="ico">🎂</span>
-            <span class="lbl">Дата рождения</span>
-            <span class="val">${esc(p.birth_date)}</span>
-          </div>
-        </div>
-        <div class="profile-footer">
-          💡 Изменить данные можно только через администратора.
-          <button id="btn-report-error">Сообщить об ошибке</button>
-        </div>
-      </div>`;
+      box.innerHTML =
+        '<div class="profile-card">' +
+        '<div class="profile-header">' +
+        avatarHtml(initialFor(p.full_name)) +
+        '<div class="p-name">' + esc(p.full_name) + '</div>' +
+        '<div class="p-pos">' + esc(p.position) + '</div>' +
+        '<span class="badge">✅ Активен</span>' +
+        '</div>' +
+        '<div class="info-list">' +
+        '<div class="info-row"><span class="ico">📍</span><span class="lbl">Ресторан</span>' +
+        '<span class="val"><span class="badge-rest ' + restBadge + '">' + esc(p.restaurant) + '</span></span></div>' +
+        '<div class="info-row"><span class="ico">📞</span><span class="lbl">Телефон</span>' +
+        '<span class="val"><a href="tel:' + esc(p.phone) + '">' + esc(p.phone) + '</a></span></div>' +
+        '<div class="info-row"><span class="ico">🎂</span><span class="lbl">Дата рождения</span>' +
+        '<span class="val">' + esc(p.birth_date) + '</span></div>' +
+        '</div>' +
+        '<div class="profile-footer">💡 Изменить данные можно только через администратора. ' +
+        '<button id="btn-report-error">Сообщить об ошибке</button></div>' +
+        '</div>';
       fillAvatar();
 
       document.getElementById('btn-report-error').addEventListener('click', async () => {
@@ -267,7 +252,7 @@ async function loadProfile() {
           const r = await fetch('/api/questions', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ initData: tg.initData, question: text })
+            body: JSON.stringify({ initData: getInitData(), question: text })
           });
           if (r.ok) {
             alert('Сообщение отправлено администратору.');
@@ -281,15 +266,15 @@ async function loadProfile() {
     } else if (resp.status === 401) {
       box.innerHTML = '<div class="card">⚠️ Ошибка авторизации Telegram. Закрой приложение и открой заново из бота.</div>';
     } else if (resp.status === 403) {
-      box.innerHTML = `
-      <div class="profile-card">
-        <div class="profile-header">
-          ${avatarHtml(initialFor(null))}
-          <div class="p-name">Доступ ограничен</div>
-          <span class="badge blocked">🚫 Заблокирован</span>
-        </div>
-        <div class="profile-footer">Обратись к администратору.</div>
-      </div>`;
+      box.innerHTML =
+        '<div class="profile-card">' +
+        '<div class="profile-header">' +
+        avatarHtml(initialFor(null)) +
+        '<div class="p-name">Доступ ограничен</div>' +
+        '<span class="badge blocked">🚫 Заблокирован</span>' +
+        '</div>' +
+        '<div class="profile-footer">Обратись к администратору.</div>' +
+        '</div>';
       fillAvatar();
     } else {
       box.innerHTML = '<div class="card">Ты ещё не зарегистрирован.<br>Напиши /start в боте и пройди регистрацию.</div>';
@@ -306,16 +291,15 @@ async function loadRestaurants() {
     const list = await resp.json();
     box.innerHTML = list.map(r => {
       const mapUrl = r.org
-        ? `https://yandex.ru/maps/org/${r.org}`
-        : `https://yandex.ru/maps/?text=${encodeURIComponent('Воккер ' + r.address)}`;
-      return `
-      <div class="card">
-        <b>${esc(r.name)}</b>
-        <div class="muted">📍 ${esc(r.address)}</div>
-        <div class="muted">🕒 ${esc(r.hours).replaceAll('\n', '<br>')}</div>
-        <div class="muted">📞 <a href="tel:${esc(r.phone)}">${esc(r.phone)}</a></div>
-        <a href="${mapUrl}" target="_blank"><button class="btn">Открыть на Яндекс Картах</button></a>
-      </div>`;
+        ? 'https://yandex.ru/maps/org/' + r.org
+        : 'https://yandex.ru/maps/?text=' + encodeURIComponent('Воккер ' + r.address);
+      return '<div class="card">' +
+        '<b>' + esc(r.name) + '</b>' +
+        '<div class="muted">📍 ' + esc(r.address) + '</div>' +
+        '<div class="muted">🕒 ' + esc(r.hours).replaceAll('\n', '<br>') + '</div>' +
+        '<div class="muted">📞 <a href="tel:' + esc(r.phone) + '">' + esc(r.phone) + '</a></div>' +
+        '<a href="' + mapUrl + '" target="_blank"><button class="btn">Открыть на Яндекс Картах</button></a>' +
+        '</div>';
     }).join('');
   } catch (e) {
     box.innerHTML = '<div class="card">Ошибка загрузки списка ресторанов</div>';
@@ -333,12 +317,11 @@ async function loadNews() {
     }
     box.innerHTML = list.map(n => {
       const lvl = ['urgent', 'important'].includes(n.level) ? n.level : 'normal';
-      return `
-      <div class="card level-${lvl}">
-        <b>${esc(n.title)}</b>
-        <div>${esc(n.text)}</div>
-        <div class="news-date">${esc(n.date)}</div>
-      </div>`;
+      return '<div class="card level-' + lvl + '">' +
+        '<b>' + esc(n.title) + '</b>' +
+        '<div>' + esc(n.text) + '</div>' +
+        '<div class="news-date">' + esc(n.date) + '</div>' +
+        '</div>';
     }).join('');
   } catch (e) {
     box.innerHTML = '<div class="card">Ошибка загрузки новостей</div>';
@@ -350,13 +333,14 @@ async function loadStandards() {
   try {
     const resp = await fetch('/api/standards');
     const list = await resp.json();
-    box.innerHTML = list.map(s => `
-      <div class="card">
-        <b>${esc(s.title)}</b>
-        <div class="muted">${esc(s.category)}</div>
-        <div style="margin-top:6px">${esc(s.description)}</div>
-        ${s.url ? `<a href="${esc(s.url)}" target="_blank"><button class="btn">Открыть</button></a>` : ''}
-      </div>`).join('');
+    box.innerHTML = list.map(s =>
+      '<div class="card">' +
+      '<b>' + esc(s.title) + '</b>' +
+      '<div class="muted">' + esc(s.category) + '</div>' +
+      '<div style="margin-top:6px">' + esc(s.description) + '</div>' +
+      (s.url ? '<a href="' + esc(s.url) + '" target="_blank"><button class="btn">Открыть</button></a>' : '') +
+      '</div>'
+    ).join('');
   } catch (e) {
     box.innerHTML = '<div class="card">Ошибка загрузки стандартов</div>';
   }
@@ -367,11 +351,12 @@ async function loadFaq() {
   try {
     const resp = await fetch('/api/faq');
     const list = await resp.json();
-    box.innerHTML = list.map(f => `
-      <details>
-        <summary>${esc(f.question)}</summary>
-        <p>${esc(f.answer)}</p>
-      </details>`).join('');
+    box.innerHTML = list.map(f =>
+      '<details>' +
+      '<summary>' + esc(f.question) + '</summary>' +
+      '<p>' + esc(f.answer) + '</p>' +
+      '</details>'
+    ).join('');
   } catch (e) {
     box.innerHTML = '<div class="card">Ошибка загрузки вопросов</div>';
   }
@@ -385,7 +370,7 @@ document.getElementById('send-question').addEventListener('click', async () => {
     const resp = await fetch('/api/questions', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ initData: tg.initData, question: text })
+      body: JSON.stringify({ initData: getInitData(), question: text })
     });
     if (resp.ok) {
       input.value = '';
@@ -400,10 +385,9 @@ document.getElementById('send-question').addEventListener('click', async () => {
   }
 });
 
-// ===== Старт: ждём initData (до ~5 сек), затем грузим всё автоматически =====
 async function init() {
   await waitInitData();
-  loadProfile();      // активная вкладка по умолчанию
+  loadProfile();
   loadRestaurants();
   loadNews();
   loadStandards();

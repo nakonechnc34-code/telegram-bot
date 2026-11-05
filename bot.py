@@ -17,16 +17,13 @@ from aiogram.types import (
 )
 import psycopg2
 
-# --- Логирование ---
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-# --- Токен бота ---
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     print("❌ ОШИБКА: Переменная BOT_TOKEN не задана!")
     raise ValueError("BOT_TOKEN is not set")
 
-# --- ID администратора ---
 ADMIN_ID = os.getenv("ADMIN_ID")
 if not ADMIN_ID:
     print("⚠️ ПРЕДУПРЕЖДЕНИЕ: Переменная ADMIN_ID не задана — админ-панель отключена.")
@@ -34,7 +31,6 @@ if not ADMIN_ID:
 else:
     ADMIN_ID = int(ADMIN_ID)
 
-# --- Подключение к базе ---
 DB_URL = os.getenv("DATABASE_URL")
 if not DB_URL:
     print("❌ ОШИБКА: Переменная DATABASE_URL не задана!")
@@ -43,7 +39,6 @@ if not DB_URL:
 def get_conn():
     return psycopg2.connect(DB_URL)
 
-# Создаём таблицу и колонку блокировки при старте
 with get_conn() as conn:
     with conn.cursor() as cur:
         cur.execute("""
@@ -62,14 +57,12 @@ with get_conn() as conn:
     conn.commit()
 print("🗄️ База данных подключена, таблица готова.")
 
-# --- Данные ресторанов ---
 RESTAURANTS = [
     {
         "key": "mega_belaya_dacha",
         "name": "Мега Белая Дача",
         "address": "г. Котельники, 1-й Покровский проезд, д. 5, ТЦ «Мега Белая Дача»",
         "hours": "10:00–22:00",
-        "description": "Флагманский ресторан: большой выбор воков и азиатских закусок.",
         "lat": 55.6578,
         "lon": 37.8891,
     },
@@ -78,7 +71,6 @@ RESTAURANTS = [
         "name": "Беляево",
         "address": "Москва, ул. Профсоюзная, д. ХХ, ТЦ «Беляево»",
         "hours": "10:00–23:00",
-        "description": "Уютный формат в спальном районе.",
         "lat": 55.6470,
         "lon": 37.5420,
     },
@@ -87,7 +79,6 @@ RESTAURANTS = [
         "name": "Вернадка",
         "address": "Москва, пр. Вернадского, д. ХХ",
         "hours": "09:00–22:00",
-        "description": "Популярная точка у студентов и офисных сотрудников.",
         "lat": 55.6840,
         "lon": 37.4980,
     },
@@ -96,7 +87,6 @@ RESTAURANTS = [
         "name": "Ереван Плаза",
         "address": "Москва, ул. Большая Тульская, д. 13, ТРЦ «Ереван Плаза»",
         "hours": "10:00–23:00",
-        "description": "Центр притяжения в южной части города.",
         "lat": 55.7030,
         "lon": 37.6210,
     },
@@ -105,7 +95,6 @@ RESTAURANTS = [
         "name": "Кузьминки Молл",
         "address": "Москва, Волгоградский пр., д. ХХ, ТРЦ «Кузьминки Молл»",
         "hours": "10:00–22:00",
-        "description": "Удобный формат для жителей района Кузьминки.",
         "lat": 55.6980,
         "lon": 37.7750,
     },
@@ -114,7 +103,6 @@ RESTAURANTS = [
         "name": "Мега Тёплый стан",
         "address": "Москва, Калужское шоссе, 21-й км, ТЦ «Мега Тёплый Стан»",
         "hours": "10:00–23:00",
-        "description": "Крупный торговый центр на юге Москвы.",
         "lat": 55.5790,
         "lon": 37.4870,
     },
@@ -123,7 +111,6 @@ RESTAURANTS = [
         "name": "Мега Химки",
         "address": "Московская обл., г. Химки, Ленинградское шоссе, 23-й км, ТЦ «Мега Химки»",
         "hours": "10:00–23:00",
-        "description": "Удобная точка для жителей северо-запада и области.",
         "lat": 55.8970,
         "lon": 37.4120,
     },
@@ -132,7 +119,6 @@ RESTAURANTS = [
         "name": "Метрополис",
         "address": "Москва, Ленинградское ш., д. 16А, ТРЦ «Метрополис»",
         "hours": "10:00–23:00",
-        "description": "Один из крупнейших фуд-кортов города.",
         "lat": 55.8120,
         "lon": 37.5060,
     },
@@ -141,7 +127,6 @@ RESTAURANTS = [
         "name": "Москва-Сити",
         "address": "Москва, Пресненская наб., д. 2, ММДЦ «Москва-Сити»",
         "hours": "10:00–23:00",
-        "description": "Ресторан для деловых обедов и ужинов с видом.",
         "lat": 55.7490,
         "lon": 37.5380,
     },
@@ -150,7 +135,6 @@ RESTAURANTS = [
         "name": "Океания",
         "address": "Москва, Кутузовский пр., д. 57, ТРЦ «Океания»",
         "hours": "10:00–22:00",
-        "description": "Современный формат в западном округе.",
         "lat": 55.7330,
         "lon": 37.4950,
     },
@@ -159,7 +143,6 @@ RESTAURANTS = [
         "name": "Полковая",
         "address": "Москва, ул. Полковая, д. ХХ",
         "hours": "09:00–21:00",
-        "description": "Локальная точка для жителей ближайших домов.",
         "lat": 55.8010,
         "lon": 37.5920,
     },
@@ -168,7 +151,6 @@ RESTAURANTS = [
         "name": "ЦДМ",
         "address": "Москва, Театральный пр., д. 5, стр. 1, «ЦДМ на Лубянке»",
         "hours": "10:00–22:00",
-        "description": "Историческое место и популярное направление для семей.",
         "lat": 55.7580,
         "lon": 37.6230,
     },
@@ -177,7 +159,6 @@ RESTAURANTS = [
         "name": "Цветной",
         "address": "Москва, Цветной бульвар, д. 15, ТРЦ «Цветной»",
         "hours": "10:00–23:00",
-        "description": "Стильный формат в центре города.",
         "lat": 55.7670,
         "lon": 37.6180,
     },
@@ -186,7 +167,6 @@ RESTAURANTS = [
         "name": "Щёлковская",
         "address": "Москва, Щёлковское ш., д. ХХ",
         "hours": "10:00–22:00",
-        "description": "Удобная точка на востоке города.",
         "lat": 55.8050,
         "lon": 37.7920,
     },
@@ -195,13 +175,11 @@ RESTAURANTS = [
         "name": "Щука",
         "address": "Москва, ул. Щукинская, д. 42, ТРЦ «Щука»",
         "hours": "10:00–23:00",
-        "description": "Семейный торговый центр на северо-западе.",
         "lat": 55.8020,
         "lon": 37.4650,
     },
 ]
 
-# --- Функции базы ---
 def db_get(user_id: int):
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -267,7 +245,6 @@ def db_set_blocked(user_id: int, blocked: bool):
         conn.commit()
         return cur.rowcount > 0
 
-# --- Бот и диспетчер ---
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
@@ -309,27 +286,10 @@ def profile_text(row):
 def map_link(lat: float, lon: float) -> str:
     return f"https://yandex.ru/maps/?ll={lon},{lat}&z=17"
 
-# --- Уведомление админу о регистрации ---
-async def notify_admin_about_registration(user: types.User, full_name: str, phone: str, birth_date: str):
-    if not ADMIN_ID:
-        return
-    username = f"@{user.username}" if user.username else "нет username"
-    text = (
-        "🔔 Новая регистрация!\n\n"
-        f"👤 ФИО: {full_name}\n"
-        f"📞 Телефон: {phone}\n"
-        f"🎂 Дата рождения: {birth_date}\n"
-        f"🆔 Telegram ID: <code>{user.id}</code>\n"
-        f"🔗 Username: {username}\n"
-        f"🕐 Время: {datetime.now().strftime('%d.%m.%Y %H:%M')}"
-    )
-    try:
-        await bot.send_message(ADMIN_ID, text, parse_mode="HTML")
-        print(f"📨 Уведомление о регистрации отправлено админу ({user.id})")
-    except Exception as e:
-        print(f"⚠️ Не удалось отправить уведомление админу: {e}")
-
-# ===== АДМИН-ПАНЕЛЬ С КНОПКАМИ =====
+def back_to_menu_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="← Назад в главное меню", callback_data="back_to_menu")]
+    ])
 
 def admin_menu_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -338,7 +298,6 @@ def admin_menu_kb():
     ])
 
 def users_list_kb(rows):
-    """Клавиатура со списком пользователей: у каждого — бан/удаление."""
     kb = []
     for user_id, full_name, phone, welcomed, is_blocked in rows:
         if is_blocked:
@@ -403,328 +362,3 @@ async def adm_ban(callback: types.CallbackQuery):
     if target_id == ADMIN_ID:
         await callback.answer("😅 Нельзя заблокировать самого себя", show_alert=True)
         return
-    if db_set_blocked(target_id, True):
-        await callback.answer("🚫 Заблокирован")
-        try:
-            await bot.send_message(target_id, "⛔ Доступ к боту ограничен. Обратитесь к администратору.")
-        except Exception:
-            pass
-    else:
-        await callback.answer("Пользователь не найден", show_alert=True)
-    rows = db_list_users()
-    try:
-        await callback.message.edit_text(users_list_text(rows), parse_mode="HTML", reply_markup=users_list_kb(rows))
-    except Exception:
-        pass
-
-@dp.callback_query(lambda c: c.data and c.data.startswith("adm_unban:"))
-async def adm_unban(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
-    target_id = int(callback.data.split(":")[1])
-    if db_set_blocked(target_id, False):
-        await callback.answer("✅ Разблокирован")
-    else:
-        await callback.answer("Пользователь не найден", show_alert=True)
-    rows = db_list_users()
-    try:
-        await callback.message.edit_text(users_list_text(rows), parse_mode="HTML", reply_markup=users_list_kb(rows))
-    except Exception:
-        pass
-
-@dp.callback_query(lambda c: c.data and c.data.startswith("adm_del:"))
-async def adm_del_ask(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
-    target_id = int(callback.data.split(":")[1])
-    if target_id == ADMIN_ID:
-        await callback.answer("😅 Нельзя удалить самого себя", show_alert=True)
-        return
-    await callback.answer()
-    confirm_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"adm_del_yes:{target_id}"),
-            InlineKeyboardButton(text="❌ Отмена", callback_data="adm_users"),
-        ]
-    ])
-    await callback.message.answer(
-        f"🗑 Удалить пользователя <code>{target_id}</code> из базы?\n\n"
-        "⚠️ Он сможет зарегистрироваться заново. Если нужно закрыть доступ — используй блокировку.",
-        parse_mode="HTML",
-        reply_markup=confirm_kb
-    )
-
-@dp.callback_query(lambda c: c.data and c.data.startswith("adm_del_yes:"))
-async def adm_del_yes(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
-    target_id = int(callback.data.split(":")[1])
-    if db_delete_user(target_id):
-        await callback.answer("🗑 Удалён")
-        await callback.message.answer(f"🗑 Пользователь <code>{target_id}</code> удалён.", parse_mode="HTML")
-    else:
-        await callback.answer("Пользователь не найден", show_alert=True)
-
-@dp.callback_query(lambda c: c.data == "noop")
-async def adm_noop(callback: types.CallbackQuery):
-    if is_admin(callback.from_user.id):
-        await callback.answer()
-    else:
-        await callback.answer("⛔ Недоступно", show_alert=True)
-
-# ===== МЕНЮ РЕСТОРАНОВ =====
-
-def restaurants_menu_kb():
-    """Создаёт сетку кнопок с названиями ресторанов (по 2 в ряд)."""
-    kb = []
-    for i in range(0, len(RESTAURANTS), 2):
-        row = [
-            InlineKeyboardButton(text=RESTAURANTS[i]["name"], callback_data=f"rest_info:{RESTAURANTS[i]['key']}")
-        ]
-        if i + 1 < len(RESTAURANTS):
-            row.append(
-                InlineKeyboardButton(text=RESTAURANTS[i+1]["name"], callback_data=f"rest_info:{RESTAURANTS[i+1]['key']}")
-            )
-        kb.append(row)
-    kb.append([InlineKeyboardButton(text="← Назад в главное меню", callback_data="back_to_menu")])
-    return InlineKeyboardMarkup(inline_keyboard=kb)
-
-@dp.callback_query(lambda c: c.data == "restaurants")
-async def show_restaurants_menu(callback: types.CallbackQuery):
-    await callback.answer()
-    if db_is_blocked(callback.from_user.id):
-        await callback.message.answer("⛔ Доступ к боту ограничен.")
-        return
-    text = "🏙️ <b>Наши рестораны</b>\n\nВыбери точку из списка ниже:"
-    await callback.message.answer(text, parse_mode="HTML", reply_markup=restaurants_menu_kb())
-
-@dp.callback_query(lambda c: c.data and c.data.startswith("rest_info:"))
-async def show_restaurant_info(callback: types.CallbackQuery):
-    await callback.answer()
-    if db_is_blocked(callback.from_user.id):
-        await callback.message.answer("⛔ Доступ к боту ограничен.")
-        return
-    key = callback.data.split(":")[1]
-    restaurant = next((r for r in RESTAURANTS if r["key"] == key), None)
-    if not restaurant:
-        await callback.answer("❌ Ресторан не найден", show_alert=True)
-        return
-    text = (
-        f"🏠 <b>{restaurant['name']}</b>\n\n"
-        f"📍 Адрес: {restaurant['address']}\n"
-        f"🕒 Часы работы: {restaurant['hours']}\n"
-        f"📝 {restaurant['description']}"
-    )
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🗺 Показать на карте", url=map_link(restaurant["lat"], restaurant["lon"]))],
-        [InlineKeyboardButton(text="← Назад к списку ресторанов", callback_data="restaurants")],
-    ])
-    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
-
-@dp.callback_query(lambda c: c.data == "back_to_menu")
-async def back_to_menu(callback: types.CallbackQuery):
-    await callback.answer()
-    row = db_get(callback.from_user.id)
-    if row and row[0]:
-        await callback.message.answer("Выбери действие:", reply_markup=FULL_MENU)
-    else:
-        await callback.message.answer("Что хочешь сделать?", reply_markup=REGISTER_ONLY)
-
-# ===== ЛОГИКА БОТА =====
-
-@dp.message(CommandStart())
-async def cmd_start(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id
-
-    if db_is_blocked(user_id):
-        await message.answer("⛔ Доступ к боту ограничен. Обратитесь к администратору.")
-        return
-
-    current_state = await state.get_state()
-    if current_state:
-        if current_state == Registration.full_name.state:
-            await message.answer("Шаг 1 из 3.\nНапиши своё ФИО (например: Иванов Иван Иванович)")
-        elif current_state == Registration.phone.state:
-            await message.answer("Шаг 2 из 3.\nОтправь свой номер телефона — можно кнопкой ниже.", reply_markup=phone_kb())
-        elif current_state == Registration.birth_date.state:
-            await message.answer("Шаг 3 из 3.\nНапиши дату рождения в формате ДД.ММ.ГГГГ (например: 01.01.2000)", reply_markup=ReplyKeyboardRemove())
-        return
-
-    await state.clear()
-    row = db_get(user_id)
-
-    if row and row[0]:
-        await message.answer("Выбери действие:", reply_markup=FULL_MENU)
-        return
-
-    if row and row[3]:
-        await message.answer("Сначала заверши регистрацию 👇", reply_markup=REGISTER_ONLY)
-        return
-
-    db_set_welcomed(user_id)
-    await message.answer(
-        f"👋 {message.from_user.first_name}, добро пожаловать в Wokker!\n\n"
-        "Мы готовим паназиатские блюда на воке — быстро и со вкусом.\n"
-        "Для начала зарегистрируйся 👇"
-    )
-    await message.answer("Что хочешь сделать? Пока доступна только регистрация.", reply_markup=REGISTER_ONLY)
-
-@dp.callback_query(lambda c: c.data == "register")
-async def start_registration(callback: types.CallbackQuery, state: FSMContext):
-    if db_is_blocked(callback.from_user.id):
-        await callback.answer("⛔ Доступ ограничен", show_alert=True)
-        return
-    await callback.answer()
-    await state.set_state(Registration.full_name)
-    await callback.message.answer("Шаг 1 из 3.\nНапиши своё ФИО (например: Иванов Иван Иванович)")
-
-@dp.callback_query(lambda c: c.data == "show_profile")
-async def show_profile_callback(callback: types.CallbackQuery):
-    await callback.answer()
-    if db_is_blocked(callback.from_user.id):
-        await callback.message.answer("⛔ Доступ к боту ограничен.")
-        return
-    row = db_get(callback.from_user.id)
-    if row and row[0]:
-        await callback.message.answer(profile_text(row))
-    else:
-        await callback.message.answer("Ты ещё не зарегистрирован.\nНажми /start и «✍️ Зарегистрироваться».")
-
-@dp.callback_query(lambda c: c.data == "standards")
-async def show_standards(callback: types.CallbackQuery):
-    await callback.answer()
-    if db_is_blocked(callback.from_user.id):
-        await callback.message.answer("⛔ Доступ к боту ограничен.")
-        return
-    await callback.message.answer("📚 Библиотека стандартов\n\nЗдесь будут инструкции, чек-листы и стандарты качества Wokker.")
-
-@dp.callback_query(lambda c: c.data == "faq")
-async def show_faq(callback: types.CallbackQuery):
-    await callback.answer()
-    if db_is_blocked(callback.from_user.id):
-        await callback.message.answer("⛔ Доступ к боту ограничен.")
-        return
-    await callback.message.answer("❓ Вопрос/ответ\n\nЧастые вопросы и ответы по работе с ботом и ресторанами.")
-
-@dp.message(Registration.full_name)
-async def process_name(message: types.Message, state: FSMContext):
-    if db_is_blocked(message.from_user.id):
-        await message.answer("⛔ Доступ к боту ограничен.")
-        await state.clear()
-        return
-    if not message.text:
-        await message.answer("Пожалуйста, отправь именно текст с ФИО.")
-        return
-    name = message.text.strip()
-    if len(name.split()) < 2:
-        await message.answer("Похоже, этого мало. Напиши хотя бы имя и фамилию через пробел.")
-        return
-    await state.update_data(full_name=name)
-    await state.set_state(Registration.phone)
-    await message.answer("Шаг 2 из 3.\nОтправь свой номер телефона — можно кнопкой ниже.", reply_markup=phone_kb())
-
-@dp.message(Registration.phone, lambda m: m.contact is not None)
-async def process_phone_button(message: types.Message, state: FSMContext):
-    await state.update_data(phone=message.contact.phone_number)
-    await state.set_state(Registration.birth_date)
-    await message.answer(
-        "Отлично, номер получен ✅\nШаг 3 из 3.\nНапиши дату рождения в формате ДД.ММ.ГГГГ (например: 01.01.2000)",
-        reply_markup=ReplyKeyboardRemove()
-    )
-
-@dp.message(Registration.phone)
-async def process_phone_text(message: types.Message, state: FSMContext):
-    if not message.text:
-        await message.answer("Отправь номер текстом или нажми кнопку «Поделиться номером».")
-        return
-    digits = message.text.replace("+", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-    if not digits.isdigit() or len(digits) < 10:
-        await message.answer("Это не похоже на номер. Попробуй ещё раз, например: +79001234567")
-        return
-    await state.update_data(phone=message.text.strip())
-    await state.set_state(Registration.birth_date)
-    await message.answer(
-        "Номер записан ✅\nШаг 3 из 3.\nНапиши дату рождения в формате ДД.ММ.ГГГГ (например: 01.01.2000)",
-        reply_markup=ReplyKeyboardRemove()
-    )
-
-@dp.message(Registration.birth_date)
-async def process_birth_date(message: types.Message, state: FSMContext):
-    if db_is_blocked(message.from_user.id):
-        await message.answer("⛔ Доступ к боту ограничен.")
-        await state.clear()
-        return
-    if not message.text:
-        await message.answer("Пожалуйста, отправь дату текстом в формате ДД.ММ.ГГГГ.")
-        return
-    try:
-        birth_date = datetime.strptime(message.text.strip(), "%d.%m.%Y").date()
-        if birth_date.year < 1900 or birth_date > datetime.now().date():
-            raise ValueError
-    except ValueError:
-        await message.answer("Такой даты не бывает. Проверь и напиши ещё раз: ДД.ММ.ГГГГ")
-        return
-
-    data = await state.get_data()
-    full_name = data.get("full_name", "")
-    phone = data.get("phone", "")
-    db_save_profile(message.from_user.id, full_name, phone, birth_date.strftime("%d.%m.%Y"))
-    await state.clear()
-
-    await message.answer(
-        "Регистрация завершена! 🎉\n\n"
-        f"👤 ФИО: {full_name}\n"
-        f"📞 Телефон: {phone}\n"
-        f"🎂 Дата рождения: {birth_date.strftime('%d.%m.%Y')}\n\n"
-        "Теперь можешь в любой момент открыть меню (/start)."
-    )
-    await message.answer("Выбери действие:", reply_markup=FULL_MENU)
-
-    await notify_admin_about_registration(
-        message.from_user, full_name, phone, birth_date.strftime("%d.%m.%Y")
-    )
-
-@dp.message(Command("profile"))
-async def cmd_profile(message: types.Message):
-    if db_is_blocked(message.from_user.id):
-        await message.answer("⛔ Доступ к боту ограничен.")
-        return
-    row = db_get(message.from_user.id)
-    if row and row[0]:
-        await message.answer(profile_text(row))
-    else:
-        await message.answer("Ты ещё не зарегистрирован. Напиши /start и нажми «✍️ Зарегистрироваться».")
-
-# --- HTTP-сервер для Render (health check) ---
-async def health_check_server():
-    app = web.Application()
-
-    async def handle(request):
-        return web.Response(text="OK")
-
-    app.router.add_get('/', handle)
-    port = int(os.environ.get('PORT', 8080))
-
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', port)
-    await site.start()
-    print(f"✅ Health Check server is LIVE on port {port}")
-    return runner
-
-async def main():
-    runner = await health_check_server()
-    print("📦 STARTING BOT SCRIPT...")
-    bot_task = asyncio.create_task(dp.start_polling(bot))
-    print("🚀 Bot polling started. Waiting for updates...")
-    try:
-        await asyncio.gather(bot_task)
-    finally:
-        await runner.cleanup()
-        await bot.session.close()
-
-if __name__ == '__main__':
-    asyncio.run(main())

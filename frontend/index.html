@@ -1,410 +1,193 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Wokker</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        :root {
-            --primary: #FF5722;
-            --primary-dark: #E64A19;
-            --bg: #F5F5F5;
-            --text: #333;
-            --white: #FFFFFF;
-            --border: #DDD;
-            --success: #4CAF50;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--bg);
-            color: var(--text);
-            margin: 0;
-            padding: 0;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-        .container {
-            flex: 1;
-            padding: 16px;
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-        }
-        h1, h2 { margin: 0 0 12px; }
-        h1 { font-size: 24px; }
-        h2 { font-size: 18px; color: var(--primary); }
-        .card {
-            background: var(--white);
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 16px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        }
-        .btn {
-            background-color: var(--primary);
-            color: var(--white);
-            border: none;
-            padding: 12px 20px;
-            border-radius: 8px;
-            font-size: 16px;
-            width: 100%;
-            cursor: pointer;
-            text-align: center;
-            font-weight: 600;
-        }
-        .btn:active { background-color: var(--primary-dark); }
-        .btn-outline {
-            background-color: transparent;
-            border: 1px solid var(--primary);
-            color: var(--primary);
-        }
-        .list-item {
-            padding: 12px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .list-item:last-child { border-bottom: none; }
-        .list-item.clickable { cursor: pointer; }
-        .list-item.clickable:active { background-color: #F9F9F9; }
-        .badge {
-            background-color: #E0E0E0;
-            color: #555;
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-        }
-        .section-title {
-            font-size: 14px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            color: #888;
-            margin: 20px 0 8px;
-        }
-        .hidden { display: none; }
-        .loader {
-            text-align: center;
-            padding: 20px;
-            color: #888;
-        }
-        .error-msg {
-            color: #D32F2F;
-            background-color: #FFEBEE;
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 16px;
-        }
-        input, select {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            font-size: 16px;
-            box-sizing: border-box;
-        }
-        input:focus, select:focus {
-            outline: none;
-            border-color: var(--primary);
-        }
-        .status-dot {
-            height: 10px;
-            width: 10px;
-            background-color: #ccc;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 8px;
-        }
-        .status-active { background-color: var(--success); }
-        .status-blocked { background-color: #D32F2F; }
-    </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wokker</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root { --blue: #007aff; --bg: #f2f2f7; }
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: -apple-system, sans-serif; background: var(--bg); padding-bottom: 70px; }
+  h1 { font-size: 22px; padding: 16px; }
+  .card { background: #fff; border-radius: 14px; margin: 0 12px 12px; padding: 14px; }
+  .card b { display: block; margin-bottom: 6px; }
+  .muted { color: #8e8e93; font-size: 14px; }
+  .btn { display: inline-block; background: var(--blue); color: #fff; border: 0;
+         border-radius: 10px; padding: 10px 16px; font-size: 15px; margin-top: 8px; }
+  .tabs { position: fixed; bottom: 0; left: 0; right: 0; display: flex; background: #fff;
+          border-top: 1px solid #e5e5ea; }
+  .tabs button { flex: 1; border: 0; background: none; padding: 12px 4px; font-size: 12px; color: #8e8e93; }
+  .tabs button.active { color: var(--blue); font-weight: 600; }
+  .tabs span { display: block; font-size: 20px; }
+  .section { display: none; }
+  .section.active { display: block; }
+  .q { width: 100%; border: 1px solid #e5e5ea; border-radius: 10px; padding: 10px; font-size: 15px; }
+  details { background: #fff; border-radius: 14px; margin: 0 12px 10px; padding: 14px; }
+  summary { font-weight: 600; cursor: pointer; }
+  details p { margin-top: 8px; color: #3a3a3c; }
+</style>
 </head>
 <body>
-    <div class="container" id="app">
-        <div id="loading" class="loader">Загрузка данных...</div>
-        
-        <!-- Экран регистрации -->
-        <div id="screen-register" class="hidden">
-            <h1>Регистрация в Wokker</h1>
-            <div class="card">
-                <label><b>ФИО</b></label>
-                <input type="text" id="reg-name" placeholder="Иванов Иван Иванович">
-                
-                <label><b>Телефон</b></label>
-                <input type="tel" id="reg-phone" placeholder="+7 (999) 000-00-00">
-                
-                <label><b>Дата рождения</b></label>
-                <input type="date" id="reg-birth">
-                
-                <label><b>Должность</b></label>
-                <select id="reg-position">
-                    <option value="">Выберите должность</option>
-                    <option value="Холодный Цех">Холодный Цех</option>
-                    <option value="Жарщик">Жарщик</option>
-                    <option value="Управляющий сменой">Управляющий сменой</option>
-                    <option value="Территориальный управляющий">Территориальный управляющий</option>
-                </select>
-                
-                <label><b>Ресторан</b></label>
-                <select id="reg-restaurant">
-                    <option value="">Выберите ресторан</option>
-                </select>
-            </div>
-            <button class="btn" onclick="submitRegistration()">Завершить регистрацию</button>
-        </div>
+<h1>📱 Wokker</h1>
 
-        <!-- Главный экран (после регистрации) -->
-        <div id="screen-main" class="hidden">
-            <div class="card">
-                <h2>Профиль</h2>
-                <div class="list-item">
-                    <span><b>Статус:</b></span>
-                    <span id="profile-status"><span class="status-dot" id="status-dot"></span><span id="status-text">Загрузка...</span></span>
-                </div>
-                <div class="list-item"><b>ФИО:</b> <span id="profile-name"></span></div>
-                <div class="list-item"><b>Телефон:</b> <span id="profile-phone"></span></div>
-                <div class="list-item"><b>Должность:</b> <span id="profile-position"></span></div>
-                <div class="list-item"><b>Ресторан:</b> <span id="profile-restaurant"></span></div>
-            </div>
+<div class="section" id="sec-profile">
+  <div class="card" id="profile-box">Загрузка профиля…</div>
+</div>
 
-            <div class="section-title">Быстрый доступ</div>
-            <button class="btn btn-outline" onclick="openSection('restaurants')">🏙️ Наши рестораны</button>
-            <button class="btn btn-outline" onclick="openSection('standards')">📚 Стандарты работы</button>
-            <button class="btn btn-outline" onclick="openSection('faq')">❓ Вопрос/ответ</button>
-        </div>
+<div class="section" id="sec-restaurants">
+  <div id="restaurants-list"></div>
+</div>
 
-        <!-- Рестораны -->
-        <div id="screen-restaurants" class="hidden">
-            <h2>Наши рестораны</h2>
-            <div id="restaurants-list"></div>
-            <button class="btn btn-outline" onclick="goBack()">← Назад</button>
-        </div>
+<div class="section" id="sec-standards">
+  <div id="standards-list"></div>
+</div>
 
-        <!-- Стандарты -->
-        <div id="screen-standards" class="hidden">
-            <h2>Стандарты работы</h2>
-            <div id="standards-list"></div>
-            <button class="btn btn-outline" onclick="goBack()">← Назад</button>
-        </div>
+<div class="section" id="sec-faq">
+  <div id="faq-list"></div>
+  <div class="card">
+    <b>Задать свой вопрос</b>
+    <input class="q" id="question-input" placeholder="Опиши вопрос — ответ придёт в бот">
+    <button class="btn" id="send-question">Отправить</button>
+  </div>
+</div>
 
-        <!-- FAQ -->
-        <div id="screen-faq" class="hidden">
-            <h2>Вопрос/ответ</h2>
-            <div id="faq-list"></div>
-            <button class="btn btn-outline" onclick="goBack()">← Назад</button>
-        </div>
+<nav class="tabs">
+  <button data-sec="sec-profile" class="active"><span>👤</span>Профиль</button>
+  <button data-sec="sec-restaurants"><span>🏙️</span>Рестораны</button>
+  <button data-sec="sec-standards"><span>📚</span>Стандарты</button>
+  <button data-sec="sec-faq"><span>❓</span>Вопрос/ответ</button>
+</nav>
 
-        <!-- Детали ресторана -->
-        <div id="screen-restaurant-detail" class="hidden">
-            <h2 id="detail-name"></h2>
-            <div class="card">
-                <div class="list-item"><b>Адрес:</b> <span id="detail-address"></span></div>
-                <div class="list-item"><b>Часы работы:</b> <span id="detail-hours"></span></div>
-                <div class="list-item"><b>Телефон:</b> <span id="detail-phone"></span></div>
-            </div>
-            <button class="btn" onclick="openMap()">Открыть на карте</button>
-            <button class="btn btn-outline" onclick="goBack()">← Назад</button>
-        </div>
-    </div>
+<script>
+const tg = window.Telegram.WebApp;
+tg.ready();
+tg.expand();
 
-    <script>
-        const tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();
+// Переключение вкладок
+document.querySelectorAll('.tabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.sec).classList.add('active');
+    window.scrollTo(0, 0);
+  });
+});
 
-        const API_URL = 'https://ВАШ-ДОМЕН.amvera.io/api'; // ЗАМЕНИТЬ НА ВАШ БЭКЕНД
+const esc = s => (s || '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-        let userData = null;
-        let restaurantsData = null;
-        let standardsData = null;
-        let faqData = null;
+async function loadProfile() {
+  const box = document.getElementById('profile-box');
+  try {
+    const resp = await fetch('/api/profile', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ initData: tg.initData })
+    });
+    const data = await resp.json();
+    if (resp.ok && data.registered) {
+      const p = data.profile;
+      box.innerHTML = `<b>${esc(p.full_name)}</b>
+        📞 ${esc(p.phone)}<br>
+        🎂 ${esc(p.birth_date)}<br>
+        💼 ${esc(p.position)}<br>
+        📍 ${esc(p.restaurant)}`;
+    } else if (resp.status === 401) {
+      box.innerHTML = '⚠️ Ошибка авторизации Telegram. Закрой приложение и открой заново из бота.';
+    } else if (resp.status === 403) {
+      box.innerHTML = '⛔ Доступ ограничен. Обратись к администратору.';
+    } else {
+      box.innerHTML = 'Ты ещё не зарегистрирован.<br>Напиши /start в боте и пройди регистрацию.';
+    }
+  } catch (e) {
+    box.innerHTML = 'Ошибка загрузки профиля: ' + esc(String(e));
+  }
+}
 
-        async function init() {
-            try {
-                const initData = tg.initData;
-                const response = await fetch(`${API_URL}/user?initData=${encodeURIComponent(initData)}`);
-                const data = await response.json();
+async function loadRestaurants() {
+  const box = document.getElementById('restaurants-list');
+  try {
+    const resp = await fetch('/api/restaurants');
+    const list = await resp.json();
+    box.innerHTML = list.map(r => {
+      const mapUrl = r.org
+        ? `https://yandex.ru/maps/org/${r.org}`
+        : `https://yandex.ru/maps/?text=${encodeURIComponent('Воккер ' + r.address)}`;
+      return `
+      <div class="card">
+        <b>${esc(r.name)}</b>
+        <div class="muted">📍 ${esc(r.address)}</div>
+        <div class="muted">🕒 ${esc(r.hours).replaceAll('\n', '<br>')}</div>
+        <div class="muted">📞 <a href="tel:${esc(r.phone)}">${esc(r.phone)}</a></div>
+        <a href="${mapUrl}" target="_blank"><button class="btn">Открыть на Яндекс Картах</button></a>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="card">Ошибка загрузки списка ресторанов</div>';
+  }
+}
 
-                if (data.registered) {
-                    userData = data.user;
-                    loadRestaurants();
-                    loadStandards();
-                    loadFAQ();
-                    showScreen('screen-main');
-                    updateProfileUI();
-                } else {
-                    loadRestaurantsOptions();
-                    showScreen('screen-register');
-                }
-            } catch (error) {
-                document.getElementById('loading').textContent = 'Ошибка загрузки: ' + error.message;
-                console.error(error);
-            }
-        }
+async function loadStandards() {
+  const box = document.getElementById('standards-list');
+  try {
+    const resp = await fetch('/api/standards');
+    const list = await resp.json();
+    box.innerHTML = list.map(s => `
+      <div class="card">
+        <b>${esc(s.title)}</b>
+        <div class="muted">${esc(s.category)}</div>
+        <div style="margin-top:6px">${esc(s.description)}</div>
+        ${s.url ? `<a href="${esc(s.url)}" target="_blank"><button class="btn">Открыть</button></a>` : ''}
+      </div>`).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="card">Ошибка загрузки стандартов</div>';
+  }
+}
 
-        function loadRestaurantsOptions() {
-            fetch(`\${API_URL}/restaurants`)
-                .then(r => r.json())
-                .then(data => {
-                    restaurantsData = data;
-                    const select = document.getElementById('reg-restaurant');
-                    data.forEach(r => {
-                        const option = document.createElement('option');
-                        option.value = r.key;
-                        option.textContent = r.name;
-                        select.appendChild(option);
-                    });
-                });
-        }
+async function loadFaq() {
+  const box = document.getElementById('faq-list');
+  try {
+    const resp = await fetch('/api/faq');
+    const list = await resp.json();
+    box.innerHTML = list.map(f => `
+      <details>
+        <summary>${esc(f.question)}</summary>
+        <p>${esc(f.answer)}</p>
+      </details>`).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="card">Ошибка загрузки вопросов</div>';
+  }
+}
 
-        function loadRestaurants() {
-            fetch(`\${API_URL}/restaurants`)
-                .then(r => r.json())
-                .then(data => {
-                    restaurantsData = data;
-                    const container = document.getElementById('restaurants-list');
-                    container.innerHTML = '';
-                    data.forEach(r => {
-                        const div = document.createElement('div');
-                        div.className = 'list-item clickable';
-                        div.innerHTML = `<span>\${r.name}</span><span>→</span>`;
-                        div.onclick = () => showRestaurantDetail(r);
-                        container.appendChild(div);
-                    });
-                });
-        }
+document.getElementById('send-question').addEventListener('click', async () => {
+  const input = document.getElementById('question-input');
+  const text = input.value.trim();
+  if (!text) return;
+  try {
+    const resp = await fetch('/api/questions', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ initData: tg.initData, question: text })
+    });
+    if (resp.ok) {
+      input.value = '';
+      alert('Вопрос отправлен! Ответ увидишь в боте.');
+    } else if (resp.status === 401) {
+      alert('Ошибка авторизации. Закрой приложение и открой заново из бота.');
+    } else {
+      alert('Не удалось отправить вопрос. Попробуй позже.');
+    }
+  } catch (e) {
+    alert('Ошибка сети');
+  }
+});
 
-        function loadStandards() {
-            fetch(`\${API_URL}/standards`)
-                .then(r => r.json())
-                .then(data => {
-                    standardsData = data;
-                    const container = document.getElementById('standards-list');
-                    container.innerHTML = '';
-                    data.forEach(s => {
-                        const div = document.createElement('div');
-                        div.className = 'card';
-                        div.innerHTML = `<h3>${s.title}</h3><p class="badge">${s.category}</p><p>\${s.description}</p>`;
-                        container.appendChild(div);
-                    });
-                });
-        }
-
-        function loadFAQ() {
-            fetch(`\${API_URL}/faq`)
-                .then(r => r.json())
-                .then(data => {
-                    faqData = data;
-                    const container = document.getElementById('faq-list');
-                    container.innerHTML = '';
-                    data.forEach(f => {
-                        const div = document.createElement('div');
-                        div.className = 'card';
-                        div.innerHTML = `<h3>${f.question}</h3><p>${f.answer}</p><p class="badge">\${f.category}</p>`;
-                        container.appendChild(div);
-                    });
-                });
-        }
-
-        function submitRegistration() {
-            const name = document.getElementById('reg-name').value.trim();
-            const phone = document.getElementById('reg-phone').value.trim();
-            const birth = document.getElementById('reg-birth').value;
-            const position = document.getElementById('reg-position').value;
-            const restaurant = document.getElementById('reg-restaurant').value;
-
-            if (!name || !phone || !birth || !position || !restaurant) {
-                alert('Заполните все поля!');
-                return;
-            }
-
-            const formData = new FormData();
-            formData.append('initData', tg.initData);
-            formData.append('name', name);
-            formData.append('phone', phone);
-            formData.append('birth_date', birth);
-            formData.append('position', position);
-            formData.append('restaurant', restaurant);
-
-            fetch(`\${API_URL}/register`, {
-                method: 'POST',
-                body: formData
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    alert('Регистрация успешна! Перезагрузка...');
-                    location.reload();
-                } else {
-                    alert('Ошибка: ' + (data.message || 'Неизвестная ошибка'));
-                }
-            })
-            .catch(err => alert('Ошибка сети: ' + err.message));
-        }
-
-        function updateProfileUI() {
-            if (!userData) return;
-            document.getElementById('profile-name').textContent = userData.full_name || '—';
-            document.getElementById('profile-phone').textContent = userData.phone || '—';
-            document.getElementById('profile-position').textContent = userData.position || '—';
-            document.getElementById('profile-restaurant').textContent = userData.restaurant_name || '—';
-
-            const statusDot = document.getElementById('status-dot');
-            const statusText = document.getElementById('status-text');
-            if (userData.is_blocked) {
-                statusDot.className = 'status-dot status-blocked';
-                statusText.textContent = 'Заблокирован';
-                statusText.style.color = '#D32F2F';
-            } else {
-                statusDot.className = 'status-dot status-active';
-                statusText.textContent = 'Активен';
-                statusText.style.color = '#4CAF50';
-            }
-        }
-
-        function openSection(section) {
-            if (section === 'restaurants') showScreen('screen-restaurants');
-            if (section === 'standards') showScreen('screen-standards');
-            if (section === 'faq') showScreen('screen-faq');
-        }
-
-        function showRestaurantDetail(r) {
-            document.getElementById('detail-name').textContent = r.name;
-            document.getElementById('detail-address').textContent = r.address;
-            document.getElementById('detail-hours').textContent = r.hours;
-            document.getElementById('detail-phone').textContent = r.phone;
-            window.currentRestaurant = r;
-            showScreen('screen-restaurant-detail');
-        }
-
-        function openMap() {
-            if (!window.currentRestaurant) return;
-            const org = window.currentRestaurant.org;
-            if (org) {
-                window.open(`https://yandex.ru/maps/org/\${org}`, '_blank');
-            } else {
-                const query = encodeURIComponent(`Воккер \${window.currentRestaurant.address}`);
-                window.open(`https://yandex.ru/maps/?text=\${query}`, '_blank');
-            }
-        }
-
-        function showScreen(screenId) {
-            document.querySelectorAll('.container > div').forEach(el => el.classList.add('hidden'));
-            document.getElementById(screenId).classList.remove('hidden');
-            window.scrollTo(0, 0);
-        }
-
-        function goBack() {
-            if (document.getElementById('screen-main').classList.contains('hidden')) {
-                showScreen('screen-main');
-            } else {
-                showScreen('screen-main');
-            }
-        }
-
-        init();
-    </script>
+loadProfile();
+loadRestaurants();
+loadStandards();
+loadFaq();
+</script>
 </body>
 </html>

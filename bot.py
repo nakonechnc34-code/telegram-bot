@@ -742,6 +742,7 @@ async def get_auth_user(request):
 
 FULL_MENU = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="📱 Открыть приложение Wokker", web_app=WebAppInfo(url=MINI_APP_URL))],
+    [InlineKeyboardButton(text="🏙 Рестораны", callback_data="rest_list")],
 ])
 
 REGISTER_ONLY = InlineKeyboardMarkup(inline_keyboard=[
@@ -774,6 +775,23 @@ def restaurants_pick_kb():
 def restaurant_name_by_key(key):
     rest = next((r for r in RESTAURANTS if r["key"] == key), None)
     return rest["name"] if rest else key
+
+
+def restaurants_miniapp_kb():
+    """Список ресторанов для бота: одна точка — одна кнопка.
+    Кнопка web_app должна стоять в строке одна (ограничение Telegram).
+    Каждая кнопка открывает Mini App сразу на карточке этой точки."""
+    kb = []
+    for r in RESTAURANTS_FOR_APP:
+        status, _ = restaurant_status(r["hours"])
+        icon = "🟢" if status == "open" else "🔴"
+        url = f"{MINI_APP_URL}?rest={r['key']}"
+        kb.append([InlineKeyboardButton(
+            text=f"{icon} {r['name']}",
+            web_app=WebAppInfo(url=url)
+        )])
+    kb.append([InlineKeyboardButton(text="🔙 В меню", callback_data="back_to_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
 
 
 def profile_text(row):
@@ -1489,6 +1507,40 @@ async def adm_noop(callback: types.CallbackQuery):
         await callback.answer()
     else:
         await callback.answer("⛔ Недоступно", show_alert=True)
+
+
+# ================== СПИСОК РЕСТОРАНОВ (вариант 3: Mini App) ==================
+
+@dp.callback_query(lambda c: c.data == "rest_list")
+async def rest_list(callback: types.CallbackQuery, state: FSMContext):
+    if db_is_blocked(callback.from_user.id):
+        await callback.answer("Доступ ограничен", show_alert=True)
+        return
+    await callback.answer()
+    await state.clear()
+    await cleanup_chat(callback.from_user.id)
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
+        "🏙 <b>Рестораны Wokker</b>\n\n"
+        "🟢 — открыто, 🔴 — закрыто.\n"
+        "Нажми на точку — откроется карточка с адресом, часами и картой.",
+        parse_mode="HTML",
+        reply_markup=restaurants_miniapp_kb()
+    )
+
+
+@dp.callback_query(lambda c: c.data == "back_to_menu")
+async def back_to_menu(callback: types.CallbackQuery, state: FSMContext):
+    if db_is_blocked(callback.from_user.id):
+        await callback.answer("Доступ ограничен", show_alert=True)
+        return
+    await callback.answer()
+    await state.clear()
+    await cleanup_chat(callback.from_user.id)
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
+        "Выбери действие:", reply_markup=FULL_MENU
+    )
 
 
 # ================== РЕГИСТРАЦИЯ ==================

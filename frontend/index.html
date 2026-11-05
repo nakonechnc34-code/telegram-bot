@@ -11,14 +11,11 @@
     --bg: #f2f2f7;
     --gray: #9aa0a6;
     --green: #34c759;
-    /* Бежевая палитра вкладки «Рестораны» */
     --beige: #c3a578;
     --beige-dark: #b2946a;
     --beige-soft: #f6efe3;
     --beige-border: #e6d8c2;
-    /* Акцентный край кнопки карты */
     --map-border: #d9534f;
-    --map-border-hover: #c1433f;
   }
   * { box-sizing: border-box; margin: 0; }
   body { font-family: -apple-system, sans-serif; background: var(--bg); padding-bottom: 70px; }
@@ -41,231 +38,118 @@
   summary { font-weight: 600; cursor: pointer; }
   details p { margin-top: 8px; color: #3a3a3c; }
 
-  /* ============================================================
-     ПРОФИЛЬ: приветствие + карточка с бежевым кольцом аватара
-     ============================================================ */
+  .greeting { margin: 14px 12px 4px; padding: 0 4px; }
+  .greeting .g-title { font-size: 22px; font-weight: 700; color: #3a2f1f; line-height: 1.25; }
+  .greeting .g-sub { font-size: 13px; color: #96876f; margin-top: 2px; }
 
-  .greeting {
-    margin: 14px 12px 4px;
-    padding: 0 4px;
-  }
-  .greeting .g-title {
-    font-size: 22px;
-    font-weight: 700;
-    color: #3a2f1f;
-    line-height: 1.25;
-  }
-  .greeting .g-sub {
-    font-size: 13px;
-    color: #96876f;
-    margin-top: 2px;
-  }
-
-  /* Баннер поздравления: день рождения / праздник */
-  .greet-banner {
-    margin: 12px 12px 0;
-    padding: 16px;
-    border-radius: 16px;
-    border: 1px solid var(--beige-border);
-    background: linear-gradient(135deg, var(--beige-soft), #fdf9f2);
-    text-align: center;
-  }
+  .greet-banner { margin: 12px 12px 0; padding: 16px; border-radius: 16px;
+    border: 1px solid var(--beige-border); background: linear-gradient(135deg, var(--beige-soft), #fdf9f2);
+    text-align: center; }
   .greet-banner .gb-title { font-size: 18px; font-weight: 700; color: #3a2f1f; }
   .greet-banner .gb-sub { font-size: 13px; color: #7c6b52; margin-top: 4px; line-height: 1.45; }
-  .greet-banner.birthday {
-    background: linear-gradient(135deg, #ffe9ec, #fff5f0);
-    border-color: #f3c1c9;
-  }
+  .greet-banner.birthday { background: linear-gradient(135deg, #ffe9ec, #fff5f0); border-color: #f3c1c9; }
   .greet-banner.birthday .gb-title { color: #b0435f; }
 
-  .profile-card {
-    background: #fff; border-radius: 18px; margin: 8px 12px 12px;
-    overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,.07);
-  }
-  .profile-header {
-    background: linear-gradient(135deg, #ff2d55, #ff6a3d);
-    color: #fff; padding: 24px 16px 18px; text-align: center;
-  }
-  .avatar-ring {
-    width: 84px;
-    height: 84px;
-    border-radius: 50%;
-    margin: 0 auto 12px;
-    padding: 3px; /* толщина кольца */
-    background: linear-gradient(135deg, var(--beige-soft), var(--beige));
-    box-sizing: border-box;
-  }
-  .avatar-ring .avatar {
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    border: 2px solid #fff; /* белый зазор между кольцом и фото */
-    border-radius: 50%;     /* и фото, и заглушка — круг */
-    background-color: rgba(255,255,255,.25);
+  .profile-card { background: #fff; border-radius: 18px; margin: 8px 12px 12px;
+    overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,.07); }
+  .profile-header { background: linear-gradient(135deg, #ff2d55, #ff6a3d);
+    color: #fff; padding: 24px 16px 18px; text-align: center; }
+  .avatar-ring { width: 84px; height: 84px; border-radius: 50%; margin: 0 auto 12px; padding: 3px;
+    background: linear-gradient(135deg, var(--beige-soft), var(--beige)); box-sizing: border-box; }
+  .avatar-ring .avatar { width: 100%; height: 100%; margin: 0; border: 2px solid #fff;
+    border-radius: 50%; background-color: rgba(255,255,255,.25);
     background-size: cover; background-position: center;
     display: flex; align-items: center; justify-content: center;
-    font-size: 30px; font-weight: 700; color: #fff;
-  }
+    font-size: 30px; font-weight: 700; color: #fff; }
   .p-name { font-size: 19px; font-weight: 700; line-height: 1.25; }
   .p-pos { font-size: 13px; opacity: .92; margin-top: 3px; }
-  .badge {
-    display: inline-block; margin-top: 10px; padding: 4px 14px;
-    background: rgba(255,255,255,.28); border-radius: 20px; font-size: 12px; font-weight: 600;
-  }
-  .badge.blocked { background: #ff3b30; }
+  .badge { display: inline-block; margin-top: 10px; padding: 4px 14px;
+    background: rgba(255,255,255,.28); border-radius: 20px; font-size: 12px; font-weight: 600; }
   .info-list { padding: 4px 14px 10px; }
-  .info-row {
-    display: flex; align-items: center; padding: 11px 2px;
-    border-bottom: 1px solid #f0f0f4; font-size: 15px;
-  }
+  .info-row { display: flex; align-items: center; padding: 11px 2px;
+    border-bottom: 1px solid #f0f0f4; font-size: 15px; }
   .info-row:last-child { border-bottom: 0; }
   .info-row .ico { width: 28px; font-size: 16px; }
   .info-row .lbl { color: #8e8e93; flex: 1; }
   .info-row .val { font-weight: 600; text-align: right; max-width: 62%; overflow-wrap: break-word; }
   .profile-footer { background: #f8f8fb; padding: 10px 14px; font-size: 12px; color: #8e8e93; }
-  .profile-footer button {
-    background: none; border: 0; color: var(--blue); font-size: 12px;
-    font-weight: 600; padding: 0; text-decoration: underline; cursor: pointer;
-  }
-  .profile-footer button:active { opacity: .7; }
-
-  .badge-rest {
-    display: inline-block; padding: 2px 10px; border-radius: 12px;
-    font-size: 12px; font-weight: 600; color: #fff;
-  }
+  .profile-footer button { background: none; border: 0; color: var(--blue); font-size: 12px;
+    font-weight: 600; padding: 0; text-decoration: underline; cursor: pointer; }
+  .badge-rest { display: inline-block; padding: 2px 10px; border-radius: 12px;
+    font-size: 12px; font-weight: 600; color: #fff; }
   .badge-rest.office { background: var(--gray); }
   .badge-rest.normal { background: var(--green); }
-
   @media (min-width: 600px) {
     .info-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 8px 14px 10px; }
     .info-row { border-bottom: none; padding: 8px 0; }
   }
 
-  /* ============================================================
-     РЕСТОРАНЫ: бежевый дизайн
-     ============================================================ */
-
-  /* Шапка вкладки */
-  .rest-tab-header {
-    margin: 12px 12px 4px; padding: 14px 16px;
+  .rest-tab-header { margin: 12px 12px 4px; padding: 14px 16px;
     background: linear-gradient(135deg, var(--beige-soft), #fdf9f2);
-    border: 1px solid var(--beige-border);
-    border-radius: 16px;
-  }
+    border: 1px solid var(--beige-border); border-radius: 16px; }
   .rest-tab-header .title { font-size: 17px; font-weight: 700; color: #5c4a33; }
   .rest-tab-header .sub { font-size: 13px; color: #96876f; margin-top: 2px; }
-  .rest-count {
-    display: inline-block; margin-top: 8px; padding: 3px 10px;
+  .rest-count { display: inline-block; margin-top: 8px; padding: 3px 10px;
     background: #fff; border: 1px solid var(--beige-border);
-    border-radius: 12px; font-size: 12px; color: #7c6b52; font-weight: 600;
-  }
+    border-radius: 12px; font-size: 12px; color: #7c6b52; font-weight: 600; }
 
-  /* Карточка ресторана */
-  .rest-card {
-    background: #fff; border-radius: 16px; margin: 8px 12px 12px;
-    padding: 14px; box-shadow: 0 2px 10px rgba(0,0,0,.05);
-    border: 1px solid #f0ebe2;
-  }
-  /* Закрытые точки: визуально на втором плане */
-  .rest-card.rest-card-closed {
-    opacity: 0.92;
-    box-shadow: 0 2px 6px rgba(0,0,0,.03);
-  }
+  .rest-card { background: #fff; border-radius: 16px; margin: 8px 12px 12px;
+    padding: 14px; box-shadow: 0 2px 10px rgba(0,0,0,.05); border: 1px solid #f0ebe2; }
+  .rest-card.rest-card-closed { opacity: 0.92; box-shadow: 0 2px 6px rgba(0,0,0,.03); }
   .rest-head { display: flex; align-items: center; gap: 12px; }
-  .rest-logo {
-    width: 46px; height: 46px; border-radius: 14px; flex-shrink: 0;
+  .rest-logo { width: 46px; height: 46px; border-radius: 14px; flex-shrink: 0;
     background: linear-gradient(135deg, var(--beige-soft), #f1e6d2);
-    border: 1px solid var(--beige-border);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 22px;
-  }
+    border: 1px solid var(--beige-border); display: flex; align-items: center; justify-content: center;
+    font-size: 22px; }
   .rest-head-main { flex: 1; min-width: 0; }
   .rest-name { font-size: 16px; font-weight: 700; line-height: 1.25; color: #2c2620; }
-  .rest-status {
-    display: inline-block; margin-top: 4px; padding: 3px 10px;
-    border-radius: 12px; font-size: 11px; font-weight: 700;
-  }
-  /* Мягкие бейджи: светлый фон + тёмный текст тона */
+  .rest-status { display: inline-block; margin-top: 4px; padding: 3px 10px;
+    border-radius: 12px; font-size: 11px; font-weight: 700; }
   .rest-status.open { background: #e8f5ec; color: #2e7d43; }
   .rest-status.closed { background: #fbeae4; color: #b04a2e; }
-  .rest-meta {
-    margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--beige-border);
-    font-size: 13px; color: #8e8e93; line-height: 1.5;
-  }
-  .rest-meta .addr {
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
+  .rest-meta { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--beige-border);
+    font-size: 13px; color: #8e8e93; line-height: 1.5; }
   .rest-hours { color: #a3988a; font-size: 12px; margin-top: 3px; }
 
-  /* Кнопка «На Яндекс Картах»: прозрачная заливка + цветной край */
   .rest-actions { display: flex; gap: 8px; margin-top: 12px; }
   .rest-actions a { flex: 1; display: block; text-decoration: none; }
-  .btn-map {
-    display: block; width: 100%;
-    background: transparent; color: var(--beige-dark);
-    border: 2px solid var(--map-border);
-    border-radius: 12px; padding: 11px 8px;
-    font-size: 14px; font-weight: 600;
-    text-align: center; text-decoration: none;
-  }
-  .btn-map:active {
-    background: var(--map-border);
-    color: #fff;
-  }
+  .btn-map { display: block; width: 100%; background: transparent; color: var(--beige-dark);
+    border: 2px solid var(--map-border); border-radius: 12px; padding: 11px 8px;
+    font-size: 14px; font-weight: 600; text-align: center; text-decoration: none; }
+  .btn-map:active { background: var(--map-border); color: #fff; }
 
   .no-results { text-align: center; color: #8e8e93; padding: 30px 12px; }
 
-  /* ============================================================
-     Карточка одной точки (глубокая ссылка из бота) — тот же стиль
-     ============================================================ */
-  .detail-hero {
-    background: linear-gradient(135deg, var(--beige-soft), #fdf9f2);
-    border: 1px solid var(--beige-border);
-    color: #4a3c28; border-radius: 18px; margin: 12px 12px 12px;
-    padding: 24px 16px; text-align: center;
-  }
-  .detail-hero .emoji {
-    width: 60px; height: 60px; margin: 0 auto 10px;
-    background: #fff; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 28px; border: 1px solid var(--beige-border);
-  }
+  .detail-hero { background: linear-gradient(135deg, var(--beige-soft), #fdf9f2);
+    border: 1px solid var(--beige-border); color: #4a3c28; border-radius: 18px;
+    margin: 12px 12px 12px; padding: 24px 16px; text-align: center; }
+  .detail-hero .emoji { width: 60px; height: 60px; margin: 0 auto 10px; background: #fff;
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 28px; border: 1px solid var(--beige-border); }
   .detail-hero .name { font-size: 20px; font-weight: 700; line-height: 1.3; color: #3a2f1f; }
-  .detail-status {
-    display: inline-block; margin-top: 10px; padding: 5px 14px;
-    border-radius: 20px; font-size: 13px; font-weight: 700;
-  }
+  .detail-status { display: inline-block; margin-top: 10px; padding: 5px 14px;
+    border-radius: 20px; font-size: 13px; font-weight: 700; }
   .detail-status.open { background: #e8f5ec; color: #2e7d43; }
   .detail-status.closed { background: #fbeae4; color: #b04a2e; }
-  .detail-card {
-    background: #fff; border-radius: 16px; margin: 0 12px 12px;
-    padding: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.05);
-    border: 1px solid #f0ebe2;
-  }
+  .detail-card { background: #fff; border-radius: 16px; margin: 0 12px 12px;
+    padding: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.05); border: 1px solid #f0ebe2; }
   .detail-card .row { padding: 9px 0; border-bottom: 1px solid #f5f0e7; font-size: 15px; }
   .detail-card .row:last-child { border-bottom: 0; }
   .detail-card .row .lbl { color: #a3988a; font-size: 13px; margin-bottom: 2px; }
   .detail-actions { display: flex; gap: 8px; margin-top: 12px; }
   .detail-actions a { flex: 1; display: block; }
-  .btn-back {
-    display: block; margin: 0 12px 12px; padding: 11px 16px;
+  .btn-back { display: block; margin: 0 12px 12px; padding: 11px 16px;
     background: #fff; color: var(--beige-dark); border: 1.5px solid var(--beige);
     border-radius: 12px; font-size: 15px; font-weight: 600; text-align: center;
-    text-decoration: none; cursor: pointer;
-  }
+    text-decoration: none; cursor: pointer; }
   .btn-back:active { background: var(--beige-soft); }
 
-  /* ===== Экран блокировки ===== */
-  .blocked-screen {
-    background: #fff; border-radius: 18px; margin: 40px 12px 12px;
-    padding: 32px 20px; text-align: center; box-shadow: 0 4px 14px rgba(0,0,0,.07);
-  }
+  .blocked-screen { background: #fff; border-radius: 18px; margin: 40px 12px 12px;
+    padding: 32px 20px; text-align: center; box-shadow: 0 4px 14px rgba(0,0,0,.07); }
   .blocked-screen .big { font-size: 44px; margin-bottom: 12px; }
   .blocked-screen .title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
   .blocked-screen .text { color: #8e8e93; font-size: 14px; }
 
-  /* ===== Уровни новостей: без цветных полосок ===== */
   .news-date { color: #8e8e93; font-size: 12px; margin-top: 4px; }
   .level-urgent b::before { content: "🔴 "; }
   .level-important b::before { content: "🟡 "; }
@@ -380,7 +264,6 @@ function initialFor(name) {
   return '👤';
 }
 
-/* Приветствие по времени суток */
 function greetingTexts() {
   const h = new Date().getHours();
   if (h >= 5 && h < 12) return { hello: 'Доброе утро', sub: 'Хорошего начала дня и лёгких смен ☀️' };
@@ -389,13 +272,19 @@ function greetingTexts() {
   return { hello: 'Доброй ночи', sub: 'Отдыхайте — завтра снова в бой 🌙' };
 }
 
-/* Имя для обращения: сначала имя из Telegram, иначе первое слово из ФИО */
-function displayNameOf(fullName) {
+function firstNameFromProfile(p) {
+  if (p && p.first_name && p.first_name.trim()) return p.first_name.trim();
+  if (p && p.full_name) {
+    const parts = p.full_name.trim().split(/\s+/);
+    return parts[0] || '';
+  }
+  return '';
+}
+
+function displayNameOf(fullName, p) {
   const u = tgUserInfo();
   if (u && u.first_name && u.first_name.trim()) return u.first_name.trim();
-  if (!fullName) return '';
-  const parts = fullName.trim().split(/\s+/);
-  return parts[0] || '';
+  return firstNameFromProfile(p);
 }
 
 function waitInitData(maxAttempts = 20, delayMs = 250) {
@@ -451,10 +340,8 @@ async function loadProfile() {
       const p = data.profile;
       const isOffice = p.restaurant === 'ОФИС';
       const restBadge = isOffice ? 'office' : 'normal';
-      // Обращение по имени: из Telegram, затем из профиля (первое слово ФИО)
-      const name = displayNameOf(p.full_name) || firstNameFromProfile(p);
+      const name = displayNameOf(p.full_name, p);
 
-      // Поздравление (день рождения / праздник) — берём с бэкенда
       let greet = null;
       try {
         const gr = await fetch('/api/greeting', {
@@ -526,17 +413,6 @@ async function loadProfile() {
   }
 }
 
-/* Запасной вариант: первое слово ФИО из профиля (когда имя из Telegram недоступно) */
-function firstNameFromProfile(p) {
-  if (p && p.first_name && p.first_name.trim()) return p.first_name.trim();
-  if (p && p.full_name) {
-    const parts = p.full_name.trim().split(/\s+/);
-    return parts[0] || '';
-  }
-  return '';
-}
-
-// ===== Рестораны: кэш + мгновенный поиск + сортировка =====
 let ALL_RESTAURANTS = null;
 let REST_FETCH_TS = 0;
 const REST_TTL = 5 * 60 * 1000;
@@ -590,7 +466,6 @@ function renderRestaurants(query) {
     ? ALL_RESTAURANTS.filter(r => r._search.indexOf(q) !== -1)
     : ALL_RESTAURANTS;
 
-  // Сортировка: открытые сверху, потом закрытые; внутри групп — по sort, затем по названию
   list.sort((a, b) => {
     const aOpen = a.status === 'open';
     const bOpen = b.status === 'open';
@@ -659,8 +534,6 @@ document.getElementById('rest-search').addEventListener('input', e => {
   renderRestaurants(e.target.value);
 });
 
-// ===== Карточка одного ресторана (глубокая ссылка ?rest=…) =====
-
 function renderDetail(r) {
   document.getElementById('detail-box').innerHTML =
     '<div class="detail-hero">' +
@@ -669,3 +542,167 @@ function renderDetail(r) {
     statusBadge(r, 'detail-status') +
     '</div>' +
     '<div class="detail-card">' +
+    '<div class="row"><div class="lbl">Адрес</div>📍 ' + esc(r.address) + '</div>' +
+    '<div class="row"><div class="lbl">Часы работы</div>🕒 ' + esc(r.hours).replaceAll('\n', '<br>') + '</div>' +
+    '<div class="detail-actions">' +
+    '<a href="' + mapUrlFor(r) + '" target="_blank"><span class="btn-map">🗺 На Яндекс Картах</span></a>' +
+    '</div>' +
+    '</div>';
+}
+
+async function showDetail(key) {
+  const section = document.getElementById('sec-detail');
+  const box = document.getElementById('detail-box');
+  try {
+    const list = await fetchRestaurants();
+    const r = list.find(x => x.key === key);
+    if (!r) {
+      box.innerHTML = '<div class="card">Ресторан не найден 🤷</div>';
+    } else {
+      renderDetail(r);
+    }
+    document.querySelector('.tabs').style.display = 'none';
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    section.classList.add('active');
+    window.scrollTo(0, 0);
+  } catch (e) {
+    if (e && e.code === 403) { box.innerHTML = blockedHtml(); section.classList.add('active'); return; }
+    box.innerHTML = '<div class="card">Ошибка загрузки карточки ресторана</div>';
+    section.classList.add('active');
+  }
+}
+
+function exitDetailView() {
+  document.querySelector('.tabs').style.display = 'flex';
+}
+
+document.getElementById('detail-back').addEventListener('click', () => {
+  history.replaceState(null, '', location.pathname);
+  exitDetailView();
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+  document.querySelector('.tabs button[data-sec="sec-restaurants"]').classList.add('active');
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById('sec-restaurants').classList.add('active');
+  loadRestaurants();
+});
+
+async function loadNews() {
+  const box = document.getElementById('news-list');
+  try {
+    const resp = await fetch('/api/news', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ initData: getInitData() })
+    });
+    if (resp.status === 403) { box.innerHTML = blockedHtml(); return; }
+    if (resp.status === 401) { box.innerHTML = '<div class="card">⚠️ Ошибка авторизации. Открой приложение заново из бота.</div>'; return; }
+    const list = await resp.json();
+    if (!list.length) {
+      box.innerHTML = '<div class="card">Пока новостей нет 📰</div>';
+      return;
+    }
+    box.innerHTML = list.map(n => {
+      const lvl = ['urgent', 'important'].includes(n.level) ? n.level : 'normal';
+      return '<div class="card level-' + lvl + '">' +
+        '<b>' + esc(n.title) + '</b>' +
+        '<div>' + esc(n.text) + '</div>' +
+        '<div class="news-date">' + esc(n.date) + '</div>' +
+        '</div>';
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="card">Ошибка загрузки новостей</div>';
+  }
+}
+
+async function loadStandards() {
+  const box = document.getElementById('standards-list');
+  try {
+    const resp = await fetch('/api/standards', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ initData: getInitData() })
+    });
+    if (resp.status === 403) { box.innerHTML = blockedHtml(); return; }
+    if (resp.status === 401) { box.innerHTML = '<div class="card">⚠️ Ошибка авторизации. Открой приложение заново из бота.</div>'; return; }
+    const list = await resp.json();
+    box.innerHTML = list.map(s =>
+      '<div class="card">' +
+      '<b>' + esc(s.title) + '</b>' +
+      '<div class="muted">' + esc(s.category) + '</div>' +
+      '<div style="margin-top:6px">' + esc(s.description) + '</div>' +
+      (s.url ? '<a href="' + esc(s.url) + '" target="_blank"><button class="btn">Открыть</button></a>' : '') +
+      '</div>'
+    ).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="card">Ошибка загрузки стандартов</div>';
+  }
+}
+
+async function loadFaq() {
+  const box = document.getElementById('faq-list');
+  try {
+    const resp = await fetch('/api/faq', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ initData: getInitData() })
+    });
+    if (resp.status === 403) { box.innerHTML = blockedHtml(); return; }
+    if (resp.status === 401) { box.innerHTML = '<div class="card">⚠️ Ошибка авторизации. Открой приложение заново из бота.</div>'; return; }
+    const list = await resp.json();
+    box.innerHTML = list.map(f =>
+      '<details>' +
+      '<summary>' + esc(f.question) + '</summary>' +
+      '<p>' + esc(f.answer) + '</p>' +
+      '</details>'
+    ).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="card">Ошибка загрузки вопросов</div>';
+  }
+}
+
+document.getElementById('send-question').addEventListener('click', async () => {
+  const input = document.getElementById('question-input');
+  const text = input.value.trim();
+  if (!text) return;
+  try {
+    const resp = await fetch('/api/questions', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ initData: getInitData(), question: text })
+    });
+    if (resp.ok) {
+      input.value = '';
+      alert('Вопрос отправлен! Ответ увидишь в боте.');
+    } else if (resp.status === 403) {
+      alert('Доступ ограничен администратором.');
+    } else if (resp.status === 401) {
+      alert('Ошибка авторизации. Закрой приложение и открой заново из бота.');
+    } else {
+      alert('Не удалось отправить вопрос. Попробуй позже.');
+    }
+  } catch (e) {
+    alert('Ошибка сети');
+  }
+});
+
+async function init() {
+  await waitInitData();
+
+  const restKey = new URLSearchParams(location.search).get('rest');
+  if (restKey) {
+    await loadProfile();
+    await showDetail(restKey);
+    return;
+  }
+
+  loadProfile();
+  loadRestaurants();
+  loadNews();
+  loadStandards();
+  loadFaq();
+}
+
+init();
+</script>
+</body>
+</html>

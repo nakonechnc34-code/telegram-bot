@@ -6,10 +6,9 @@
 <title>Wokker</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-  :root { --blue: #ff2d55; --bg: #f2f2f7; }
+  :root { --blue: #ff2d55; --bg: #f2f2f7; --gray: #9aa0a6; --green: #34c759; }
   * { box-sizing: border-box; margin: 0; }
   body { font-family: -apple-system, sans-serif; background: var(--bg); padding-bottom: 70px; }
-  h1 { font-size: 22px; padding: 16px; }
   .card { background: #fff; border-radius: 14px; margin: 0 12px 12px; padding: 14px; }
   .card b { display: block; margin-bottom: 6px; }
   .muted { color: #8e8e93; font-size: 14px; }
@@ -59,6 +58,25 @@
   .info-row .lbl { color: #8e8e93; flex: 1; }
   .info-row .val { font-weight: 600; text-align: right; max-width: 62%; overflow-wrap: break-word; }
   .profile-footer { background: #f8f8fb; padding: 10px 14px; font-size: 12px; color: #8e8e93; }
+  .profile-footer button {
+    background: none; border: 0; color: var(--blue); font-size: 12px;
+    font-weight: 600; padding: 0; text-decoration: underline; cursor: pointer;
+  }
+  .profile-footer button:active { opacity: .7; }
+
+  /* Бейдж ресторана */
+  .badge-rest {
+    display: inline-block; padding: 2px 10px; border-radius: 12px;
+    font-size: 12px; font-weight: 600; color: #fff;
+  }
+  .badge-rest.office { background: var(--gray); }
+  .badge-rest.normal { background: var(--green); }
+
+  /* Двухколоночная раскладка на широких экранах */
+  @media (min-width: 600px) {
+    .info-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 8px 14px 10px; }
+    .info-row { border-bottom: none; padding: 8px 0; }
+  }
 
   /* ===== Уровни новостей ===== */
   .news-date { color: #8e8e93; font-size: 12px; margin-top: 4px; }
@@ -109,7 +127,15 @@ const tg = window.Telegram.WebApp;
 tg.ready();
 tg.expand();
 
-// Переключение вкладок
+// ===== Загрузчики секций. Каждая вкладка при открытии обновляет данные =====
+const sectionLoaders = {
+  sec-profile: loadProfile,
+  sec-restaurants: loadRestaurants,
+  sec-news: loadNews,
+  sec-standards: loadStandards,
+  sec-faq: loadFaq,
+};
+
 document.querySelectorAll('.tabs button').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
@@ -117,13 +143,15 @@ document.querySelectorAll('.tabs button').forEach(btn => {
     btn.classList.add('active');
     document.getElementById(btn.dataset.sec).classList.add('active');
     window.scrollTo(0, 0);
+    // При каждом открытии вкладки подтягиваем свежие данные
+    const loader = sectionLoaders[btn.dataset.sec];
+    if (loader) loader();
   });
 });
 
 const esc = s => (s || '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-// Аватар из Telegram: фото, если есть, иначе первая буква имени
 function tgUserInfo() {
   try {
     const u = tg.initDataUnsafe && tg.initDataUnsafe.user;
@@ -132,7 +160,6 @@ function tgUserInfo() {
 }
 
 function avatarHtml(initial) {
-  // Сразу показываем букву-плейсхолдер, фото подтянется чуть позже
   return `<div class="avatar">${esc(initial)}</div>`;
 }
 
@@ -142,6 +169,22 @@ function initialFor(name) {
   const u = tgUserInfo();
   if (u && u.first_name && u.first_name.trim()) return u.first_name.trim().charAt(0).toUpperCase();
   return '👤';
+}
+
+// ===== Ожидание initData: Telegram отдаёт его не мгновенно после старта =====
+// Пока initData пуст, запросы к защищённым API бесполезны — ждём и повторяем.
+function waitInitData(maxAttempts = 20, delayMs = 250) {
+  return new Promise(resolve => {
+    let attempt = 0;
+    const check = () => {
+      if (tg.initData) { resolve(true); return; }
+      attempt++;
+      if (attempt >= maxAttempts) { resolve(false); return; } // ~5 секунд, дальше как есть
+      setTimeout(check, delayMs);
+    };
+    if (tg.initData) { resolve(true); return; }
+    check();
+  });
 }
 
 async function fillAvatar() {
@@ -183,6 +226,9 @@ async function loadProfile() {
     const data = await resp.json();
     if (resp.ok && data.registered) {
       const p = data.profile;
+      const isOffice = p.restaurant === 'ОФИС';
+      const restBadge = isOffice ? 'office' : 'normal';
+
       box.innerHTML = `
       <div class="profile-card">
         <div class="profile-header">
@@ -192,17 +238,49 @@ async function loadProfile() {
           <span class="badge">✅ Активен</span>
         </div>
         <div class="info-list">
-          <div class="info-row"><span class="ico">📍</span><span class="lbl">Ресторан</span><span class="val">${esc(p.restaurant)}</span></div>
-          <div class="info-row"><span class="ico">📞</span><span class="lbl">Телефон</span><span class="val"><a href="tel:${esc(p.phone)}">${esc(p.phone)}</a></span></div>
-          <div class="info-row"><span class="ico">🎂</span><span class="lbl">Дата рождения</span><span class="val">${esc(p.birth_date)}</span></div>
+          <div class="info-row">
+            <span class="ico">📍</span>
+            <span class="lbl">Ресторан</span>
+            <span class="val"><span class="badge-rest ${restBadge}">${esc(p.restaurant)}</span></span>
+          </div>
+          <div class="info-row">
+            <span class="ico">📞</span>
+            <span class="lbl">Телефон</span>
+            <span class="val"><a href="tel:${esc(p.phone)}">${esc(p.phone)}</a></span>
+          </div>
+          <div class="info-row">
+            <span class="ico">🎂</span>
+            <span class="lbl">Дата рождения</span>
+            <span class="val">${esc(p.birth_date)}</span>
+          </div>
         </div>
-        <div class="profile-footer">💡 Изменить данные можно только через администратора</div>
+        <div class="profile-footer">
+          💡 Изменить данные можно только через администратора.
+          <button id="btn-report-error">Сообщить об ошибке</button>
+        </div>
       </div>`;
       fillAvatar();
+
+      document.getElementById('btn-report-error').addEventListener('click', async () => {
+        const text = 'Ошибка в данных профиля: прошу проверить и скорректировать.';
+        try {
+          const r = await fetch('/api/questions', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ initData: tg.initData, question: text })
+          });
+          if (r.ok) {
+            alert('Сообщение отправлено администратору.');
+          } else {
+            alert('Не удалось отправить сообщение.');
+          }
+        } catch (e) {
+          alert('Ошибка сети');
+        }
+      });
     } else if (resp.status === 401) {
       box.innerHTML = '<div class="card">⚠️ Ошибка авторизации Telegram. Закрой приложение и открой заново из бота.</div>';
     } else if (resp.status === 403) {
-      const u = tgUserInfo();
       box.innerHTML = `
       <div class="profile-card">
         <div class="profile-header">
@@ -322,11 +400,17 @@ document.getElementById('send-question').addEventListener('click', async () => {
   }
 });
 
-loadProfile();
-loadRestaurants();
-loadNews();
-loadStandards();
-loadFaq();
+// ===== Старт: ждём initData (до ~5 сек), затем грузим всё автоматически =====
+async function init() {
+  await waitInitData();
+  loadProfile();      // активная вкладка по умолчанию
+  loadRestaurants();
+  loadNews();
+  loadStandards();
+  loadFaq();
+}
+
+init();
 </script>
 </body>
 </html>

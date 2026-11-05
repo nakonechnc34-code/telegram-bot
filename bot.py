@@ -5,6 +5,7 @@ import json
 import hmac
 import hashlib
 import re
+import time
 import aiohttp
 from datetime import datetime, timedelta
 from urllib.parse import unquote
@@ -183,7 +184,7 @@ RESTAURANTS = [
     {
         "key": "metropolis",
         "name": "Метрополис",
-        "address": "Москва, Ленинградское ш., д. 16А, стр. 4, ТРЦ «Метрополис», этаж 3",
+        "address": "Москва, Ленинградское ш., д. 16А, стр. 4, ТРЦ «Метрополis», этаж 3",
         "hours": "Пн–вс: 10:00–23:00",
         "lat": 55.8120,
         "lon": 37.5060,
@@ -1809,6 +1810,11 @@ def denied_response(status: int):
 AVATAR_CACHE = {}
 AVATAR_TTL = 600  # секунд, 10 минут
 
+# Кэш списка ресторанов со статусами: пересчитываем раз в минуту,
+# а не на каждый запрос — вкладка открывается мгновенно.
+REST_CACHE = {"data": None, "ts": 0.0}
+REST_CACHE_TTL = 60  # секунд
+
 
 def avatar_cache_get(user_id):
     entry = AVATAR_CACHE.get(user_id)
@@ -1830,10 +1836,8 @@ async def handle_index(request):
     return web.Response(text="Mini App: файл frontend/index.html не найден", status=404)
 
 
-async def handle_restaurants(request):
-    user_id, err = await get_auth_user(request)
-    if err:
-        return denied_response(err)
+def build_restaurants_payload():
+    """Собирает список ресторанов со статусами. Вызывается не чаще раза в REST_CACHE_TTL."""
     out = []
     for r in RESTAURANTS_FOR_APP:
         status, status_text = restaurant_status(r["hours"])
@@ -1846,7 +1850,20 @@ async def handle_restaurants(request):
             "status": status,
             "status_text": status_text,
         })
-    return web.json_response(out, dumps=json_dumps)
+    return out
+
+
+async def handle_restaurants(request):
+    user_id, err = await get_auth_user(request)
+    if err:
+        return denied_response(err)
+
+    now_ts = time.time()
+    if REST_CACHE["data"] is None or now_ts - REST_CACHE["ts"] > REST_CACHE_TTL:
+        REST_CACHE["data"] = build_restaurants_payload()
+        REST_CACHE["ts"] = now_ts
+
+    return web.json_response(REST_CACHE["data"], dumps=json_dumps)
 
 
 async def handle_news(request):

@@ -70,7 +70,6 @@
 </style>
 </head>
 <body>
-<h1>📱 Wokker</h1>
 
 <div class="section" id="sec-profile">
   <div id="profile-box">Загрузка профиля…</div>
@@ -132,11 +131,17 @@ function tgUserInfo() {
   } catch (e) { return null; }
 }
 
-function avatarHtml() {
+function avatarHtml(initial) {
   // Сразу показываем букву-плейсхолдер, фото подтянется чуть позже
-  const u = tgUserInfo();
-  const initial = (u && u.first_name) ? u.first_name.trim().charAt(0).toUpperCase() : '👤';
   return `<div class="avatar">${esc(initial)}</div>`;
+}
+
+function initialFor(name) {
+  const n = (name || '').trim();
+  if (n) return n.charAt(0).toUpperCase();
+  const u = tgUserInfo();
+  if (u && u.first_name && u.first_name.trim()) return u.first_name.trim().charAt(0).toUpperCase();
+  return '👤';
 }
 
 async function fillAvatar() {
@@ -181,13 +186,12 @@ async function loadProfile() {
       box.innerHTML = `
       <div class="profile-card">
         <div class="profile-header">
-          ${avatarHtml()}
+          ${avatarHtml(initialFor(p.full_name))}
           <div class="p-name">${esc(p.full_name)}</div>
           <div class="p-pos">${esc(p.position)}</div>
           <span class="badge">✅ Активен</span>
         </div>
         <div class="info-list">
-          <div class="info-row"><span class="ico">💼</span><span class="lbl">Должность</span><span class="val">${esc(p.position)}</span></div>
           <div class="info-row"><span class="ico">📍</span><span class="lbl">Ресторан</span><span class="val">${esc(p.restaurant)}</span></div>
           <div class="info-row"><span class="ico">📞</span><span class="lbl">Телефон</span><span class="val"><a href="tel:${esc(p.phone)}">${esc(p.phone)}</a></span></div>
           <div class="info-row"><span class="ico">🎂</span><span class="lbl">Дата рождения</span><span class="val">${esc(p.birth_date)}</span></div>
@@ -198,10 +202,11 @@ async function loadProfile() {
     } else if (resp.status === 401) {
       box.innerHTML = '<div class="card">⚠️ Ошибка авторизации Telegram. Закрой приложение и открой заново из бота.</div>';
     } else if (resp.status === 403) {
+      const u = tgUserInfo();
       box.innerHTML = `
       <div class="profile-card">
         <div class="profile-header">
-          ${avatarHtml()}
+          ${avatarHtml(initialFor(null))}
           <div class="p-name">Доступ ограничен</div>
           <span class="badge blocked">🚫 Заблокирован</span>
         </div>

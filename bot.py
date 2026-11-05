@@ -62,7 +62,7 @@ RESTAURANTS = [
     {
         "key": "mega_belaya_dacha",
         "name": "Мега Белая Дача",
-        "address": "г. Котельники, 1-й Покровский проезд, д. 5, ТЦ «Мега Белая Дача»",
+        "address": "Московская область, Котельники, 1-й Покровский проезд, 5, ТРЦ Мега, этаж 1",
         "hours": "10:00–22:00",
         "lat": 55.6578,
         "lon": 37.8891,
@@ -299,7 +299,9 @@ def profile_text(row):
 
 
 def map_link(restaurant) -> str:
-    return f"https://yandex.ru/maps/?ll={restaurant['lon']},{restaurant['lat']}&z=17"
+    name = restaurant["name"].replace(" ", "+")
+    address = restaurant["address"].replace(" ", "+").replace(",", "+")
+    return f"https://yandex.ru/maps/?text={name}+{address}"
 
 
 def admin_menu_kb():
@@ -314,10 +316,12 @@ def users_list_kb(rows):
     for user_id, full_name, phone, welcomed, is_blocked in rows:
         if is_blocked:
             icon = "🚫"
-            action_text, action_data = "✅ Разбанить", f"adm_unban:{user_id}"
+            action_text = "✅ Разбанить"
+            action_data = f"adm_unban:{user_id}"
         else:
             icon = "✅" if full_name else "⏳"
-            action_text, action_data = "🚫 Забанить", f"adm_ban:{user_id}"
+            action_text = "🚫 Забанить"
+            action_data = f"adm_ban:{user_id}"
         kb.append([
             InlineKeyboardButton(
                 text=f"{icon} {full_name or 'Без имени'} · {phone or user_id}",

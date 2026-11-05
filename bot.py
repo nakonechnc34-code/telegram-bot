@@ -137,6 +137,21 @@ with get_conn() as conn:
                 sort INT DEFAULT 100
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS greetings_log (
+                user_id BIGINT,
+                kind TEXT,
+                year INT,
+                PRIMARY KEY (user_id, kind, year)
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS holiday_broadcast_log (
+                kind TEXT,
+                year INT,
+                PRIMARY KEY (kind, year)
+            )
+        """)
         cur.execute("SELECT COUNT(*) FROM news")
         if cur.fetchone()[0] == 0:
             cur.execute(
@@ -213,6 +228,151 @@ FAQ = [
 ]
 
 
+# ================== ПРАЗДНИКИ И ПОЗДРАВЛЕНИЯ ==================
+
+# Праздники России: (месяц, день) -> (название, текст)
+# Легко пополнять — просто добавляйте новые даты в словарь.
+HOLIDAYS = {
+    (1, 1): ("🎉 Новый год!", "С Новым годом! Пусть он принесёт яркие события, отдых и вкусный стол."),
+    (1, 7): ("✨ Рождество Христово", "Светлого Рождества! Тепла, уюта и добрых людей рядом."),
+    (2, 23): ("🎖 День защитника Отечества", "С 23 Февраля! Поздравляем всех, кто оберегает и поддерживает команду."),
+    (3, 8): ("🌷 Международный женский день", "С 8 Марта! Пусть весна приносит улыбки, цветы и лёгкие смены."),
+    (4, 12): ("🚀 День космонавтики", "С Днём космонавтики! Пусть удача будет космической."),
+    (5, 1): ("🌼 Праздник Весны и Труда", "С Первым мая! Отдохните, наберитесь сил и насладитесь весной."),
+    (5, 9): ("🎗 День Победы", "С Днём Победы! Помним и благодарим."),
+    (6, 12): ("🇷🇺 День России", "С Днём России! Хорошего праздника и выходного настроения."),
+    (8, 22): ("🇷🇺 День Государственного флага России", "С Днём флага! Три цвета — одна команда."),
+    (9, 1): ("🔔 День знаний", "С Днём знаний! Учиться новому — всегда хорошая идея."),
+    (11, 4): ("🤝 День народного единства", "С Днём народного единства! Вместе мы — сила."),
+    (12, 31): ("🎄 Канун Нового года", "Последний день года — выдохните и подведите итоги. Праздник уже на пороге!"),
+}
+
+
+def _moscow_now():
+    if MOSCOW_TZ:
+        return datetime.now(MOSCOW_TZ)
+    return datetime.utcnow() + timedelta(hours=3)
+
+
+def greeting_for_user(birth_date: str, now=None):
+    """Возвращает (kind, title, sub): 'birthday', 'holiday' или 'normal'."""
+    now = now or _moscow_now()
+    if birth_date:
+        try:
+            b = datetime.strptime(birth_date, "%d.%m.%Y")
+            if (b.month, b.day) == (now.month, now.day):
+                return (
+                    "birthday",
+                    "🎂 С Днём рождения!",
+                    "Вся команда Wokker поздравляет вас. Пусть этот день будет вкусным и счастливым!",
+                )
+        except ValueError:
+            pass
+    hol = HOLIDAYS.get((now.month, now.day))
+    if hol:
+        return ("holiday", hol[0], hol[1])
+    return ("normal", "", "")
+
+
+# --- Журналы поздравлений (защита от дублей) ---
+
+def db_already_greeted(user_id: int, kind: str, year: int) -> bool:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM greetings_log WHERE user_id = %s AND kind = %s AND year = %s",
+                (user_id, kind, year)
+            )
+            return cur.fetchone() is not None
+
+
+def db_mark_greeted(user_id: int, kind: str, year: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO greetings_log (user_id, kind, year) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
+                (user_id, kind, year)
+            )
+        conn.commit()
+
+
+def db_holiday_broadcast_done(kind: str, year: int) -> bool:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM holiday_broadcast_log WHERE kind = %s AND year = %s",
+                (kind, year)
+            )
+            return cur.fetchone() is not None
+
+
+def db_mark_holiday_broadcast(kind: str, year: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO holiday_broadcast_log (kind, year) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                (kind, year)
+            )
+        conn.commit()
+
+
+# --- Фоновые процессы ---
+
+async def birthday_checker():
+    """Раз в час: поздравляет сотрудников с днём рождения (по московскому времени)."""
+    while True:
+        try:
+            now = _moscow_now()
+            year = now.year
+            today_md = f"{now.day:02d}.{now.month:02d}"  # формат ДД.ММ из ДД.ММ.ГГГГ
+            for user_id in db_list_active_users():
+                row = db_get(user_id)
+                if not row or not row[2]:
+                    continue
+                if row[2][:5] == today_md and not db_already_greeted(user_id, "birthday", year):
+                    name = (row[0] or "").split()[0] if row[0] else "коллега"
+                    try:
+                        await bot.send_message(
+                            user_id,
+                            f"🎂 <b>{name}, с Днём рождения!</b>\n\n"
+                            "Команда Wokker поздравляет вас! Пусть год будет лёгким, "
+                            "смены — удачными, а гости — благодарными.\n"
+                            "Хорошего праздника! 🥳",
+                            parse_mode="HTML"
+                        )
+                        db_mark_greeted(user_id, "birthday", year)
+                    except Exception as e:
+                        logging.warning(f"Не удалось отправить поздравление {user_id}: {e}")
+        except Exception as e:
+            logging.error(f"birthday_checker: {e}")
+        await asyncio.sleep(3600)
+
+
+async def holiday_broadcaster():
+    """Раз в час: проверяет, не наступил ли праздник, и рассылает его один раз в год."""
+    while True:
+        try:
+            now = _moscow_now()
+            hol = HOLIDAYS.get((now.month, now.day))
+            if hol:
+                kind = f"holiday:{now.month:02d}-{now.day:02d}"
+                if not db_holiday_broadcast_done(kind, now.year):
+                    title, text = hol
+                    sent = 0
+                    for user_id in db_list_active_users():
+                        try:
+                            await bot.send_message(user_id, f"{title}\n\n{text}")
+                            sent += 1
+                        except Exception:
+                            pass
+                        await asyncio.sleep(0.05)
+                    db_mark_holiday_broadcast(kind, now.year)
+                    logging.info(f"Праздничная рассылка {kind}: отправлено {sent} сообщений")
+        except Exception as e:
+            logging.error(f"holiday_broadcaster: {e}")
+        await asyncio.sleep(3600)
+
+
 # ================== СТАТУС РЕСТОРАНОВ ПО РЕЖИМУ РАБОТЫ ==================
 
 DAY_MAP = {"пн": 0, "вт": 1, "ср": 2, "чт": 3, "пт": 4, "сб": 5, "вс": 6}
@@ -272,10 +432,7 @@ def _fmt_minutes(total_min: int) -> str:
 def restaurant_status(hours_text: str):
     """Возвращает (status, status_text) по текущему московскому времени."""
     schedule = parse_hours(hours_text)
-    if MOSCOW_TZ:
-        now = datetime.now(MOSCOW_TZ)
-    else:
-        now = datetime.utcnow() + timedelta(hours=3)
+    now = _moscow_now()
     cur = now.hour * 60 + now.minute
     dow = now.weekday()
 
@@ -727,11 +884,25 @@ def positions_kb():
     ])
 
 
+def positions_edit_kb(target_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=pos, callback_data=f"editsetpos:{target_id}:{idx}")]
+        for idx, pos in enumerate(POSITIONS)
+    ] + [[InlineKeyboardButton(text="🔙 К карточке", callback_data=f"adm_user:{target_id}")]])
+
+
 def restaurants_pick_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=r["name"], callback_data=f"restpick:{r['key']}")]
         for r in db_restaurants_all()
     ])
+
+
+def restaurants_edit_kb(target_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=r["name"], callback_data=f"editsetrest:{target_id}:{r['key']}")]
+        for r in db_restaurants_all()
+    ] + [[InlineKeyboardButton(text="🔙 К карточке", callback_data=f"adm_user:{target_id}")]])
 
 
 def restaurant_name_by_key(key):
@@ -764,6 +935,139 @@ def admin_menu_kb():
         [InlineKeyboardButton(text="📊 Отчёты", callback_data="adm_reports")],
         [InlineKeyboardButton(text="🔄 Обновить", callback_data="adm_menu")],
     ])
+
+
+# ================== ТЕКСТЫ И КЛАВИАТУРЫ: ПОЛЬЗОВАТЕЛИ ==================
+
+LEVEL_LABELS = {
+    "urgent": "🔴 Срочная",
+    "important": "🟡 Важная",
+    "normal": "🔵 Обычная",
+}
+
+
+def users_list_text(rows):
+    if not rows:
+        return "📋 Пока никто не зарегистрирован."
+    lines = [f"📋 Всего пользователей: {len(rows)}\n"]
+    for user_id, full_name, phone, position, restaurant, welcomed, is_blocked in rows:
+        if not full_name:
+            lines.append(f"• <code>{user_id}</code> — регистрация не завершена")
+            continue
+        mark = " 🚫" if is_blocked else ""
+        rest = restaurant_name_by_key(restaurant) if restaurant else "—"
+        lines.append(f"• <b>{full_name}</b>{mark} — {position or 'должность не указана'}, {rest}")
+    lines.append("\nНажми на пользователя в списке ниже, чтобы посмотреть карточку.")
+    return "\n".join(lines)
+
+
+def users_list_kb(rows):
+    kb = []
+    for user_id, full_name, phone, position, restaurant, welcomed, is_blocked in rows:
+        label = full_name if full_name else f"ID {user_id}"
+        if is_blocked:
+            label = "🚫 " + label
+        kb.append([InlineKeyboardButton(text=label[:60], callback_data=f"adm_user:{user_id}")])
+    kb.append([InlineKeyboardButton(text="🔙 В админ-меню", callback_data="adm_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+
+def user_card_text(target_id: int, row) -> str:
+    if not row:
+        return "Пользователь не найден."
+    full_name, phone, birth_date, position, restaurant, welcomed, is_blocked = row
+    rest_name = restaurant_name_by_key(restaurant) if restaurant else "—"
+    status = "🚫 Заблокирован" if is_blocked else "✅ Активен"
+    return (
+        f"👤 <b>Пользователь</b>\n"
+        "──────────────────────────────\n"
+        f"🆔 ID: <code>{target_id}</code>\n"
+        f"👤 ФИО: <b>{full_name or '—'}</b>\n"
+        f"💼 Должность: {position or '—'}\n"
+        f"📍 Ресторан: {rest_name}\n"
+        f"📞 Телефон: {phone or '—'}\n"
+        f"🎂 Дата рождения: {birth_date or '—'}\n"
+        f"📊 Статус: {status}"
+    )
+
+
+def user_edit_kb(target_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✏️ ФИО", callback_data=f"edit_field:{target_id}:full_name"),
+            InlineKeyboardButton(text="📞 Телефон", callback_data=f"edit_field:{target_id}:phone"),
+        ],
+        [
+            InlineKeyboardButton(text="🎂 Дата рождения", callback_data=f"edit_field:{target_id}:birth_date"),
+            InlineKeyboardButton(text="💼 Должность", callback_data=f"edit_pos:{target_id}"),
+        ],
+        [InlineKeyboardButton(text="📍 Ресторан", callback_data=f"edit_rest:{target_id}")],
+        [
+            InlineKeyboardButton(text="🚫 Заблокировать", callback_data=f"adm_ban:{target_id}"),
+            InlineKeyboardButton(text="🗑 Удалить", callback_data=f"adm_del:{target_id}"),
+        ],
+        [InlineKeyboardButton(text="🔙 К списку", callback_data="adm_users")],
+    ])
+
+
+# ================== ТЕКСТЫ И КЛАВИАТУРЫ: НОВОСТИ ==================
+
+def news_admin_text(rows):
+    if not rows:
+        return "📰 Новостей пока нет. Нажми «Добавить новость»."
+    lines = ["📰 Опубликованные новости:\n"]
+    for news_id, title, body, important, level, created_at in rows:
+        lvl = level if level in LEVEL_LABELS else "normal"
+        date_str = created_at.strftime("%d.%m.%Y") if created_at else ""
+        lines.append(f"{LEVEL_LABELS[lvl]} <b>{title}</b> ({date_str})")
+    return "\n".join(lines)
+
+
+def news_admin_kb(rows):
+    kb = []
+    for news_id, title, body, important, level, created_at in rows:
+        short = (title or "Без названия")[:30]
+        kb.append([
+            InlineKeyboardButton(text=f"📢 {short}", callback_data=f"news_send:{news_id}"),
+            InlineKeyboardButton(text="🗑", callback_data=f"news_del:{news_id}"),
+        ])
+    kb.append([InlineKeyboardButton(text="➕ Добавить новость", callback_data="news_add")])
+    kb.append([InlineKeyboardButton(text="🔙 В админ-меню", callback_data="adm_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+
+def news_important_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=LEVEL_LABELS["urgent"], callback_data="news_imp:urgent")],
+        [InlineKeyboardButton(text=LEVEL_LABELS["important"], callback_data="news_imp:important")],
+        [InlineKeyboardButton(text=LEVEL_LABELS["normal"], callback_data="news_imp:normal")],
+    ])
+
+
+async def broadcast_news(title: str, body: str, level: str):
+    """Рассылка новости всем активным пользователям с кнопкой «Скрыть уведомление»."""
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑 Скрыть уведомление", callback_data="hide_notification")]
+    ])
+    icon = LEVEL_LABELS.get(level, LEVEL_LABELS["normal"])
+    text = f"{icon} <b>{title}</b>\n\n{body}"
+    sent, failed = 0, 0
+    for user_id in db_list_active_users():
+        try:
+            await bot.send_message(user_id, text, parse_mode="HTML", reply_markup=kb)
+            sent += 1
+        except Exception:
+            failed += 1
+        await asyncio.sleep(0.05)
+    if ADMIN_ID:
+        try:
+            await bot.send_message(
+                ADMIN_ID,
+                f"📬 Рассылка завершена.\n\n📰 «{title}»\n"
+                f"✅ Доставлено: {sent}\n❌ Не доставлено: {failed}"
+            )
+        except Exception:
+            pass
 
 
 # ================== АДМИНКА РЕСТОРАНОВ ==================
@@ -1904,6 +2208,7 @@ def build_restaurants_payload():
             "hours": r["hours"],
             "org": r["org"],
             "phone": r.get("phone") or "",
+            "sort": r.get("sort") if r.get("sort") is not None else 100,
             "status": status,
             "status_text": status_text,
         })
@@ -1921,6 +2226,16 @@ async def handle_restaurants(request):
         REST_CACHE["ts"] = now_ts
 
     return web.json_response(REST_CACHE["data"], dumps=json_dumps)
+
+
+async def handle_greeting(request):
+    user_id, err = await get_auth_user(request)
+    if err:
+        return denied_response(err)
+    row = db_get(user_id)
+    birth_date = row[2] if row else None
+    kind, title, sub = greeting_for_user(birth_date)
+    return web.json_response({"kind": kind, "title": title, "sub": sub}, dumps=json_dumps)
 
 
 async def handle_news(request):
@@ -2048,6 +2363,7 @@ async def handle_health(request):
 app = web.Application()
 app.router.add_get("/", handle_index)
 app.router.add_post("/api/restaurants", handle_restaurants)
+app.router.add_post("/api/greeting", handle_greeting)
 app.router.add_post("/api/news", handle_news)
 app.router.add_post("/api/standards", handle_standards)
 app.router.add_post("/api/faq", handle_faq)
@@ -2067,6 +2383,10 @@ async def main():
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
     logging.info(f"Web server (API + Mini App) running on port {port}")
+
+    # Фоновые процессы поздравлений
+    asyncio.create_task(birthday_checker())
+    asyncio.create_task(holiday_broadcaster())
 
     print("STARTING BOT SCRIPT...")
     try:

@@ -28,6 +28,7 @@ TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     print("ОШИБКА: Переменная BOT_TOKEN не задана!")
     raise ValueError("BOT_TOKEN is not set")
+TOKEN = TOKEN.strip()  # на случай пробела или переноса строки в переменной окружения
 
 ADMIN_ID = os.getenv("ADMIN_ID")
 if not ADMIN_ID:
@@ -396,30 +397,34 @@ class Registration(StatesGroup):
     restaurant = State()
 
 
-# ================== ПРОВЕРКА MINI APP (initData) С ДИАГНОСТИКОЙ ==================
+# ================== ПРОВЕРКА MINI APP (initData) ==================
+
+def _parse_user_field(pairs_dict: dict):
+    """Декодирует и разбирает поле user. Возвращает dict или None."""
+    try:
+        return json.loads(unquote(pairs_dict.get("user", "{}")))
+    except Exception as e:
+        logging.warning(f"initData: не удалось разобрать user: {e}")
+        return None
+
 
 def validate_init_data(init_data: str):
     """
     Проверяет подпись initData из Mini App по спецификации Telegram.
     Возвращает dict пользователя или None.
 
-    Важно: data_check_string строится из СЫРЫХ (не декодированных) значений.
-    Декодирование — только для разбора поля user после проверки подписи.
-
-    Содержит временную диагностику: после первого запроса лог покажет
-    состав полей, конец data_check_string и хвосты обоих хешей.
+    Сначала пробует «сырой» вариант (как требует документация),
+    затем — декодированный (на случай перекодирования по пути).
+    При неудаче пишет отпечаток токена и фрагменты строки для диагностики.
     """
     if not init_data:
         logging.warning("initData: пустая строка")
         return None
 
-    logging.info(f"initData: длина строки = {len(init_data)}, полей = {init_data.count('&') + 1}")
-
     try:
         pairs = []
         for pair in init_data.split("&"):
             if "=" not in pair:
-                logging.warning(f"initData: поле без '=': {pair[:50]!r}")
                 continue
             key, _, value = pair.partition("=")
             pairs.append((key, value))
@@ -433,28 +438,31 @@ def validate_init_data(init_data: str):
         logging.warning("initData: нет поля hash")
         return None
 
-    keys = sorted(k for k, _ in pairs if k != "hash")
-    logging.info(f"initData: ключи полей = {keys}")
-
-    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(pairs) if k != "hash")
     secret_key = hmac.new(b"WebAppData", TOKEN.encode(), hashlib.sha256).digest()
+
+    # Вариант 1: строка из «сырых» (не декодированных) значений — как требует Telegram
+    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(pairs) if k != "hash")
     computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
 
-    logging.info(f"initData: recv_hash = ...{received_hash[-8:]}")
-    logging.info(f"initData: calc_hash = ...{computed_hash[-8:]}")
-    # Хвост строки подписи — по нему видно, что именно попало в расчёт
-    logging.info(f"initData: конец data_check_string = {data_check_string[-60:]!r}")
+    if hmac.compare_digest(computed_hash, received_hash):
+        logging.info("initData: подпись ОК (raw-вариант)")
+        return _parse_user_field(pairs_dict)
 
-    if not hmac.compare_digest(computed_hash, received_hash):
-        logging.warning("initData: ПОДПИСЬ НЕ СОВПАЛА — смотрите логи выше")
-        return None
+    # Вариант 2 (диагностика): вдруг строку где-то перекодировали
+    decoded_string = "\n".join(f"{k}={unquote(v)}" for k, v in sorted(pairs) if k != "hash")
+    decoded_hash = hmac.new(secret_key, decoded_string.encode(), hashlib.sha256).hexdigest()
 
-    try:
-        # поле user приходит URL-кодированным — декодируем перед разбором JSON
-        return json.loads(unquote(pairs_dict.get("user", "{}")))
-    except Exception as e:
-        logging.warning(f"initData: не удалось разобрать user: {e}")
-        return None
+    if hmac.compare_digest(decoded_hash, received_hash):
+        logging.warning("initData: подпись сошлась только для ДЕКОДИРОВАННОЙ строки — initData перекодирован по пути")
+        return _parse_user_field(pairs_dict)
+
+    logging.warning("initData: ПОДПИСЬ НЕ СОВПАЛА ни в одном варианте — вероятнее всего, BOT_TOKEN не тот")
+    logging.warning(f"  TOKEN fingerprint: длина={len(TOKEN)}, начало={TOKEN[:5]!r}, конец={TOKEN[-4:]!r}")
+    logging.warning(f"  начало data_check_string: {data_check_string[:80]!r}")
+    logging.warning(f"  конец data_check_string:  {data_check_string[-80:]!r}")
+    logging.warning(f"  recv_hash = {received_hash}")
+    logging.warning(f"  calc_hash = {computed_hash}")
+    return None
 
 
 # ================== КЛАВИАТУРЫ ==================

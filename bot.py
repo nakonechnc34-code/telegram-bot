@@ -2,6 +2,8 @@ import os
 import asyncio
 import logging
 import json
+import hmac
+import hashlib
 from datetime import datetime
 from urllib.parse import quote
 
@@ -229,6 +231,54 @@ POSITIONS = [
     "Территориальный управляющий",
 ]
 
+# ================== КОНТЕНТ ДЛЯ ПРИЛОЖЕНИЯ ==================
+# Наполняй списками — они отдаются приложению через API.
+
+STANDARDS = [
+    {
+        "id": 1,
+        "title": "Правила открытия смены",
+        "category": "Чек-листы",
+        "description": "Что проверить перед открытием: оборудование, чистота, касса.",
+        "url": "",
+    },
+    {
+        "id": 2,
+        "title": "Стандарт работы вокера",
+        "category": "Технология",
+        "description": "Пошаговый стандарт приготовления блюд на воке.",
+        "url": "",
+    },
+    {
+        "id": 3,
+        "title": "Обработка жалоб гостей",
+        "category": "Сервис",
+        "description": "Как реагировать на претензии и когда звать управляющего.",
+        "url": "",
+    },
+]
+
+FAQ = [
+    {
+        "id": 1,
+        "question": "Как посмотреть график смен?",
+        "answer": "График вывешивается на информационной доске в ресторане и уточняется у управляющего сменой.",
+        "category": "Работа",
+    },
+    {
+        "id": 2,
+        "question": "Куда сообщать о поломке оборудования?",
+        "answer": "Напиши управляющему сменой. Если поломка серьёзная — он оформляет заявку в сервис.",
+        "category": "Работа",
+    },
+    {
+        "id": 3,
+        "question": "Как поменять ресторан в профиле?",
+        "answer": "Обратись к администратору — данные в профиле меняются только через админа.",
+        "category": "Бот",
+    },
+]
+
 
 # ================== БАЗА ДАННЫХ ==================
 
@@ -341,17 +391,39 @@ class Registration(StatesGroup):
     restaurant = State()
 
 
+# ================== ПРОВЕРКА MINI APP (initData) ==================
+
+def validate_init_data(init_data: str):
+    """Проверяет подпись initData из Mini App. Возвращает dict пользователя или None."""
+    if not init_data:
+        return None
+    try:
+        pairs = {}
+        for pair in init_data.split("&"):
+            key, _, value = pair.partition("=")
+            pairs[key] = value
+    except Exception:
+        return None
+    received_hash = pairs.pop("hash", None)
+    if not received_hash:
+        return None
+    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(pairs.items()))
+    secret_key = hmac.new(b"WebAppData", TOKEN.encode(), hashlib.sha256).digest()
+    computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(computed_hash, received_hash):
+        return None
+    try:
+        return json.loads(pairs.get("user", "{}"))
+    except Exception:
+        return None
+
+
 # ================== КЛАВИАТУРЫ ==================
 
 FULL_MENU = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="📱 Открыть приложение Wokker", web_app=WebAppInfo(url=MINI_APP_URL))],
     [InlineKeyboardButton(text="👤 Профиль", callback_data="show_profile")],
-    [InlineKeyboardButton(
-        text="🏙️ Рестораны (приложение)",
-        web_app=WebAppInfo(url=MINI_APP_URL)
-    )],
     [InlineKeyboardButton(text="🏙️ Наши рестораны (списком)", callback_data="restaurants")],
-    [InlineKeyboardButton(text="📚 Библиотека стандартов", callback_data="standards")],
-    [InlineKeyboardButton(text="❓ Вопрос/ответ", callback_data="faq")],
 ])
 
 REGISTER_ONLY = InlineKeyboardMarkup(inline_keyboard=[
@@ -604,7 +676,7 @@ async def adm_noop(callback: types.CallbackQuery):
         await callback.answer("⛔ Недоступно", show_alert=True)
 
 
-# ================== РЕСТОРАНЫ ==================
+# ================== РЕСТОРАНЫ (в боте, как запасной вариант) ==================
 
 def restaurants_menu_kb():
     kb = []
@@ -891,7 +963,10 @@ async def show_standards(callback: types.CallbackQuery):
         await callback.message.answer("⛔ Доступ к боту ограничен.")
         return
     await callback.message.answer(
-        "📚 Библиотека стандартов\n\nЗдесь будут инструкции, чек-листы и стандарты качества Wokker."
+        "📚 Библиотека стандартов\n\nОткрой мини-приложение — там полный список документов.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📱 Открыть приложение", web_app=WebAppInfo(url=MINI_APP_URL))],
+        ])
     )
 
 
@@ -902,7 +977,10 @@ async def show_faq(callback: types.CallbackQuery):
         await callback.message.answer("⛔ Доступ к боту ограничен.")
         return
     await callback.message.answer(
-        "❓ Вопрос/ответ\n\nЧастые вопросы и ответы по работе с ботом и ресторанами."
+        "❓ Вопрос/ответ\n\nОткрой мини-приложение — там база вопросов и форма для своего вопроса.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📱 Открыть приложение", web_app=WebAppInfo(url=MINI_APP_URL))],
+        ])
     )
 
 
@@ -920,6 +998,10 @@ async def cmd_profile(message: types.Message):
 
 # ================== ВЕБ-СЕРВЕР (API + Mini App) ==================
 
+def json_dumps(data) -> str:
+    return json.dumps(data, ensure_ascii=False)
+
+
 async def handle_index(request):
     """Отдаёт главную страницу Mini App из frontend/index.html."""
     index_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "index.html")
@@ -929,10 +1011,84 @@ async def handle_index(request):
 
 
 async def handle_restaurants(request):
-    return web.json_response(
-        RESTAURANTS,
-        dumps=lambda data: json.dumps(data, ensure_ascii=False)
-    )
+    return web.json_response(RESTAURANTS, dumps=json_dumps)
+
+
+async def handle_standards(request):
+    return web.json_response(STANDARDS, dumps=json_dumps)
+
+
+async def handle_faq(request):
+    return web.json_response(FAQ, dumps=json_dumps)
+
+
+async def handle_profile(request):
+    """Возвращает профиль сотрудника. Требует валидный initData из Mini App."""
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+
+    user = validate_init_data(payload.get("initData", ""))
+    if not user or not user.get("id"):
+        return web.json_response({"error": "unauthorized"}, status=401, dumps=json_dumps)
+
+    user_id = int(user["id"])
+    if db_is_blocked(user_id):
+        return web.json_response({"error": "blocked"}, status=403, dumps=json_dumps)
+
+    row = db_get(user_id)
+    if not row or not row[0]:
+        return web.json_response({"registered": False}, dumps=json_dumps)
+
+    full_name, phone, birth_date, position, restaurant, welcomed, is_blocked = row
+    return web.json_response({
+        "registered": True,
+        "profile": {
+            "full_name": full_name,
+            "phone": phone,
+            "birth_date": birth_date,
+            "position": position or "—",
+            "restaurant": restaurant_name_by_key(restaurant) if restaurant else "—",
+            "tg_id": user_id,
+        },
+    }, dumps=json_dumps)
+
+
+async def handle_questions(request):
+    """Принимает вопрос сотрудника из мини-приложения и пересылает админу."""
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+
+    user = validate_init_data(payload.get("initData", ""))
+    if not user or not user.get("id"):
+        return web.json_response({"error": "unauthorized"}, status=401, dumps=json_dumps)
+
+    question_text = (payload.get("question") or "").strip()
+    if not question_text or len(question_text) > 1000:
+        return web.json_response({"error": "invalid_question"}, status=400, dumps=json_dumps)
+
+    user_id = int(user["id"])
+    if db_is_blocked(user_id):
+        return web.json_response({"error": "blocked"}, status=403, dumps=json_dumps)
+
+    if ADMIN_ID:
+        row = db_get(user_id)
+        who = row[0] if row and row[0] else user.get("username", "—")
+        try:
+            await bot.send_message(
+                ADMIN_ID,
+                "❓ Новый вопрос из приложения\n\n"
+                f"👤 {who} (<code>{user_id}</code>)\n"
+                f"💬 {question_text}",
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logging.warning(f"Не удалось отправить вопрос админу: {e}")
+
+    return web.json_response({"ok": True}, dumps=json_dumps)
 
 
 async def handle_health(request):
@@ -942,6 +1098,10 @@ async def handle_health(request):
 app = web.Application()
 app.router.add_get("/", handle_index)
 app.router.add_get("/api/restaurants", handle_restaurants)
+app.router.add_get("/api/standards", handle_standards)
+app.router.add_get("/api/faq", handle_faq)
+app.router.add_post("/api/profile", handle_profile)
+app.router.add_post("/api/questions", handle_questions)
 app.router.add_get("/api/health", handle_health)
 
 

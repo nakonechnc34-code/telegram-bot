@@ -59,8 +59,6 @@ with get_conn() as conn:
 print("База данных подключена, таблица готова.")
 
 
-# ВАЖНО: для Кузьминки Молл вставь актуальный org из URL карточки Яндекс Карт
-# Пример: "org": "vokker/123456789"
 RESTAURANTS = [
     {
         "key": "mega_belaya_dacha",
@@ -105,7 +103,7 @@ RESTAURANTS = [
         "hours": "10:00–22:00",
         "lat": 55.6980,
         "lon": 37.7750,
-        "org": "vokker/123456789"  # <-- ЗАМЕНИ на реальный org из URL карточки
+        "org": "vokker/24262320480",
     },
     {
         "key": "mega_teplyy_stan",
@@ -319,7 +317,6 @@ def profile_text(row):
 def map_link(restaurant) -> str:
     if restaurant.get("org"):
         return f"https://yandex.ru/maps/org/{restaurant['org']}"
-    # Кодируем кириллицу, иначе Telegram отклонит кнопку (BUTTON_URL_INVALID)
     query = quote(f"Воккер {restaurant['address']}", safe="")
     return f"https://yandex.ru/maps/?text={query}"
 
@@ -529,7 +526,6 @@ async def show_restaurant_info(callback: types.CallbackQuery):
         await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
     except Exception as e:
         logging.exception(f"Не удалось отправить карточку ресторана: {e}")
-        # Запасной вариант без кнопок, чтобы сообщение всё равно ушло
         await callback.message.answer(
             f"<b>{restaurant['name']}</b>\n\n"
             f"📍 Адрес: {restaurant['address']}\n"

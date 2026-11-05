@@ -5,7 +5,7 @@ import json
 import hmac
 import hashlib
 from datetime import datetime
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types
@@ -419,7 +419,8 @@ def validate_init_data(init_data: str):
     if not hmac.compare_digest(computed_hash, received_hash):
         return None
     try:
-        return json.loads(pairs.get("user", "{}"))
+        # поле user приходит URL-кодированным — декодируем перед разбором JSON
+        return json.loads(unquote(pairs.get("user", "{}")))
     except Exception:
         return None
 

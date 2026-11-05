@@ -11,10 +11,12 @@
     --bg: #f2f2f7;
     --gray: #9aa0a6;
     --green: #34c759;
+    /* Бежевая палитра вкладки «Рестораны» */
     --beige: #c3a578;
     --beige-dark: #b2946a;
     --beige-soft: #f6efe3;
     --beige-border: #e6d8c2;
+    /* Акцентный край кнопки карты */
     --map-border: #d9534f;
   }
   * { box-sizing: border-box; margin: 0; }
@@ -77,9 +79,7 @@
   details p { margin-top: 8px; color: #3a3a3c; }
 
   /* ===== Скелетон: мгновенная заглушка вместо пустого экрана ===== */
-  .skeleton-card {
-    background: #fff; border-radius: 14px; margin: 12px 12px 12px; padding: 16px;
-  }
+  .skeleton-card { background: #fff; border-radius: 14px; margin: 12px 12px 12px; padding: 16px; }
   .skeleton-line {
     height: 14px; border-radius: 7px; margin-bottom: 10px;
     background: linear-gradient(90deg, #f0e9dd 25%, #f8f3ea 50%, #f0e9dd 75%);
@@ -92,6 +92,9 @@
     100% { background-position: -200% 0; }
   }
 
+  /* ============================================================
+     ПРОФИЛЬ
+     ============================================================ */
   .greeting { margin: 14px 12px 4px; padding: 0 4px; }
   .greeting .g-title { font-size: 22px; font-weight: 700; color: #3a2f1f; line-height: 1.25; }
   .greeting .g-sub { font-size: 13px; color: #96876f; margin-top: 2px; }
@@ -131,15 +134,21 @@
   .profile-footer { background: #f8f8fb; padding: 10px 14px; font-size: 12px; color: #8e8e93; }
   .profile-footer button { background: none; border: 0; color: var(--blue); font-size: 12px;
     font-weight: 600; padding: 0; text-decoration: underline; cursor: pointer; }
+  .profile-footer button:active { opacity: .7; }
+
   .badge-rest { display: inline-block; padding: 2px 10px; border-radius: 12px;
     font-size: 12px; font-weight: 600; color: #fff; }
   .badge-rest.office { background: var(--gray); }
   .badge-rest.normal { background: var(--green); }
+
   @media (min-width: 600px) {
     .info-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 8px 14px 10px; }
     .info-row { border-bottom: none; padding: 8px 0; }
   }
 
+  /* ============================================================
+     РЕСТОРАНЫ: бежевый дизайн
+     ============================================================ */
   .rest-tab-header { margin: 12px 12px 4px; padding: 14px 16px;
     background: linear-gradient(135deg, var(--beige-soft), #fdf9f2);
     border: 1px solid var(--beige-border); border-radius: 16px; }
@@ -165,6 +174,10 @@
   .rest-status.closed { background: #fbeae4; color: #b04a2e; }
   .rest-meta { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--beige-border);
     font-size: 13px; color: #8e8e93; line-height: 1.5; }
+  .rest-meta .addr {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
   .rest-hours { color: #a3988a; font-size: 12px; margin-top: 3px; }
 
   .rest-actions { display: flex; gap: 8px; margin-top: 12px; }
@@ -176,6 +189,9 @@
 
   .no-results { text-align: center; color: #8e8e93; padding: 30px 12px; }
 
+  /* ============================================================
+     Карточка одной точки (глубокая ссылка из бота)
+     ============================================================ */
   .detail-hero { background: linear-gradient(135deg, var(--beige-soft), #fdf9f2);
     border: 1px solid var(--beige-border); color: #4a3c28; border-radius: 18px;
     margin: 12px 12px 12px; padding: 24px 16px; text-align: center; }
@@ -200,12 +216,14 @@
     text-decoration: none; cursor: pointer; }
   .btn-back:active { background: var(--beige-soft); }
 
+  /* ===== Экран блокировки ===== */
   .blocked-screen { background: #fff; border-radius: 18px; margin: 40px 12px 12px;
     padding: 32px 20px; text-align: center; box-shadow: 0 4px 14px rgba(0,0,0,.07); }
   .blocked-screen .big { font-size: 44px; margin-bottom: 12px; }
   .blocked-screen .title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
   .blocked-screen .text { color: #8e8e93; font-size: 14px; }
 
+  /* ===== Уровни новостей ===== */
   .news-date { color: #8e8e93; font-size: 12px; margin-top: 4px; }
   .level-urgent b::before { content: "🔴 "; }
   .level-important b::before { content: "🟡 "; }
@@ -269,12 +287,15 @@ function getInitData() {
   return (tg && tg.initData) ? tg.initData : '';
 }
 
+/* ===== Данные бутстрапа: один запрос на всё ===== */
+let BOOT = null;
+
 const sectionLoaders = {
-  'sec-profile': loadProfile,
-  'sec-restaurants': loadRestaurants,
-  'sec-news': loadNews,
-  'sec-standards': loadStandards,
-  'sec-faq': loadFaq,
+  'sec-profile': () => { if (BOOT) renderProfileFromBoot(); },
+  'sec-restaurants': () => { if (BOOT) renderRestaurants(); },
+  'sec-news': () => { if (BOOT) renderNewsFromBoot(); },
+  'sec-standards': () => { if (BOOT) renderStandardsFromBoot(); },
+  'sec-faq': () => { if (BOOT) renderFaqFromBoot(); },
 };
 
 document.querySelectorAll('.tabs button').forEach(btn => {
@@ -293,6 +314,7 @@ document.querySelectorAll('.tabs button').forEach(btn => {
 const esc = s => (s || '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+/* ===== Скелетоны: показываем сразу, до любого запроса ===== */
 function skeletonHtml() {
   return '<div class="skeleton-card">' +
     '<div class="skeleton-line"></div>' +
@@ -301,13 +323,13 @@ function skeletonHtml() {
     '</div>';
 }
 
-/* Сразу показываем заглушки — экран живой с первого кадра */
 document.getElementById('news-list').innerHTML = skeletonHtml() + skeletonHtml();
 document.getElementById('profile-box').innerHTML = skeletonHtml();
 document.getElementById('restaurants-list').innerHTML = skeletonHtml() + skeletonHtml();
 document.getElementById('standards-list').innerHTML = skeletonHtml() + skeletonHtml();
 document.getElementById('faq-list').innerHTML = skeletonHtml() + skeletonHtml();
 
+/* ===== Экраны ошибок ===== */
 function blockedHtml() {
   return '<div class="blocked-screen">' +
     '<div class="big">🚫</div>' +
@@ -316,6 +338,33 @@ function blockedHtml() {
     '</div>';
 }
 
+function renderBlockedEverywhere() {
+  document.getElementById('profile-box').innerHTML = blockedHtml();
+  document.getElementById('news-list').innerHTML = blockedHtml();
+  document.getElementById('restaurants-list').innerHTML = blockedHtml();
+  document.getElementById('standards-list').innerHTML = blockedHtml();
+  document.getElementById('faq-list').innerHTML = blockedHtml();
+}
+
+function renderAuthErrorEverywhere() {
+  const msg = '<div class="card">⚠️ Ошибка авторизации Telegram. Закрой приложение и открой заново из бота.</div>';
+  document.getElementById('profile-box').innerHTML = msg;
+  document.getElementById('news-list').innerHTML = msg;
+  document.getElementById('restaurants-list').innerHTML = msg;
+  document.getElementById('standards-list').innerHTML = msg;
+  document.getElementById('faq-list').innerHTML = msg;
+}
+
+function renderNetErrorEverywhere() {
+  const msg = '<div class="card">Ошибка сети. Проверь соединение и открой приложение заново.</div>';
+  document.getElementById('profile-box').innerHTML = msg;
+  document.getElementById('news-list').innerHTML = msg;
+  document.getElementById('restaurants-list').innerHTML = msg;
+  document.getElementById('standards-list').innerHTML = msg;
+  document.getElementById('faq-list').innerHTML = msg;
+}
+
+/* ===== Данные пользователя Telegram ===== */
 function tgUserInfo() {
   try {
     if (!tg || !tg.initDataUnsafe) return null;
@@ -361,6 +410,7 @@ function displayNameOf(p) {
   return firstNameFromProfile(p);
 }
 
+/* ===== Аватар: грузим отдельно, после отрисовки карточки ===== */
 async function fillAvatar() {
   const el = document.querySelector('#profile-box .avatar');
   if (!el) return;
@@ -386,126 +436,83 @@ async function fillAvatar() {
   } catch (e) { /* остаётся буква */ }
 }
 
-async function loadProfile() {
+/* ===== Профиль из данных бутстрапа ===== */
+function renderProfileFromBoot() {
   const box = document.getElementById('profile-box');
   const g = greetingTexts();
-  try {
-    /* Профиль и поздравление грузим параллельно — экономим один сетевой круг */
-    const [resp, gr] = await Promise.all([
-      fetch('/api/profile', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ initData: getInitData() })
-      }),
-      fetch('/api/greeting', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ initData: getInitData() })
-      }).catch(() => null)
-    ]);
+  const p = BOOT.profile;
 
-    let greet = null;
-    if (gr && gr.ok) {
-      try { greet = await gr.json(); } catch (e) { greet = null; }
-    }
-    const greetHtml = (greet && greet.kind && greet.kind !== 'normal')
-      ? '<div class="greet-banner ' + greet.kind + '">' +
-        '<div class="gb-title">' + esc(greet.title) + '</div>' +
-        '<div class="gb-sub">' + esc(greet.sub) + '</div></div>'
-      : '';
-
-    const data = await resp.json();
-    if (resp.ok && data.registered) {
-      const p = data.profile;
-      const isOffice = p.restaurant === 'ОФИС';
-      const restBadge = isOffice ? 'office' : 'normal';
-      const name = displayNameOf(p);
-
-      box.innerHTML =
-        '<div class="greeting">' +
-        '<div class="g-title">' + esc(g.hello) + (name ? ', ' + esc(name) : '') + ' 👋</div>' +
-        '<div class="g-sub">' + esc(g.sub) + '</div>' +
-        '</div>' +
-        greetHtml +
-        '<div class="profile-card">' +
-        '<div class="profile-header">' +
-        '<div class="avatar-ring">' + avatarHtml(initialFor(p.full_name)) + '</div>' +
-        '<div class="p-name">' + esc(p.full_name) + '</div>' +
-        '<div class="p-pos">' + esc(p.position) + '</div>' +
-        '<span class="badge">✅ Активен</span>' +
-        '</div>' +
-        '<div class="info-list">' +
-        '<div class="info-row"><span class="ico">📍</span><span class="lbl">Ресторан</span>' +
-        '<span class="val"><span class="badge-rest ' + restBadge + '">' + esc(p.restaurant) + '</span></span></div>' +
-        '<div class="info-row"><span class="ico">📞</span><span class="lbl">Телефон</span>' +
-        '<span class="val"><a href="tel:' + esc(p.phone) + '">' + esc(p.phone) + '</a></span></div>' +
-        '<div class="info-row"><span class="ico">🎂</span><span class="lbl">Дата рождения</span>' +
-        '<span class="val">' + esc(p.birth_date) + '</span></div>' +
-        '</div>' +
-        '<div class="profile-footer">💡 Изменить данные можно только через администратора. ' +
-        '<button id="btn-report-error">Сообщить об ошибке</button></div>' +
-        '</div>';
-
-      /* Аватар грузим после отрисовки карточки, не мешая ей */
-      setTimeout(fillAvatar, 250);
-
-      document.getElementById('btn-report-error').addEventListener('click', async () => {
-        const text = 'Ошибка в данных профиля: прошу проверить и скорректировать.';
-        try {
-          const r = await fetch('/api/questions', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ initData: getInitData(), question: text })
-          });
-          if (r.ok) {
-            alert('Сообщение отправлено администратору.');
-          } else {
-            alert('Не удалось отправить сообщение.');
-          }
-        } catch (e) {
-          alert('Ошибка сети');
-        }
-      });
-    } else if (resp.status === 401) {
-      box.innerHTML = '<div class="card">⚠️ Ошибка авторизации Telegram. Закрой приложение и открой заново из бота.</div>';
-    } else if (resp.status === 403) {
-      ALL_RESTAURANTS = null;
-      box.innerHTML = blockedHtml();
-    } else {
-      box.innerHTML = '<div class="card">Ты ещё не зарегистрирован.<br>Напиши /start в боте и пройди регистрацию.</div>';
-    }
-  } catch (e) {
-    box.innerHTML = '<div class="card">Ошибка загрузки профиля: ' + esc(String(e)) + '</div>';
+  if (!p) {
+    box.innerHTML = '<div class="card">Ты ещё не зарегистрирован.<br>Напиши /start в боте и пройди регистрацию.</div>';
+    return;
   }
+
+  const isOffice = p.restaurant === 'ОФИС';
+  const restBadge = isOffice ? 'office' : 'normal';
+  const name = displayNameOf(p);
+
+  /* Поздравление уже в бутстрапе — отдельный запрос не нужен */
+  const greet = BOOT.greeting;
+  const greetHtml = (greet && greet.kind && greet.kind !== 'normal')
+    ? '<div class="greet-banner ' + greet.kind + '">' +
+      '<div class="gb-title">' + esc(greet.title) + '</div>' +
+      '<div class="gb-sub">' + esc(greet.sub) + '</div></div>'
+    : '';
+
+  box.innerHTML =
+    '<div class="greeting">' +
+    '<div class="g-title">' + esc(g.hello) + (name ? ', ' + esc(name) : '') + ' 👋</div>' +
+    '<div class="g-sub">' + esc(g.sub) + '</div>' +
+    '</div>' +
+    greetHtml +
+    '<div class="profile-card">' +
+    '<div class="profile-header">' +
+    '<div class="avatar-ring">' + avatarHtml(initialFor(p.full_name)) + '</div>' +
+    '<div class="p-name">' + esc(p.full_name) + '</div>' +
+    '<div class="p-pos">' + esc(p.position) + '</div>' +
+    '<span class="badge">✅ Активен</span>' +
+    '</div>' +
+    '<div class="info-list">' +
+    '<div class="info-row"><span class="ico">📍</span><span class="lbl">Ресторан</span>' +
+    '<span class="val"><span class="badge-rest ' + restBadge + '">' + esc(p.restaurant) + '</span></span></div>' +
+    '<div class="info-row"><span class="ico">📞</span><span class="lbl">Телефон</span>' +
+    '<span class="val"><a href="tel:' + esc(p.phone) + '">' + esc(p.phone) + '</a></span></div>' +
+    '<div class="info-row"><span class="ico">🎂</span><span class="lbl">Дата рождения</span>' +
+    '<span class="val">' + esc(p.birth_date) + '</span></div>' +
+    '</div>' +
+    '<div class="profile-footer">💡 Изменить данные можно только через администратора. ' +
+    '<button id="btn-report-error">Сообщить об ошибке</button></div>' +
+    '</div>';
+
+  /* Аватар — после отрисовки карточки, чтобы не мешал появлению текста */
+  setTimeout(fillAvatar, 250);
+
+  document.getElementById('btn-report-error').addEventListener('click', async () => {
+    const text = 'Ошибка в данных профиля: прошу проверить и скорректировать.';
+    try {
+      const r = await fetch('/api/questions', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ initData: getInitData(), question: text })
+      });
+      if (r.ok) {
+        alert('Сообщение отправлено администратору.');
+      } else {
+        alert('Не удалось отправить сообщение.');
+      }
+    } catch (e) {
+      alert('Ошибка сети');
+    }
+  });
 }
 
-/* ===== Рестораны: кэш + мгновенный поиск + сортировка ===== */
-let ALL_RESTAURANTS = null;
-let REST_FETCH_TS = 0;
-const REST_TTL = 5 * 60 * 1000;
-
+/* ===== Рестораны: поиск + сортировка ===== */
 function prepareRestaurants(list) {
   return list.map(r => {
     const copy = Object.assign({}, r);
     copy._search = ((r.name || '') + ' ' + (r.address || '')).toLowerCase();
     return copy;
   });
-}
-
-async function fetchRestaurants() {
-  const now = Date.now();
-  if (ALL_RESTAURANTS && (now - REST_FETCH_TS) < REST_TTL) return ALL_RESTAURANTS;
-
-  const resp = await fetch('/api/restaurants', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ initData: getInitData() })
-  });
-  if (resp.status === 403) { ALL_RESTAURANTS = null; throw Object.assign(new Error('blocked'), { code: 403 }); }
-  if (resp.status === 401) { throw Object.assign(new Error('unauthorized'), { code: 401 }); }
-  ALL_RESTAURANTS = prepareRestaurants(await resp.json());
-  REST_FETCH_TS = now;
-  return ALL_RESTAURANTS;
 }
 
 function mapUrlFor(r) {
@@ -519,21 +526,17 @@ function statusBadge(r, cls) {
     esc(r.status_text || '') + '</span>';
 }
 
-function renderRestaurants(query) {
+function renderRestaurantsList(list, query) {
   const box = document.getElementById('restaurants-list');
   const countEl = document.getElementById('rest-count');
 
-  if (!ALL_RESTAURANTS) {
-    box.innerHTML = '<div class="no-results">Загрузка…</div>';
-    return;
-  }
-
   const q = (query || '').trim().toLowerCase();
-  const list = q
-    ? ALL_RESTAURANTS.filter(r => r._search.indexOf(q) !== -1)
-    : ALL_RESTAURANTS;
+  const filtered = q
+    ? list.filter(r => r._search.indexOf(q) !== -1)
+    : list;
 
-  list.sort((a, b) => {
+  /* Открытые сверху, потом закрытые; внутри групп — по sort, затем по названию */
+  filtered.sort((a, b) => {
     const aOpen = a.status === 'open';
     const bOpen = b.status === 'open';
 
@@ -544,24 +547,21 @@ function renderRestaurants(query) {
     return a.name.localeCompare(b.name);
   });
 
-  const totalCount = list.length;
-  const openCount = list.filter(r => r.status === 'open').length;
+  const totalCount = filtered.length;
+  const openCount = filtered.filter(r => r.status === 'open').length;
 
-  if (q) {
-    countEl.style.display = 'inline-block';
-    countEl.textContent = 'Найдено: ' + totalCount + ' · открыто сейчас: ' + openCount;
-  } else {
-    countEl.style.display = 'inline-block';
-    countEl.textContent = 'Открыто сейчас: ' + openCount + ' · Всего точек: ' + totalCount;
-  }
+  countEl.style.display = 'inline-block';
+  countEl.textContent = q
+    ? 'Найдено: ' + totalCount + ' · открыто сейчас: ' + openCount
+    : 'Открыто сейчас: ' + openCount + ' · Всего точек: ' + totalCount;
 
-  if (!list.length) {
+  if (!filtered.length) {
     countEl.style.display = 'none';
     box.innerHTML = '<div class="no-results">Ничего не нашлось 🔍<br>Попробуйте другое название или улицу</div>';
     return;
   }
 
-  box.innerHTML = list.map(r => {
+  box.innerHTML = filtered.map(r => {
     return '<div class="rest-card ' + (r.status !== 'open' ? 'rest-card-closed' : '') + '">' +
       '<div class="rest-head">' +
       '<div class="rest-logo">🍜</div>' +
@@ -581,24 +581,14 @@ function renderRestaurants(query) {
   }).join('');
 }
 
-async function loadRestaurants() {
-  const box = document.getElementById('restaurants-list');
-  try {
-    await fetchRestaurants();
-    renderRestaurants(document.getElementById('rest-search').value);
-  } catch (e) {
-    if (e && e.code === 403) { box.innerHTML = blockedHtml(); return; }
-    if (e && e.code === 401) { box.innerHTML = '<div class="card">⚠️ Ошибка авторизации. Открой приложение заново из бота.</div>'; return; }
-    if (ALL_RESTAURANTS) {
-      renderRestaurants(document.getElementById('rest-search').value);
-    } else {
-      box.innerHTML = '<div class="card">Ошибка загрузки списка ресторанов</div>';
-    }
-  }
+function renderRestaurants() {
+  if (!BOOT) return;
+  renderRestaurantsList(BOOT.restaurants, document.getElementById('rest-search').value);
 }
 
 document.getElementById('rest-search').addEventListener('input', e => {
-  renderRestaurants(e.target.value);
+  if (!BOOT) return;
+  renderRestaurantsList(BOOT.restaurants, e.target.value);
 });
 
 /* ===== Карточка одного ресторана (глубокая ссылка ?rest=…) ===== */
@@ -619,27 +609,20 @@ function renderDetail(r) {
     '</div>';
 }
 
-async function showDetail(key) {
+function showDetail(key) {
   const section = document.getElementById('sec-detail');
   const box = document.getElementById('detail-box');
-  box.innerHTML = skeletonHtml();
-  try {
-    const list = await fetchRestaurants();
-    const r = list.find(x => x.key === key);
-    if (!r) {
-      box.innerHTML = '<div class="card">Ресторан не найден 🤷</div>';
-    } else {
-      renderDetail(r);
-    }
-    document.querySelector('.tabs').style.display = 'none';
-    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-    section.classList.add('active');
-    window.scrollTo(0, 0);
-  } catch (e) {
-    if (e && e.code === 403) { box.innerHTML = blockedHtml(); section.classList.add('active'); return; }
-    box.innerHTML = '<div class="card">Ошибка загрузки карточки ресторана</div>';
-    section.classList.add('active');
+  const list = BOOT ? BOOT.restaurants : [];
+  const r = list.find(x => x.key === key);
+  if (!r) {
+    box.innerHTML = '<div class="card">Ресторан не найден 🤷</div>';
+  } else {
+    renderDetail(r);
   }
+  document.querySelector('.tabs').style.display = 'none';
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  section.classList.add('active');
+  window.scrollTo(0, 0);
 }
 
 function exitDetailView() {
@@ -653,83 +636,54 @@ document.getElementById('detail-back').addEventListener('click', () => {
   document.querySelector('.tabs button[data-sec="sec-restaurants"]').classList.add('active');
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.getElementById('sec-restaurants').classList.add('active');
-  loadRestaurants();
+  renderRestaurants();
 });
 
-async function loadNews() {
+/* ===== Новости из данных бутстрапа ===== */
+function renderNewsFromBoot() {
   const box = document.getElementById('news-list');
-  try {
-    const resp = await fetch('/api/news', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ initData: getInitData() })
-    });
-    if (resp.status === 403) { box.innerHTML = blockedHtml(); return; }
-    if (resp.status === 401) { box.innerHTML = '<div class="card">⚠️ Ошибка авторизации. Открой приложение заново из бота.</div>'; return; }
-    const list = await resp.json();
-    if (!list.length) {
-      box.innerHTML = '<div class="card">Пока новостей нет 📰</div>';
-      return;
-    }
-    box.innerHTML = list.map(n => {
-      const lvl = ['urgent', 'important'].includes(n.level) ? n.level : 'normal';
-      return '<div class="card level-' + lvl + '">' +
-        '<b>' + esc(n.title) + '</b>' +
-        '<div>' + esc(n.text) + '</div>' +
-        '<div class="news-date">' + esc(n.date) + '</div>' +
-        '</div>';
-    }).join('');
-  } catch (e) {
-    box.innerHTML = '<div class="card">Ошибка загрузки новостей</div>';
+  const list = BOOT.news || [];
+  if (!list.length) {
+    box.innerHTML = '<div class="card">Пока новостей нет 📰</div>';
+    return;
   }
+  box.innerHTML = list.map(n => {
+    const lvl = ['urgent', 'important'].includes(n.level) ? n.level : 'normal';
+    return '<div class="card level-' + lvl + '">' +
+      '<b>' + esc(n.title) + '</b>' +
+      '<div>' + esc(n.text) + '</div>' +
+      '<div class="news-date">' + esc(n.date) + '</div>' +
+      '</div>';
+  }).join('');
 }
 
-async function loadStandards() {
+/* ===== Стандарты из данных бутстрапа ===== */
+function renderStandardsFromBoot() {
   const box = document.getElementById('standards-list');
-  try {
-    const resp = await fetch('/api/standards', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ initData: getInitData() })
-    });
-    if (resp.status === 403) { box.innerHTML = blockedHtml(); return; }
-    if (resp.status === 401) { box.innerHTML = '<div class="card">⚠️ Ошибка авторизации. Открой приложение заново из бота.</div>'; return; }
-    const list = await resp.json();
-    box.innerHTML = list.map(s =>
-      '<div class="card">' +
-      '<b>' + esc(s.title) + '</b>' +
-      '<div class="muted">' + esc(s.category) + '</div>' +
-      '<div style="margin-top:6px">' + esc(s.description) + '</div>' +
-      (s.url ? '<a href="' + esc(s.url) + '" target="_blank"><button class="btn">Открыть</button></a>' : '') +
-      '</div>'
-    ).join('');
-  } catch (e) {
-    box.innerHTML = '<div class="card">Ошибка загрузки стандартов</div>';
-  }
+  const list = BOOT.standards || [];
+  box.innerHTML = list.map(s =>
+    '<div class="card">' +
+    '<b>' + esc(s.title) + '</b>' +
+    '<div class="muted">' + esc(s.category) + '</div>' +
+    '<div style="margin-top:6px">' + esc(s.description) + '</div>' +
+    (s.url ? '<a href="' + esc(s.url) + '" target="_blank"><button class="btn">Открыть</button></a>' : '') +
+    '</div>'
+  ).join('');
 }
 
-async function loadFaq() {
+/* ===== Вопросы/ответы из данных бутстрапа ===== */
+function renderFaqFromBoot() {
   const box = document.getElementById('faq-list');
-  try {
-    const resp = await fetch('/api/faq', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ initData: getInitData() })
-    });
-    if (resp.status === 403) { box.innerHTML = blockedHtml(); return; }
-    if (resp.status === 401) { box.innerHTML = '<div class="card">⚠️ Ошибка авторизации. Открой приложение заново из бота.</div>'; return; }
-    const list = await resp.json();
-    box.innerHTML = list.map(f =>
-      '<details>' +
-      '<summary>' + esc(f.question) + '</summary>' +
-      '<p>' + esc(f.answer) + '</p>' +
-      '</details>'
-    ).join('');
-  } catch (e) {
-    box.innerHTML = '<div class="card">Ошибка загрузки вопросов</div>';
-  }
+  const list = BOOT.faq || [];
+  box.innerHTML = list.map(f =>
+    '<details>' +
+    '<summary>' + esc(f.question) + '</summary>' +
+    '<p>' + esc(f.answer) + '</p>' +
+    '</details>'
+  ).join('');
 }
 
+/* ===== Отправка вопроса ===== */
 document.getElementById('send-question').addEventListener('click', async () => {
   const input = document.getElementById('question-input');
   const text = input.value.trim();
@@ -755,27 +709,85 @@ document.getElementById('send-question').addEventListener('click', async () => {
   }
 });
 
+/* ===== Обновление одной вкладки через старый эндпоинт ===== */
+async function refreshSection(sec) {
+  const map = {
+    'sec-news': '/api/news',
+    'sec-restaurants': '/api/restaurants',
+    'sec-standards': '/api/standards',
+    'sec-faq': '/api/faq',
+  };
+  const url = map[sec];
+  if (!url) return;
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ initData: getInitData() })
+    });
+    if (resp.status === 403) { renderBlockedEverywhere(); return; }
+    if (!resp.ok) return;
+    const data = await resp.json();
+
+    if (sec === 'sec-news') {
+      BOOT.news = data;
+      renderNewsFromBoot();
+    } else if (sec === 'sec-restaurants') {
+      BOOT.restaurants = prepareRestaurants(data);
+      renderRestaurants();
+    } else if (sec === 'sec-standards') {
+      BOOT.standards = data;
+      renderStandardsFromBoot();
+    } else if (sec === 'sec-faq') {
+      BOOT.faq = data;
+      renderFaqFromBoot();
+    }
+  } catch (e) { /* остаёмся на кэшированных данных */ }
+}
+
+/* При переключении вкладки данные обновляются в фоне, не блокируя показ */
+document.querySelectorAll('.tabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (BOOT) refreshSection(btn.dataset.sec);
+  });
+});
+
+/* ===== Старт ===== */
 async function boot() {
   const restKey = new URLSearchParams(location.search).get('rest');
-  if (restKey) {
-    /* Глубокая ссылка из бота: карточка ресторана важнее стартовой вкладки */
-    loadProfile();
-    await showDetail(restKey);
+  try {
+    const resp = await fetch('/api/bootstrap', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ initData: getInitData() })
+    });
+    if (resp.status === 403) { renderBlockedEverywhere(); return; }
+    if (resp.status === 401) { renderAuthErrorEverywhere(); return; }
+    BOOT = await resp.json();
+    if (BOOT.restaurants) {
+      BOOT.restaurants = prepareRestaurants(BOOT.restaurants);
+    }
+  } catch (e) {
+    renderNetErrorEverywhere();
     return;
   }
 
-  /* Все разделы грузим параллельно — каждый появляется сразу, как придёт */
-  loadProfile();
-  loadRestaurants();
-  loadNews();
-  loadStandards();
-  loadFaq();
+  /* Отрисовываем все разделы из полученных данных — мгновенно, без доп. запросов */
+  renderProfileFromBoot();
+  renderNewsFromBoot();
+  renderRestaurants();
+  renderStandardsFromBoot();
+  renderFaqFromBoot();
+
+  /* Глубокая ссылка из бота: карточка ресторана важнее стартовой вкладки */
+  if (restKey) {
+    showDetail(restKey);
+  }
 }
 
 function startWhenReady() {
   /* initData в Telegram доступен почти сразу — если он уже есть, стартуем мгновенно.
-     Если ещё нет, ждём максимум 1,5 с (вместо прежних 5) — и всё равно стартуем,
-     чтобы экран не «висел» в ожидании. */
+     Если ещё нет, ждём максимум 1,5 с — и всё равно стартуем, чтобы не «висеть». */
   if (getInitData()) { boot(); return; }
   let waited = 0;
   const timer = setInterval(() => {

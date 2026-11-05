@@ -5,7 +5,7 @@ import json
 import hmac
 import hashlib
 from datetime import datetime
-from urllib.parse import quote, unquote
+from urllib.parse import unquote
 
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types
@@ -70,6 +70,7 @@ with get_conn() as conn:
 print("База данных подключена, таблица готова.")
 
 
+# Данные ресторанов нужны для шага регистрации и для Mini App (/api/restaurants).
 # Поле "org" — путь карточки на Яндекс Картах (yandex.ru/maps/org/<org>).
 # ВНИМАНИЕ: у части ресторанов номера-заглушки, помечены комментарием "ЗАГЛУШКА" — замени!
 RESTAURANTS = [
@@ -445,10 +446,9 @@ def validate_init_data(init_data: str):
     computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
 
     if hmac.compare_digest(computed_hash, received_hash):
-        logging.info("initData: подпись ОК (raw-вариант)")
         return _parse_user_field(pairs_dict)
 
-    # Вариант 2 (диагностика): вдруг строку где-то перекодировали
+    # Вариант 2 (страховка): вдруг строку где-то перекодировали
     decoded_string = "\n".join(f"{k}={unquote(v)}" for k, v in sorted(pairs) if k != "hash")
     decoded_hash = hmac.new(secret_key, decoded_string.encode(), hashlib.sha256).hexdigest()
 
@@ -458,10 +458,6 @@ def validate_init_data(init_data: str):
 
     logging.warning("initData: ПОДПИСЬ НЕ СОВПАЛА ни в одном варианте — вероятнее всего, BOT_TOKEN не тот")
     logging.warning(f"  TOKEN fingerprint: длина={len(TOKEN)}, начало={TOKEN[:5]!r}, конец={TOKEN[-4:]!r}")
-    logging.warning(f"  начало data_check_string: {data_check_string[:80]!r}")
-    logging.warning(f"  конец data_check_string:  {data_check_string[-80:]!r}")
-    logging.warning(f"  recv_hash = {received_hash}")
-    logging.warning(f"  calc_hash = {computed_hash}")
     return None
 
 
@@ -469,8 +465,6 @@ def validate_init_data(init_data: str):
 
 FULL_MENU = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="📱 Открыть приложение Wokker", web_app=WebAppInfo(url=MINI_APP_URL))],
-    [InlineKeyboardButton(text="👤 Профиль", callback_data="show_profile")],
-    [InlineKeyboardButton(text="🏙️ Наши рестораны (списком)", callback_data="restaurants")],
 ])
 
 REGISTER_ONLY = InlineKeyboardMarkup(inline_keyboard=[
@@ -508,21 +502,18 @@ def restaurant_name_by_key(key):
 def profile_text(row):
     full_name, phone, birth_date, position, restaurant = row[0], row[1], row[2], row[3], row[4]
     rest_name = restaurant_name_by_key(restaurant) if restaurant else "—"
-    return (
-        "Твой профиль:\n\n"
-        f"👤 ФИО: {full_name}\n"
+
+    card = (
+        "📋 <b>Твой профиль</b>\n"
+        "──────────────────────────────\n"
+        f"👤 ФИО: <b>{full_name}</b>\n"
+        f"💼 Должность: {position or '—'}\n"
+        f"📍 Ресторан: {rest_name}\n"
         f"📞 Телефон: {phone}\n"
         f"🎂 Дата рождения: {birth_date}\n"
-        f"💼 Должность: {position or '—'}\n"
-        f"📍 Ресторан: {rest_name}"
+        "──────────────────────────────"
     )
-
-
-def map_link(restaurant) -> str:
-    if restaurant.get("org"):
-        return f"https://yandex.ru/maps/org/{restaurant['org']}"
-    query = quote(f"Воккер {restaurant['address']}", safe="")
-    return f"https://yandex.ru/maps/?text={query}"
+    return card
 
 
 def admin_menu_kb():
@@ -723,75 +714,7 @@ async def adm_noop(callback: types.CallbackQuery):
         await callback.answer("⛔ Недоступно", show_alert=True)
 
 
-# ================== РЕСТОРАНЫ (в боте) ==================
-
-def restaurants_menu_kb():
-    kb = []
-    for r in RESTAURANTS:
-        kb.append([InlineKeyboardButton(text=r["name"], callback_data=f"rest_info:{r['key']}")])
-    kb.append([InlineKeyboardButton(text="← Назад в главное меню", callback_data="back_to_menu")])
-    return InlineKeyboardMarkup(inline_keyboard=kb)
-
-
-@dp.callback_query(lambda c: c.data == "restaurants")
-async def show_restaurants_menu(callback: types.CallbackQuery):
-    await callback.answer()
-    if db_is_blocked(callback.from_user.id):
-        await callback.message.answer("⛔ Доступ к боту ограничен.")
-        return
-    await callback.message.answer(
-        "🏙️ <b>Наши рестораны</b>\n\nВыбери точку из списка:",
-        parse_mode="HTML",
-        reply_markup=restaurants_menu_kb()
-    )
-
-
-@dp.callback_query(lambda c: c.data and c.data.startswith("rest_info:"))
-async def show_restaurant_info(callback: types.CallbackQuery):
-    await callback.answer()
-    if db_is_blocked(callback.from_user.id):
-        await callback.message.answer("⛔ Доступ к боту ограничен.")
-        return
-
-    key = callback.data.split(":")[1]
-    restaurant = next((r for r in RESTAURANTS if r["key"] == key), None)
-    if not restaurant:
-        await callback.answer("Ресторан не найден", show_alert=True)
-        return
-
-    phone_line = f"📞 Позвонить: {restaurant['phone']}\n\n" if restaurant.get("phone") else ""
-
-    text = (
-        f"<b>{restaurant['name']}</b>\n\n"
-        f"📍 Адрес: {restaurant['address']}\n"
-        f"🕒 Часы работы:\n{restaurant['hours']}\n\n"
-        f"{phone_line}"
-    )
-
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🗺 Открыть на Яндекс Картах", url=map_link(restaurant))],
-        [InlineKeyboardButton(text="← Назад к списку ресторанов", callback_data="restaurants")],
-        [InlineKeyboardButton(text="🏠 В главное меню", callback_data="back_to_menu")],
-    ])
-
-    try:
-        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
-    except Exception as e:
-        logging.exception(f"edit_text не сработал: {e}")
-        await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
-
-
 # ================== РЕГИСТРАЦИЯ ==================
-
-@dp.callback_query(lambda c: c.data == "back_to_menu")
-async def back_to_menu(callback: types.CallbackQuery):
-    await callback.answer()
-    row = db_get(callback.from_user.id)
-    if row and row[0]:
-        await callback.message.answer("Выбери действие:", reply_markup=FULL_MENU)
-    else:
-        await callback.message.answer("Что хочешь сделать?", reply_markup=REGISTER_ONLY)
-
 
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
@@ -1003,19 +926,6 @@ async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMConte
             logging.error(f"Не удалось отправить уведомление админу: {e}")
 
 
-@dp.callback_query(lambda c: c.data == "show_profile")
-async def show_profile_callback(callback: types.CallbackQuery):
-    await callback.answer()
-    if db_is_blocked(callback.from_user.id):
-        await callback.message.answer("⛔ Доступ к боту ограничен.")
-        return
-    row = db_get(callback.from_user.id)
-    if row and row[0]:
-        await callback.message.answer(profile_text(row))
-    else:
-        await callback.message.answer("Ты ещё не зарегистрирован.\nНажми /start и «✍️ Зарегистрироваться».")
-
-
 @dp.message(Command("profile"))
 async def cmd_profile(message: types.Message):
     if db_is_blocked(message.from_user.id):
@@ -1023,7 +933,7 @@ async def cmd_profile(message: types.Message):
         return
     row = db_get(message.from_user.id)
     if row and row[0]:
-        await message.answer(profile_text(row))
+        await message.answer(profile_text(row), parse_mode="HTML")
     else:
         await message.answer("Ты ещё не зарегистрирован. Напиши /start и нажми «✍️ Зарегистрироваться».")
 

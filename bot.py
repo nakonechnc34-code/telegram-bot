@@ -92,7 +92,7 @@ with get_conn() as conn:
         """)
         cur.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS level TEXT DEFAULT 'normal'")
         # Если таблица новостей пуста — кладём демо-новости, чтобы вкладка не была пустой.
-        # Их можно удалить через админку.
+        # Их можно удалить через админку. Демо-новости рассылку не запускают.
         cur.execute("SELECT COUNT(*) FROM news")
         if cur.fetchone()[0] == 0:
             cur.execute(
@@ -398,6 +398,16 @@ def db_list_users():
             return cur.fetchall()
 
 
+def db_list_active_users():
+    """Все зарегистрированные и не заблокированные пользователи (для рассылки)."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT user_id FROM users WHERE is_blocked = FALSE AND full_name IS NOT NULL"
+            )
+            return [r[0] for r in cur.fetchall()]
+
+
 def db_delete_user(user_id: int):
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -457,6 +467,16 @@ def db_list_news():
                 "SELECT id, title, body, important, level, created_at FROM news ORDER BY created_at DESC, id DESC"
             )
             return cur.fetchall()
+
+
+def db_get_news(news_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT title, body, level FROM news WHERE id = %s",
+                (news_id,)
+            )
+            return cur.fetchone()
 
 
 def db_delete_news(news_id: int) -> bool:
@@ -728,6 +748,7 @@ def news_admin_kb(rows):
                 callback_data="noop"
             ),
             InlineKeyboardButton(text="🗑", callback_data=f"news_del:{news_id}"),
+            InlineKeyboardButton(text="📢 Разослать", callback_data=f"news_send:{news_id}"),
         ])
     kb.append([InlineKeyboardButton(text="➕ Добавить новость", callback_data="news_add")])
     kb.append([InlineKeyboardButton(text="🔙 В админ-меню", callback_data="adm_menu")])
@@ -788,6 +809,49 @@ def users_list_text(rows):
             f"   💼 {position or '—'} · 📍 {rest_name}\n"
         )
     return "\n".join(lines)
+
+
+# ================== РАССЫЛКА НОВОСТЕЙ ==================
+
+async def broadcast_news(title: str, body: str, level: str):
+    """Разошлёт новость всем активным пользователям с кнопкой «Скрыть уведомление»."""
+    icon = "🔴" if level == "urgent" else ("🟡" if level == "important" else "🔵")
+
+    # Кнопка, которая удалит это сообщение из чата сотрудника
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑 Скрыть уведомление", callback_data="hide_notification")]
+    ])
+
+    text = (
+        f"{icon} <b>Новая новость</b>\n\n"
+        f"<b>{title}</b>\n"
+        f"{body}"
+    )
+
+    sent = 0
+    failed = 0
+    recipients = db_list_active_users()
+
+    for i, uid in enumerate(recipients):
+        try:
+            await bot.send_message(uid, text, parse_mode="HTML", reply_markup=kb)
+            sent += 1
+        except Exception:
+            failed += 1
+        # Пауза каждые 25 сообщений — безопасный темп для Telegram
+        if (i + 1) % 25 == 0:
+            await asyncio.sleep(1)
+
+    logging.info(f"Рассылка завершена: доставлено {sent}, не доставлено {failed}")
+    if ADMIN_ID:
+        try:
+            await bot.send_message(
+                ADMIN_ID,
+                f"📨 Рассылка новости завершена\n\n✅ Доставлено: {sent}\n❌ Не доставлено: {failed}",
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
 
 
 # ================== АДМИНКА ==================
@@ -931,7 +995,8 @@ async def news_add_finish(callback: types.CallbackQuery, state: FSMContext):
     await send_tracked(
         callback.message.chat.id, callback.from_user.id,
         f"✅ Новость опубликована!\n\n{LEVEL_LABELS[level]} — <b>{title}</b>\n{body}\n\n"
-        "Она уже видна сотрудникам во вкладке «Новости».",
+        "Она уже видна сотрудникам во вкладке «Новости».\n"
+        "Чтобы разослать уведомление — нажми «📢 Разослать» рядом с новостью.",
         parse_mode="HTML"
     )
     rows = db_list_news()
@@ -957,6 +1022,44 @@ async def news_del(callback: types.CallbackQuery):
         callback.message.chat.id, callback.from_user.id,
         news_admin_text(rows), parse_mode="HTML", reply_markup=news_admin_kb(rows)
     )
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("news_send:"))
+async def news_send(callback: types.CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
+        return
+    await callback.answer("📬 Начинаю рассылку…")
+    news_id = int(callback.data.split(":")[1])
+
+    row = db_get_news(news_id)
+    if not row:
+        await cleanup_chat(callback.from_user.id)
+        await send_tracked(callback.message.chat.id, callback.from_user.id, "❌ Новость не найдена.")
+        return
+    title, body, level = row
+
+    # Запускаем рассылку в фоне — админ не ждёт её завершения
+    asyncio.create_task(broadcast_news(title, body, level))
+
+    await cleanup_chat(callback.from_user.id)
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
+        f"✅ Рассылка для новости «{title}» запущена.\n\n"
+        "Сотрудники получат уведомление с кнопкой «🗑 Скрыть уведомление».\n"
+        "После завершения придёт отчёт о доставке.",
+        parse_mode="HTML"
+    )
+
+
+@dp.callback_query(lambda c: c.data == "hide_notification")
+async def hide_notification(callback: types.CallbackQuery):
+    """Удаляет сообщение-уведомление у сотрудника по нажатию кнопки."""
+    try:
+        await callback.message.delete()
+    except Exception as e:
+        logging.warning(f"Не удалось скрыть уведомление для {callback.from_user.id}: {e}")
+    await callback.answer("Уведомление скрыто")
 
 
 @dp.callback_query(lambda c: c.data == "adm_reports")

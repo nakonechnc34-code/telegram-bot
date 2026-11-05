@@ -1,8 +1,6 @@
 import os
-import asyncio
 import logging
 from datetime import datetime
-from urllib.parse import quote
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command, CommandStart
@@ -13,27 +11,31 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     KeyboardButton,
     ReplyKeyboardMarkup,
-    ReplyKeyboardRemove,
 )
 import psycopg2
+from psycopg2 import OperationalError, ProgrammingError
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
-    print("ОШИБКА: Переменная BOT_TOKEN не задана!")
+    logger.error("❌ Переменная BOT_TOKEN не задана!")
     raise ValueError("BOT_TOKEN is not set")
 
 ADMIN_ID = os.getenv("ADMIN_ID")
-if not ADMIN_ID:
-    print("ПРЕДУПРЕЖДЕНИЕ: Переменная ADMIN_ID не задана — админ-панель отключена.")
-    ADMIN_ID = None
-else:
+if ADMIN_ID:
     ADMIN_ID = int(ADMIN_ID)
+else:
+    logger.warning("⚠️ ADMIN_ID не задан — админ-панель отключена.")
+    ADMIN_ID = None
 
 DB_URL = os.getenv("DATABASE_URL")
 if not DB_URL:
-    print("ОШИБКА: Переменная DATABASE_URL не задана!")
+    logger.error("❌ Переменная DATABASE_URL не задана!")
     raise ValueError("DATABASE_URL is not set")
 
 
@@ -41,30 +43,36 @@ def get_conn():
     return psycopg2.connect(DB_URL)
 
 
-# Инициализация таблицы при старте
-with get_conn() as conn:
-    with conn.cursor() as cur:
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                user_id BIGINT PRIMARY KEY,
-                full_name TEXT,
-                phone TEXT,
-                birth_date TEXT,
-                welcomed BOOLEAN DEFAULT FALSE,
-                is_blocked BOOLEAN DEFAULT FALSE
-            )
-        """)
-        # На случай старых миграций
-        try:
-            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE")
-        except Exception:
-            pass
-    conn.commit()
-print("База данных подключена, таблица готова.")
+# Безопасная инициализация БД с понятным логом ошибки
+def init_db():
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS users (
+                        user_id BIGINT PRIMARY KEY,
+                        full_name TEXT,
+                        phone TEXT,
+                        birth_date TEXT,
+                        welcomed BOOLEAN DEFAULT FALSE,
+                        is_blocked BOOLEAN DEFAULT FALSE
+                    )
+                """)
+                # Добавляем колонку, если её нет (без ошибки, если уже есть)
+                try:
+                    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE")
+                except ProgrammingError:
+                    pass  # колонка уже существует
+            conn.commit()
+        logger.info("✅ База данных подключена, таблица готова.")
+    except OperationalError as e:
+        logger.error(f"❌ Ошибка подключения к БД: {e}")
+        raise
 
 
-# Поле "org" — путь карточки на Яндекс Картах (yandex.ru/maps/org/<org>).
-# ВНИМАНИЕ: у 8 ресторанов номера-заглушки, помечены комментарием "ЗАГЛУШКА" — замени!
+init_db()
+
+
 RESTAURANTS = [
     {
         "key": "mega_belaya_dacha",
@@ -261,36 +269,6 @@ def db_is_blocked(user_id: int) -> bool:
             return bool(row and row[0])
 
 
-def db_list_users():
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT user_id, full_name, phone, welcomed, is_blocked
-                FROM users
-                ORDER BY user_id
-            """)
-            return cur.fetchall()
-
-
-def db_delete_user(user_id: int):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM users WHERE user_id = %s", (user_id,))
-        conn.commit()
-        return cur.rowcount > 0
-
-
-def db_set_blocked(user_id: int, blocked: bool):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE users SET is_blocked = %s WHERE user_id = %s",
-                (blocked, user_id)
-            )
-        conn.commit()
-        return cur.rowcount > 0
-
-
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
@@ -309,30 +287,4 @@ FULL_MENU = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="👤 Профиль", callback_data="show_profile")],
     [InlineKeyboardButton(text="🏙️ Наши рестораны", callback_data="restaurants")],
     [InlineKeyboardButton(text="📚 Библиотека стандартов", callback_data="standards")],
-    [InlineKeyboardButton(text="❓ Вопрос/ответ", callback_data="faq")],
-])
-
-REGISTER_ONLY = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="✍️ Зарегистрироваться", callback_data="register")],
-])
-
-
-def phone_kb():
-    return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="📱 Поделиться номером", request_contact=True)]],
-        resize_keyboard=True,
-        one_time_keyboard=True,
-    )
-
-
-def profile_text(row):
-    full_name, phone, birth_date = row[0], row[1], row[2]
-    return (
-        "Твой профиль:\n\n"
-        f"👤 ФИО: {full_name}\n"
-        f"📞 Телефон: {phone}\n"
-        f"🎂 Дата рождения: {birth_date}"
-    )
-
-
-def map_link(restaurant
+    [InlineKeyboardButton(text="❓ Вопрос/ответ", callback_data="

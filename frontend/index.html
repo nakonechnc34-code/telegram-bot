@@ -16,6 +16,9 @@
     --beige-dark: #b2946a;
     --beige-soft: #f6efe3;
     --beige-border: #e6d8c2;
+    /* Акцентный край кнопки карты */
+    --map-border: #d9534f;
+    --map-border-hover: #c1433f;
   }
   * { box-sizing: border-box; margin: 0; }
   body { font-family: -apple-system, sans-serif; background: var(--bg); padding-bottom: 70px; }
@@ -144,23 +147,21 @@
   }
   .rest-hours { color: #a3988a; font-size: 12px; margin-top: 3px; }
 
-  /* Кнопки: бежевая — основная */
+  /* Кнопка «На Яндекс Картах»: прозрачная заливка + цветной край */
   .rest-actions { display: flex; gap: 8px; margin-top: 12px; }
   .rest-actions a { flex: 1; display: block; text-decoration: none; }
   .btn-map {
     display: block; width: 100%;
-    background: var(--beige); color: #fff; border: 0;
-    border-radius: 12px; padding: 11px 8px; font-size: 14px; font-weight: 600;
+    background: transparent; color: var(--beige-dark);
+    border: 2px solid var(--map-border);
+    border-radius: 12px; padding: 11px 8px;
+    font-size: 14px; font-weight: 600;
     text-align: center; text-decoration: none;
   }
-  .btn-map:active { background: var(--beige-dark); }
-  .btn-call {
-    display: block; width: 100%;
-    background: #fff; color: var(--beige-dark); border: 1.5px solid var(--beige);
-    border-radius: 12px; padding: 10px 8px; font-size: 14px; font-weight: 600;
-    text-align: center; text-decoration: none;
+  .btn-map:active {
+    background: var(--map-border);
+    color: #fff;
   }
-  .btn-call:active { background: var(--beige-soft); }
 
   .no-results { text-align: center; color: #8e8e93; padding: 30px 12px; }
 

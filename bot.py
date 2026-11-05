@@ -15,6 +15,7 @@ from aiogram.types import (
     KeyboardButton,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
+    WebAppInfo,
 )
 import psycopg2
 
@@ -36,6 +37,8 @@ DB_URL = os.getenv("DATABASE_URL")
 if not DB_URL:
     print("ОШИБКА: Переменная DATABASE_URL не задана!")
     raise ValueError("DATABASE_URL is not set")
+
+MINI_APP_URL = os.getenv("MINI_APP_URL", "https://ВАШ-ДОМЕН.amvera.io")
 
 
 def get_conn():
@@ -64,7 +67,7 @@ print("База данных подключена, таблица готова."
 
 
 # Поле "org" — путь карточки на Яндекс Картах (yandex.ru/maps/org/<org>).
-# ВНИМАНИЕ: у 8 ресторанов номера-заглушки, помечены комментарием "ЗАГЛУШКА" — замени!
+# ВНИМАНИЕ: у части ресторанов номера-заглушки, помечены комментарием "ЗАГЛУШКА" — замени!
 RESTAURANTS = [
     {
         "key": "mega_belaya_dacha",
@@ -226,6 +229,8 @@ POSITIONS = [
 ]
 
 
+# ================== БАЗА ДАННЫХ ==================
+
 def db_get(user_id: int):
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -303,7 +308,6 @@ def db_set_blocked(user_id: int, blocked: bool):
 
 
 def get_report_stats():
-    """Простой отчёт по пользователям: всего, активные, заблокированные."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM users")
@@ -336,9 +340,15 @@ class Registration(StatesGroup):
     restaurant = State()
 
 
+# ================== КЛАВИАТУРЫ ==================
+
 FULL_MENU = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="👤 Профиль", callback_data="show_profile")],
-    [InlineKeyboardButton(text="🏙️ Наши рестораны", callback_data="restaurants")],
+    [InlineKeyboardButton(
+        text="🏙️ Рестораны (приложение)",
+        web_app=WebAppInfo(url=MINI_APP_URL)
+    )],
+    [InlineKeyboardButton(text="🏙️ Наши рестораны (списком)", callback_data="restaurants")],
     [InlineKeyboardButton(text="📚 Библиотека стандартов", callback_data="standards")],
     [InlineKeyboardButton(text="❓ Вопрос/ответ", callback_data="faq")],
 ])
@@ -441,7 +451,7 @@ def users_list_text(rows):
     return "\n".join(lines)
 
 
-# --- АДМИНКА ---
+# ================== АДМИНКА ==================
 
 @dp.message(Command("admin"))
 async def cmd_admin(message: types.Message):
@@ -593,7 +603,7 @@ async def adm_noop(callback: types.CallbackQuery):
         await callback.answer("⛔ Недоступно", show_alert=True)
 
 
-# --- РЕСТОРАНЫ ---
+# ================== РЕСТОРАНЫ ==================
 
 def restaurants_menu_kb():
     kb = []
@@ -651,7 +661,7 @@ async def show_restaurant_info(callback: types.CallbackQuery):
         await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
-# --- РЕГИСТРАЦИЯ ---
+# ================== РЕГИСТРАЦИЯ ==================
 
 @dp.callback_query(lambda c: c.data == "back_to_menu")
 async def back_to_menu(callback: types.CallbackQuery):
@@ -907,34 +917,48 @@ async def cmd_profile(message: types.Message):
         await message.answer("Ты ещё не зарегистрирован. Напиши /start и нажми «✍️ Зарегистрироваться».")
 
 
-async def health_check_server():
-    app = web.Application()
+# ================== ВЕБ-СЕРВЕР (API + Mini App) ==================
 
-    async def handle(request):
-        return web.Response(text="OK")
+async def handle_index(request):
+    """Отдаёт главную страницу Mini App из frontend/index.html."""
+    index_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "index.html")
+    if os.path.exists(index_path):
+        return web.FileResponse(index_path)
+    return web.Response(text="Mini App: файл frontend/index.html не найден", status=404)
 
-    app.router.add_get('/', handle)
-    port = int(os.environ.get('PORT', 8080))
+
+async def handle_restaurants(request):
+    return web.json_response(RESTAURANTS, encoding="utf-8")
+
+
+async def handle_health(request):
+    return web.Response(text="OK")
+
+
+app = web.Application()
+app.router.add_get("/", handle_index)
+app.router.add_get("/api/restaurants", handle_restaurants)
+app.router.add_get("/api/health", handle_health)
+
+
+# ================== ЗАПУСК ==================
+
+async def main():
+    port = int(os.getenv("PORT", 8080))
 
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', port)
+    site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    print(f"Health Check server is LIVE on port {port}")
-    return runner
+    logging.info(f"Web server (API + Mini App) running on port {port}")
 
-
-async def main():
-    runner = await health_check_server()
     print("STARTING BOT SCRIPT...")
-    bot_task = asyncio.create_task(dp.start_polling(bot))
-    print("Bot polling started. Waiting for updates...")
     try:
-        await asyncio.gather(bot_task)
+        await dp.start_polling(bot)
     finally:
         await runner.cleanup()
         await bot.session.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())

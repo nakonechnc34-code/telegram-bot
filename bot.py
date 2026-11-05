@@ -58,6 +58,8 @@ with get_conn() as conn:
 print("База данных подключена, таблица готова.")
 
 
+# Поле "org" — путь карточки на Яндекс Картах (yandex.ru/maps/org/<org>).
+# Пока ID карточки не найден — поля нет, сработает запасной поиск по тексту.
 RESTAURANTS = [
     {
         "key": "mega_belaya_dacha",
@@ -66,20 +68,21 @@ RESTAURANTS = [
         "hours": "10:00–22:00",
         "lat": 55.6578,
         "lon": 37.8891,
+        "org": "vokker/128833821207",
     },
     {
         "key": "belyaevo",
         "name": "Беляево",
-        "address": "Москва, ул. Профсоюзная, д. ХХ, ТЦ «Беляево»",
-        "hours": "10:00–23:00",
+        "address": "Москва, ул. Миклухо-Маклая, 32А, ТЦ «Капитолий»",
+        "hours": "10:00–22:00",
         "lat": 55.6470,
         "lon": 37.5420,
     },
     {
         "key": "vernadka",
         "name": "Вернадка",
-        "address": "Москва, пр. Вернадского, д. ХХ",
-        "hours": "09:00–22:00",
+        "address": "Москва, проспект Вернадского, 6",
+        "hours": "10:00–22:00",
         "lat": 55.6840,
         "lon": 37.4980,
     },
@@ -142,7 +145,7 @@ RESTAURANTS = [
     {
         "key": "polkovaya",
         "name": "Полковая",
-        "address": "Москва, ул. Полковая, д. ХХ",
+        "address": "Москва, ул. Полковая, д. 3, стр. 5",
         "hours": "09:00–21:00",
         "lat": 55.8010,
         "lon": 37.5920,
@@ -299,6 +302,8 @@ def profile_text(row):
 
 
 def map_link(restaurant) -> str:
+    if restaurant.get("org"):
+        return f"https://yandex.ru/maps/org/{restaurant['org']}"
     name = restaurant["name"].replace(" ", "+")
     address = restaurant["address"].replace(" ", "+").replace(",", "+")
     return f"https://yandex.ru/maps/?text={name}+{address}"

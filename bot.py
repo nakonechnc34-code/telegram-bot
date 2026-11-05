@@ -40,6 +40,7 @@ if not DB_URL:
 def get_conn():
     return psycopg2.connect(DB_URL)
 
+# Инициализация БД при старте скрипта
 with get_conn() as conn:
     with conn.cursor() as cur:
         cur.execute("""
@@ -64,6 +65,8 @@ RESTAURANTS = [
         "name": "Мега Белая Дача",
         "address": "г. Котельники, 1-й Покровский проезд, д. 5, ТЦ «Мега Белая Дача»",
         "hours": "10:00–22:00",
+        # ВАЖНО: Проверь эти координаты в Яндекс Картах. 
+        # Если точка падает не на ресторан, а на парковку, чуть измени цифры.
         "lat": 55.6578,
         "lon": 37.8891,
     },
@@ -217,7 +220,7 @@ def db_is_blocked(user_id: int) -> bool:
         with conn.cursor() as cur:
             cur.execute("SELECT is_blocked FROM users WHERE user_id = %s", (user_id,))
             row = cur.fetchone()
-            return bool(row and row[0])
+            return bool(row and row)
 
 def db_list_users():
     with get_conn() as conn:
@@ -276,7 +279,7 @@ def phone_kb():
     )
 
 def profile_text(row):
-    full_name, phone, birth_date = row[0], row[1], row[2]
+    full_name, phone, birth_date, _, _ = row
     return (
         "Твой профиль:\n\n"
         f"👤 ФИО: {full_name}\n"
@@ -284,9 +287,11 @@ def profile_text(row):
         f"🎂 Дата рождения: {birth_date}"
     )
 
+# ИСПРАВЛЕННАЯ ФУНКЦИЯ ДЛЯ КАРТЫ
 def map_link(restaurant) -> str:
-    query = f"Wokker {restaurant['name']}"
-    return f"https://yandex.ru/maps/?text={quote(query)}"
+    # ll = longitude,latitude (порядок важен для Яндекса)
+    # z = 17 (зум, чтобы видеть здание и вход)
+    return f"https://yandex.ru/maps/?ll={restaurant['lon']},{restaurant['lat']}&z=17"
 
 def admin_menu_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -295,17 +300,17 @@ def admin_menu_kb():
     ])
 
 def users_list_kb(rows):
-    kb = []
+    kb = 
     for user_id, full_name, phone, welcomed, is_blocked in rows:
         if is_blocked:
             icon = "🚫"
-            action = ("✅ Разбанить", f"adm_unban:{user_id}")
+            action_btn = ("✅ Разбанить", f"adm_unban:{user_id}")
         else:
             icon = "✅" if full_name else "⏳"
-            action = ("🚫 Забанить", f"adm_ban:{user_id}")
+            action_btn = ("🚫 Забанить", f"adm_ban:{user_id}")
         kb.append([
             InlineKeyboardButton(text=f"{icon} {full_name or 'Без имени'} · {phone or user_id}", callback_data="noop"),
-            InlineKeyboardButton(text=action[0], callback_data=action[1]),
+            InlineKeyboardButton(text=action_btn, callback_data=action_btn),
             InlineKeyboardButton(text="🗑", callback_data=f"adm_del:{user_id}"),
         ])
     kb.append([InlineKeyboardButton(text="🔙 В админ-меню", callback_data="adm_menu")])
@@ -355,7 +360,7 @@ async def adm_ban(callback: types.CallbackQuery):
     if not is_admin(callback.from_user.id):
         await callback.answer("⛔ Недоступно", show_alert=True)
         return
-    target_id = int(callback.data.split(":")[1])
+    target_id = int(callback.data.split(":"))
     if target_id == ADMIN_ID:
         await callback.answer("Нельзя заблокировать самого себя", show_alert=True)
         return
@@ -378,7 +383,7 @@ async def adm_unban(callback: types.CallbackQuery):
     if not is_admin(callback.from_user.id):
         await callback.answer("⛔ Недоступно", show_alert=True)
         return
-    target_id = int(callback.data.split(":")[1])
+    target_id = int(callback.data.split(":"))
     if db_set_blocked(target_id, False):
         await callback.answer("Разблокирован")
     else:
@@ -394,7 +399,7 @@ async def adm_del_ask(callback: types.CallbackQuery):
     if not is_admin(callback.from_user.id):
         await callback.answer("⛔ Недоступно", show_alert=True)
         return
-    target_id = int(callback.data.split(":")[1])
+    target_id = int(callback.data.split(":"))
     if target_id == ADMIN_ID:
         await callback.answer("Нельзя удалить самого себя", show_alert=True)
         return
@@ -417,7 +422,7 @@ async def adm_del_yes(callback: types.CallbackQuery):
     if not is_admin(callback.from_user.id):
         await callback.answer("⛔ Недоступно", show_alert=True)
         return
-    target_id = int(callback.data.split(":")[1])
+    target_id = int(callback.data.split(":"))
     if db_delete_user(target_id):
         await callback.answer("Удалён")
         await callback.message.answer(f"🗑 Пользователь <code>{target_id}</code> удалён.", parse_mode="HTML")
@@ -432,7 +437,7 @@ async def adm_noop(callback: types.CallbackQuery):
         await callback.answer("⛔ Недоступно", show_alert=True)
 
 def restaurants_menu_kb():
-    kb = []
+    kb = 
     for r in RESTAURANTS:
         kb.append([InlineKeyboardButton(text=r["name"], callback_data=f"rest_info:{r['key']}")])
     kb.append([InlineKeyboardButton(text="← Назад в главное меню", callback_data="back_to_menu")])
@@ -456,7 +461,7 @@ async def show_restaurant_info(callback: types.CallbackQuery):
     if db_is_blocked(callback.from_user.id):
         await callback.message.answer("⛔ Доступ к боту ограничен.")
         return
-    key = callback.data.split(":")[1]
+    key = callback.data.split(":")
     restaurant = next((r for r in RESTAURANTS if r["key"] == key), None)
     if not restaurant:
         await callback.answer("Ресторан не найден", show_alert=True)
@@ -466,6 +471,7 @@ async def show_restaurant_info(callback: types.CallbackQuery):
         f"📍 Адрес: {restaurant['address']}\n"
         f"🕒 Часы работы: {restaurant['hours']}"
     )
+    # Кнопка теперь ведет на точные координаты
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🗺 Показать на карте", url=map_link(restaurant))],
         [InlineKeyboardButton(text="← Назад к списку ресторанов", callback_data="restaurants")],
@@ -477,7 +483,7 @@ async def show_restaurant_info(callback: types.CallbackQuery):
 async def back_to_menu(callback: types.CallbackQuery):
     await callback.answer()
     row = db_get(callback.from_user.id)
-    if row and row[0]:
+    if row and row:
         await callback.message.answer("Выбери действие:", reply_markup=FULL_MENU)
     else:
         await callback.message.answer("Что хочешь сделать?", reply_markup=REGISTER_ONLY)
@@ -503,11 +509,11 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
     row = db_get(user_id)
 
-    if row and row[0]:
+    if row and row:
         await message.answer("Выбери действие:", reply_markup=FULL_MENU)
         return
 
-    if row and row[3]:
+    if row and row:
         await message.answer("Сначала заверши регистрацию 👇", reply_markup=REGISTER_ONLY)
         return
 
@@ -535,7 +541,7 @@ async def show_profile_callback(callback: types.CallbackQuery):
         await callback.message.answer("⛔ Доступ к боту ограничен.")
         return
     row = db_get(callback.from_user.id)
-    if row and row[0]:
+    if row and row:
         await callback.message.answer(profile_text(row))
     else:
         await callback.message.answer("Ты ещё не зарегистрирован.\nНажми /start и «✍️ Зарегистрироваться».")
@@ -653,7 +659,7 @@ async def cmd_profile(message: types.Message):
         await message.answer("⛔ Доступ к боту ограничен.")
         return
     row = db_get(message.from_user.id)
-    if row and row[0]:
+    if row and row:
         await message.answer(profile_text(row))
     else:
         await message.answer("Ты ещё не зарегистрирован. Напиши /start и нажми «✍️ Зарегистрироваться».")

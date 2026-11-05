@@ -43,7 +43,6 @@ def get_conn():
     return psycopg2.connect(DB_URL)
 
 
-# Безопасная инициализация БД с понятным логом ошибки
 def init_db():
     try:
         with get_conn() as conn:
@@ -58,11 +57,10 @@ def init_db():
                         is_blocked BOOLEAN DEFAULT FALSE
                     )
                 """)
-                # Добавляем колонку, если её нет (без ошибки, если уже есть)
                 try:
                     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE")
                 except ProgrammingError:
-                    pass  # колонка уже существует
+                    pass
             conn.commit()
         logger.info("✅ База данных подключена, таблица готова.")
     except OperationalError as e:
@@ -92,7 +90,7 @@ RESTAURANTS = [
         "lat": 55.6470,
         "lon": 37.5420,
         "org": "vokker/13122472923",
-        "phone": "+74954445566",  # ЗАГЛУШКА — замени на реальный номер
+        "phone": "+74954445566",
     },
     {
         "key": "vernadka",
@@ -102,7 +100,7 @@ RESTAURANTS = [
         "lat": 55.6840,
         "lon": 37.4980,
         "org": "vokker/91626648547",
-        "phone": "+74957778899",  # ЗАГЛУШКА
+        "phone": "+74957778899",
     },
     {
         "key": "erevan_plaza",
@@ -132,7 +130,7 @@ RESTAURANTS = [
         "lat": 55.5790,
         "lon": 37.4870,
         "org": "vokker/1485953945",
-        "phone": "+74959990011",  # ЗАГЛУШКА
+        "phone": "+74959990011",
     },
     {
         "key": "mega_himki",
@@ -142,7 +140,7 @@ RESTAURANTS = [
         "lat": 55.8970,
         "lon": 37.4120,
         "org": "vokker/132066311330",
-        "phone": "+74952223344",  # ЗАГЛУШКА
+        "phone": "+74952223344",
     },
     {
         "key": "metropolis",
@@ -152,7 +150,7 @@ RESTAURANTS = [
         "lat": 55.8120,
         "lon": 37.5060,
         "org": "vokker/1298559872",
-        "phone": "+74955556677",  # ЗАГЛУШКА
+        "phone": "+74955556677",
     },
     {
         "key": "moskva_city",
@@ -182,7 +180,7 @@ RESTAURANTS = [
         "lat": 55.8010,
         "lon": 37.5920,
         "org": "vokker/84984433800",
-        "phone": "+74959876543",  # ЗАГЛУШКА
+        "phone": "+74959876543",
     },
     {
         "key": "cdm",
@@ -202,7 +200,7 @@ RESTAURANTS = [
         "lat": 55.7670,
         "lon": 37.6180,
         "org": "vokker/110848206544",
-        "phone": "+74955544332",  # ЗАГЛУШКА
+        "phone": "+74955544332",
     },
     {
         "key": "shchelkovskaya",
@@ -222,7 +220,7 @@ RESTAURANTS = [
         "lat": 55.8020,
         "lon": 37.4650,
         "org": "vokker/1357579873",
-        "phone": "+74957766554",  # ЗАГЛУШКА
+        "phone": "+74957766554",
     },
 ]
 
@@ -266,7 +264,7 @@ def db_is_blocked(user_id: int) -> bool:
         with conn.cursor() as cur:
             cur.execute("SELECT is_blocked FROM users WHERE user_id = %s", (user_id,))
             row = cur.fetchone()
-            return bool(row and row[0])
+            return bool(row and row)
 
 
 bot = Bot(token=TOKEN)
@@ -287,4 +285,113 @@ FULL_MENU = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="👤 Профиль", callback_data="show_profile")],
     [InlineKeyboardButton(text="🏙️ Наши рестораны", callback_data="restaurants")],
     [InlineKeyboardButton(text="📚 Библиотека стандартов", callback_data="standards")],
-    [InlineKeyboardButton(text="❓ Вопрос/ответ", callback_data="
+    [InlineKeyboardButton(text="❓ Вопрос/ответ", callback_data="faq")],
+])
+
+REGISTER_ONLY = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="✍️ Зарегистрироваться", callback_data="register")],
+])
+
+
+@dp.message(CommandStart())
+async def cmd_start(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+    if db_is_blocked(user_id):
+        await message.answer("Вы заблокированы.")
+        return
+
+    db_set_welcomed(user_id)
+    user_data = db_get(user_id)
+    if user_data and user_data:  # welcomed == True [3](https://github.com/dvkonstantinov/aiogram-food-bot)
+        await message.answer("Добро пожаловать обратно!", reply_markup=FULL_MENU)
+    else:
+        await message.answer(
+            "Привет! Для доступа к функционалу пройдите регистрацию.",
+            reply_markup=REGISTER_ONLY
+        )
+
+
+@dp.callback_query(lambda c: c.data == "register")
+async def process_register(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.message.edit_text("Введите ваше полное имя:")
+    await state.set_state(Registration.full_name)
+
+
+@dp.message(Registration.full_name)
+async def process_full_name(message: types.Message, state: FSMContext):
+    await state.update_data(full_name=message.text)
+    await message.answer("Теперь укажите номер телефона (в формате +7...):")
+    await state.set_state(Registration.phone)
+
+
+@dp.message(Registration.phone)
+async def process_phone(message: types.Message, state: FSMContext):
+    await state.update_data(phone=message.text)
+    await message.answer("Укажите дату рождения (ДД.ММ.ГГГГ):")
+    await state.set_state(Registration.birth_date)
+
+
+@dp.message(Registration.birth_date)
+async def process_birth_date(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    full_name = data["full_name"]
+    phone = data["phone"]
+    birth_date = message.text
+    user_id = message.from_user.id
+
+    db_save_profile(user_id, full_name, phone, birth_date)
+    await state.clear()
+    await message.answer("Регистрация завершена! Теперь у вас полный доступ.", reply_markup=FULL_MENU)
+
+
+@dp.callback_query(lambda c: c.data == "show_profile")
+async def show_profile(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
+    user_data = db_get(user_id)
+    if not user_data:
+        await callback_query.answer("Профиль не найден. Пройдите регистрацию.", show_alert=True)
+        return
+
+    full_name, phone, birth_date, welcomed, is_blocked = user_data
+    text = (
+        f"👤 Профиль\n"
+        f"Имя: {full_name or 'Не указано'}\n"
+        f"Телефон: {phone or 'Не указан'}\n"
+        f"Дата рождения: {birth_date or 'Не указана'}\n"
+        f"Статус: {'Активен' if not is_blocked else 'Заблокирован'}"
+    )
+    await callback_query.message.edit_text(text, reply_markup=FULL_MENU)
+
+
+@dp.callback_query(lambda c: c.data == "restaurants")
+async def show_restaurants(callback_query: types.CallbackQuery):
+    text = "🏙️ Наши рестораны:\n\n"
+    for r in RESTAURANTS:
+        map_link = f"https://yandex.ru/maps/org/{r['org']}"
+        text += (
+            f"📍 {r['name']}\n"
+            f"📍 Адрес: {r['address']}\n"
+            f"⏰ Часы работы:\n{r['hours']}\n"
+            f"📞 Телефон: {r['phone']}\n"
+            f"🗺️ [Показать на карте]({map_link})\n\n"
+        )
+    await callback_query.message.edit_text(text, parse_mode="Markdown", reply_markup=FULL_MENU)
+
+
+@dp.callback_query(lambda c: c.data == "standards")
+async def show_standards(callback_query: types.CallbackQuery):
+    await callback_query.answer("Раздел в разработке.", show_alert=True)
+
+
+@dp.callback_query(lambda c: c.data == "faq")
+async def show_faq(callback_query: types.CallbackQuery):
+    await callback_query.answer("Раздел FAQ в разработке.", show_alert=True)
+
+
+async def main():
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())

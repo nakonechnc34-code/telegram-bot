@@ -735,6 +735,24 @@ def validate_init_data(init_data: str):
     return None
 
 
+async def get_auth_user(request):
+    """Единая проверка доступа для API Mini App.
+    Расшифровывает initData и проверяет блокировку.
+    Возвращает (user_id, None) при успехе или (None, 401/403) при отказе."""
+    try:
+        payload = await request.json()
+    except Exception:
+        return None, 401
+    user = validate_init_data(payload.get("initData", ""))
+    if not user or not user.get("id"):
+        return None, 401
+    user_id = int(user["id"])
+    if db_is_blocked(user_id):
+        logging.info(f"API: заблокированный пользователь {user_id} пытался получить данные")
+        return None, 403
+    return user_id, None
+
+
 # ================== КЛАВИАТУРЫ ==================
 
 FULL_MENU = InlineKeyboardMarkup(inline_keyboard=[
@@ -1796,6 +1814,13 @@ def json_dumps(data) -> str:
     return json.dumps(data, ensure_ascii=False)
 
 
+def denied_response(status: int):
+    """Ответ при отказе доступа (401 — не авторизован, 403 — заблокирован)."""
+    if status == 403:
+        return web.json_response({"error": "blocked"}, status=403, dumps=json_dumps)
+    return web.json_response({"error": "unauthorized"}, status=401, dumps=json_dumps)
+
+
 # Кэш аватаров: user_id -> (bytes, content_type, время сохранения)
 AVATAR_CACHE = {}
 AVATAR_TTL = 600  # секунд, 10 минут
@@ -1815,13 +1840,17 @@ def avatar_cache_get(user_id):
 async def handle_index(request):
     index_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "index.html")
     if os.path.exists(index_path):
-        return web.FileResponse(index_path)
+        resp = web.FileResponse(index_path)
+        # Запрещаем кэширование страницы: после разбана/бана данные не «зависают»
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
     return web.Response(text="Mini App: файл frontend/index.html не найден", status=404)
 
 
 async def handle_restaurants(request):
-    """Список ресторанов (без ОФИСА) со статусом «открыто/закрыто» по московскому времени.
-    Статус пересчитывается при каждом запросе — вкладка всегда актуальна."""
+    user_id, err = await get_auth_user(request)
+    if err:
+        return denied_response(err)
     out = []
     for r in RESTAURANTS_FOR_APP:
         status, status_text = restaurant_status(r["hours"])
@@ -1833,6 +1862,9 @@ async def handle_restaurants(request):
 
 
 async def handle_news(request):
+    user_id, err = await get_auth_user(request)
+    if err:
+        return denied_response(err)
     rows = db_list_news()
     news_list = [
         {
@@ -1849,29 +1881,23 @@ async def handle_news(request):
 
 
 async def handle_standards(request):
+    user_id, err = await get_auth_user(request)
+    if err:
+        return denied_response(err)
     return web.json_response(STANDARDS, dumps=json_dumps)
 
 
 async def handle_faq(request):
+    user_id, err = await get_auth_user(request)
+    if err:
+        return denied_response(err)
     return web.json_response(FAQ, dumps=json_dumps)
 
 
 async def handle_profile(request):
-    try:
-        payload = await request.json()
-    except Exception:
-        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
-
-    init_data = payload.get("initData", "")
-    user = validate_init_data(init_data)
-    if not user or not user.get("id"):
-        if not init_data:
-            logging.warning("API /api/profile: initData пуст (запрос не из Telegram?)")
-        return web.json_response({"error": "unauthorized"}, status=401, dumps=json_dumps)
-
-    user_id = int(user["id"])
-    if db_is_blocked(user_id):
-        return web.json_response({"error": "blocked"}, status=403, dumps=json_dumps)
+    user_id, err = await get_auth_user(request)
+    if err:
+        return denied_response(err)
 
     row = db_get(user_id)
     if not row or not row[0]:
@@ -1892,20 +1918,9 @@ async def handle_profile(request):
 
 
 async def handle_avatar(request):
-    """Отдаёт публичное фото профиля сотрудника из Telegram (в виде самой картинки).
-    Фото проксируется через наш сервер, чтобы токен бота не попал в браузер."""
-    try:
-        payload = await request.json()
-    except Exception:
-        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
-
-    user = validate_init_data(payload.get("initData", ""))
-    if not user or not user.get("id"):
-        return web.json_response({"error": "unauthorized"}, status=401, dumps=json_dumps)
-
-    user_id = int(user["id"])
-    if db_is_blocked(user_id):
-        return web.json_response({"error": "blocked"}, status=403, dumps=json_dumps)
+    user_id, err = await get_auth_user(request)
+    if err:
+        return denied_response(err)
 
     cached = avatar_cache_get(user_id)
     if cached:
@@ -1934,26 +1949,22 @@ async def handle_avatar(request):
 
 
 async def handle_questions(request):
+    user_id, err = await get_auth_user(request)
+    if err:
+        return denied_response(err)
+
     try:
         payload = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
 
-    user = validate_init_data(payload.get("initData", ""))
-    if not user or not user.get("id"):
-        return web.json_response({"error": "unauthorized"}, status=401, dumps=json_dumps)
-
     question_text = (payload.get("question") or "").strip()
     if not question_text or len(question_text) > 1000:
         return web.json_response({"error": "invalid_question"}, status=400, dumps=json_dumps)
 
-    user_id = int(user["id"])
-    if db_is_blocked(user_id):
-        return web.json_response({"error": "blocked"}, status=403, dumps=json_dumps)
-
     if ADMIN_ID:
         row = db_get(user_id)
-        who = row[0] if row and row[0] else user.get("username", "—")
+        who = row[0] if row and row[0] else "—"
         try:
             await bot.send_message(
                 ADMIN_ID,
@@ -1974,10 +1985,10 @@ async def handle_health(request):
 
 app = web.Application()
 app.router.add_get("/", handle_index)
-app.router.add_get("/api/restaurants", handle_restaurants)
-app.router.add_get("/api/news", handle_news)
-app.router.add_get("/api/standards", handle_standards)
-app.router.add_get("/api/faq", handle_faq)
+app.router.add_post("/api/restaurants", handle_restaurants)
+app.router.add_post("/api/news", handle_news)
+app.router.add_post("/api/standards", handle_standards)
+app.router.add_post("/api/faq", handle_faq)
 app.router.add_post("/api/profile", handle_profile)
 app.router.add_post("/api/avatar", handle_avatar)
 app.router.add_post("/api/questions", handle_questions)

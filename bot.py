@@ -186,7 +186,7 @@ RESTAURANTS = [
     {
         "key": "metropolis",
         "name": "Метрополис",
-        "address": "Москва, Ленинградское ш., д. 16А, стр. 4, ТРЦ «Метрополис», этаж 3",
+        "address": "Москва, Ленинградское ш., д. 16А, стр. 4, ТРЦ «Метрополis», этаж 3",
         "hours": "Пн–вс: 10:00–23:00",
         "lat": 55.8120,
         "lon": 37.5060,
@@ -1761,6 +1761,22 @@ def json_dumps(data) -> str:
     return json.dumps(data, ensure_ascii=False)
 
 
+# Кэш аватаров: user_id -> (bytes, content_type, время сохранения)
+AVATAR_CACHE = {}
+AVATAR_TTL = 600  # секунд, 10 минут
+
+
+def avatar_cache_get(user_id):
+    entry = AVATAR_CACHE.get(user_id)
+    if not entry:
+        return None
+    data, ctype, saved_at = entry
+    if datetime.now().timestamp() - saved_at > AVATAR_TTL:
+        AVATAR_CACHE.pop(user_id, None)
+        return None
+    return data, ctype
+
+
 async def handle_index(request):
     """Отдаёт главную страницу Mini App из frontend/index.html."""
     index_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "index.html")
@@ -1850,6 +1866,12 @@ async def handle_avatar(request):
     if db_is_blocked(user_id):
         return web.json_response({"error": "blocked"}, status=403, dumps=json_dumps)
 
+    # 1. Кэш — если фото недавно уже забирали, не дёргаем Telegram
+    cached = avatar_cache_get(user_id)
+    if cached:
+        data, content_type = cached
+        return web.Response(body=data, content_type=content_type)
+
     try:
         photos = await bot.get_user_profile_photos(user_id, limit=1)
         if not photos.total_count:
@@ -1858,10 +1880,14 @@ async def handle_avatar(request):
         file = await bot.get_file(file_id)
         tg_url = f"https://api.telegram.org/file/bot{TOKEN}/{file.file_path}"
 
-        async with aiohttp.ClientSession() as s:
+        # 2. Таймаут 5 секунд — чтобы медленный Telegram не подвешивал вкладку
+        timeout = aiohttp.ClientTimeout(total=5)
+        async with aiohttp.ClientSession(timeout=timeout) as s:
             async with s.get(tg_url) as r:
                 data = await r.read()
                 content_type = r.content_type or "image/jpeg"
+
+        AVATAR_CACHE[user_id] = (data, content_type, datetime.now().timestamp())
         return web.Response(body=data, content_type=content_type)
     except Exception as e:
         logging.warning(f"Не удалось получить фото профиля для {user_id}: {e}")

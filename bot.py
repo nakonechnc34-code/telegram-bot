@@ -110,6 +110,7 @@ print("База данных подключена, таблица готова."
 # Данные ресторанов нужны для шага регистрации и для Mini App (/api/restaurants).
 # Поле "org" — путь карточки на Яндекс Картах (yandex.ru/maps/org/<org>).
 # ВНИМАНИЕ: у части ресторанов номера-заглушки, помечены комментарием "ЗАГЛУШКА" — замени!
+# "ОФИС" доступен только при регистрации и НЕ показывается во вкладке «Рестораны» приложения.
 RESTAURANTS = [
     {
         "key": "mega_belaya_dacha",
@@ -261,7 +262,21 @@ RESTAURANTS = [
         "org": "vokker/1357579873",
         "phone": "+74957766554",  # ЗАГЛУШКА — замени на реальный номер
     },
+    # ОФИС — только для выбора при регистрации, в приложении не показывается
+    {
+        "key": "office",
+        "name": "ОФИС",
+        "address": "Центральный офис (уточните адрес у HR)",
+        "hours": "Пн–пт: 09:00–18:00",
+        "lat": None,
+        "lon": None,
+        "org": "",
+        "phone": "",
+    },
 ]
+
+# Список ресторанов для вкладки «Рестораны» мини-приложения (без ОФИСА)
+RESTAURANTS_FOR_APP = [r for r in RESTAURANTS if r["key"] != "office"]
 
 POSITIONS = [
     "Холодный Цех",
@@ -658,6 +673,7 @@ def positions_kb():
 
 
 def restaurants_pick_kb():
+    # Полный список, включая ОФИС — только для выбора при регистрации
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=r["name"], callback_data=f"restpick:{r['key']}")]
         for r in RESTAURANTS
@@ -1387,7 +1403,8 @@ async def handle_index(request):
 
 
 async def handle_restaurants(request):
-    return web.json_response(RESTAURANTS, dumps=json_dumps)
+    # В приложение отдаём список без ОФИСА — он только для регистрации
+    return web.json_response(RESTAURANTS_FOR_APP, dumps=json_dumps)
 
 
 async def handle_news(request):

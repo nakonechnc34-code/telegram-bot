@@ -11,11 +11,14 @@
     --bg: #f2f2f7;
     --gray: #9aa0a6;
     --green: #34c759;
+    /* Бежевая палитра вкладки «Рестораны» */
     --beige: #c3a578;
     --beige-dark: #b2946a;
     --beige-soft: #f6efe3;
     --beige-border: #e6d8c2;
+    /* Акцентный край кнопки карты */
     --map-border: #d9534f;
+    --map-border-hover: #c1433f;
   }
   * { box-sizing: border-box; margin: 0; }
   body { font-family: -apple-system, sans-serif; background: var(--bg); padding-bottom: 70px; }
@@ -38,13 +41,18 @@
   summary { font-weight: 600; cursor: pointer; }
   details p { margin-top: 8px; color: #3a3a3c; }
 
+  /* ============================================================
+     ПРОФИЛЬ: приветствие + карточка с бежевым кольцом аватара
+     ============================================================ */
+
   .greeting { margin: 14px 12px 4px; padding: 0 4px; }
   .greeting .g-title { font-size: 22px; font-weight: 700; color: #3a2f1f; line-height: 1.25; }
   .greeting .g-sub { font-size: 13px; color: #96876f; margin-top: 2px; }
 
+  /* Баннер поздравления: день рождения / праздник */
   .greet-banner { margin: 12px 12px 0; padding: 16px; border-radius: 16px;
-    border: 1px solid var(--beige-border); background: linear-gradient(135deg, var(--beige-soft), #fdf9f2);
-    text-align: center; }
+    border: 1px solid var(--beige-border);
+    background: linear-gradient(135deg, var(--beige-soft), #fdf9f2); text-align: center; }
   .greet-banner .gb-title { font-size: 18px; font-weight: 700; color: #3a2f1f; }
   .greet-banner .gb-sub { font-size: 13px; color: #7c6b52; margin-top: 4px; line-height: 1.45; }
   .greet-banner.birthday { background: linear-gradient(135deg, #ffe9ec, #fff5f0); border-color: #f3c1c9; }
@@ -54,10 +62,12 @@
     overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,.07); }
   .profile-header { background: linear-gradient(135deg, #ff2d55, #ff6a3d);
     color: #fff; padding: 24px 16px 18px; text-align: center; }
-  .avatar-ring { width: 84px; height: 84px; border-radius: 50%; margin: 0 auto 12px; padding: 3px;
-    background: linear-gradient(135deg, var(--beige-soft), var(--beige)); box-sizing: border-box; }
-  .avatar-ring .avatar { width: 100%; height: 100%; margin: 0; border: 2px solid #fff;
-    border-radius: 50%; background-color: rgba(255,255,255,.25);
+  .avatar-ring { width: 84px; height: 84px; border-radius: 50%; margin: 0 auto 12px;
+    padding: 3px; background: linear-gradient(135deg, var(--beige-soft), var(--beige));
+    box-sizing: border-box; }
+  .avatar-ring .avatar { width: 100%; height: 100%; margin: 0;
+    border: 2px solid #fff; border-radius: 50%;
+    background-color: rgba(255,255,255,.25);
     background-size: cover; background-position: center;
     display: flex; align-items: center; justify-content: center;
     font-size: 30px; font-weight: 700; color: #fff; }
@@ -75,14 +85,21 @@
   .profile-footer { background: #f8f8fb; padding: 10px 14px; font-size: 12px; color: #8e8e93; }
   .profile-footer button { background: none; border: 0; color: var(--blue); font-size: 12px;
     font-weight: 600; padding: 0; text-decoration: underline; cursor: pointer; }
+  .profile-footer button:active { opacity: .7; }
+
   .badge-rest { display: inline-block; padding: 2px 10px; border-radius: 12px;
     font-size: 12px; font-weight: 600; color: #fff; }
   .badge-rest.office { background: var(--gray); }
   .badge-rest.normal { background: var(--green); }
+
   @media (min-width: 600px) {
     .info-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 8px 14px 10px; }
     .info-row { border-bottom: none; padding: 8px 0; }
   }
+
+  /* ============================================================
+     РЕСТОРАНЫ: бежевый дизайн
+     ============================================================ */
 
   .rest-tab-header { margin: 12px 12px 4px; padding: 14px 16px;
     background: linear-gradient(135deg, var(--beige-soft), #fdf9f2);
@@ -99,8 +116,8 @@
   .rest-head { display: flex; align-items: center; gap: 12px; }
   .rest-logo { width: 46px; height: 46px; border-radius: 14px; flex-shrink: 0;
     background: linear-gradient(135deg, var(--beige-soft), #f1e6d2);
-    border: 1px solid var(--beige-border); display: flex; align-items: center; justify-content: center;
-    font-size: 22px; }
+    border: 1px solid var(--beige-border);
+    display: flex; align-items: center; justify-content: center; font-size: 22px; }
   .rest-head-main { flex: 1; min-width: 0; }
   .rest-name { font-size: 16px; font-weight: 700; line-height: 1.25; color: #2c2620; }
   .rest-status { display: inline-block; margin-top: 4px; padding: 3px 10px;
@@ -120,6 +137,9 @@
 
   .no-results { text-align: center; color: #8e8e93; padding: 30px 12px; }
 
+  /* ============================================================
+     Карточка одной точки (глубокая ссылка из бота) — тот же стиль
+     ============================================================ */
   .detail-hero { background: linear-gradient(135deg, var(--beige-soft), #fdf9f2);
     border: 1px solid var(--beige-border); color: #4a3c28; border-radius: 18px;
     margin: 12px 12px 12px; padding: 24px 16px; text-align: center; }
@@ -144,12 +164,14 @@
     text-decoration: none; cursor: pointer; }
   .btn-back:active { background: var(--beige-soft); }
 
+  /* ===== Экран блокировки ===== */
   .blocked-screen { background: #fff; border-radius: 18px; margin: 40px 12px 12px;
     padding: 32px 20px; text-align: center; box-shadow: 0 4px 14px rgba(0,0,0,.07); }
   .blocked-screen .big { font-size: 44px; margin-bottom: 12px; }
   .blocked-screen .title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
   .blocked-screen .text { color: #8e8e93; font-size: 14px; }
 
+  /* ===== Уровни новостей: без цветных полосок ===== */
   .news-date { color: #8e8e93; font-size: 12px; margin-top: 4px; }
   .level-urgent b::before { content: "🔴 "; }
   .level-important b::before { content: "🟡 "; }
@@ -158,7 +180,7 @@
 </head>
 <body>
 
-<div class="section active" id="sec-profile">
+<div class="section" id="sec-profile">
   <div id="profile-box">Загрузка профиля…</div>
 </div>
 
@@ -172,12 +194,7 @@
   <div id="restaurants-list"></div>
 </div>
 
-<div class="section" id="sec-detail">
-  <div id="detail-box"></div>
-  <button class="btn-back" id="detail-back">← Ко всем ресторанам</button>
-</div>
-
-<div class="section" id="sec-news">
+<div class="section active" id="sec-news">
   <div id="news-list"></div>
 </div>
 
@@ -194,10 +211,15 @@
   </div>
 </div>
 
+<div class="section" id="sec-detail">
+  <div id="detail-box"></div>
+  <button class="btn-back" id="detail-back">← Ко всем ресторанам</button>
+</div>
+
 <nav class="tabs">
-  <button data-sec="sec-profile" class="active"><span>👤</span>Профиль</button>
+  <button data-sec="sec-profile"><span>👤</span>Профиль</button>
   <button data-sec="sec-restaurants"><span>🏙️</span>Рестораны</button>
-  <button data-sec="sec-news"><span>📰</span>Новости</button>
+  <button data-sec="sec-news" class="active"><span>📰</span>Новости</button>
   <button data-sec="sec-standards"><span>📚</span>Стандарты</button>
   <button data-sec="sec-faq"><span>❓</span>Вопрос/ответ</button>
 </nav>
@@ -264,6 +286,7 @@ function initialFor(name) {
   return '👤';
 }
 
+/* Приветствие по времени суток */
 function greetingTexts() {
   const h = new Date().getHours();
   if (h >= 5 && h < 12) return { hello: 'Доброе утро', sub: 'Хорошего начала дня и лёгких смен ☀️' };
@@ -272,6 +295,7 @@ function greetingTexts() {
   return { hello: 'Доброй ночи', sub: 'Отдыхайте — завтра снова в бой 🌙' };
 }
 
+/* Запасной вариант: имя из профиля (первое слово ФИО) */
 function firstNameFromProfile(p) {
   if (p && p.first_name && p.first_name.trim()) return p.first_name.trim();
   if (p && p.full_name) {
@@ -281,7 +305,8 @@ function firstNameFromProfile(p) {
   return '';
 }
 
-function displayNameOf(fullName, p) {
+/* Имя для обращения: сначала имя из Telegram, затем из профиля */
+function displayNameOf(p) {
   const u = tgUserInfo();
   if (u && u.first_name && u.first_name.trim()) return u.first_name.trim();
   return firstNameFromProfile(p);
@@ -340,8 +365,9 @@ async function loadProfile() {
       const p = data.profile;
       const isOffice = p.restaurant === 'ОФИС';
       const restBadge = isOffice ? 'office' : 'normal';
-      const name = displayNameOf(p.full_name, p);
+      const name = displayNameOf(p);
 
+      /* Поздравление (день рождения / праздник) — берём с бэкенда */
       let greet = null;
       try {
         const gr = await fetch('/api/greeting', {
@@ -413,6 +439,7 @@ async function loadProfile() {
   }
 }
 
+/* ===== Рестораны: кэш + мгновенный поиск + сортировка ===== */
 let ALL_RESTAURANTS = null;
 let REST_FETCH_TS = 0;
 const REST_TTL = 5 * 60 * 1000;
@@ -466,6 +493,7 @@ function renderRestaurants(query) {
     ? ALL_RESTAURANTS.filter(r => r._search.indexOf(q) !== -1)
     : ALL_RESTAURANTS;
 
+  /* Сортировка: открытые сверху, потом закрытые; внутри групп — по sort, затем по названию */
   list.sort((a, b) => {
     const aOpen = a.status === 'open';
     const bOpen = b.status === 'open';
@@ -533,6 +561,8 @@ async function loadRestaurants() {
 document.getElementById('rest-search').addEventListener('input', e => {
   renderRestaurants(e.target.value);
 });
+
+/* ===== Карточка одного ресторана (глубокая ссылка ?rest=…) ===== */
 
 function renderDetail(r) {
   document.getElementById('detail-box').innerHTML =
@@ -690,11 +720,16 @@ async function init() {
 
   const restKey = new URLSearchParams(location.search).get('rest');
   if (restKey) {
-    await loadProfile();
+    /* Глубокая ссылка из бота: карточка ресторана важнее стартовой вкладки */
+    loadProfile();
     await showDetail(restKey);
     return;
   }
 
+  /* Стартовая вкладка — «Новости»: она активна в HTML,
+     поэтому все секции сейчас скрыты, кроме sec-news.
+     Профиль и остальные разделы грузим в фоне,
+     чтобы при первом переключении всё уже было готово. */
   loadProfile();
   loadRestaurants();
   loadNews();

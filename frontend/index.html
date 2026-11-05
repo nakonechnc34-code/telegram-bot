@@ -26,6 +26,12 @@
   details { background: #fff; border-radius: 14px; margin: 0 12px 10px; padding: 14px; }
   summary { font-weight: 600; cursor: pointer; }
   details p { margin-top: 8px; color: #3a3a3c; }
+  .profile-line { padding: 4px 0; }
+  .profile-box {
+    border-top: 1px solid #e5e5ea;
+    border-bottom: 1px solid #e5e5ea;
+    margin-top: 8px;
+  }
 </style>
 </head>
 <body>
@@ -89,11 +95,14 @@ async function loadProfile() {
     const data = await resp.json();
     if (resp.ok && data.registered) {
       const p = data.profile;
-      box.innerHTML = `<b>${esc(p.full_name)}</b>
-        📞 ${esc(p.phone)}<br>
-        🎂 ${esc(p.birth_date)}<br>
-        💼 ${esc(p.position)}<br>
-        📍 ${esc(p.restaurant)}`;
+      box.innerHTML = `<b>📋 Твой профиль</b>
+        <div class="profile-box">
+          <div class="profile-line">👤 ФИО: <b>${esc(p.full_name)}</b></div>
+          <div class="profile-line">💼 Должность: ${esc(p.position)}</div>
+          <div class="profile-line">📍 Ресторан: ${esc(p.restaurant)}</div>
+          <div class="profile-line">📞 Телефон: ${esc(p.phone)}</div>
+          <div class="profile-line">🎂 Дата рождения: ${esc(p.birth_date)}</div>
+        </div>`;
     } else if (resp.status === 401) {
       box.innerHTML = '⚠️ Ошибка авторизации Telegram. Закрой приложение и открой заново из бота.';
     } else if (resp.status === 403) {

@@ -89,9 +89,8 @@
   }
   .rest-status.open { background: var(--green); }
   .rest-status.closed { background: #ff3b30; }
-  .rest-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .rest-actions { display: flex; margin-top: 10px; }
   .rest-actions .btn { flex: 1; text-align: center; margin-top: 0; text-decoration: none; }
-  .btn-secondary { background: #f0f0f4; color: var(--blue); font-weight: 600; }
   .no-results { text-align: center; color: #8e8e93; padding: 30px 12px; }
 
   /* ===== Экран блокировки ===== */
@@ -182,7 +181,6 @@ document.querySelectorAll('.tabs button').forEach(btn => {
 const esc = s => (s || '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-// Экран блокировки — общий для всех вкладок
 function blockedHtml() {
   return '<div class="blocked-screen">' +
     '<div class="big">🚫</div>' +
@@ -341,10 +339,8 @@ function renderRestaurants(query) {
       '</div>' +
       '<div class="muted">📍 ' + esc(r.address) + '</div>' +
       '<div class="muted">🕒 ' + esc(r.hours).replaceAll('\n', '<br>') + '</div>' +
-      '<div class="muted">📞 <a href="tel:' + esc(r.phone) + '">' + esc(r.phone) + '</a></div>' +
       '<div class="rest-actions">' +
-      '<a href="tel:' + esc(r.phone) + '"><button class="btn">📞 Позвонить</button></a>' +
-      '<a href="' + mapUrl + '" target="_blank"><button class="btn btn-secondary">🗺 На карте</button></a>' +
+      '<a href="' + mapUrl + '" target="_blank"><button class="btn">🗺 Открыть на Яндекс Картах</button></a>' +
       '</div>' +
       '</div>';
   }).join('');
@@ -366,6 +362,10 @@ async function loadRestaurants() {
     box.innerHTML = '<div class="card">Ошибка загрузки списка ресторанов</div>';
   }
 }
+
+document.getElementById('rest-search').addEventListener('input', e => {
+  renderRestaurants(e.target.value);
+});
 
 async function loadNews() {
   const box = document.getElementById('news-list');

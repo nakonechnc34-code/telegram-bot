@@ -15,10 +15,14 @@
   .muted { color: #8e8e93; font-size: 14px; }
   .btn { display: inline-block; background: var(--blue); color: #fff; border: 0;
          border-radius: 10px; padding: 10px 16px; font-size: 15px; margin-top: 8px; }
-  .btn-map { display: block; width: 100%; background: var(--map-btn); color: #fff; border: 0;
+  .btn-map { display: block; background: var(--map-btn); color: #fff; border: 0;
              border-radius: 10px; padding: 11px 16px; font-size: 15px; text-align: center;
              text-decoration: none; }
   .btn-map:active { background: var(--map-btn-hover); }
+  .btn-call { display: block; background: #f0f0f4; color: var(--map-btn); border: 0;
+              border-radius: 10px; padding: 11px 8px; font-size: 15px; text-align: center;
+              font-weight: 600; text-decoration: none; }
+  .btn-call:active { background: #e2e2e8; }
   .tabs { position: fixed; bottom: 0; left: 0; right: 0; display: flex; background: #fff;
           border-top: 1px solid #e5e5ea; }
   .tabs button { flex: 1; border: 0; background: none; padding: 12px 2px; font-size: 11px; color: #8e8e93; }
@@ -94,8 +98,8 @@
   }
   .rest-status.open { background: var(--green); }
   .rest-status.closed { background: #ff3b30; }
-  .rest-actions { display: flex; margin-top: 10px; }
-  .rest-actions .btn-map { flex: 1; }
+  .rest-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .rest-actions a { flex: 1; display: block; }
   .no-results { text-align: center; color: #8e8e93; padding: 30px 12px; }
 
   /* ===== Карточка одного ресторана (глубокая ссылка из бота) ===== */
@@ -118,6 +122,8 @@
   .detail-card .row { padding: 9px 0; border-bottom: 1px solid #f0f0f4; font-size: 15px; }
   .detail-card .row:last-child { border-bottom: 0; }
   .detail-card .row .lbl { color: #8e8e93; font-size: 13px; margin-bottom: 2px; }
+  .detail-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .detail-actions a { flex: 1; display: block; }
   .btn-back {
     display: block; margin: 0 12px 12px; padding: 11px 16px;
     background: #fff; color: var(--blue); border: 1px solid #e5e5ea;
@@ -353,7 +359,7 @@ async function loadProfile() {
 // ===== Рестораны: кэш + мгновенный поиск =====
 let ALL_RESTAURANTS = null;
 let REST_FETCH_TS = 0;
-const REST_TTL = 5 * 60 * 1000; // 5 минут, в миллисекундах
+const REST_TTL = 5 * 60 * 1000;
 
 function prepareRestaurants(list) {
   return list.map(r => {
@@ -379,6 +385,23 @@ async function fetchRestaurants() {
   return ALL_RESTAURANTS;
 }
 
+function mapUrlFor(r) {
+  return r.org
+    ? 'https://yandex.ru/maps/org/' + r.org
+    : 'https://yandex.ru/maps/?text=' + encodeURIComponent('Воккер ' + r.address);
+}
+
+function restButtonsHtml(r) {
+  const mapBtn = '<a href="' + mapUrlFor(r) + '" target="_blank"><span class="btn-map">🗺 На карте</span></a>';
+  if (r.phone) {
+    return '<div class="rest-actions">' +
+      '<a href="tel:' + esc(r.phone) + '"><span class="btn-call">📞 Позвонить</span></a>' +
+      mapBtn +
+      '</div>';
+  }
+  return '<div class="rest-actions">' + mapBtn + '</div>';
+}
+
 function renderRestaurants(query) {
   const box = document.getElementById('restaurants-list');
   if (!ALL_RESTAURANTS) {
@@ -397,6 +420,9 @@ function renderRestaurants(query) {
 
   box.innerHTML = list.map(r => {
     const stClass = r.status === 'open' ? 'open' : 'closed';
+    const phoneRow = r.phone
+      ? '<div class="muted">📞 <a href="tel:' + esc(r.phone) + '">' + esc(r.phone) + '</a></div>'
+      : '';
     return '<div class="rest-card">' +
       '<div class="rest-top">' +
       '<div class="rest-name">' + esc(r.name) + '</div>' +
@@ -404,9 +430,8 @@ function renderRestaurants(query) {
       '</div>' +
       '<div class="muted">📍 ' + esc(r.address) + '</div>' +
       '<div class="muted">🕒 ' + esc(r.hours).replaceAll('\n', '<br>') + '</div>' +
-      '<div class="rest-actions">' +
-      '<a href="' + mapUrlFor(r) + '" target="_blank"><span class="btn-map">🗺 Открыть на Яндекс Картах</span></a>' +
-      '</div>' +
+      phoneRow +
+      restButtonsHtml(r) +
       '</div>';
   }).join('');
 }
@@ -433,14 +458,11 @@ document.getElementById('rest-search').addEventListener('input', e => {
 
 // ===== Карточка одного ресторана (глубокая ссылка ?rest=…) =====
 
-function mapUrlFor(r) {
-  return r.org
-    ? 'https://yandex.ru/maps/org/' + r.org
-    : 'https://yandex.ru/maps/?text=' + encodeURIComponent('Воккер ' + r.address);
-}
-
 function renderDetail(r) {
   const emoji = r.status === 'open' ? '🟢' : '🔴';
+  const phoneRow = r.phone
+    ? '<div class="row"><div class="lbl">Телефон</div>📞 <a href="tel:' + esc(r.phone) + '">' + esc(r.phone) + '</a></div>'
+    : '';
   document.getElementById('detail-box').innerHTML =
     '<div class="detail-hero">' +
     '<div class="emoji">' + emoji + '</div>' +
@@ -450,7 +472,9 @@ function renderDetail(r) {
     '<div class="detail-card">' +
     '<div class="row"><div class="lbl">Адрес</div>📍 ' + esc(r.address) + '</div>' +
     '<div class="row"><div class="lbl">Часы работы</div>🕒 ' + esc(r.hours).replaceAll('\n', '<br>') + '</div>' +
-    '<div style="margin-top:12px">' +
+    phoneRow +
+    '<div class="detail-actions">' +
+    (r.phone ? '<a href="tel:' + esc(r.phone) + '"><span class="btn-call">📞 Позвонить</span></a>' : '') +
     '<a href="' + mapUrlFor(r) + '" target="_blank"><span class="btn-map">🗺 Открыть на Яндекс Картах</span></a>' +
     '</div>' +
     '</div>';
@@ -467,7 +491,6 @@ async function showDetail(key) {
     } else {
       renderDetail(r);
     }
-    // Прячем табы — на карточке они не нужны, есть кнопка «Назад»
     document.querySelector('.tabs').style.display = 'none';
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
     section.classList.add('active');
@@ -484,7 +507,6 @@ function exitDetailView() {
 }
 
 document.getElementById('detail-back').addEventListener('click', () => {
-  // Убираем параметр из адреса, чтобы перезагрузка не возвращала на карточку
   history.replaceState(null, '', location.pathname);
   exitDetailView();
   document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
@@ -596,10 +618,9 @@ document.getElementById('send-question').addEventListener('click', async () => {
 async function init() {
   await waitInitData();
 
-  // Глубокая ссылка из бота: ?rest=key — открываем сразу карточку точки
   const restKey = new URLSearchParams(location.search).get('rest');
   if (restKey) {
-    await loadProfile();           // чтобы блокировка была видна сразу
+    await loadProfile();
     await showDetail(restKey);
     return;
   }

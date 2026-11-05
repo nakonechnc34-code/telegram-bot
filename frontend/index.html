@@ -6,7 +6,7 @@
 <title>Wokker</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-  :root { --blue: #007aff; --bg: #f2f2f7; }
+  :root { --blue: #ff2d55; --bg: #f2f2f7; }
   * { box-sizing: border-box; margin: 0; }
   body { font-family: -apple-system, sans-serif; background: var(--bg); padding-bottom: 70px; }
   h1 { font-size: 22px; padding: 16px; }
@@ -26,12 +26,41 @@
   details { background: #fff; border-radius: 14px; margin: 0 12px 10px; padding: 14px; }
   summary { font-weight: 600; cursor: pointer; }
   details p { margin-top: 8px; color: #3a3a3c; }
-  .profile-line { padding: 4px 0; }
-  .profile-box {
-    border-top: 1px solid #e5e5ea;
-    border-bottom: 1px solid #e5e5ea;
-    margin-top: 8px;
+
+  /* ===== Профиль ===== */
+  .profile-card {
+    background: #fff; border-radius: 18px; margin: 0 12px 12px;
+    overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,.07);
   }
+  .profile-header {
+    background: linear-gradient(135deg, #ff2d55, #ff6a3d);
+    color: #fff; padding: 24px 16px 18px; text-align: center;
+  }
+  .avatar {
+    width: 74px; height: 74px; border-radius: 50%; margin: 0 auto 10px;
+    background: rgba(255,255,255,.25); background-size: cover; background-position: center;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 30px; font-weight: 700; color: #fff;
+  }
+  .p-name { font-size: 19px; font-weight: 700; line-height: 1.25; }
+  .p-pos { font-size: 13px; opacity: .92; margin-top: 3px; }
+  .badge {
+    display: inline-block; margin-top: 10px; padding: 4px 14px;
+    background: rgba(255,255,255,.28); border-radius: 20px; font-size: 12px; font-weight: 600;
+  }
+  .badge.blocked { background: #ff3b30; }
+  .info-list { padding: 4px 14px 10px; }
+  .info-row {
+    display: flex; align-items: center; padding: 11px 2px;
+    border-bottom: 1px solid #f0f0f4; font-size: 15px;
+  }
+  .info-row:last-child { border-bottom: 0; }
+  .info-row .ico { width: 28px; font-size: 16px; }
+  .info-row .lbl { color: #8e8e93; flex: 1; }
+  .info-row .val { font-weight: 600; text-align: right; max-width: 62%; overflow-wrap: break-word; }
+  .profile-footer { background: #f8f8fb; padding: 10px 14px; font-size: 12px; color: #8e8e93; }
+
+  /* ===== Уровни новостей ===== */
   .news-date { color: #8e8e93; font-size: 12px; margin-top: 4px; }
   .level-urgent { border-left: 3px solid #ff3b30; padding-left: 8px; }
   .level-urgent b::before { content: "🔴 "; }
@@ -44,7 +73,7 @@
 <h1>📱 Wokker</h1>
 
 <div class="section" id="sec-profile">
-  <div class="card" id="profile-box">Загрузка профиля…</div>
+  <div id="profile-box">Загрузка профиля…</div>
 </div>
 
 <div class="section" id="sec-restaurants">
@@ -95,6 +124,23 @@ document.querySelectorAll('.tabs button').forEach(btn => {
 const esc = s => (s || '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+// Аватар из Telegram: фото, если есть, иначе первая буква имени
+function tgUserInfo() {
+  try {
+    const u = tg.initDataUnsafe && tg.initDataUnsafe.user;
+    return u || null;
+  } catch (e) { return null; }
+}
+
+function avatarHtml() {
+  const u = tgUserInfo();
+  if (u && u.photo_url) {
+    return `<div class="avatar" style="background-image:url('${esc(u.photo_url)}')"></div>`;
+  }
+  const initial = (u && u.first_name) ? u.first_name.trim().charAt(0).toUpperCase() : '👤';
+  return `<div class="avatar">${esc(initial)}</div>`;
+}
+
 async function loadProfile() {
   const box = document.getElementById('profile-box');
   try {
@@ -106,23 +152,39 @@ async function loadProfile() {
     const data = await resp.json();
     if (resp.ok && data.registered) {
       const p = data.profile;
-      box.innerHTML = `<b>📋 Твой профиль</b>
-        <div class="profile-box">
-          <div class="profile-line">👤 ФИО: <b>${esc(p.full_name)}</b></div>
-          <div class="profile-line">💼 Должность: ${esc(p.position)}</div>
-          <div class="profile-line">📍 Ресторан: ${esc(p.restaurant)}</div>
-          <div class="profile-line">📞 Телефон: ${esc(p.phone)}</div>
-          <div class="profile-line">🎂 Дата рождения: ${esc(p.birth_date)}</div>
-        </div>`;
+      box.innerHTML = `
+      <div class="profile-card">
+        <div class="profile-header">
+          ${avatarHtml()}
+          <div class="p-name">${esc(p.full_name)}</div>
+          <div class="p-pos">${esc(p.position)}</div>
+          <span class="badge">✅ Активен</span>
+        </div>
+        <div class="info-list">
+          <div class="info-row"><span class="ico">💼</span><span class="lbl">Должность</span><span class="val">${esc(p.position)}</span></div>
+          <div class="info-row"><span class="ico">📍</span><span class="lbl">Ресторан</span><span class="val">${esc(p.restaurant)}</span></div>
+          <div class="info-row"><span class="ico">📞</span><span class="lbl">Телефон</span><span class="val"><a href="tel:${esc(p.phone)}">${esc(p.phone)}</a></span></div>
+          <div class="info-row"><span class="ico">🎂</span><span class="lbl">Дата рождения</span><span class="val">${esc(p.birth_date)}</span></div>
+        </div>
+        <div class="profile-footer">💡 Изменить данные можно только через администратора</div>
+      </div>`;
     } else if (resp.status === 401) {
-      box.innerHTML = '⚠️ Ошибка авторизации Telegram. Закрой приложение и открой заново из бота.';
+      box.innerHTML = '<div class="card">⚠️ Ошибка авторизации Telegram. Закрой приложение и открой заново из бота.</div>';
     } else if (resp.status === 403) {
-      box.innerHTML = '⛔ Доступ ограничен. Обратись к администратору.';
+      box.innerHTML = `
+      <div class="profile-card">
+        <div class="profile-header">
+          ${avatarHtml()}
+          <div class="p-name">Доступ ограничен</div>
+          <span class="badge blocked">🚫 Заблокирован</span>
+        </div>
+        <div class="profile-footer">Обратись к администратору.</div>
+      </div>`;
     } else {
-      box.innerHTML = 'Ты ещё не зарегистрирован.<br>Напиши /start в боте и пройди регистрацию.';
+      box.innerHTML = '<div class="card">Ты ещё не зарегистрирован.<br>Напиши /start в боте и пройди регистрацию.</div>';
     }
   } catch (e) {
-    box.innerHTML = 'Ошибка загрузки профиля: ' + esc(String(e));
+    box.innerHTML = '<div class="card">Ошибка загрузки профиля: ' + esc(String(e)) + '</div>';
   }
 }
 

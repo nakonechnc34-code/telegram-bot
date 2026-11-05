@@ -50,17 +50,20 @@ with get_conn() as conn:
                 full_name TEXT,
                 phone TEXT,
                 birth_date TEXT,
+                position TEXT,
+                restaurant TEXT,
                 welcomed BOOLEAN DEFAULT FALSE,
                 is_blocked BOOLEAN DEFAULT FALSE
             )
         """)
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS position TEXT")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS restaurant TEXT")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE")
     conn.commit()
 print("База данных подключена, таблица готова.")
 
 
 # Поле "org" — путь карточки на Яндекс Картах (yandex.ru/maps/org/<org>).
-# Поле "phone" — номер в формате tel:.
 # ВНИМАНИЕ: у 8 ресторанов номера-заглушки, помечены комментарием "ЗАГЛУШКА" — замени!
 RESTAURANTS = [
     {
@@ -215,12 +218,20 @@ RESTAURANTS = [
     },
 ]
 
+POSITIONS = [
+    "Холодный Цех",
+    "Жарщик",
+    "Управляющий сменой",
+    "Территориальный управляющий",
+]
+
 
 def db_get(user_id: int):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT full_name, phone, birth_date, welcomed, is_blocked FROM users WHERE user_id = %s",
+                "SELECT full_name, phone, birth_date, position, restaurant, welcomed, is_blocked "
+                "FROM users WHERE user_id = %s",
                 (user_id,)
             )
             return cur.fetchone()
@@ -237,15 +248,18 @@ def db_set_welcomed(user_id: int):
         conn.commit()
 
 
-def db_save_profile(user_id: int, full_name: str, phone: str, birth_date: str):
+def db_save_profile(user_id: int, full_name: str, phone: str, birth_date: str, position: str, restaurant: str):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO users (user_id, full_name, phone, birth_date, welcomed) "
-                "VALUES (%s, %s, %s, %s, TRUE) "
-                "ON CONFLICT (user_id) DO UPDATE SET "
-                "full_name = %s, phone = %s, birth_date = %s, welcomed = TRUE",
-                (user_id, full_name, phone, birth_date, full_name, phone, birth_date)
+                """
+                INSERT INTO users (user_id, full_name, phone, birth_date, position, restaurant, welcomed)
+                VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+                ON CONFLICT (user_id) DO UPDATE SET
+                full_name = %s, phone = %s, birth_date = %s, position = %s, restaurant = %s, welcomed = TRUE
+                """,
+                (user_id, full_name, phone, birth_date, position, restaurant,
+                 full_name, phone, birth_date, position, restaurant)
             )
         conn.commit()
 
@@ -262,7 +276,7 @@ def db_list_users():
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT user_id, full_name, phone, welcomed, is_blocked
+                SELECT user_id, full_name, phone, position, restaurant, welcomed, is_blocked
                 FROM users
                 ORDER BY user_id
             """)
@@ -288,6 +302,24 @@ def db_set_blocked(user_id: int, blocked: bool):
         return cur.rowcount > 0
 
 
+def get_report_stats():
+    """Простой отчёт по пользователям: всего, активные, заблокированные."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM users")
+            total = cur.fetchone()[0] or 0
+            cur.execute("SELECT COUNT(*) FROM users WHERE is_blocked = FALSE")
+            active = cur.fetchone()[0] or 0
+            cur.execute("SELECT COUNT(*) FROM users WHERE is_blocked = TRUE")
+            blocked = cur.fetchone()[0] or 0
+    return {
+        "total": total,
+        "active": active,
+        "blocked": blocked,
+        "date": datetime.now().strftime("%d.%m.%Y %H:%M"),
+    }
+
+
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
@@ -300,6 +332,8 @@ class Registration(StatesGroup):
     full_name = State()
     phone = State()
     birth_date = State()
+    position = State()
+    restaurant = State()
 
 
 FULL_MENU = InlineKeyboardMarkup(inline_keyboard=[
@@ -322,20 +356,41 @@ def phone_kb():
     )
 
 
+def positions_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=pos, callback_data=f"pos:{idx}")]
+        for idx, pos in enumerate(POSITIONS)
+    ])
+
+
+def restaurants_pick_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=r["name"], callback_data=f"restpick:{r['key']}")]
+        for r in RESTAURANTS
+    ])
+
+
+def restaurant_name_by_key(key):
+    rest = next((r for r in RESTAURANTS if r["key"] == key), None)
+    return rest["name"] if rest else key
+
+
 def profile_text(row):
-    full_name, phone, birth_date = row[0], row[1], row[2]
+    full_name, phone, birth_date, position, restaurant = row[0], row[1], row[2], row[3], row[4]
+    rest_name = restaurant_name_by_key(restaurant) if restaurant else "—"
     return (
         "Твой профиль:\n\n"
         f"👤 ФИО: {full_name}\n"
         f"📞 Телефон: {phone}\n"
-        f"🎂 Дата рождения: {birth_date}"
+        f"🎂 Дата рождения: {birth_date}\n"
+        f"💼 Должность: {position or '—'}\n"
+        f"📍 Ресторан: {rest_name}"
     )
 
 
 def map_link(restaurant) -> str:
     if restaurant.get("org"):
         return f"https://yandex.ru/maps/org/{restaurant['org']}"
-    # Кодируем кириллицу, иначе Telegram отклонит кнопку (BUTTON_URL_INVALID)
     query = quote(f"Воккер {restaurant['address']}", safe="")
     return f"https://yandex.ru/maps/?text={query}"
 
@@ -343,13 +398,14 @@ def map_link(restaurant) -> str:
 def admin_menu_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📋 Список пользователей", callback_data="adm_users")],
+        [InlineKeyboardButton(text="📊 Отчёты", callback_data="adm_reports")],
         [InlineKeyboardButton(text="🔄 Обновить", callback_data="adm_menu")],
     ])
 
 
 def users_list_kb(rows):
     kb = []
-    for user_id, full_name, phone, welcomed, is_blocked in rows:
+    for user_id, full_name, phone, position, restaurant, welcomed, is_blocked in rows:
         if is_blocked:
             icon = "🚫"
             action_text = "✅ Разбанить"
@@ -374,14 +430,18 @@ def users_list_text(rows):
     if not rows:
         return "📭 Пока никто не зарегистрирован."
     lines = [f"📋 Всего записей: {len(rows)}\n"]
-    for user_id, full_name, phone, welcomed, is_blocked in rows:
+    for user_id, full_name, phone, position, restaurant, welcomed, is_blocked in rows:
         status = "🚫 заблокирован" if is_blocked else ("✅" if full_name else "⏳ не завершил")
+        rest_name = restaurant_name_by_key(restaurant) if restaurant else "—"
         lines.append(
             f"{status} <code>{user_id}</code>\n"
             f"   👤 {full_name or '—'} · 📞 {phone or '—'}\n"
+            f"   💼 {position or '—'} · 📍 {rest_name}\n"
         )
     return "\n".join(lines)
 
+
+# --- АДМИНКА ---
 
 @dp.message(Command("admin"))
 async def cmd_admin(message: types.Message):
@@ -411,6 +471,40 @@ async def adm_users(callback: types.CallbackQuery):
     await callback.answer()
     rows = db_list_users()
     await callback.message.answer(users_list_text(rows), parse_mode="HTML", reply_markup=users_list_kb(rows))
+
+
+@dp.callback_query(lambda c: c.data == "adm_reports")
+async def adm_reports(callback: types.CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
+        return
+    await callback.answer()
+    stats = get_report_stats()
+    rows = db_list_users()
+    positions_count = {}
+    restaurants_count = {}
+    for user_id, full_name, phone, position, restaurant, welcomed, is_blocked in rows:
+        if full_name:
+            positions_count[position or "Не указана"] = positions_count.get(position or "Не указана", 0) + 1
+            rest_name = restaurant_name_by_key(restaurant) if restaurant else "Не указан"
+            restaurants_count[rest_name] = restaurants_count.get(rest_name, 0) + 1
+
+    positions_block = "\n".join(
+        f"• {k}: {v}" for k, v in sorted(positions_count.items(), key=lambda x: -x[1])
+    ) or "• пока нет данных"
+    restaurants_block = "\n".join(
+        f"• {k}: {v}" for k, v in sorted(restaurants_count.items(), key=lambda x: -x[1])
+    ) or "• пока нет данных"
+
+    text = (
+        f"📊 <b>Отчёт</b> (на {stats['date']})\n\n"
+        f"👥 Всего пользователей: {stats['total']}\n"
+        f"✅ Активных: {stats['active']}\n"
+        f"🚫 Заблокированных: {stats['blocked']}\n\n"
+        f"<b>По должностям:</b>\n{positions_block}\n\n"
+        f"<b>По ресторанам:</b>\n{restaurants_block}"
+    )
+    await callback.message.answer(text, parse_mode="HTML")
 
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("adm_ban:"))
@@ -499,6 +593,8 @@ async def adm_noop(callback: types.CallbackQuery):
         await callback.answer("⛔ Недоступно", show_alert=True)
 
 
+# --- РЕСТОРАНЫ ---
+
 def restaurants_menu_kb():
     kb = []
     for r in RESTAURANTS:
@@ -533,11 +629,8 @@ async def show_restaurant_info(callback: types.CallbackQuery):
         await callback.answer("Ресторан не найден", show_alert=True)
         return
 
-    # Телефон в тексте — Telegram делает его кликабельным.
-    # Кнопку с tel: Telegram не принимает (BUTTON_URL_INVALID), поэтому её нет.
     phone_line = f"📞 Позвонить: {restaurant['phone']}\n\n" if restaurant.get("phone") else ""
 
-    # Ссылка на карты в тексте не показывается — только кнопка ниже.
     text = (
         f"<b>{restaurant['name']}</b>\n\n"
         f"📍 Адрес: {restaurant['address']}\n"
@@ -557,6 +650,8 @@ async def show_restaurant_info(callback: types.CallbackQuery):
         logging.exception(f"edit_text не сработал: {e}")
         await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
 
+
+# --- РЕГИСТРАЦИЯ ---
 
 @dp.callback_query(lambda c: c.data == "back_to_menu")
 async def back_to_menu(callback: types.CallbackQuery):
@@ -579,14 +674,18 @@ async def cmd_start(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     if current_state:
         if current_state == Registration.full_name.state:
-            await message.answer("Шаг 1 из 3.\nНапиши своё ФИО (например: Иванов Иван Иванович)")
+            await message.answer("Шаг 1 из 5.\nНапиши своё ФИО (например: Иванов Иван Иванович)")
         elif current_state == Registration.phone.state:
-            await message.answer("Шаг 2 из 3.\nОтправь свой номер телефона — можно кнопкой ниже.", reply_markup=phone_kb())
+            await message.answer("Шаг 2 из 5.\nОтправь свой номер телефона — можно кнопкой ниже.", reply_markup=phone_kb())
         elif current_state == Registration.birth_date.state:
             await message.answer(
-                "Шаг 3 из 3.\nНапиши дату рождения в формате ДД.ММ.ГГГГ (например: 01.01.2000)",
+                "Шаг 3 из 5.\nНапиши дату рождения в формате ДД.ММ.ГГГГ (например: 01.01.2000)",
                 reply_markup=ReplyKeyboardRemove()
             )
+        elif current_state == Registration.position.state:
+            await message.answer("Шаг 4 из 5.\nВыбери свою должность:", reply_markup=positions_kb())
+        elif current_state == Registration.restaurant.state:
+            await message.answer("Шаг 5 из 5.\nВыбери свой ресторан:", reply_markup=restaurants_pick_kb())
         return
 
     await state.clear()
@@ -596,7 +695,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         await message.answer("Выбери действие:", reply_markup=FULL_MENU)
         return
 
-    if row and row[3]:
+    if row and row[5]:
         await message.answer("Сначала заверши регистрацию 👇", reply_markup=REGISTER_ONLY)
         return
 
@@ -616,7 +715,149 @@ async def start_registration(callback: types.CallbackQuery, state: FSMContext):
         return
     await callback.answer()
     await state.set_state(Registration.full_name)
-    await callback.message.answer("Шаг 1 из 3.\nНапиши своё ФИО (например: Иванов Иван Иванович)")
+    await callback.message.answer("Шаг 1 из 5.\nНапиши своё ФИО (например: Иванов Иван Иванович)")
+
+
+@dp.message(Registration.full_name)
+async def process_name(message: types.Message, state: FSMContext):
+    if db_is_blocked(message.from_user.id):
+        await message.answer("⛔ Доступ к боту ограничен.")
+        await state.clear()
+        return
+    if not message.text:
+        await message.answer("Пожалуйста, отправь именно текст с ФИО.")
+        return
+    name = message.text.strip()
+    if len(name.split()) < 2:
+        await message.answer("Похоже, этого мало. Напиши хотя бы имя и фамилию через пробел.")
+        return
+    await state.update_data(full_name=name)
+    await state.set_state(Registration.phone)
+    await message.answer("Шаг 2 из 5.\nОтправь свой номер телефона — можно кнопкой ниже.", reply_markup=phone_kb())
+
+
+@dp.message(Registration.phone, lambda m: m.contact is not None)
+async def process_phone_button(message: types.Message, state: FSMContext):
+    await state.update_data(phone=message.contact.phone_number)
+    await state.set_state(Registration.birth_date)
+    await message.answer(
+        "Отлично, номер получен ✅\nШаг 3 из 5.\nНапиши дату рождения в формате ДД.ММ.ГГГГ (например: 01.01.2000)",
+        reply_markup=ReplyKeyboardRemove()
+    )
+
+
+@dp.message(Registration.phone)
+async def process_phone_text(message: types.Message, state: FSMContext):
+    if not message.text:
+        await message.answer("Отправь номер текстом или нажми кнопку «Поделиться номером».")
+        return
+    digits = message.text.replace("+", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+    if not digits.isdigit() or len(digits) < 10:
+        await message.answer("Это не похоже на номер. Попробуй ещё раз, например: +79001234567")
+        return
+    await state.update_data(phone=message.text.strip())
+    await state.set_state(Registration.birth_date)
+    await message.answer(
+        "Номер записан ✅\nШаг 3 из 5.\nНапиши дату рождения в формате ДД.ММ.ГГГГ (например: 01.01.2000)",
+        reply_markup=ReplyKeyboardRemove()
+    )
+
+
+@dp.message(Registration.birth_date)
+async def process_birth_date(message: types.Message, state: FSMContext):
+    if db_is_blocked(message.from_user.id):
+        await message.answer("⛔ Доступ к боту ограничен.")
+        await state.clear()
+        return
+    if not message.text:
+        await message.answer("Пожалуйста, отправь дату текстом в формате ДД.ММ.ГГГГ.")
+        return
+    try:
+        birth_date = datetime.strptime(message.text.strip(), "%d.%m.%Y").date()
+        if birth_date.year < 1900 or birth_date > datetime.now().date():
+            raise ValueError
+    except ValueError:
+        await message.answer("Такой даты не бывает. Проверь и напиши ещё раз: ДД.ММ.ГГГГ")
+        return
+
+    await state.update_data(birth_date=birth_date.strftime("%d.%m.%Y"))
+    await state.set_state(Registration.position)
+    await message.answer(
+        "Дата записана ✅\nШаг 4 из 5.\nВыбери свою должность 👇",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    await message.answer("Выбери должность из списка:", reply_markup=positions_kb())
+
+
+@dp.callback_query(Registration.position, lambda c: c.data and c.data.startswith("pos:"))
+async def process_position(callback: types.CallbackQuery, state: FSMContext):
+    if db_is_blocked(callback.from_user.id):
+        await callback.answer("Доступ ограничен", show_alert=True)
+        await state.clear()
+        return
+    await callback.answer()
+    idx = int(callback.data.split(":")[1])
+    position = POSITIONS[idx]
+    await state.update_data(position=position)
+    await state.set_state(Registration.restaurant)
+    await callback.message.answer(
+        f"Должность: <b>{position}</b> ✅\n\nШаг 5 из 5.\nВыбери свой ресторан 👇",
+        parse_mode="HTML",
+        reply_markup=restaurants_pick_kb()
+    )
+
+
+@dp.callback_query(Registration.restaurant, lambda c: c.data and c.data.startswith("restpick:"))
+async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMContext):
+    if db_is_blocked(callback.from_user.id):
+        await callback.answer("Доступ ограничен", show_alert=True)
+        await state.clear()
+        return
+    await callback.answer()
+    key = callback.data.split(":")[1]
+    restaurant = next((r for r in RESTAURANTS if r["key"] == key), None)
+    if not restaurant:
+        await callback.answer("Ресторан не найден, выбери из списка", show_alert=True)
+        return
+
+    data = await state.get_data()
+    full_name = data.get("full_name", "")
+    phone = data.get("phone", "")
+    birth_date = data.get("birth_date", "")
+    position = data.get("position", "")
+
+    db_save_profile(callback.from_user.id, full_name, phone, birth_date, position, restaurant)
+    await state.clear()
+
+    await callback.message.answer(
+        "Регистрация завершена! 🎉\n\n"
+        f"👤 ФИО: {full_name}\n"
+        f"📞 Телефон: {phone}\n"
+        f"🎂 Дата рождения: {birth_date}\n"
+        f"💼 Должность: {position}\n"
+        f"📍 Ресторан: {restaurant['name']}\n\n"
+        "Теперь можешь в любой момент открыть меню (/start)."
+    )
+    await callback.message.answer("Выбери действие:", reply_markup=FULL_MENU)
+
+    if ADMIN_ID:
+        username = f"@{callback.from_user.username}" if callback.from_user.username else "нет username"
+        try:
+            await bot.send_message(
+                ADMIN_ID,
+                "🔔 Новая регистрация!\n\n"
+                f"👤 ФИО: {full_name}\n"
+                f"📞 Телефон: {phone}\n"
+                f"🎂 Дата рождения: {birth_date}\n"
+                f"💼 Должность: {position}\n"
+                f"📍 Ресторан: {restaurant['name']}\n"
+                f"🆔 Telegram ID: <code>{callback.from_user.id}</code>\n"
+                f"🔗 Username: {username}\n"
+                f"🕐 Время: {datetime.now().strftime('%d.%m.%Y %H:%M')}",
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            print(f"Не удалось отправить уведомление админу: {e}")
 
 
 @dp.callback_query(lambda c: c.data == "show_profile")
@@ -652,101 +893,6 @@ async def show_faq(callback: types.CallbackQuery):
     await callback.message.answer(
         "❓ Вопрос/ответ\n\nЧастые вопросы и ответы по работе с ботом и ресторанами."
     )
-
-
-@dp.message(Registration.full_name)
-async def process_name(message: types.Message, state: FSMContext):
-    if db_is_blocked(message.from_user.id):
-        await message.answer("⛔ Доступ к боту ограничен.")
-        await state.clear()
-        return
-    if not message.text:
-        await message.answer("Пожалуйста, отправь именно текст с ФИО.")
-        return
-    name = message.text.strip()
-    if len(name.split()) < 2:
-        await message.answer("Похоже, этого мало. Напиши хотя бы имя и фамилию через пробел.")
-        return
-    await state.update_data(full_name=name)
-    await state.set_state(Registration.phone)
-    await message.answer("Шаг 2 из 3.\nОтправь свой номер телефона — можно кнопкой ниже.", reply_markup=phone_kb())
-
-
-@dp.message(Registration.phone, lambda m: m.contact is not None)
-async def process_phone_button(message: types.Message, state: FSMContext):
-    await state.update_data(phone=message.contact.phone_number)
-    await state.set_state(Registration.birth_date)
-    await message.answer(
-        "Отлично, номер получен ✅\nШаг 3 из 3.\nНапиши дату рождения в формате ДД.ММ.ГГГГ (например: 01.01.2000)",
-        reply_markup=ReplyKeyboardRemove()
-    )
-
-
-@dp.message(Registration.phone)
-async def process_phone_text(message: types.Message, state: FSMContext):
-    if not message.text:
-        await message.answer("Отправь номер текстом или нажми кнопку «Поделиться номером».")
-        return
-    digits = message.text.replace("+", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-    if not digits.isdigit() or len(digits) < 10:
-        await message.answer("Это не похоже на номер. Попробуй ещё раз, например: +79001234567")
-        return
-    await state.update_data(phone=message.text.strip())
-    await state.set_state(Registration.birth_date)
-    await message.answer(
-        "Номер записан ✅\nШаг 3 из 3.\nНапиши дату рождения в формате ДД.ММ.ГГГГ (например: 01.01.2000)",
-        reply_markup=ReplyKeyboardRemove()
-    )
-
-
-@dp.message(Registration.birth_date)
-async def process_birth_date(message: types.Message, state: FSMContext):
-    if db_is_blocked(message.from_user.id):
-        await message.answer("⛔ Доступ к боту ограничен.")
-        await state.clear()
-        return
-    if not message.text:
-        await message.answer("Пожалуйста, отправь дату текстом в формате ДД.ММ.ГГГГ.")
-        return
-    try:
-        birth_date = datetime.strptime(message.text.strip(), "%d.%m.%Y").date()
-        if birth_date.year < 1900 or birth_date > datetime.now().date():
-            raise ValueError
-    except ValueError:
-        await message.answer("Такой даты не бывает. Проверь и напиши ещё раз: ДД.ММ.ГГГГ")
-        return
-
-    data = await state.get_data()
-    full_name = data.get("full_name", "")
-    phone = data.get("phone", "")
-    db_save_profile(message.from_user.id, full_name, phone, birth_date.strftime("%d.%m.%Y"))
-    await state.clear()
-
-    await message.answer(
-        "Регистрация завершена! 🎉\n\n"
-        f"👤 ФИО: {full_name}\n"
-        f"📞 Телефон: {phone}\n"
-        f"🎂 Дата рождения: {birth_date.strftime('%d.%m.%Y')}\n\n"
-        "Теперь можешь в любой момент открыть меню (/start)."
-    )
-    await message.answer("Выбери действие:", reply_markup=FULL_MENU)
-
-    if ADMIN_ID:
-        username = f"@{message.from_user.username}" if message.from_user.username else "нет username"
-        try:
-            await bot.send_message(
-                ADMIN_ID,
-                "🔔 Новая регистрация!\n\n"
-                f"👤 ФИО: {full_name}\n"
-                f"📞 Телефон: {phone}\n"
-                f"🎂 Дата рождения: {birth_date.strftime('%d.%m.%Y')}\n"
-                f"🆔 Telegram ID: <code>{message.from_user.id}</code>\n"
-                f"🔗 Username: {username}\n"
-                f"🕐 Время: {datetime.now().strftime('%d.%m.%Y %H:%M')}",
-                parse_mode="HTML"
-            )
-        except Exception as e:
-            print(f"Не удалось отправить уведомление админу: {e}")
 
 
 @dp.message(Command("profile"))

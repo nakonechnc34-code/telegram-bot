@@ -396,24 +396,30 @@ class Registration(StatesGroup):
     restaurant = State()
 
 
-# ================== ПРОВЕРКА MINI APP (initData) ==================
+# ================== ПРОВЕРКА MINI APP (initData) С ДИАГНОСТИКОЙ ==================
 
 def validate_init_data(init_data: str):
     """
     Проверяет подпись initData из Mini App по спецификации Telegram.
     Возвращает dict пользователя или None.
 
-    Важно: data_check_string строится из СЫРЫХ (не декодированных) значений,
-    как требует документация Telegram. Декодирование нужно только для
-    последующего разбора поля user.
+    Важно: data_check_string строится из СЫРЫХ (не декодированных) значений.
+    Декодирование — только для разбора поля user после проверки подписи.
+
+    Содержит временную диагностику: после первого запроса лог покажет
+    состав полей, конец data_check_string и хвосты обоих хешей.
     """
     if not init_data:
+        logging.warning("initData: пустая строка")
         return None
+
+    logging.info(f"initData: длина строки = {len(init_data)}, полей = {init_data.count('&') + 1}")
 
     try:
         pairs = []
         for pair in init_data.split("&"):
             if "=" not in pair:
+                logging.warning(f"initData: поле без '=': {pair[:50]!r}")
                 continue
             key, _, value = pair.partition("=")
             pairs.append((key, value))
@@ -427,17 +433,20 @@ def validate_init_data(init_data: str):
         logging.warning("initData: нет поля hash")
         return None
 
-    data_check_string = "\n".join(
-        f"{k}={v}" for k, v in sorted(pairs) if k != "hash"
-    )
+    keys = sorted(k for k, _ in pairs if k != "hash")
+    logging.info(f"initData: ключи полей = {keys}")
+
+    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(pairs) if k != "hash")
     secret_key = hmac.new(b"WebAppData", TOKEN.encode(), hashlib.sha256).digest()
     computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
 
+    logging.info(f"initData: recv_hash = ...{received_hash[-8:]}")
+    logging.info(f"initData: calc_hash = ...{computed_hash[-8:]}")
+    # Хвост строки подписи — по нему видно, что именно попало в расчёт
+    logging.info(f"initData: конец data_check_string = {data_check_string[-60:]!r}")
+
     if not hmac.compare_digest(computed_hash, received_hash):
-        # Диагностика: длины совпадают — значит токен другой или строка искажена прокси
-        logging.warning(
-            f"initData: подпись не совпала (recv_len={len(received_hash)}, calc_len={len(computed_hash)})"
-        )
+        logging.warning("initData: ПОДПИСЬ НЕ СОВПАЛА — смотрите логи выше")
         return None
 
     try:
@@ -1047,7 +1056,6 @@ async def handle_profile(request):
     init_data = payload.get("initData", "")
     user = validate_init_data(init_data)
     if not user or not user.get("id"):
-        # Диагностика в логах: видно, initData вообще не дошёл или подпись не совпала
         if not init_data:
             logging.warning("API /api/profile: initData пуст (запрос не из Telegram?)")
         return web.json_response({"error": "unauthorized"}, status=401, dumps=json_dumps)

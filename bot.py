@@ -1,6 +1,7 @@
 import os
 import asyncio
 import logging
+import json
 from datetime import datetime
 from urllib.parse import quote
 
@@ -928,12 +929,11 @@ async def handle_index(request):
 
 
 async def handle_restaurants(request):
-    import json  # вверху файла, если ещё не импортирован
+    return web.json_response(
+        RESTAURANTS,
+        dumps=lambda data: json.dumps(data, ensure_ascii=False)
+    )
 
-return web.json_response(
-    RESTAURANTS,
-    dumps=lambda data: json.dumps(data, ensure_ascii=False)
-)
 
 async def handle_health(request):
     return web.Response(text="OK")

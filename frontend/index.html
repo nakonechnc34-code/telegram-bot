@@ -302,6 +302,7 @@ async function loadProfile() {
     } else if (resp.status === 401) {
       box.innerHTML = '<div class="card">⚠️ Ошибка авторизации Telegram. Закрой приложение и открой заново из бота.</div>';
     } else if (resp.status === 403) {
+      ALL_RESTAURANTS = null; // сбрасываем кэш при блокировке
       box.innerHTML = blockedHtml();
     } else {
       box.innerHTML = '<div class="card">Ты ещё не зарегистрирован.<br>Напиши /start в боте и пройди регистрацию.</div>';
@@ -311,15 +312,31 @@ async function loadProfile() {
   }
 }
 
-// ===== Рестораны: карточки с поиском и статусом =====
-let ALL_RESTAURANTS = [];
+// ===== Рестораны: кэш в памяти + мгновенный локальный поиск =====
+// Список грузится с сервера один раз и обновляется не чаще, чем раз в 5 минут.
+// Переключение на вкладку и ввод в поиск работают без сети — мгновенно.
+let ALL_RESTAURANTS = null;
+let REST_FETCH_TS = 0;
+const REST_TTL = 5 * 60 * 1000; // 5 минут, в миллисекундах
+
+// Готовим строку для поиска заранее: фильтр по готовой строке работает мгновенно
+function prepareRestaurants(list) {
+  return list.map(r => {
+    const copy = Object.assign({}, r);
+    copy._search = ((r.name || '') + ' ' + (r.address || '')).toLowerCase();
+    return copy;
+  });
+}
 
 function renderRestaurants(query) {
   const box = document.getElementById('restaurants-list');
+  if (!ALL_RESTAURANTS) {
+    box.innerHTML = '<div class="no-results">Загрузка…</div>';
+    return;
+  }
   const q = (query || '').trim().toLowerCase();
   const list = q
-    ? ALL_RESTAURANTS.filter(r =>
-        (r.name + ' ' + r.address).toLowerCase().includes(q))
+    ? ALL_RESTAURANTS.filter(r => r._search.indexOf(q) !== -1)
     : ALL_RESTAURANTS;
 
   if (!list.length) {
@@ -348,18 +365,32 @@ function renderRestaurants(query) {
 
 async function loadRestaurants() {
   const box = document.getElementById('restaurants-list');
+  const now = Date.now();
+
+  // Кэш свежий — просто рисуем из памяти, без сети
+  if (ALL_RESTAURANTS && (now - REST_FETCH_TS) < REST_TTL) {
+    renderRestaurants(document.getElementById('rest-search').value);
+    return;
+  }
+
   try {
     const resp = await fetch('/api/restaurants', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ initData: getInitData() })
     });
-    if (resp.status === 403) { box.innerHTML = blockedHtml(); return; }
+    if (resp.status === 403) { ALL_RESTAURANTS = null; box.innerHTML = blockedHtml(); return; }
     if (resp.status === 401) { box.innerHTML = '<div class="card">⚠️ Ошибка авторизации. Открой приложение заново из бота.</div>'; return; }
-    ALL_RESTAURANTS = await resp.json();
+    ALL_RESTAURANTS = prepareRestaurants(await resp.json());
+    REST_FETCH_TS = now;
     renderRestaurants(document.getElementById('rest-search').value);
   } catch (e) {
-    box.innerHTML = '<div class="card">Ошибка загрузки списка ресторанов</div>';
+    // При сбое сети показываем кэш, если он есть — лучше старые данные, чем пустой экран
+    if (ALL_RESTAURANTS) {
+      renderRestaurants(document.getElementById('rest-search').value);
+    } else {
+      box.innerHTML = '<div class="card">Ошибка загрузки списка ресторанов</div>';
+    }
   }
 }
 

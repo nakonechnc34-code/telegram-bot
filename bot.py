@@ -305,6 +305,12 @@ def db_set_welcomed(user_id: int):
 
 
 def db_save_profile(user_id: int, full_name: str, phone: str, birth_date: str, position: str, restaurant: str):
+    # Страховка: если случайно передали словарь ресторана — берём из него ключ
+    if isinstance(restaurant, dict):
+        restaurant = restaurant.get("key", "")
+    if restaurant is not None:
+        restaurant = str(restaurant)
+
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -909,20 +915,33 @@ async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMConte
     birth_date = data.get("birth_date", "")
     position = data.get("position", "")
 
-    db_save_profile(callback.from_user.id, full_name, phone, birth_date, position, restaurant)
+    # 1. Сохраняем профиль. Если база упала — сообщаем и не оставляем пользователя в тишине.
+    try:
+        db_save_profile(callback.from_user.id, full_name, phone, birth_date, position, restaurant["key"])
+    except Exception as e:
+        logging.error(f"Ошибка сохранения профиля для {callback.from_user.id}: {e}")
+        await callback.message.answer(
+            "❌ Произошла ошибка при сохранении. Попробуй позже или напиши администратору."
+        )
+        await state.clear()
+        return
+
     await state.clear()
 
+    # 2. Сообщение об успехе с кнопкой запуска приложения (FULL_MENU содержит web_app-кнопку)
     await callback.message.answer(
-        "Регистрация завершена! 🎉\n\n"
+        "🎉 <b>Регистрация завершена!</b>\n\n"
         f"👤 ФИО: {full_name}\n"
         f"📞 Телефон: {phone}\n"
         f"🎂 Дата рождения: {birth_date}\n"
         f"💼 Должность: {position}\n"
         f"📍 Ресторан: {restaurant['name']}\n\n"
-        "Теперь можешь в любой момент открыть меню (/start)."
+        "Открой приложение — там профиль, рестораны, стандарты и вопросы/ответы:",
+        parse_mode="HTML",
+        reply_markup=FULL_MENU
     )
-    await callback.message.answer("Выбери действие:", reply_markup=FULL_MENU)
 
+    # 3. Уведомление админу — отдельно, чтобы сбой отправки не ломал регистрацию
     if ADMIN_ID:
         username = f"@{callback.from_user.username}" if callback.from_user.username else "нет username"
         try:
@@ -940,7 +959,7 @@ async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMConte
                 parse_mode="HTML"
             )
         except Exception as e:
-            print(f"Не удалось отправить уведомление админу: {e}")
+            logging.error(f"Не удалось отправить уведомление админу: {e}")
 
 
 @dp.callback_query(lambda c: c.data == "show_profile")

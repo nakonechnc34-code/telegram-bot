@@ -163,6 +163,7 @@ async function fillAvatar() {
         el.textContent = '';
       }
     }
+    // 204 или ошибка — остаётся буква, это нормальное поведение
   } catch (e) { /* остаётся буква */ }
 }
 
@@ -206,6 +207,7 @@ async function loadProfile() {
         </div>
         <div class="profile-footer">Обратись к администратору.</div>
       </div>`;
+      fillAvatar();
     } else {
       box.innerHTML = '<div class="card">Ты ещё не зарегистрирован.<br>Напиши /start в боте и пройди регистрацию.</div>';
     }

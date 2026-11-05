@@ -33,11 +33,11 @@
     margin-top: 8px;
   }
   .news-date { color: #8e8e93; font-size: 12px; margin-top: 4px; }
-  .news-important {
-    border-left: 3px solid #ff9500;
-    padding-left: 8px;
-  }
-  .news-important b::before { content: "🔥 "; }
+  .level-urgent { border-left: 3px solid #ff3b30; padding-left: 8px; }
+  .level-urgent b::before { content: "🔴 "; }
+  .level-important { border-left: 3px solid #ff9500; padding-left: 8px; }
+  .level-important b::before { content: "🟡 "; }
+  .level-normal b::before { content: "🔵 "; }
 </style>
 </head>
 <body>
@@ -158,12 +158,15 @@ async function loadNews() {
       box.innerHTML = '<div class="card">Пока новостей нет 📰</div>';
       return;
     }
-    box.innerHTML = list.map(n => `
-      <div class="card ${n.important ? 'news-important' : ''}">
+    box.innerHTML = list.map(n => {
+      const lvl = ['urgent', 'important'].includes(n.level) ? n.level : 'normal';
+      return `
+      <div class="card level-${lvl}">
         <b>${esc(n.title)}</b>
         <div>${esc(n.text)}</div>
         <div class="news-date">${esc(n.date)}</div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   } catch (e) {
     box.innerHTML = '<div class="card">Ошибка загрузки новостей</div>';
   }

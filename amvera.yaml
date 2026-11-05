@@ -1,0 +1,11 @@
+meta:
+  name: telegram-bot
+  type: python
+  version: "3.11"
+
+build:
+  requirements_file: requirements.txt
+
+run:
+  command: python bot.py
+  port: 8080

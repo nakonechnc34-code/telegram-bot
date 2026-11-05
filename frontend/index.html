@@ -61,6 +61,23 @@
     margin-top: 2px;
   }
 
+  /* Баннер поздравления: день рождения / праздник */
+  .greet-banner {
+    margin: 12px 12px 0;
+    padding: 16px;
+    border-radius: 16px;
+    border: 1px solid var(--beige-border);
+    background: linear-gradient(135deg, var(--beige-soft), #fdf9f2);
+    text-align: center;
+  }
+  .greet-banner .gb-title { font-size: 18px; font-weight: 700; color: #3a2f1f; }
+  .greet-banner .gb-sub { font-size: 13px; color: #7c6b52; margin-top: 4px; line-height: 1.45; }
+  .greet-banner.birthday {
+    background: linear-gradient(135deg, #ffe9ec, #fff5f0);
+    border-color: #f3c1c9;
+  }
+  .greet-banner.birthday .gb-title { color: #b0435f; }
+
   .profile-card {
     background: #fff; border-radius: 18px; margin: 8px 12px 12px;
     overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,.07);
@@ -432,11 +449,28 @@ async function loadProfile() {
       const restBadge = isOffice ? 'office' : 'normal';
       const name = firstNameOf(p.full_name);
 
+      // Поздравление (день рождения / праздник) — берём с бэкенда
+      let greet = null;
+      try {
+        const gr = await fetch('/api/greeting', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ initData: getInitData() })
+        });
+        if (gr.ok) greet = await gr.json();
+      } catch (e) { /* без баннера */ }
+      const greetHtml = (greet && greet.kind && greet.kind !== 'normal')
+        ? '<div class="greet-banner ' + greet.kind + '">' +
+          '<div class="gb-title">' + esc(greet.title) + '</div>' +
+          '<div class="gb-sub">' + esc(greet.sub) + '</div></div>'
+        : '';
+
       box.innerHTML =
         '<div class="greeting">' +
         '<div class="g-title">' + esc(g.hello) + (name ? ', ' + esc(name) : '') + ' 👋</div>' +
         '<div class="g-sub">' + esc(g.sub) + '</div>' +
         '</div>' +
+        greetHtml +
         '<div class="profile-card">' +
         '<div class="profile-header">' +
         '<div class="avatar-ring">' + avatarHtml(initialFor(p.full_name)) + '</div>' +
@@ -678,109 +712,3 @@ async function loadNews() {
     if (!list.length) {
       box.innerHTML = '<div class="card">Пока новостей нет 📰</div>';
       return;
-    }
-    box.innerHTML = list.map(n => {
-      const lvl = ['urgent', 'important'].includes(n.level) ? n.level : 'normal';
-      return '<div class="card level-' + lvl + '">' +
-        '<b>' + esc(n.title) + '</b>' +
-        '<div>' + esc(n.text) + '</div>' +
-        '<div class="news-date">' + esc(n.date) + '</div>' +
-        '</div>';
-    }).join('');
-  } catch (e) {
-    box.innerHTML = '<div class="card">Ошибка загрузки новостей</div>';
-  }
-}
-
-async function loadStandards() {
-  const box = document.getElementById('standards-list');
-  try {
-    const resp = await fetch('/api/standards', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ initData: getInitData() })
-    });
-    if (resp.status === 403) { box.innerHTML = blockedHtml(); return; }
-    if (resp.status === 401) { box.innerHTML = '<div class="card">⚠️ Ошибка авторизации. Открой приложение заново из бота.</div>'; return; }
-    const list = await resp.json();
-    box.innerHTML = list.map(s =>
-      '<div class="card">' +
-      '<b>' + esc(s.title) + '</b>' +
-      '<div class="muted">' + esc(s.category) + '</div>' +
-      '<div style="margin-top:6px">' + esc(s.description) + '</div>' +
-      (s.url ? '<a href="' + esc(s.url) + '" target="_blank"><button class="btn">Открыть</button></a>' : '') +
-      '</div>'
-    ).join('');
-  } catch (e) {
-    box.innerHTML = '<div class="card">Ошибка загрузки стандартов</div>';
-  }
-}
-
-async function loadFaq() {
-  const box = document.getElementById('faq-list');
-  try {
-    const resp = await fetch('/api/faq', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ initData: getInitData() })
-    });
-    if (resp.status === 403) { box.innerHTML = blockedHtml(); return; }
-    if (resp.status === 401) { box.innerHTML = '<div class="card">⚠️ Ошибка авторизации. Открой приложение заново из бота.</div>'; return; }
-    const list = await resp.json();
-    box.innerHTML = list.map(f =>
-      '<details>' +
-      '<summary>' + esc(f.question) + '</summary>' +
-      '<p>' + esc(f.answer) + '</p>' +
-      '</details>'
-    ).join('');
-  } catch (e) {
-    box.innerHTML = '<div class="card">Ошибка загрузки вопросов</div>';
-  }
-}
-
-document.getElementById('send-question').addEventListener('click', async () => {
-  const input = document.getElementById('question-input');
-  const text = input.value.trim();
-  if (!text) return;
-  try {
-    const resp = await fetch('/api/questions', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ initData: getInitData(), question: text })
-    });
-    if (resp.ok) {
-      input.value = '';
-      alert('Вопрос отправлен! Ответ увидишь в боте.');
-    } else if (resp.status === 403) {
-      alert('Доступ ограничен администратором.');
-    } else if (resp.status === 401) {
-      alert('Ошибка авторизации. Закрой приложение и открой заново из бота.');
-    } else {
-      alert('Не удалось отправить вопрос. Попробуй позже.');
-    }
-  } catch (e) {
-    alert('Ошибка сети');
-  }
-});
-
-async function init() {
-  await waitInitData();
-
-  const restKey = new URLSearchParams(location.search).get('rest');
-  if (restKey) {
-    await loadProfile();
-    await showDetail(restKey);
-    return;
-  }
-
-  loadProfile();
-  loadRestaurants();
-  loadNews();
-  loadStandards();
-  loadFaq();
-}
-
-init();
-</script>
-</body>
-</html>

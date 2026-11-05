@@ -537,17 +537,23 @@ async def show_restaurant_info(callback: types.CallbackQuery):
         f"🕒 Часы работы:\n{restaurant['hours']}"
     )
 
-    # Собираем кнопки: звонок (если есть телефон), карта, навигация
-    buttons = []
+    # Кнопки «Позвонить» и «На карте» — в одну строку, навигация — отдельно
+    row_actions = []
     if restaurant.get("phone"):
-        buttons.append([InlineKeyboardButton(
-            text=f"📞 Позвонить ({restaurant['phone']})",
+        row_actions.append(InlineKeyboardButton(
+            text=f"📞 {restaurant['phone']}",
             url=f"tel:{restaurant['phone']}"
-        )])
-    buttons.append([InlineKeyboardButton(text="🗺 Показать на карте", url=map_link(restaurant))])
-    buttons.append([InlineKeyboardButton(text="← Назад к списку ресторанов", callback_data="restaurants")])
-    buttons.append([InlineKeyboardButton(text="🏠 В главное меню", callback_data="back_to_menu")])
-    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+        ))
+    row_actions.append(InlineKeyboardButton(
+        text="🗺 На карте",
+        url=map_link(restaurant)
+    ))
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        row_actions,
+        [InlineKeyboardButton(text="← Назад к списку ресторанов", callback_data="restaurants")],
+        [InlineKeyboardButton(text="🏠 В главное меню", callback_data="back_to_menu")],
+    ])
 
     try:
         await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)

@@ -62,6 +62,145 @@ with get_conn() as conn:
     conn.commit()
 print("🗄️ База данных подключена, таблица готова.")
 
+# --- Данные ресторанов ---
+RESTAURANTS = [
+    {
+        "key": "mega_belaya_dacha",
+        "name": "Мега Белая Дача",
+        "address": "г. Котельники, 1-й Покровский проезд, д. 5, ТЦ «Мега Белая Дача»",
+        "hours": "10:00–22:00",
+        "description": "Флагманский ресторан: большой выбор воков и азиатских закусок.",
+        "lat": 55.6578,
+        "lon": 37.8891,
+    },
+    {
+        "key": "belyaevo",
+        "name": "Беляево",
+        "address": "Москва, ул. Профсоюзная, д. ХХ, ТЦ «Беляево»",
+        "hours": "10:00–23:00",
+        "description": "Уютный формат в спальном районе.",
+        "lat": 55.6470,
+        "lon": 37.5420,
+    },
+    {
+        "key": "vernadka",
+        "name": "Вернадка",
+        "address": "Москва, пр. Вернадского, д. ХХ",
+        "hours": "09:00–22:00",
+        "description": "Популярная точка у студентов и офисных сотрудников.",
+        "lat": 55.6840,
+        "lon": 37.4980,
+    },
+    {
+        "key": "erevan_plaza",
+        "name": "Ереван Плаза",
+        "address": "Москва, ул. Большая Тульская, д. 13, ТРЦ «Ереван Плаза»",
+        "hours": "10:00–23:00",
+        "description": "Центр притяжения в южной части города.",
+        "lat": 55.7030,
+        "lon": 37.6210,
+    },
+    {
+        "key": "kuzminki_mall",
+        "name": "Кузьминки Молл",
+        "address": "Москва, Волгоградский пр., д. ХХ, ТРЦ «Кузьминки Молл»",
+        "hours": "10:00–22:00",
+        "description": "Удобный формат для жителей района Кузьминки.",
+        "lat": 55.6980,
+        "lon": 37.7750,
+    },
+    {
+        "key": "mega_teplyy_stan",
+        "name": "Мега Тёплый стан",
+        "address": "Москва, Калужское шоссе, 21-й км, ТЦ «Мега Тёплый Стан»",
+        "hours": "10:00–23:00",
+        "description": "Крупный торговый центр на юге Москвы.",
+        "lat": 55.5790,
+        "lon": 37.4870,
+    },
+    {
+        "key": "mega_himki",
+        "name": "Мега Химки",
+        "address": "Московская обл., г. Химки, Ленинградское шоссе, 23-й км, ТЦ «Мега Химки»",
+        "hours": "10:00–23:00",
+        "description": "Удобная точка для жителей северо-запада и области.",
+        "lat": 55.8970,
+        "lon": 37.4120,
+    },
+    {
+        "key": "metropolis",
+        "name": "Метрополис",
+        "address": "Москва, Ленинградское ш., д. 16А, ТРЦ «Метрополис»",
+        "hours": "10:00–23:00",
+        "description": "Один из крупнейших фуд-кортов города.",
+        "lat": 55.8120,
+        "lon": 37.5060,
+    },
+    {
+        "key": "moskva_city",
+        "name": "Москва-Сити",
+        "address": "Москва, Пресненская наб., д. 2, ММДЦ «Москва-Сити»",
+        "hours": "10:00–23:00",
+        "description": "Ресторан для деловых обедов и ужинов с видом.",
+        "lat": 55.7490,
+        "lon": 37.5380,
+    },
+    {
+        "key": "okeaniya",
+        "name": "Океания",
+        "address": "Москва, Кутузовский пр., д. 57, ТРЦ «Океания»",
+        "hours": "10:00–22:00",
+        "description": "Современный формат в западном округе.",
+        "lat": 55.7330,
+        "lon": 37.4950,
+    },
+    {
+        "key": "polkovaya",
+        "name": "Полковая",
+        "address": "Москва, ул. Полковая, д. ХХ",
+        "hours": "09:00–21:00",
+        "description": "Локальная точка для жителей ближайших домов.",
+        "lat": 55.8010,
+        "lon": 37.5920,
+    },
+    {
+        "key": "cdm",
+        "name": "ЦДМ",
+        "address": "Москва, Театральный пр., д. 5, стр. 1, «ЦДМ на Лубянке»",
+        "hours": "10:00–22:00",
+        "description": "Историческое место и популярное направление для семей.",
+        "lat": 55.7580,
+        "lon": 37.6230,
+    },
+    {
+        "key": "tsvetnoy",
+        "name": "Цветной",
+        "address": "Москва, Цветной бульвар, д. 15, ТРЦ «Цветной»",
+        "hours": "10:00–23:00",
+        "description": "Стильный формат в центре города.",
+        "lat": 55.7670,
+        "lon": 37.6180,
+    },
+    {
+        "key": "shchelkovskaya",
+        "name": "Щёлковская",
+        "address": "Москва, Щёлковское ш., д. ХХ",
+        "hours": "10:00–22:00",
+        "description": "Удобная точка на востоке города.",
+        "lat": 55.8050,
+        "lon": 37.7920,
+    },
+    {
+        "key": "shuka",
+        "name": "Щука",
+        "address": "Москва, ул. Щукинская, д. 42, ТРЦ «Щука»",
+        "hours": "10:00–23:00",
+        "description": "Семейный торговый центр на северо-западе.",
+        "lat": 55.8020,
+        "lon": 37.4650,
+    },
+]
+
 # --- Функции базы ---
 def db_get(user_id: int):
     with get_conn() as conn:
@@ -167,6 +306,9 @@ def profile_text(row):
         f"🎂 Дата рождения: {birth_date}"
     )
 
+def map_link(lat: float, lon: float) -> str:
+    return f"https://yandex.ru/maps/?ll={lon},{lat}&z=17"
+
 # --- Уведомление админу о регистрации ---
 async def notify_admin_about_registration(user: types.User, full_name: str, phone: str, birth_date: str):
     if not ADMIN_ID:
@@ -202,11 +344,8 @@ def users_list_kb(rows):
         if is_blocked:
             icon = "🚫"
             action = ("✅ Разбанить", f"adm_unban:{user_id}")
-        elif full_name:
-            icon = "✅"
-            action = ("🚫 Забанить", f"adm_ban:{user_id}")
         else:
-            icon = "⏳"
+            icon = "✅" if full_name else "⏳"
             action = ("🚫 Забанить", f"adm_ban:{user_id}")
         kb.append([
             InlineKeyboardButton(text=f"{icon} {full_name or 'Без имени'} · {phone or user_id}", callback_data="noop"),
@@ -231,7 +370,6 @@ def users_list_text(rows):
 @dp.message(Command("admin"))
 async def cmd_admin(message: types.Message):
     if not is_admin(message.from_user.id):
-        # Обычному пользователю ведём себя так, будто команды не существует
         return
     await message.answer(
         "🛠 <b>Админ-панель</b>\n\nВыбери действие:",
@@ -254,9 +392,7 @@ async def adm_users(callback: types.CallbackQuery):
         return
     await callback.answer()
     rows = db_list_users()
-    text = users_list_text(rows)
-    kb = users_list_kb(rows)
-    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    await callback.message.answer(users_list_text(rows), parse_mode="HTML", reply_markup=users_list_kb(rows))
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("adm_ban:"))
 async def adm_ban(callback: types.CallbackQuery):
@@ -275,7 +411,6 @@ async def adm_ban(callback: types.CallbackQuery):
             pass
     else:
         await callback.answer("Пользователь не найден", show_alert=True)
-    # Обновляем список
     rows = db_list_users()
     try:
         await callback.message.edit_text(users_list_text(rows), parse_mode="HTML", reply_markup=users_list_kb(rows))
@@ -336,9 +471,67 @@ async def adm_del_yes(callback: types.CallbackQuery):
 @dp.callback_query(lambda c: c.data == "noop")
 async def adm_noop(callback: types.CallbackQuery):
     if is_admin(callback.from_user.id):
-        await callback.answer()  # просто закрываем "часики" на строке-заголовке
+        await callback.answer()
     else:
         await callback.answer("⛔ Недоступно", show_alert=True)
+
+# ===== МЕНЮ РЕСТОРАНОВ =====
+
+def restaurants_menu_kb():
+    """Создаёт сетку кнопок с названиями ресторанов (по 2 в ряд)."""
+    kb = []
+    for i in range(0, len(RESTAURANTS), 2):
+        row = [
+            InlineKeyboardButton(text=RESTAURANTS[i]["name"], callback_data=f"rest_info:{RESTAURANTS[i]['key']}")
+        ]
+        if i + 1 < len(RESTAURANTS):
+            row.append(
+                InlineKeyboardButton(text=RESTAURANTS[i+1]["name"], callback_data=f"rest_info:{RESTAURANTS[i+1]['key']}")
+            )
+        kb.append(row)
+    kb.append([InlineKeyboardButton(text="← Назад в главное меню", callback_data="back_to_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+@dp.callback_query(lambda c: c.data == "restaurants")
+async def show_restaurants_menu(callback: types.CallbackQuery):
+    await callback.answer()
+    if db_is_blocked(callback.from_user.id):
+        await callback.message.answer("⛔ Доступ к боту ограничен.")
+        return
+    text = "🏙️ <b>Наши рестораны</b>\n\nВыбери точку из списка ниже:"
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=restaurants_menu_kb())
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("rest_info:"))
+async def show_restaurant_info(callback: types.CallbackQuery):
+    await callback.answer()
+    if db_is_blocked(callback.from_user.id):
+        await callback.message.answer("⛔ Доступ к боту ограничен.")
+        return
+    key = callback.data.split(":")[1]
+    restaurant = next((r for r in RESTAURANTS if r["key"] == key), None)
+    if not restaurant:
+        await callback.answer("❌ Ресторан не найден", show_alert=True)
+        return
+    text = (
+        f"🏠 <b>{restaurant['name']}</b>\n\n"
+        f"📍 Адрес: {restaurant['address']}\n"
+        f"🕒 Часы работы: {restaurant['hours']}\n"
+        f"📝 {restaurant['description']}"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗺 Показать на карте", url=map_link(restaurant["lat"], restaurant["lon"]))],
+        [InlineKeyboardButton(text="← Назад к списку ресторанов", callback_data="restaurants")],
+    ])
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+@dp.callback_query(lambda c: c.data == "back_to_menu")
+async def back_to_menu(callback: types.CallbackQuery):
+    await callback.answer()
+    row = db_get(callback.from_user.id)
+    if row and row[0]:
+        await callback.message.answer("Выбери действие:", reply_markup=FULL_MENU)
+    else:
+        await callback.message.answer("Что хочешь сделать?", reply_markup=REGISTER_ONLY)
 
 # ===== ЛОГИКА БОТА =====
 
@@ -399,14 +592,6 @@ async def show_profile_callback(callback: types.CallbackQuery):
         await callback.message.answer(profile_text(row))
     else:
         await callback.message.answer("Ты ещё не зарегистрирован.\nНажми /start и «✍️ Зарегистрироваться».")
-
-@dp.callback_query(lambda c: c.data == "restaurants")
-async def show_restaurants(callback: types.CallbackQuery):
-    await callback.answer()
-    if db_is_blocked(callback.from_user.id):
-        await callback.message.answer("⛔ Доступ к боту ограничен.")
-        return
-    await callback.message.answer("🏙️ Наши рестораны\n\nСкоро здесь появится список адресов, часы работы и карта.")
 
 @dp.callback_query(lambda c: c.data == "standards")
 async def show_standards(callback: types.CallbackQuery):
@@ -511,7 +696,7 @@ async def cmd_profile(message: types.Message):
     if row and row[0]:
         await message.answer(profile_text(row))
     else:
-        await message.answer("Ты ещё не зарегистрирован. Нажми /start и «✍️ Зарегистрироваться».")
+        await message.answer("Ты ещё не зарегистрирован. Напиши /start и нажми «✍️ Зарегистрироваться».")
 
 # --- HTTP-сервер для Render (health check) ---
 async def health_check_server():

@@ -533,20 +533,18 @@ async def show_restaurant_info(callback: types.CallbackQuery):
         await callback.answer("Ресторан не найден", show_alert=True)
         return
 
-    # Телефон идёт обычным текстом — Telegram сам делает его кликабельным,
-    # и по нажатию откроется набор номера. Кнопку с tel: Telegram не принимает
-    # (BUTTON_URL_INVALID), поэтому кнопки звонка здесь нет.
+    # Телефон в тексте — Telegram делает его кликабельным.
+    # Кнопку с tel: Telegram не принимает (BUTTON_URL_INVALID), поэтому её нет.
     phone_line = f"📞 Позвонить: {restaurant['phone']}\n\n" if restaurant.get("phone") else ""
 
+    # Ссылка на карты в тексте не показывается — только кнопка ниже.
     text = (
         f"<b>{restaurant['name']}</b>\n\n"
         f"📍 Адрес: {restaurant['address']}\n"
         f"🕒 Часы работы:\n{restaurant['hours']}\n\n"
         f"{phone_line}"
-        f"🗺 На карте: {map_link(restaurant)}"
     )
 
-    # В кнопках только https-ссылки — их Telegram принимает без ошибок
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🗺 Открыть на Яндекс Картах", url=map_link(restaurant))],
         [InlineKeyboardButton(text="← Назад к списку ресторанов", callback_data="restaurants")],

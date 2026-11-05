@@ -304,7 +304,7 @@ def db_set_welcomed(user_id: int):
         conn.commit()
 
 
-def db_save_profile(user_id: int, full_name: str, phone: str, birth_date: str, position: str, restaurant: str):
+def db_save_profile(user_id: int, full_name: str, phone: str, birth_date: str, position: str, restaurant):
     # Страховка: если случайно передали словарь ресторана — берём из него ключ
     if isinstance(restaurant, dict):
         restaurant = restaurant.get("key", "")

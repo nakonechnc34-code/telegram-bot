@@ -133,12 +133,37 @@ function tgUserInfo() {
 }
 
 function avatarHtml() {
+  // Сразу показываем букву-плейсхолдер, фото подтянется чуть позже
   const u = tgUserInfo();
-  if (u && u.photo_url) {
-    return `<div class="avatar" style="background-image:url('${esc(u.photo_url)}')"></div>`;
-  }
   const initial = (u && u.first_name) ? u.first_name.trim().charAt(0).toUpperCase() : '👤';
   return `<div class="avatar">${esc(initial)}</div>`;
+}
+
+async function fillAvatar() {
+  const el = document.querySelector('#profile-box .avatar');
+  if (!el) return;
+  const u = tgUserInfo();
+  // Приоритет 1: photo_url из initData (если Telegram его передал)
+  if (u && u.photo_url) {
+    el.style.backgroundImage = `url('${esc(u.photo_url)}')`;
+    el.textContent = '';
+    return;
+  }
+  // Приоритет 2: тянем публичное фото профиля через наш API
+  try {
+    const resp = await fetch('/api/avatar', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ initData: tg.initData })
+    });
+    if (resp.ok) {
+      const blob = await resp.blob();
+      if (blob.size > 0) {
+        el.style.backgroundImage = `url('${URL.createObjectURL(blob)}')`;
+        el.textContent = '';
+      }
+    }
+  } catch (e) { /* остаётся буква */ }
 }
 
 async function loadProfile() {
@@ -168,6 +193,7 @@ async function loadProfile() {
         </div>
         <div class="profile-footer">💡 Изменить данные можно только через администратора</div>
       </div>`;
+      fillAvatar();
     } else if (resp.status === 401) {
       box.innerHTML = '<div class="card">⚠️ Ошибка авторизации Telegram. Закрой приложение и открой заново из бота.</div>';
     } else if (resp.status === 403) {

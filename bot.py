@@ -4,6 +4,7 @@ import logging
 import json
 import hmac
 import hashlib
+import aiohttp
 from datetime import datetime
 from urllib.parse import unquote
 
@@ -1833,6 +1834,40 @@ async def handle_profile(request):
     }, dumps=json_dumps)
 
 
+async def handle_avatar(request):
+    """Отдаёт публичное фото профиля сотрудника из Telegram (в виде самой картинки).
+    Фото проксируется через наш сервер, чтобы токен бота не попал в браузер."""
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+
+    user = validate_init_data(payload.get("initData", ""))
+    if not user or not user.get("id"):
+        return web.json_response({"error": "unauthorized"}, status=401, dumps=json_dumps)
+
+    user_id = int(user["id"])
+    if db_is_blocked(user_id):
+        return web.json_response({"error": "blocked"}, status=403, dumps=json_dumps)
+
+    try:
+        photos = await bot.get_user_profile_photos(user_id, limit=1)
+        if not photos.total_count:
+            return web.Response(status=204)  # фото нет — фронт покажет букву
+        file_id = photos.photos[0][-1].file_id  # самый крупный размер
+        file = await bot.get_file(file_id)
+        tg_url = f"https://api.telegram.org/file/bot{TOKEN}/{file.file_path}"
+
+        async with aiohttp.ClientSession() as s:
+            async with s.get(tg_url) as r:
+                data = await r.read()
+                content_type = r.content_type or "image/jpeg"
+        return web.Response(body=data, content_type=content_type)
+    except Exception as e:
+        logging.warning(f"Не удалось получить фото профиля для {user_id}: {e}")
+        return web.Response(status=204)
+
+
 async def handle_questions(request):
     """Принимает вопрос сотрудника из мини-приложения и пересылает админу."""
     try:
@@ -1880,6 +1915,7 @@ app.router.add_get("/api/news", handle_news)
 app.router.add_get("/api/standards", handle_standards)
 app.router.add_get("/api/faq", handle_faq)
 app.router.add_post("/api/profile", handle_profile)
+app.router.add_post("/api/avatar", handle_avatar)
 app.router.add_post("/api/questions", handle_questions)
 app.router.add_get("/api/health", handle_health)
 

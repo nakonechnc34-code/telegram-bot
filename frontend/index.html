@@ -41,17 +41,50 @@
   summary { font-weight: 600; cursor: pointer; }
   details p { margin-top: 8px; color: #3a3a3c; }
 
+  /* ============================================================
+     ПРОФИЛЬ: приветствие + карточка с бежевым кольцом аватара
+     ============================================================ */
+
+  .greeting {
+    margin: 14px 12px 4px;
+    padding: 0 4px;
+  }
+  .greeting .g-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #3a2f1f;
+    line-height: 1.25;
+  }
+  .greeting .g-sub {
+    font-size: 13px;
+    color: #96876f;
+    margin-top: 2px;
+  }
+
   .profile-card {
-    background: #fff; border-radius: 18px; margin: 0 12px 12px;
+    background: #fff; border-radius: 18px; margin: 8px 12px 12px;
     overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,.07);
   }
   .profile-header {
     background: linear-gradient(135deg, #ff2d55, #ff6a3d);
     color: #fff; padding: 24px 16px 18px; text-align: center;
   }
-  .avatar {
-    width: 74px; height: 74px; border-radius: 50%; margin: 0 auto 10px;
-    background: rgba(255,255,255,.25); background-size: cover; background-position: center;
+  .avatar-ring {
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    margin: 0 auto 12px;
+    padding: 3px; /* толщина кольца */
+    background: linear-gradient(135deg, var(--beige-soft), var(--beige));
+    box-sizing: border-box;
+  }
+  .avatar-ring .avatar {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    border: 2px solid #fff; /* белый зазор между кольцом и фото */
+    background-color: rgba(255,255,255,.25);
+    background-size: cover; background-position: center;
     display: flex; align-items: center; justify-content: center;
     font-size: 30px; font-weight: 700; color: #fff;
   }
@@ -329,6 +362,21 @@ function initialFor(name) {
   return '👤';
 }
 
+/* Приветствие по времени суток */
+function greetingTexts() {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 12) return { hello: 'Доброе утро', sub: 'Хорошего начала дня и лёгких смен ☀️' };
+  if (h >= 12 && h < 18) return { hello: 'Добрый день', sub: 'Рабочая половина дня уже позади 💪' };
+  if (h >= 18 && h < 23) return { hello: 'Добрый вечер', sub: 'Загляните в новости перед сменой 🌙' };
+  return { hello: 'Доброй ночи', sub: 'Отдыхайте — завтра снова в бой 🌙' };
+}
+
+function firstNameOf(fullName) {
+  if (!fullName) return '';
+  const parts = fullName.trim().split(/\s+/);
+  return parts[0] || '';
+}
+
 function waitInitData(maxAttempts = 20, delayMs = 250) {
   return new Promise(resolve => {
     let attempt = 0;
@@ -370,6 +418,7 @@ async function fillAvatar() {
 
 async function loadProfile() {
   const box = document.getElementById('profile-box');
+  const g = greetingTexts();
   try {
     const resp = await fetch('/api/profile', {
       method: 'POST',
@@ -381,11 +430,16 @@ async function loadProfile() {
       const p = data.profile;
       const isOffice = p.restaurant === 'ОФИС';
       const restBadge = isOffice ? 'office' : 'normal';
+      const name = firstNameOf(p.full_name);
 
       box.innerHTML =
+        '<div class="greeting">' +
+        '<div class="g-title">' + esc(g.hello) + (name ? ', ' + esc(name) : '') + ' 👋</div>' +
+        '<div class="g-sub">' + esc(g.sub) + '</div>' +
+        '</div>' +
         '<div class="profile-card">' +
         '<div class="profile-header">' +
-        avatarHtml(initialFor(p.full_name)) +
+        '<div class="avatar-ring">' + avatarHtml(initialFor(p.full_name)) + '</div>' +
         '<div class="p-name">' + esc(p.full_name) + '</div>' +
         '<div class="p-pos">' + esc(p.position) + '</div>' +
         '<span class="badge">✅ Активен</span>' +

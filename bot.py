@@ -66,6 +66,13 @@ with get_conn() as conn:
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS position TEXT")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS restaurant TEXT")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS bot_messages (
+                user_id BIGINT,
+                message_id BIGINT,
+                PRIMARY KEY (user_id, message_id)
+            )
+        """)
     conn.commit()
 print("База данных подключена, таблица готова.")
 
@@ -147,7 +154,7 @@ RESTAURANTS = [
     {
         "key": "metropolis",
         "name": "Метрополис",
-        "address": "Москва, Ленинградское ш., д. 16А, стр. 4, ТРЦ «Метрополис», этаж 3",
+        "address": "Москва, Ленинградское ш., д. 16А, стр. 4, ТРЦ «Метрополis», этаж 3",
         "hours": "Пн–вс: 10:00–23:00",
         "lat": 55.8120,
         "lon": 37.5060,
@@ -382,8 +389,56 @@ def get_report_stats():
     }
 
 
+# --- учёт сообщений бота для автоочистки чата ---
+
+def db_add_bot_msg(user_id: int, message_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO bot_messages (user_id, message_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                (user_id, message_id)
+            )
+        conn.commit()
+
+
+def db_pop_bot_msgs(user_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT message_id FROM bot_messages WHERE user_id = %s", (user_id,))
+            ids = [r[0] for r in cur.fetchall()]
+            cur.execute("DELETE FROM bot_messages WHERE user_id = %s", (user_id,))
+        conn.commit()
+    return ids
+
+
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
+
+
+# ================== ОЧИСТКА ЧАТА ==================
+
+async def cleanup_chat(user_id: int):
+    """Удаляет все сообщения, которые бот раньше отправил этому пользователю."""
+    for mid in db_pop_bot_msgs(user_id):
+        try:
+            await bot.delete_message(user_id, mid)
+        except Exception:
+            pass
+
+
+async def delete_incoming(message: types.Message):
+    """Удаляет сообщение пользователя (например, его /start или текст шага)."""
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+
+async def send_tracked(chat_id: int, user_id: int, text: str, **kwargs) -> types.Message:
+    """Отправляет сообщение и запоминает его ID для будущей очистки."""
+    msg = await bot.send_message(chat_id, text, **kwargs)
+    db_add_bot_msg(user_id, msg.message_id)
+    return msg
 
 
 def is_admin(user_id: int) -> bool:
@@ -416,7 +471,7 @@ def validate_init_data(init_data: str):
 
     Сначала пробует «сырой» вариант (как требует документация),
     затем — декодированный (на случай перекодирования по пути).
-    При неудаче пишет отпечаток токена и фрагменты строки для диагностики.
+    При неудаче пишет отпечаток токена для диагностики.
     """
     if not init_data:
         logging.warning("initData: пустая строка")
@@ -568,7 +623,10 @@ def users_list_text(rows):
 async def cmd_admin(message: types.Message):
     if not is_admin(message.from_user.id):
         return
-    await message.answer(
+    await delete_incoming(message)
+    await cleanup_chat(message.chat.id)
+    await send_tracked(
+        message.chat.id, message.from_user.id,
         "🛠 <b>Админ-панель</b>\n\nВыбери действие:",
         parse_mode="HTML",
         reply_markup=admin_menu_kb()
@@ -581,7 +639,12 @@ async def adm_menu(callback: types.CallbackQuery):
         await callback.answer("⛔ Недоступно", show_alert=True)
         return
     await callback.answer()
-    await callback.message.answer("🛠 Админ-панель", reply_markup=admin_menu_kb())
+    await cleanup_chat(callback.from_user.id)
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
+        "🛠 Админ-панель",
+        reply_markup=admin_menu_kb()
+    )
 
 
 @dp.callback_query(lambda c: c.data == "adm_users")
@@ -590,8 +653,12 @@ async def adm_users(callback: types.CallbackQuery):
         await callback.answer("⛔ Недоступно", show_alert=True)
         return
     await callback.answer()
+    await cleanup_chat(callback.from_user.id)
     rows = db_list_users()
-    await callback.message.answer(users_list_text(rows), parse_mode="HTML", reply_markup=users_list_kb(rows))
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
+        users_list_text(rows), parse_mode="HTML", reply_markup=users_list_kb(rows)
+    )
 
 
 @dp.callback_query(lambda c: c.data == "adm_reports")
@@ -600,6 +667,7 @@ async def adm_reports(callback: types.CallbackQuery):
         await callback.answer("⛔ Недоступно", show_alert=True)
         return
     await callback.answer()
+    await cleanup_chat(callback.from_user.id)
     stats = get_report_stats()
     rows = db_list_users()
     positions_count = {}
@@ -625,7 +693,7 @@ async def adm_reports(callback: types.CallbackQuery):
         f"<b>По должностям:</b>\n{positions_block}\n\n"
         f"<b>По ресторанам:</b>\n{restaurants_block}"
     )
-    await callback.message.answer(text, parse_mode="HTML")
+    await send_tracked(callback.message.chat.id, callback.from_user.id, text, parse_mode="HTML")
 
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("adm_ban:"))
@@ -645,11 +713,12 @@ async def adm_ban(callback: types.CallbackQuery):
             pass
     else:
         await callback.answer("Пользователь не найден", show_alert=True)
+    await cleanup_chat(callback.from_user.id)
     rows = db_list_users()
-    try:
-        await callback.message.edit_text(users_list_text(rows), parse_mode="HTML", reply_markup=users_list_kb(rows))
-    except Exception:
-        pass
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
+        users_list_text(rows), parse_mode="HTML", reply_markup=users_list_kb(rows)
+    )
 
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("adm_unban:"))
@@ -662,11 +731,12 @@ async def adm_unban(callback: types.CallbackQuery):
         await callback.answer("Разблокирован")
     else:
         await callback.answer("Пользователь не найден", show_alert=True)
+    await cleanup_chat(callback.from_user.id)
     rows = db_list_users()
-    try:
-        await callback.message.edit_text(users_list_text(rows), parse_mode="HTML", reply_markup=users_list_kb(rows))
-    except Exception:
-        pass
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
+        users_list_text(rows), parse_mode="HTML", reply_markup=users_list_kb(rows)
+    )
 
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("adm_del:"))
@@ -679,13 +749,15 @@ async def adm_del_ask(callback: types.CallbackQuery):
         await callback.answer("Нельзя удалить самого себя", show_alert=True)
         return
     await callback.answer()
+    await cleanup_chat(callback.from_user.id)
     confirm_kb = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"adm_del_yes:{target_id}"),
             InlineKeyboardButton(text="❌ Отмена", callback_data="adm_users"),
         ]
     ])
-    await callback.message.answer(
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
         f"🗑 Удалить пользователя <code>{target_id}</code> из базы?\n\n"
         "Он сможет зарегистрироваться заново. Если нужно закрыть доступ — используй блокировку.",
         parse_mode="HTML",
@@ -701,7 +773,11 @@ async def adm_del_yes(callback: types.CallbackQuery):
     target_id = int(callback.data.split(":")[1])
     if db_delete_user(target_id):
         await callback.answer("Удалён")
-        await callback.message.answer(f"🗑 Пользователь <code>{target_id}</code> удалён.", parse_mode="HTML")
+        await cleanup_chat(callback.from_user.id)
+        await send_tracked(
+            callback.message.chat.id, callback.from_user.id,
+            f"🗑 Пользователь <code>{target_id}</code> удалён.", parse_mode="HTML"
+        )
     else:
         await callback.answer("Пользователь не найден", show_alert=True)
 
@@ -721,44 +797,66 @@ async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
 
     if db_is_blocked(user_id):
-        await message.answer("⛔ Доступ к боту ограничен. Обратитесь к администратору.")
+        await delete_incoming(message)
+        await cleanup_chat(user_id)
+        await send_tracked(message.chat.id, user_id, "⛔ Доступ к боту ограничен. Обратитесь к администратору.")
         return
+
+    # Удаляем /start и всю старую переписку с ботом
+    await delete_incoming(message)
+    await cleanup_chat(user_id)
 
     current_state = await state.get_state()
     if current_state:
         if current_state == Registration.full_name.state:
-            await message.answer("Шаг 1 из 5.\nНапиши своё ФИО (например: Иванов Иван Иванович)")
+            await send_tracked(message.chat.id, user_id, "Шаг 1 из 5.\nНапиши своё ФИО (например: Иванов Иван Иванович)")
         elif current_state == Registration.phone.state:
-            await message.answer("Шаг 2 из 5.\nОтправь свой номер телефона — можно кнопкой ниже.", reply_markup=phone_kb())
+            await send_tracked(
+                message.chat.id, user_id,
+                "Шаг 2 из 5.\nОтправь свой номер телефона — можно кнопкой ниже.",
+                reply_markup=phone_kb()
+            )
         elif current_state == Registration.birth_date.state:
-            await message.answer(
+            await send_tracked(
+                message.chat.id, user_id,
                 "Шаг 3 из 5.\nНапиши дату рождения в формате ДД.ММ.ГГГГ (например: 01.01.2000)",
                 reply_markup=ReplyKeyboardRemove()
             )
         elif current_state == Registration.position.state:
-            await message.answer("Шаг 4 из 5.\nВыбери свою должность:", reply_markup=positions_kb())
+            await send_tracked(
+                message.chat.id, user_id,
+                "Шаг 4 из 5.\nВыбери свою должность:", reply_markup=positions_kb()
+            )
         elif current_state == Registration.restaurant.state:
-            await message.answer("Шаг 5 из 5.\nВыбери свой ресторан:", reply_markup=restaurants_pick_kb())
+            await send_tracked(
+                message.chat.id, user_id,
+                "Шаг 5 из 5.\nВыбери свой ресторан:", reply_markup=restaurants_pick_kb()
+            )
         return
 
     await state.clear()
     row = db_get(user_id)
 
     if row and row[0]:
-        await message.answer("Выбери действие:", reply_markup=FULL_MENU)
+        await send_tracked(message.chat.id, user_id, "Выбери действие:", reply_markup=FULL_MENU)
         return
 
     if row and row[5]:
-        await message.answer("Сначала заверши регистрацию 👇", reply_markup=REGISTER_ONLY)
+        await send_tracked(message.chat.id, user_id, "Сначала заверши регистрацию 👇", reply_markup=REGISTER_ONLY)
         return
 
     db_set_welcomed(user_id)
-    await message.answer(
+    await send_tracked(
+        message.chat.id, user_id,
         f"👋 {message.from_user.first_name}, добро пожаловать в Wokker!\n\n"
         "Мы готовим паназиатские блюда на воке — быстро и со вкусом.\n"
         "Для начала зарегистрируйся 👇"
     )
-    await message.answer("Что хочешь сделать? Пока доступна только регистрация.", reply_markup=REGISTER_ONLY)
+    await send_tracked(
+        message.chat.id, user_id,
+        "Что хочешь сделать? Пока доступна только регистрация.",
+        reply_markup=REGISTER_ONLY
+    )
 
 
 @dp.callback_query(lambda c: c.data == "register")
@@ -767,33 +865,52 @@ async def start_registration(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Доступ ограничен", show_alert=True)
         return
     await callback.answer()
+    await cleanup_chat(callback.from_user.id)
     await state.set_state(Registration.full_name)
-    await callback.message.answer("Шаг 1 из 5.\nНапиши своё ФИО (например: Иванов Иван Иванович)")
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
+        "Шаг 1 из 5.\nНапиши своё ФИО (например: Иванов Иван Иванович)"
+    )
 
 
 @dp.message(Registration.full_name)
 async def process_name(message: types.Message, state: FSMContext):
     if db_is_blocked(message.from_user.id):
-        await message.answer("⛔ Доступ к боту ограничен.")
+        await delete_incoming(message)
+        await cleanup_chat(message.from_user.id)
+        await send_tracked(message.chat.id, message.from_user.id, "⛔ Доступ к боту ограничен.")
         await state.clear()
         return
     if not message.text:
-        await message.answer("Пожалуйста, отправь именно текст с ФИО.")
+        await delete_incoming(message)
+        await cleanup_chat(message.from_user.id)
+        await send_tracked(message.chat.id, message.from_user.id, "Пожалуйста, отправь именно текст с ФИО.")
         return
     name = message.text.strip()
     if len(name.split()) < 2:
-        await message.answer("Похоже, этого мало. Напиши хотя бы имя и фамилию через пробел.")
+        await delete_incoming(message)
+        await cleanup_chat(message.from_user.id)
+        await send_tracked(message.chat.id, message.from_user.id, "Похоже, этого мало. Напиши хотя бы имя и фамилию через пробел.")
         return
+    await delete_incoming(message)
+    await cleanup_chat(message.from_user.id)
     await state.update_data(full_name=name)
     await state.set_state(Registration.phone)
-    await message.answer("Шаг 2 из 5.\nОтправь свой номер телефона — можно кнопкой ниже.", reply_markup=phone_kb())
+    await send_tracked(
+        message.chat.id, message.from_user.id,
+        "Шаг 2 из 5.\nОтправь свой номер телефона — можно кнопкой ниже.",
+        reply_markup=phone_kb()
+    )
 
 
 @dp.message(Registration.phone, lambda m: m.contact is not None)
 async def process_phone_button(message: types.Message, state: FSMContext):
+    await delete_incoming(message)
+    await cleanup_chat(message.from_user.id)
     await state.update_data(phone=message.contact.phone_number)
     await state.set_state(Registration.birth_date)
-    await message.answer(
+    await send_tracked(
+        message.chat.id, message.from_user.id,
         "Отлично, номер получен ✅\nШаг 3 из 5.\nНапиши дату рождения в формате ДД.ММ.ГГГГ (например: 01.01.2000)",
         reply_markup=ReplyKeyboardRemove()
     )
@@ -802,15 +919,22 @@ async def process_phone_button(message: types.Message, state: FSMContext):
 @dp.message(Registration.phone)
 async def process_phone_text(message: types.Message, state: FSMContext):
     if not message.text:
-        await message.answer("Отправь номер текстом или нажми кнопку «Поделиться номером».")
+        await delete_incoming(message)
+        await cleanup_chat(message.from_user.id)
+        await send_tracked(message.chat.id, message.from_user.id, "Отправь номер текстом или нажми кнопку «Поделиться номером».")
         return
     digits = message.text.replace("+", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
     if not digits.isdigit() or len(digits) < 10:
-        await message.answer("Это не похоже на номер. Попробуй ещё раз, например: +79001234567")
+        await delete_incoming(message)
+        await cleanup_chat(message.from_user.id)
+        await send_tracked(message.chat.id, message.from_user.id, "Это не похоже на номер. Попробуй ещё раз, например: +79001234567")
         return
+    await delete_incoming(message)
+    await cleanup_chat(message.from_user.id)
     await state.update_data(phone=message.text.strip())
     await state.set_state(Registration.birth_date)
-    await message.answer(
+    await send_tracked(
+        message.chat.id, message.from_user.id,
         "Номер записан ✅\nШаг 3 из 5.\nНапиши дату рождения в формате ДД.ММ.ГГГГ (например: 01.01.2000)",
         reply_markup=ReplyKeyboardRemove()
     )
@@ -819,27 +943,36 @@ async def process_phone_text(message: types.Message, state: FSMContext):
 @dp.message(Registration.birth_date)
 async def process_birth_date(message: types.Message, state: FSMContext):
     if db_is_blocked(message.from_user.id):
-        await message.answer("⛔ Доступ к боту ограничен.")
+        await delete_incoming(message)
+        await cleanup_chat(message.from_user.id)
+        await send_tracked(message.chat.id, message.from_user.id, "⛔ Доступ к боту ограничен.")
         await state.clear()
         return
     if not message.text:
-        await message.answer("Пожалуйста, отправь дату текстом в формате ДД.ММ.ГГГГ.")
+        await delete_incoming(message)
+        await cleanup_chat(message.from_user.id)
+        await send_tracked(message.chat.id, message.from_user.id, "Пожалуйста, отправь дату текстом в формате ДД.ММ.ГГГГ.")
         return
     try:
         birth_date = datetime.strptime(message.text.strip(), "%d.%m.%Y").date()
         if birth_date.year < 1900 or birth_date > datetime.now().date():
             raise ValueError
     except ValueError:
-        await message.answer("Такой даты не бывает. Проверь и напиши ещё раз: ДД.ММ.ГГГГ")
+        await delete_incoming(message)
+        await cleanup_chat(message.from_user.id)
+        await send_tracked(message.chat.id, message.from_user.id, "Такой даты не бывает. Проверь и напиши ещё раз: ДД.ММ.ГГГГ")
         return
 
+    await delete_incoming(message)
+    await cleanup_chat(message.from_user.id)
     await state.update_data(birth_date=birth_date.strftime("%d.%m.%Y"))
     await state.set_state(Registration.position)
-    await message.answer(
+    await send_tracked(
+        message.chat.id, message.from_user.id,
         "Дата записана ✅\nШаг 4 из 5.\nВыбери свою должность 👇",
         reply_markup=ReplyKeyboardRemove()
     )
-    await message.answer("Выбери должность из списка:", reply_markup=positions_kb())
+    await send_tracked(message.chat.id, message.from_user.id, "Выбери должность из списка:", reply_markup=positions_kb())
 
 
 @dp.callback_query(Registration.position, lambda c: c.data and c.data.startswith("pos:"))
@@ -849,11 +982,13 @@ async def process_position(callback: types.CallbackQuery, state: FSMContext):
         await state.clear()
         return
     await callback.answer()
+    await cleanup_chat(callback.from_user.id)
     idx = int(callback.data.split(":")[1])
     position = POSITIONS[idx]
     await state.update_data(position=position)
     await state.set_state(Registration.restaurant)
-    await callback.message.answer(
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
         f"Должность: <b>{position}</b> ✅\n\nШаг 5 из 5.\nВыбери свой ресторан 👇",
         parse_mode="HTML",
         reply_markup=restaurants_pick_kb()
@@ -873,6 +1008,8 @@ async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMConte
         await callback.answer("Ресторан не найден, выбери из списка", show_alert=True)
         return
 
+    await cleanup_chat(callback.from_user.id)
+
     data = await state.get_data()
     full_name = data.get("full_name", "")
     phone = data.get("phone", "")
@@ -884,7 +1021,8 @@ async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMConte
         db_save_profile(callback.from_user.id, full_name, phone, birth_date, position, restaurant["key"])
     except Exception as e:
         logging.error(f"Ошибка сохранения профиля для {callback.from_user.id}: {e}")
-        await callback.message.answer(
+        await send_tracked(
+            callback.message.chat.id, callback.from_user.id,
             "❌ Произошла ошибка при сохранении. Попробуй позже или напиши администратору."
         )
         await state.clear()
@@ -893,7 +1031,8 @@ async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMConte
     await state.clear()
 
     # 2. Сообщение об успехе с кнопкой запуска приложения
-    await callback.message.answer(
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
         "🎉 <b>Регистрация завершена!</b>\n\n"
         f"👤 ФИО: {full_name}\n"
         f"📞 Телефон: {phone}\n"
@@ -929,13 +1068,20 @@ async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMConte
 @dp.message(Command("profile"))
 async def cmd_profile(message: types.Message):
     if db_is_blocked(message.from_user.id):
-        await message.answer("⛔ Доступ к боту ограничен.")
+        await delete_incoming(message)
+        await cleanup_chat(message.from_user.id)
+        await send_tracked(message.chat.id, message.from_user.id, "⛔ Доступ к боту ограничен.")
         return
+    await delete_incoming(message)
+    await cleanup_chat(message.from_user.id)
     row = db_get(message.from_user.id)
     if row and row[0]:
-        await message.answer(profile_text(row), parse_mode="HTML")
+        await send_tracked(message.chat.id, message.from_user.id, profile_text(row), parse_mode="HTML")
     else:
-        await message.answer("Ты ещё не зарегистрирован. Напиши /start и нажми «✍️ Зарегистрироваться».")
+        await send_tracked(
+            message.chat.id, message.from_user.id,
+            "Ты ещё не зарегистрирован. Напиши /start и нажми «✍️ Зарегистрироваться»."
+        )
 
 
 # ================== ВЕБ-СЕРВЕР (API + Mini App) ==================

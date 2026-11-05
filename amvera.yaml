@@ -1,9 +1,9 @@
 meta:
-  project_name: wokker-bot
   environment: python
   toolchain:
     name: pip
-    version: "3.11"
-  run:
-    scriptName: bot.py
-    persistence: "no"
+    version: '3.12'
+run:
+  scriptName: bot.py
+  persistenceMount: /data
+  containerPort: 80

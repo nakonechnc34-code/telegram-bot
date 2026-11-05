@@ -232,7 +232,6 @@ POSITIONS = [
 ]
 
 # ================== КОНТЕНТ ДЛЯ ПРИЛОЖЕНИЯ ==================
-# Наполняй списками — они отдаются приложению через API.
 
 STANDARDS = [
     {
@@ -400,28 +399,52 @@ class Registration(StatesGroup):
 # ================== ПРОВЕРКА MINI APP (initData) ==================
 
 def validate_init_data(init_data: str):
-    """Проверяет подпись initData из Mini App. Возвращает dict пользователя или None."""
+    """
+    Проверяет подпись initData из Mini App по спецификации Telegram.
+    Возвращает dict пользователя или None.
+
+    Важно: data_check_string строится из СЫРЫХ (не декодированных) значений,
+    как требует документация Telegram. Декодирование нужно только для
+    последующего разбора поля user.
+    """
     if not init_data:
         return None
+
     try:
-        pairs = {}
+        pairs = []
         for pair in init_data.split("&"):
+            if "=" not in pair:
+                continue
             key, _, value = pair.partition("=")
-            pairs[key] = value
-    except Exception:
+            pairs.append((key, value))
+        pairs_dict = dict(pairs)
+    except Exception as e:
+        logging.warning(f"initData: не удалось разобрать строку: {e}")
         return None
-    received_hash = pairs.pop("hash", None)
+
+    received_hash = pairs_dict.get("hash")
     if not received_hash:
+        logging.warning("initData: нет поля hash")
         return None
-    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(pairs.items()))
+
+    data_check_string = "\n".join(
+        f"{k}={v}" for k, v in sorted(pairs) if k != "hash"
+    )
     secret_key = hmac.new(b"WebAppData", TOKEN.encode(), hashlib.sha256).digest()
     computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+
     if not hmac.compare_digest(computed_hash, received_hash):
+        # Диагностика: длины совпадают — значит токен другой или строка искажена прокси
+        logging.warning(
+            f"initData: подпись не совпала (recv_len={len(received_hash)}, calc_len={len(computed_hash)})"
+        )
         return None
+
     try:
         # поле user приходит URL-кодированным — декодируем перед разбором JSON
-        return json.loads(unquote(pairs.get("user", "{}")))
-    except Exception:
+        return json.loads(unquote(pairs_dict.get("user", "{}")))
+    except Exception as e:
+        logging.warning(f"initData: не удалось разобрать user: {e}")
         return None
 
 
@@ -683,7 +706,7 @@ async def adm_noop(callback: types.CallbackQuery):
         await callback.answer("⛔ Недоступно", show_alert=True)
 
 
-# ================== РЕСТОРАНЫ (в боте, как запасной вариант) ==================
+# ================== РЕСТОРАНЫ (в боте) ==================
 
 def restaurants_menu_kb():
     kb = []
@@ -929,7 +952,7 @@ async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMConte
 
     await state.clear()
 
-    # 2. Сообщение об успехе с кнопкой запуска приложения (FULL_MENU содержит web_app-кнопку)
+    # 2. Сообщение об успехе с кнопкой запуска приложения
     await callback.message.answer(
         "🎉 <b>Регистрация завершена!</b>\n\n"
         f"👤 ФИО: {full_name}\n"
@@ -974,34 +997,6 @@ async def show_profile_callback(callback: types.CallbackQuery):
         await callback.message.answer(profile_text(row))
     else:
         await callback.message.answer("Ты ещё не зарегистрирован.\nНажми /start и «✍️ Зарегистрироваться».")
-
-
-@dp.callback_query(lambda c: c.data == "standards")
-async def show_standards(callback: types.CallbackQuery):
-    await callback.answer()
-    if db_is_blocked(callback.from_user.id):
-        await callback.message.answer("⛔ Доступ к боту ограничен.")
-        return
-    await callback.message.answer(
-        "📚 Библиотека стандартов\n\nОткрой мини-приложение — там полный список документов.",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📱 Открыть приложение", web_app=WebAppInfo(url=MINI_APP_URL))],
-        ])
-    )
-
-
-@dp.callback_query(lambda c: c.data == "faq")
-async def show_faq(callback: types.CallbackQuery):
-    await callback.answer()
-    if db_is_blocked(callback.from_user.id):
-        await callback.message.answer("⛔ Доступ к боту ограничен.")
-        return
-    await callback.message.answer(
-        "❓ Вопрос/ответ\n\nОткрой мини-приложение — там база вопросов и форма для своего вопроса.",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📱 Открыть приложение", web_app=WebAppInfo(url=MINI_APP_URL))],
-        ])
-    )
 
 
 @dp.message(Command("profile"))
@@ -1049,8 +1044,12 @@ async def handle_profile(request):
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
 
-    user = validate_init_data(payload.get("initData", ""))
+    init_data = payload.get("initData", "")
+    user = validate_init_data(init_data)
     if not user or not user.get("id"):
+        # Диагностика в логах: видно, initData вообще не дошёл или подпись не совпала
+        if not init_data:
+            logging.warning("API /api/profile: initData пуст (запрос не из Telegram?)")
         return web.json_response({"error": "unauthorized"}, status=401, dumps=json_dumps)
 
     user_id = int(user["id"])

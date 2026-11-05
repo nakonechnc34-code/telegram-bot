@@ -15,7 +15,6 @@
   .muted { color: #8e8e93; font-size: 14px; }
   .btn { display: inline-block; background: var(--blue); color: #fff; border: 0;
          border-radius: 10px; padding: 10px 16px; font-size: 15px; margin-top: 8px; }
-  /* Спокойная кнопка для вкладки «Рестораны»: приглушённый зелёный вместо яркого розового */
   .btn-map { display: block; width: 100%; background: var(--map-btn); color: #fff; border: 0;
              border-radius: 10px; padding: 11px 16px; font-size: 15px; text-align: center;
              text-decoration: none; }
@@ -99,6 +98,33 @@
   .rest-actions .btn-map { flex: 1; }
   .no-results { text-align: center; color: #8e8e93; padding: 30px 12px; }
 
+  /* ===== Карточка одного ресторана (глубокая ссылка из бота) ===== */
+  .detail-hero {
+    background: linear-gradient(135deg, #ff2d55, #ff6a3d);
+    color: #fff; border-radius: 18px; margin: 12px 12px 12px;
+    padding: 22px 16px; text-align: center;
+  }
+  .detail-hero .emoji { font-size: 34px; margin-bottom: 6px; }
+  .detail-hero .name { font-size: 20px; font-weight: 700; line-height: 1.3; }
+  .detail-status {
+    display: inline-block; margin-top: 10px; padding: 5px 14px;
+    background: rgba(255,255,255,.28); border-radius: 20px;
+    font-size: 13px; font-weight: 600;
+  }
+  .detail-card {
+    background: #fff; border-radius: 16px; margin: 0 12px 12px;
+    padding: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.05);
+  }
+  .detail-card .row { padding: 9px 0; border-bottom: 1px solid #f0f0f4; font-size: 15px; }
+  .detail-card .row:last-child { border-bottom: 0; }
+  .detail-card .row .lbl { color: #8e8e93; font-size: 13px; margin-bottom: 2px; }
+  .btn-back {
+    display: block; margin: 0 12px 12px; padding: 11px 16px;
+    background: #fff; color: var(--blue); border: 1px solid #e5e5ea;
+    border-radius: 10px; font-size: 15px; font-weight: 600; text-align: center;
+    text-decoration: none; cursor: pointer;
+  }
+
   /* ===== Экран блокировки ===== */
   .blocked-screen {
     background: #fff; border-radius: 18px; margin: 40px 12px 12px;
@@ -126,6 +152,11 @@
 <div class="section" id="sec-restaurants">
   <input class="q" id="rest-search" placeholder="🔍 Поиск ресторана или адреса…">
   <div id="restaurants-list"></div>
+</div>
+
+<div class="section" id="sec-detail">
+  <div id="detail-box"></div>
+  <button class="btn-back" id="detail-back">← Ко всем ресторанам</button>
 </div>
 
 <div class="section" id="sec-news">
@@ -174,6 +205,7 @@ const sectionLoaders = {
 
 document.querySelectorAll('.tabs button').forEach(btn => {
   btn.addEventListener('click', () => {
+    exitDetailView();
     document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
     btn.classList.add('active');
@@ -308,7 +340,7 @@ async function loadProfile() {
     } else if (resp.status === 401) {
       box.innerHTML = '<div class="card">⚠️ Ошибка авторизации Telegram. Закрой приложение и открой заново из бота.</div>';
     } else if (resp.status === 403) {
-      ALL_RESTAURANTS = null; // сбрасываем кэш при блокировке
+      ALL_RESTAURANTS = null;
       box.innerHTML = blockedHtml();
     } else {
       box.innerHTML = '<div class="card">Ты ещё не зарегистрирован.<br>Напиши /start в боте и пройди регистрацию.</div>';
@@ -318,18 +350,33 @@ async function loadProfile() {
   }
 }
 
-// ===== Рестораны: кэш в памяти + мгновенный локальный поиск =====
+// ===== Рестораны: кэш + мгновенный поиск =====
 let ALL_RESTAURANTS = null;
 let REST_FETCH_TS = 0;
 const REST_TTL = 5 * 60 * 1000; // 5 минут, в миллисекундах
 
-// Готовим строку для поиска заранее: фильтр по готовой строке работает мгновенно
 function prepareRestaurants(list) {
   return list.map(r => {
     const copy = Object.assign({}, r);
     copy._search = ((r.name || '') + ' ' + (r.address || '')).toLowerCase();
     return copy;
   });
+}
+
+async function fetchRestaurants() {
+  const now = Date.now();
+  if (ALL_RESTAURANTS && (now - REST_FETCH_TS) < REST_TTL) return ALL_RESTAURANTS;
+
+  const resp = await fetch('/api/restaurants', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ initData: getInitData() })
+  });
+  if (resp.status === 403) { ALL_RESTAURANTS = null; throw Object.assign(new Error('blocked'), { code: 403 }); }
+  if (resp.status === 401) { throw Object.assign(new Error('unauthorized'), { code: 401 }); }
+  ALL_RESTAURANTS = prepareRestaurants(await resp.json());
+  REST_FETCH_TS = now;
+  return ALL_RESTAURANTS;
 }
 
 function renderRestaurants(query) {
@@ -349,9 +396,6 @@ function renderRestaurants(query) {
   }
 
   box.innerHTML = list.map(r => {
-    const mapUrl = r.org
-      ? 'https://yandex.ru/maps/org/' + r.org
-      : 'https://yandex.ru/maps/?text=' + encodeURIComponent('Воккер ' + r.address);
     const stClass = r.status === 'open' ? 'open' : 'closed';
     return '<div class="rest-card">' +
       '<div class="rest-top">' +
@@ -361,7 +405,7 @@ function renderRestaurants(query) {
       '<div class="muted">📍 ' + esc(r.address) + '</div>' +
       '<div class="muted">🕒 ' + esc(r.hours).replaceAll('\n', '<br>') + '</div>' +
       '<div class="rest-actions">' +
-      '<a href="' + mapUrl + '" target="_blank"><span class="btn-map">🗺 Открыть на Яндекс Картах</span></a>' +
+      '<a href="' + mapUrlFor(r) + '" target="_blank"><span class="btn-map">🗺 Открыть на Яндекс Картах</span></a>' +
       '</div>' +
       '</div>';
   }).join('');
@@ -369,27 +413,12 @@ function renderRestaurants(query) {
 
 async function loadRestaurants() {
   const box = document.getElementById('restaurants-list');
-  const now = Date.now();
-
-  // Кэш свежий — просто рисуем из памяти, без сети
-  if (ALL_RESTAURANTS && (now - REST_FETCH_TS) < REST_TTL) {
-    renderRestaurants(document.getElementById('rest-search').value);
-    return;
-  }
-
   try {
-    const resp = await fetch('/api/restaurants', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ initData: getInitData() })
-    });
-    if (resp.status === 403) { ALL_RESTAURANTS = null; box.innerHTML = blockedHtml(); return; }
-    if (resp.status === 401) { box.innerHTML = '<div class="card">⚠️ Ошибка авторизации. Открой приложение заново из бота.</div>'; return; }
-    ALL_RESTAURANTS = prepareRestaurants(await resp.json());
-    REST_FETCH_TS = now;
+    await fetchRestaurants();
     renderRestaurants(document.getElementById('rest-search').value);
   } catch (e) {
-    // При сбое сети показываем кэш, если он есть — лучше старые данные, чем пустой экран
+    if (e && e.code === 403) { box.innerHTML = blockedHtml(); return; }
+    if (e && e.code === 401) { box.innerHTML = '<div class="card">⚠️ Ошибка авторизации. Открой приложение заново из бота.</div>'; return; }
     if (ALL_RESTAURANTS) {
       renderRestaurants(document.getElementById('rest-search').value);
     } else {
@@ -400,6 +429,69 @@ async function loadRestaurants() {
 
 document.getElementById('rest-search').addEventListener('input', e => {
   renderRestaurants(e.target.value);
+});
+
+// ===== Карточка одного ресторана (глубокая ссылка ?rest=…) =====
+
+function mapUrlFor(r) {
+  return r.org
+    ? 'https://yandex.ru/maps/org/' + r.org
+    : 'https://yandex.ru/maps/?text=' + encodeURIComponent('Воккер ' + r.address);
+}
+
+function renderDetail(r) {
+  const emoji = r.status === 'open' ? '🟢' : '🔴';
+  document.getElementById('detail-box').innerHTML =
+    '<div class="detail-hero">' +
+    '<div class="emoji">' + emoji + '</div>' +
+    '<div class="name">' + esc(r.name) + '</div>' +
+    '<span class="detail-status">' + esc(r.status_text || '') + '</span>' +
+    '</div>' +
+    '<div class="detail-card">' +
+    '<div class="row"><div class="lbl">Адрес</div>📍 ' + esc(r.address) + '</div>' +
+    '<div class="row"><div class="lbl">Часы работы</div>🕒 ' + esc(r.hours).replaceAll('\n', '<br>') + '</div>' +
+    '<div style="margin-top:12px">' +
+    '<a href="' + mapUrlFor(r) + '" target="_blank"><span class="btn-map">🗺 Открыть на Яндекс Картах</span></a>' +
+    '</div>' +
+    '</div>';
+}
+
+async function showDetail(key) {
+  const section = document.getElementById('sec-detail');
+  const box = document.getElementById('detail-box');
+  try {
+    const list = await fetchRestaurants();
+    const r = list.find(x => x.key === key);
+    if (!r) {
+      box.innerHTML = '<div class="card">Ресторан не найден 🤷</div>';
+    } else {
+      renderDetail(r);
+    }
+    // Прячем табы — на карточке они не нужны, есть кнопка «Назад»
+    document.querySelector('.tabs').style.display = 'none';
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    section.classList.add('active');
+    window.scrollTo(0, 0);
+  } catch (e) {
+    if (e && e.code === 403) { box.innerHTML = blockedHtml(); section.classList.add('active'); return; }
+    box.innerHTML = '<div class="card">Ошибка загрузки карточки ресторана</div>';
+    section.classList.add('active');
+  }
+}
+
+function exitDetailView() {
+  document.querySelector('.tabs').style.display = 'flex';
+}
+
+document.getElementById('detail-back').addEventListener('click', () => {
+  // Убираем параметр из адреса, чтобы перезагрузка не возвращала на карточку
+  history.replaceState(null, '', location.pathname);
+  exitDetailView();
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+  document.querySelector('.tabs button[data-sec="sec-restaurants"]').classList.add('active');
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById('sec-restaurants').classList.add('active');
+  loadRestaurants();
 });
 
 async function loadNews() {
@@ -503,6 +595,15 @@ document.getElementById('send-question').addEventListener('click', async () => {
 
 async function init() {
   await waitInitData();
+
+  // Глубокая ссылка из бота: ?rest=key — открываем сразу карточку точки
+  const restKey = new URLSearchParams(location.search).get('rest');
+  if (restKey) {
+    await loadProfile();           // чтобы блокировка была видна сразу
+    await showDetail(restKey);
+    return;
+  }
+
   loadProfile();
   loadRestaurants();
   loadNews();

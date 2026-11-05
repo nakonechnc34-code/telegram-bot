@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Рестораны Wokker</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, Roboto, "Segoe UI", sans-serif;
+      padding: 12px;
+      margin: 0;
+      background: var(--tg-theme-bg-color, #f5f5f5);
+      color: var(--tg-theme-text-color, #000);
+    }
+    h1 { font-size: 22px; margin: 8px 0 12px; }
+    .card {
+      background: var(--tg-theme-secondary-bg-color, #fff);
+      padding: 12px;
+      margin-bottom: 12px;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .card h3 { margin: 0 0 8px; font-size: 17px; }
+    .card p { margin: 4px 0; color: var(--tg-theme-hint-color, #666); font-size: 14px; }
+    .btn {
+      background: var(--tg-theme-button-color, #0088cc);
+      color: var(--tg-theme-button-text-color, #fff);
+      padding: 8px 12px;
+      border: none;
+      border-radius: 8px;
+      text-decoration: none;
+      display: inline-block;
+      font-weight: 500;
+      margin-top: 8px;
+    }
+    .phone { text-decoration: none; font-weight: 500; }
+    .error { color: #d33; padding: 12px; }
+  </style>
+</head>
+<body>
+  <h1>🏙️ Наши рестораны</h1>
+  <div id="list">Загружаю…</div>
+
+  <script>
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+
+    fetch('/api/restaurants')
+      .then(r => r.json())
+      .then(rests => {
+        const html = rests.map(r => {
+          const phone = r.phone
+            ? `<p>📞 <a class="phone" href="tel:${r.phone}">${r.phone}</a></p>`
+            : '';
+          return `
+            <div class="card">
+              <h3>${r.name}</h3>
+              <p>📍 ${r.address}</p>
+              <p>🕒 ${r.hours.replace(/\n/g, '<br>')}</p>
+              ${phone}
+              <a href="https://yandex.ru/maps/org/${r.org}" class="btn" target="_blank">Открыть на Яндекс Картах</a>
+            </div>
+          `;
+        }).join('');
+        document.getElementById('list').innerHTML = html;
+      })
+      .catch(e => {
+        console.error(e);
+        document.getElementById('list').innerHTML =
+          '<p class="error">Ошибка загрузки списка ресторанов. Попробуйте позже.</p>';
+      });
+  </script>
+</body>
+</html>

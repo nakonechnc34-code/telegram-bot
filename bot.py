@@ -73,6 +73,29 @@ with get_conn() as conn:
                 PRIMARY KEY (user_id, message_id)
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS news (
+                id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                body TEXT NOT NULL,
+                important BOOLEAN DEFAULT FALSE,
+                level TEXT DEFAULT 'normal',
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        cur.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS level TEXT DEFAULT 'normal'")
+        # Если таблица новостей пуста — кладём демо-новости, чтобы вкладка не была пустой.
+        # Их можно удалить через админку.
+        cur.execute("SELECT COUNT(*) FROM news")
+        if cur.fetchone()[0] == 0:
+            cur.execute(
+                "INSERT INTO news (title, body, important, level) VALUES (%s, %s, %s, %s)",
+                ("Открытие новой точки", "Скоро открываем новый ресторан! Подробности расскажет управляющий на ближайшей смене.", True, "urgent")
+            )
+            cur.execute(
+                "INSERT INTO news (title, body, important, level) VALUES (%s, %s, %s, %s)",
+                ("Обновление меню", "В сезоне осень появились новые позиции — уточните состав у шеф-повара на смене.", False, "normal")
+            )
     conn.commit()
 print("База данных подключена, таблица готова.")
 
@@ -266,23 +289,6 @@ STANDARDS = [
     },
 ]
 
-NEWS = [
-    {
-        "id": 1,
-        "title": "Открытие новой точки",
-        "date": "05.11.2026",
-        "text": "Скоро открываем новый ресторан! Подробности расскажет управляющий на ближайшей смене.",
-        "important": True,
-    },
-    {
-        "id": 2,
-        "title": "Обновление меню",
-        "date": "01.11.2026",
-        "text": "В сезоне осень появились новые позиции — уточните состав у шеф-повара на смене.",
-        "important": False,
-    },
-]
-
 FAQ = [
     {
         "id": 1,
@@ -406,6 +412,39 @@ def get_report_stats():
     }
 
 
+# --- новости ---
+
+def db_add_news(title: str, body: str, level: str) -> int:
+    if level not in ("urgent", "important", "normal"):
+        level = "normal"
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO news (title, body, important, level) VALUES (%s, %s, %s, %s) RETURNING id",
+                (title, body, level != "normal", level)
+            )
+            news_id = cur.fetchone()[0]
+        conn.commit()
+    return news_id
+
+
+def db_list_news():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, title, body, important, level, created_at FROM news ORDER BY created_at DESC, id DESC"
+            )
+            return cur.fetchall()
+
+
+def db_delete_news(news_id: int) -> bool:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM news WHERE id = %s", (news_id,))
+        conn.commit()
+        return cur.rowcount > 0
+
+
 # --- учёт сообщений бота для автоочистки чата ---
 
 def db_add_bot_msg(user_id: int, message_id: int):
@@ -477,6 +516,12 @@ class Registration(StatesGroup):
     birth_date = State()
     position = State()
     restaurant = State()
+
+
+class NewsAdmin(StatesGroup):
+    title = State()
+    body = State()
+    important = State()
 
 
 # ================== ПРОВЕРКА MINI APP (initData) ==================
@@ -600,8 +645,50 @@ def profile_text(row):
 def admin_menu_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📋 Список пользователей", callback_data="adm_users")],
+        [InlineKeyboardButton(text="📰 Новости", callback_data="adm_news")],
         [InlineKeyboardButton(text="📊 Отчёты", callback_data="adm_reports")],
         [InlineKeyboardButton(text="🔄 Обновить", callback_data="adm_menu")],
+    ])
+
+
+LEVEL_LABELS = {
+    "urgent": "🔴 Срочная",
+    "important": "🟡 Важная",
+    "normal": "🔵 Обычная",
+}
+
+
+def news_admin_kb(rows):
+    kb = []
+    for news_id, title, body, important, level, created_at in rows:
+        icon = "🔴" if level == "urgent" else ("🟡" if level == "important" else "🔵")
+        kb.append([
+            InlineKeyboardButton(
+                text=f"{icon} {title[:30]}",
+                callback_data="noop"
+            ),
+            InlineKeyboardButton(text="🗑", callback_data=f"news_del:{news_id}"),
+        ])
+    kb.append([InlineKeyboardButton(text="➕ Добавить новость", callback_data="news_add")])
+    kb.append([InlineKeyboardButton(text="🔙 В админ-меню", callback_data="adm_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+
+def news_admin_text(rows):
+    if not rows:
+        return "📰 Новостей пока нет.\n\nДобавь первую — она сразу появится у сотрудников во вкладке «Новости»."
+    lines = [f"📰 Всего новостей: {len(rows)}\n"]
+    for news_id, title, body, important, level, created_at in rows:
+        date_str = created_at.strftime("%d.%m.%Y") if created_at else "—"
+        lines.append(f"• {LEVEL_LABELS.get(level, '🔵 Обычная')} — <b>{title}</b> ({date_str})")
+    return "\n".join(lines)
+
+
+def news_important_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔴 Срочная", callback_data="news_imp:urgent")],
+        [InlineKeyboardButton(text="🟡 Важная", callback_data="news_imp:important")],
+        [InlineKeyboardButton(text="🔵 Обычная", callback_data="news_imp:normal")],
     ])
 
 
@@ -660,11 +747,12 @@ async def cmd_admin(message: types.Message):
 
 
 @dp.callback_query(lambda c: c.data == "adm_menu")
-async def adm_menu(callback: types.CallbackQuery):
+async def adm_menu(callback: types.CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
         await callback.answer("⛔ Недоступно", show_alert=True)
         return
     await callback.answer()
+    await state.clear()
     await cleanup_chat(callback.from_user.id)
     await send_tracked(
         callback.message.chat.id, callback.from_user.id,
@@ -684,6 +772,130 @@ async def adm_users(callback: types.CallbackQuery):
     await send_tracked(
         callback.message.chat.id, callback.from_user.id,
         users_list_text(rows), parse_mode="HTML", reply_markup=users_list_kb(rows)
+    )
+
+
+@dp.callback_query(lambda c: c.data == "adm_news")
+async def adm_news(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
+        return
+    await callback.answer()
+    await state.clear()
+    await cleanup_chat(callback.from_user.id)
+    rows = db_list_news()
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
+        news_admin_text(rows), parse_mode="HTML", reply_markup=news_admin_kb(rows)
+    )
+
+
+@dp.callback_query(lambda c: c.data == "news_add")
+async def news_add_start(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
+        return
+    await callback.answer()
+    await state.set_state(NewsAdmin.title)
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
+        "✍️ Шаг 1 из 3.\nНапиши заголовок новости:"
+    )
+
+
+@dp.message(NewsAdmin.title)
+async def news_add_title(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await delete_incoming(message)
+    await cleanup_chat(message.from_user.id)
+    if not message.text:
+        await send_tracked(message.chat.id, message.from_user.id, "Заголовок должен быть текстом. Напиши ещё раз:")
+        return
+    title = message.text.strip()
+    if len(title) > 100:
+        await send_tracked(message.chat.id, message.from_user.id, "Слишком длинный заголовок (максимум 100 символов). Сократи:")
+        return
+    await state.update_data(title=title)
+    await state.set_state(NewsAdmin.body)
+    await send_tracked(message.chat.id, message.from_user.id, f"Заголовок: <b>{title}</b> ✅\n\n✍️ Шаг 2 из 3.\nНапиши текст новости:", parse_mode="HTML")
+
+
+@dp.message(NewsAdmin.body)
+async def news_add_body(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await delete_incoming(message)
+    await cleanup_chat(message.from_user.id)
+    if not message.text:
+        await send_tracked(message.chat.id, message.from_user.id, "Текст новости должен быть текстом. Напиши ещё раз:")
+        return
+    body = message.text.strip()
+    if len(body) > 2000:
+        await send_tracked(message.chat.id, message.from_user.id, "Слишком длинный текст (максимум 2000 символов). Сократи:")
+        return
+    await state.update_data(body=body)
+    await state.set_state(NewsAdmin.important)
+    await send_tracked(
+        message.chat.id, message.from_user.id,
+        "Текст записан ✅\n\n✍️ Шаг 3 из 3.\nКакую пометку поставить?",
+        reply_markup=news_important_kb()
+    )
+
+
+@dp.callback_query(NewsAdmin.important, lambda c: c.data and c.data.startswith("news_imp:"))
+async def news_add_finish(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
+        return
+    await callback.answer()
+    level = callback.data.split(":")[1]
+    if level not in LEVEL_LABELS:
+        level = "normal"
+    data = await state.get_data()
+    title = data.get("title", "")
+    body = data.get("body", "")
+    await state.clear()
+
+    try:
+        db_add_news(title, body, level)
+    except Exception as e:
+        logging.error(f"Ошибка сохранения новости: {e}")
+        await send_tracked(
+            callback.message.chat.id, callback.from_user.id,
+            "❌ Не удалось сохранить новость. Попробуй позже."
+        )
+        return
+
+    await cleanup_chat(callback.from_user.id)
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
+        f"✅ Новость опубликована!\n\n{LEVEL_LABELS[level]} — <b>{title}</b>\n{body}\n\n"
+        "Она уже видна сотрудникам во вкладке «Новости».",
+        parse_mode="HTML"
+    )
+    rows = db_list_news()
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
+        news_admin_text(rows), parse_mode="HTML", reply_markup=news_admin_kb(rows)
+    )
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("news_del:"))
+async def news_del(callback: types.CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
+        return
+    news_id = int(callback.data.split(":")[1])
+    if db_delete_news(news_id):
+        await callback.answer("Новость удалена")
+    else:
+        await callback.answer("Новость не найдена", show_alert=True)
+    await cleanup_chat(callback.from_user.id)
+    rows = db_list_news()
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
+        news_admin_text(rows), parse_mode="HTML", reply_markup=news_admin_kb(rows)
     )
 
 
@@ -858,6 +1070,12 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 message.chat.id, user_id,
                 "Шаг 5 из 5.\nВыбери свой ресторан:", reply_markup=restaurants_pick_kb()
             )
+        elif current_state == NewsAdmin.title.state:
+            await send_tracked(message.chat.id, user_id, "✍️ Напиши заголовок новости:")
+        elif current_state == NewsAdmin.body.state:
+            await send_tracked(message.chat.id, user_id, "✍️ Напиши текст новости:")
+        elif current_state == NewsAdmin.important.state:
+            await send_tracked(message.chat.id, user_id, "Выбери пометку:", reply_markup=news_important_kb())
         return
 
     await state.clear()
@@ -1065,7 +1283,7 @@ async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMConte
         f"🎂 Дата рождения: {birth_date}\n"
         f"💼 Должность: {position}\n"
         f"📍 Ресторан: {restaurant['name']}\n\n"
-        "Открой приложение — там профиль, рестораны, стандарты и вопросы/ответы:",
+        "Открой приложение — там профиль, рестораны, новости, стандарты и вопросы/ответы:",
         parse_mode="HTML",
         reply_markup=FULL_MENU
     )
@@ -1129,7 +1347,19 @@ async def handle_restaurants(request):
 
 
 async def handle_news(request):
-    return web.json_response(NEWS, dumps=json_dumps)
+    rows = db_list_news()
+    news_list = [
+        {
+            "id": news_id,
+            "title": title,
+            "text": body,
+            "date": created_at.strftime("%d.%m.%Y") if created_at else "",
+            "important": bool(important),
+            "level": level or "normal",
+        }
+        for news_id, title, body, important, level, created_at in rows
+    ]
+    return web.json_response(news_list, dumps=json_dumps)
 
 
 async def handle_standards(request):

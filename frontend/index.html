@@ -94,6 +94,15 @@
   .btn-secondary { background: #f0f0f4; color: var(--blue); font-weight: 600; }
   .no-results { text-align: center; color: #8e8e93; padding: 30px 12px; }
 
+  /* ===== Экран блокировки ===== */
+  .blocked-screen {
+    background: #fff; border-radius: 18px; margin: 40px 12px 12px;
+    padding: 32px 20px; text-align: center; box-shadow: 0 4px 14px rgba(0,0,0,.07);
+  }
+  .blocked-screen .big { font-size: 44px; margin-bottom: 12px; }
+  .blocked-screen .title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+  .blocked-screen .text { color: #8e8e93; font-size: 14px; }
+
   /* ===== Уровни новостей ===== */
   .news-date { color: #8e8e93; font-size: 12px; margin-top: 4px; }
   .level-urgent { border-left: 3px solid #ff3b30; padding-left: 8px; }
@@ -172,6 +181,15 @@ document.querySelectorAll('.tabs button').forEach(btn => {
 
 const esc = s => (s || '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// Экран блокировки — общий для всех вкладок
+function blockedHtml() {
+  return '<div class="blocked-screen">' +
+    '<div class="big">🚫</div>' +
+    '<div class="title">Доступ ограничен</div>' +
+    '<div class="text">Администратор ограничил доступ к приложению.<br>Обратитесь к управляющему.</div>' +
+    '</div>';
+}
 
 function tgUserInfo() {
   try {
@@ -286,16 +304,7 @@ async function loadProfile() {
     } else if (resp.status === 401) {
       box.innerHTML = '<div class="card">⚠️ Ошибка авторизации Telegram. Закрой приложение и открой заново из бота.</div>';
     } else if (resp.status === 403) {
-      box.innerHTML =
-        '<div class="profile-card">' +
-        '<div class="profile-header">' +
-        avatarHtml(initialFor(null)) +
-        '<div class="p-name">Доступ ограничен</div>' +
-        '<span class="badge blocked">🚫 Заблокирован</span>' +
-        '</div>' +
-        '<div class="profile-footer">Обратись к администратору.</div>' +
-        '</div>';
-      fillAvatar();
+      box.innerHTML = blockedHtml();
     } else {
       box.innerHTML = '<div class="card">Ты ещё не зарегистрирован.<br>Напиши /start в боте и пройди регистрацию.</div>';
     }
@@ -344,7 +353,13 @@ function renderRestaurants(query) {
 async function loadRestaurants() {
   const box = document.getElementById('restaurants-list');
   try {
-    const resp = await fetch('/api/restaurants');
+    const resp = await fetch('/api/restaurants', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ initData: getInitData() })
+    });
+    if (resp.status === 403) { box.innerHTML = blockedHtml(); return; }
+    if (resp.status === 401) { box.innerHTML = '<div class="card">⚠️ Ошибка авторизации. Открой приложение заново из бота.</div>'; return; }
     ALL_RESTAURANTS = await resp.json();
     renderRestaurants(document.getElementById('rest-search').value);
   } catch (e) {
@@ -352,14 +367,16 @@ async function loadRestaurants() {
   }
 }
 
-document.getElementById('rest-search').addEventListener('input', e => {
-  renderRestaurants(e.target.value);
-});
-
 async function loadNews() {
   const box = document.getElementById('news-list');
   try {
-    const resp = await fetch('/api/news');
+    const resp = await fetch('/api/news', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ initData: getInitData() })
+    });
+    if (resp.status === 403) { box.innerHTML = blockedHtml(); return; }
+    if (resp.status === 401) { box.innerHTML = '<div class="card">⚠️ Ошибка авторизации. Открой приложение заново из бота.</div>'; return; }
     const list = await resp.json();
     if (!list.length) {
       box.innerHTML = '<div class="card">Пока новостей нет 📰</div>';
@@ -381,7 +398,13 @@ async function loadNews() {
 async function loadStandards() {
   const box = document.getElementById('standards-list');
   try {
-    const resp = await fetch('/api/standards');
+    const resp = await fetch('/api/standards', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ initData: getInitData() })
+    });
+    if (resp.status === 403) { box.innerHTML = blockedHtml(); return; }
+    if (resp.status === 401) { box.innerHTML = '<div class="card">⚠️ Ошибка авторизации. Открой приложение заново из бота.</div>'; return; }
     const list = await resp.json();
     box.innerHTML = list.map(s =>
       '<div class="card">' +
@@ -399,7 +422,13 @@ async function loadStandards() {
 async function loadFaq() {
   const box = document.getElementById('faq-list');
   try {
-    const resp = await fetch('/api/faq');
+    const resp = await fetch('/api/faq', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ initData: getInitData() })
+    });
+    if (resp.status === 403) { box.innerHTML = blockedHtml(); return; }
+    if (resp.status === 401) { box.innerHTML = '<div class="card">⚠️ Ошибка авторизации. Открой приложение заново из бота.</div>'; return; }
     const list = await resp.json();
     box.innerHTML = list.map(f =>
       '<details>' +
@@ -425,6 +454,8 @@ document.getElementById('send-question').addEventListener('click', async () => {
     if (resp.ok) {
       input.value = '';
       alert('Вопрос отправлен! Ответ увидишь в боте.');
+    } else if (resp.status === 403) {
+      alert('Доступ ограничен администратором.');
     } else if (resp.status === 401) {
       alert('Ошибка авторизации. Закрой приложение и открой заново из бота.');
     } else {

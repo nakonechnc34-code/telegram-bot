@@ -114,8 +114,8 @@ print("База данных подключена, таблицы готовы."
 
 
 # Поле "org" — путь карточки на Яндекс Картах (yandex.ru/maps/org/<org>).
-# ВНИМАНИЕ: у части ресторанов номера-заглушки, помечены комментарием "ЗАГЛУШКА" — замени!
 # "ОФИС" доступен только при регистрации и НЕ показывается во вкладке «Рестораны» приложения.
+# Телефоны точек не храним: звонки убрали, адрес и маршрут — на Яндекс Картах.
 RESTAURANTS = [
     {
         "key": "mega_belaya_dacha",
@@ -125,7 +125,6 @@ RESTAURANTS = [
         "lat": 55.6578,
         "lon": 37.8891,
         "org": "vokker/128833821207",
-        "phone": "+79154790941",
     },
     {
         "key": "belyaevo",
@@ -135,7 +134,6 @@ RESTAURANTS = [
         "lat": 55.6470,
         "lon": 37.5420,
         "org": "vokker/13122472923",
-        "phone": "+74954445566",  # ЗАГЛУШКА — замени на реальный номер
     },
     {
         "key": "vernadka",
@@ -145,7 +143,6 @@ RESTAURANTS = [
         "lat": 55.6840,
         "lon": 37.4980,
         "org": "vokker/91626648547",
-        "phone": "+74957778899",  # ЗАГЛУШКА — замени на реальный номер
     },
     {
         "key": "erevan_plaza",
@@ -155,7 +152,6 @@ RESTAURANTS = [
         "lat": 55.7030,
         "lon": 37.6210,
         "org": "vokker/102264079721",
-        "phone": "+79060946146",
     },
     {
         "key": "kuzminki_mall",
@@ -165,7 +161,6 @@ RESTAURANTS = [
         "lat": 55.6980,
         "lon": 37.7750,
         "org": "vokker/24262320480",
-        "phone": "+79685370994",
     },
     {
         "key": "mega_teplyy_stan",
@@ -175,7 +170,6 @@ RESTAURANTS = [
         "lat": 55.5790,
         "lon": 37.4870,
         "org": "vokker/1485953945",
-        "phone": "+74959990011",  # ЗАГЛУШКА — замени на реальный номер
     },
     {
         "key": "mega_himki",
@@ -185,7 +179,6 @@ RESTAURANTS = [
         "lat": 55.8970,
         "lon": 37.4120,
         "org": "vokker/132066311330",
-        "phone": "+74952223344",  # ЗАГЛУШКА — замени на реальный номер
     },
     {
         "key": "metropolis",
@@ -195,7 +188,6 @@ RESTAURANTS = [
         "lat": 55.8120,
         "lon": 37.5060,
         "org": "vokker/1298559872",
-        "phone": "+74955556677",  # ЗАГЛУШКА — замени на реальный номер
     },
     {
         "key": "moskva_city",
@@ -205,7 +197,6 @@ RESTAURANTS = [
         "lat": 55.7490,
         "lon": 37.5380,
         "org": "vokker/25826174821",
-        "phone": "+79154799170",
     },
     {
         "key": "okeaniya",
@@ -215,7 +206,6 @@ RESTAURANTS = [
         "lat": 55.7330,
         "lon": 37.4950,
         "org": "vokker/9739651477",
-        "phone": "+79154786401",
     },
     {
         "key": "polkovaya",
@@ -225,7 +215,6 @@ RESTAURANTS = [
         "lat": 55.8010,
         "lon": 37.5920,
         "org": "vokker/84984433800",
-        "phone": "+74959876543",  # ЗАГЛУШКА — замени на реальный номер
     },
     {
         "key": "cdm",
@@ -235,7 +224,6 @@ RESTAURANTS = [
         "lat": 55.7580,
         "lon": 37.6230,
         "org": "vokker/31463245515",
-        "phone": "+79685370989",
     },
     {
         "key": "tsvetnoy",
@@ -245,7 +233,6 @@ RESTAURANTS = [
         "lat": 55.7670,
         "lon": 37.6180,
         "org": "vokker/110848206544",
-        "phone": "+74955544332",  # ЗАГЛУШКА — замени на реальный номер
     },
     {
         "key": "shchelkovskaya",
@@ -255,7 +242,6 @@ RESTAURANTS = [
         "lat": 55.8050,
         "lon": 37.7920,
         "org": "vokker/25844145312",
-        "phone": "+79996652654",
     },
     {
         "key": "shuka",
@@ -265,7 +251,6 @@ RESTAURANTS = [
         "lat": 55.8020,
         "lon": 37.4650,
         "org": "vokker/1357579873",
-        "phone": "+74957766554",  # ЗАГЛУШКА — замени на реальный номер
     },
     # ОФИС — только для выбора при регистрации, в приложении не показывается
     {
@@ -276,7 +261,6 @@ RESTAURANTS = [
         "lat": None,
         "lon": None,
         "org": "",
-        "phone": "",
     },
 ]
 
@@ -1841,7 +1825,6 @@ async def handle_index(request):
     index_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "index.html")
     if os.path.exists(index_path):
         resp = web.FileResponse(index_path)
-        # Запрещаем кэширование страницы: после разбана/бана данные не «зависают»
         resp.headers["Cache-Control"] = "no-store"
         return resp
     return web.Response(text="Mini App: файл frontend/index.html не найден", status=404)
@@ -1854,10 +1837,15 @@ async def handle_restaurants(request):
     out = []
     for r in RESTAURANTS_FOR_APP:
         status, status_text = restaurant_status(r["hours"])
-        item = dict(r)
-        item["status"] = status
-        item["status_text"] = status_text
-        out.append(item)
+        out.append({
+            "key": r["key"],
+            "name": r["name"],
+            "address": r["address"],
+            "hours": r["hours"],
+            "org": r["org"],
+            "status": status,
+            "status_text": status_text,
+        })
     return web.json_response(out, dumps=json_dumps)
 
 

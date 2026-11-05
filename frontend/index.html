@@ -6,8 +6,17 @@
 <title>Wokker</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-  :root { --blue: #ff2d55; --bg: #f2f2f7; --gray: #9aa0a6; --green: #34c759;
-          --map-btn: #c3a578; --map-btn-hover: #b2946a; }
+  :root {
+    --blue: #ff2d55;
+    --bg: #f2f2f7;
+    --gray: #9aa0a6;
+    --green: #34c759;
+    /* Бежевая палитра вкладки «Рестораны» */
+    --beige: #c3a578;
+    --beige-dark: #b2946a;
+    --beige-soft: #f6efe3;
+    --beige-border: #e6d8c2;
+  }
   * { box-sizing: border-box; margin: 0; }
   body { font-family: -apple-system, sans-serif; background: var(--bg); padding-bottom: 70px; }
   .card { background: #fff; border-radius: 14px; margin: 0 12px 12px; padding: 14px; }
@@ -15,14 +24,6 @@
   .muted { color: #8e8e93; font-size: 14px; }
   .btn { display: inline-block; background: var(--blue); color: #fff; border: 0;
          border-radius: 10px; padding: 10px 16px; font-size: 15px; margin-top: 8px; }
-  .btn-map { display: block; background: var(--map-btn); color: #fff; border: 0;
-             border-radius: 10px; padding: 11px 16px; font-size: 15px; text-align: center;
-             text-decoration: none; }
-  .btn-map:active { background: var(--map-btn-hover); }
-  .btn-call { display: block; background: #f0f0f4; color: var(--map-btn); border: 0;
-              border-radius: 10px; padding: 11px 8px; font-size: 15px; text-align: center;
-              font-weight: 600; text-decoration: none; }
-  .btn-call:active { background: #e2e2e8; }
   .tabs { position: fixed; bottom: 0; left: 0; right: 0; display: flex; background: #fff;
           border-top: 1px solid #e5e5ea; }
   .tabs button { flex: 1; border: 0; background: none; padding: 12px 2px; font-size: 11px; color: #8e8e93; }
@@ -31,7 +32,8 @@
   .section { display: none; }
   .section.active { display: block; }
   .q { width: calc(100% - 24px); margin: 4px 12px 12px; border: 1px solid #e5e5ea;
-       border-radius: 10px; padding: 10px; font-size: 15px; background: #fff; }
+       border-radius: 10px; padding: 10px; font-size: 15px; background: #fff; outline: none; }
+  .q:focus { border-color: var(--beige); }
   details { background: #fff; border-radius: 14px; margin: 0 12px 10px; padding: 14px; }
   summary { font-weight: 600; cursor: pointer; }
   details p { margin-top: 8px; color: #3a3a3c; }
@@ -85,51 +87,121 @@
     .info-row { border-bottom: none; padding: 8px 0; }
   }
 
-  /* ===== Рестораны: карточки ===== */
+  /* ============================================================
+     РЕСТОРАНЫ: переработанный дизайн
+     ============================================================ */
+
+  /* Шапка вкладки */
+  .rest-tab-header {
+    margin: 12px 12px 4px; padding: 14px 16px;
+    background: linear-gradient(135deg, var(--beige-soft), #fdf9f2);
+    border: 1px solid var(--beige-border);
+    border-radius: 16px;
+  }
+  .rest-tab-header .title { font-size: 17px; font-weight: 700; color: #5c4a33; }
+  .rest-tab-header .sub { font-size: 13px; color: #96876f; margin-top: 2px; }
+  .rest-count {
+    display: inline-block; margin-top: 8px; padding: 3px 10px;
+    background: #fff; border: 1px solid var(--beige-border);
+    border-radius: 12px; font-size: 12px; color: #7c6b52; font-weight: 600;
+  }
+
+  /* Карточка ресторана */
   .rest-card {
-    background: #fff; border-radius: 16px; margin: 0 12px 12px;
-    padding: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.05);
+    background: #fff; border-radius: 16px; margin: 8px 12px 12px;
+    padding: 14px; box-shadow: 0 2px 10px rgba(0,0,0,.05);
+    border: 1px solid #f0ebe2;
   }
-  .rest-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-  .rest-name { font-size: 17px; font-weight: 700; line-height: 1.3; }
+  .rest-head { display: flex; align-items: center; gap: 12px; }
+  .rest-logo {
+    width: 46px; height: 46px; border-radius: 14px; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--beige-soft), #f1e6d2);
+    border: 1px solid var(--beige-border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+  }
+  .rest-head-main { flex: 1; min-width: 0; }
+  .rest-name { font-size: 16px; font-weight: 700; line-height: 1.25; color: #2c2620; }
   .rest-status {
-    flex-shrink: 0; padding: 4px 10px; border-radius: 12px;
-    font-size: 11px; font-weight: 700; color: #fff; margin-top: 2px; white-space: nowrap;
+    display: inline-block; margin-top: 4px; padding: 3px 10px;
+    border-radius: 12px; font-size: 11px; font-weight: 700;
   }
-  .rest-status.open { background: var(--green); }
-  .rest-status.closed { background: #ff3b30; }
-  .rest-actions { display: flex; gap: 8px; margin-top: 10px; }
-  .rest-actions a { flex: 1; display: block; }
+  /* Мягкие бейджи: светлый фон + тёмный текст тона */
+  .rest-status.open {
+    background: #e8f5ec; color: #2e7d43;
+  }
+  .rest-status.closed {
+    background: #fbeae4; color: #b04a2e;
+  }
+  .rest-meta {
+    margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--beige-border);
+    font-size: 13px; color: #8e8e93; line-height: 1.5;
+  }
+  .rest-meta .addr {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .rest-hours { color: #a3988a; font-size: 12px; margin-top: 3px; }
+
+  /* Кнопки: бежевая — основная, контурная — второстепенная */
+  .rest-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .rest-actions a { flex: 1; display: block; text-decoration: none; }
+  .btn-map {
+    display: block; width: 100%;
+    background: var(--beige); color: #fff; border: 0;
+    border-radius: 12px; padding: 11px 8px; font-size: 14px; font-weight: 600;
+    text-align: center; text-decoration: none;
+  }
+  .btn-map:active { background: var(--beige-dark); }
+  .btn-call {
+    display: block; width: 100%;
+    background: #fff; color: var(--beige-dark); border: 1.5px solid var(--beige);
+    border-radius: 12px; padding: 10px 8px; font-size: 14px; font-weight: 600;
+    text-align: center; text-decoration: none;
+  }
+  .btn-call:active { background: var(--beige-soft); }
+
   .no-results { text-align: center; color: #8e8e93; padding: 30px 12px; }
 
-  /* ===== Карточка одного ресторана (глубокая ссылка из бота) ===== */
+  /* ============================================================
+     Карточка одной точки (глубокая ссылка из бота) — тот же стиль
+     ============================================================ */
   .detail-hero {
-    background: linear-gradient(135deg, #ff2d55, #ff6a3d);
-    color: #fff; border-radius: 18px; margin: 12px 12px 12px;
-    padding: 22px 16px; text-align: center;
+    background: linear-gradient(135deg, var(--beige-soft), #fdf9f2);
+    border: 1px solid var(--beige-border);
+    color: #4a3c28; border-radius: 18px; margin: 12px 12px 12px;
+    padding: 24px 16px; text-align: center;
   }
-  .detail-hero .emoji { font-size: 34px; margin-bottom: 6px; }
-  .detail-hero .name { font-size: 20px; font-weight: 700; line-height: 1.3; }
+  .detail-hero .emoji {
+    width: 60px; height: 60px; margin: 0 auto 10px;
+    background: #fff; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px; border: 1px solid var(--beige-border);
+  }
+  .detail-hero .name { font-size: 20px; font-weight: 700; line-height: 1.3; color: #3a2f1f; }
   .detail-status {
     display: inline-block; margin-top: 10px; padding: 5px 14px;
-    background: rgba(255,255,255,.28); border-radius: 20px;
-    font-size: 13px; font-weight: 600;
+    border-radius: 20px; font-size: 13px; font-weight: 700;
   }
+  .detail-status.open { background: #e8f5ec; color: #2e7d43; }
+  .detail-status.closed { background: #fbeae4; color: #b04a2e; }
   .detail-card {
     background: #fff; border-radius: 16px; margin: 0 12px 12px;
     padding: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.05);
+    border: 1px solid #f0ebe2;
   }
-  .detail-card .row { padding: 9px 0; border-bottom: 1px solid #f0f0f4; font-size: 15px; }
+  .detail-card .row { padding: 9px 0; border-bottom: 1px solid #f5f0e7; font-size: 15px; }
   .detail-card .row:last-child { border-bottom: 0; }
-  .detail-card .row .lbl { color: #8e8e93; font-size: 13px; margin-bottom: 2px; }
+  .detail-card .row .lbl { color: #a3988a; font-size: 13px; margin-bottom: 2px; }
   .detail-actions { display: flex; gap: 8px; margin-top: 12px; }
   .detail-actions a { flex: 1; display: block; }
   .btn-back {
     display: block; margin: 0 12px 12px; padding: 11px 16px;
-    background: #fff; color: var(--blue); border: 1px solid #e5e5ea;
-    border-radius: 10px; font-size: 15px; font-weight: 600; text-align: center;
+    background: #fff; color: var(--beige-dark); border: 1.5px solid var(--beige);
+    border-radius: 12px; font-size: 15px; font-weight: 600; text-align: center;
     text-decoration: none; cursor: pointer;
   }
+  .btn-back:active { background: var(--beige-soft); }
 
   /* ===== Экран блокировки ===== */
   .blocked-screen {
@@ -140,7 +212,7 @@
   .blocked-screen .title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
   .blocked-screen .text { color: #8e8e93; font-size: 14px; }
 
-  /* ===== Уровни новостей: без цветных полосок слева ===== */
+  /* ===== Уровни новостей: без цветных полосок ===== */
   .news-date { color: #8e8e93; font-size: 12px; margin-top: 4px; }
   .level-urgent b::before { content: "🔴 "; }
   .level-important b::before { content: "🟡 "; }
@@ -154,6 +226,11 @@
 </div>
 
 <div class="section" id="sec-restaurants">
+  <div class="rest-tab-header">
+    <div class="title">🍜 Рестораны Wokker</div>
+    <div class="sub">Адреса, часы работы и маршруты всех точек</div>
+    <div id="rest-count" style="display:none"></div>
+  </div>
   <input class="q" id="rest-search" placeholder="🔍 Поиск ресторана или адреса…">
   <div id="restaurants-list"></div>
 </div>
@@ -389,19 +466,14 @@ function mapUrlFor(r) {
     : 'https://yandex.ru/maps/?text=' + encodeURIComponent('Воккер ' + r.address);
 }
 
-function restButtonsHtml(r) {
-  const mapBtn = '<a href="' + mapUrlFor(r) + '" target="_blank"><span class="btn-map">🗺 На карте</span></a>';
-  if (r.phone) {
-    return '<div class="rest-actions">' +
-      '<a href="tel:' + esc(r.phone) + '"><span class="btn-call">📞 Позвонить</span></a>' +
-      mapBtn +
-      '</div>';
-  }
-  return '<div class="rest-actions">' + mapBtn + '</div>';
+function statusBadge(r, cls) {
+  return '<span class="' + cls + ' ' + (r.status === 'open' ? 'open' : 'closed') + '">' +
+    esc(r.status_text || '') + '</span>';
 }
 
 function renderRestaurants(query) {
   const box = document.getElementById('restaurants-list');
+  const countEl = document.getElementById('rest-count');
   if (!ALL_RESTAURANTS) {
     box.innerHTML = '<div class="no-results">Загрузка…</div>';
     return;
@@ -411,25 +483,45 @@ function renderRestaurants(query) {
     ? ALL_RESTAURANTS.filter(r => r._search.indexOf(q) !== -1)
     : ALL_RESTAURANTS;
 
+  // Счётчик: открытые точки из найденных
+  const openCount = list.filter(r => r.status === 'open').length;
+  if (q) {
+    countEl.style.display = 'inline-block';
+    countEl.textContent = 'Найдено: ' + list.length + ' · открыто: ' + openCount;
+  } else {
+    countEl.style.display = 'inline-block';
+    countEl.textContent = 'Точек: ' + list.length + ' · сейчас открыто: ' + openCount;
+  }
+
   if (!list.length) {
+    countEl.style.display = 'none';
     box.innerHTML = '<div class="no-results">Ничего не нашлось 🔍<br>Попробуйте другое название или улицу</div>';
     return;
   }
 
   box.innerHTML = list.map(r => {
-    const stClass = r.status === 'open' ? 'open' : 'closed';
     const phoneRow = r.phone
-      ? '<div class="muted">📞 <a href="tel:' + esc(r.phone) + '">' + esc(r.phone) + '</a></div>'
+      ? '📞 <a href="tel:' + esc(r.phone) + '" style="color:inherit;text-decoration:none">' + esc(r.phone) + '</a><br>'
       : '';
     return '<div class="rest-card">' +
-      '<div class="rest-top">' +
+      '<div class="rest-head">' +
+      '<div class="rest-logo">🍜</div>' +
+      '<div class="rest-head-main">' +
       '<div class="rest-name">' + esc(r.name) + '</div>' +
-      '<span class="rest-status ' + stClass + '">' + esc(r.status_text || '') + '</span>' +
+      statusBadge(r, 'rest-status') +
       '</div>' +
-      '<div class="muted">📍 ' + esc(r.address) + '</div>' +
-      '<div class="muted">🕒 ' + esc(r.hours).replaceAll('\n', '<br>') + '</div>' +
+      '</div>' +
+      '<div class="rest-meta">' +
+      '<div class="addr">📍 ' + esc(r.address) + '</div>' +
+      '<div class="rest-hours">🕒 ' + esc(r.hours).replaceAll('\n', ' · ') + '</div>' +
       phoneRow +
-      restButtonsHtml(r) +
+      '</div>' +
+      '<div class="rest-actions">' +
+      '<a href="' + mapUrlFor(r) + '" target="_blank"><span class="btn-map">🗺 На Яндекс Картах</span></a>' +
+      (r.phone
+        ? '<a href="tel:' + esc(r.phone) + '"><span class="btn-call">📞 Позвонить</span></a>'
+        : '') +
+      '</div>' +
       '</div>';
   }).join('');
 }
@@ -457,15 +549,14 @@ document.getElementById('rest-search').addEventListener('input', e => {
 // ===== Карточка одного ресторана (глубокая ссылка ?rest=…) =====
 
 function renderDetail(r) {
-  const emoji = r.status === 'open' ? '🟢' : '🔴';
   const phoneRow = r.phone
-    ? '<div class="row"><div class="lbl">Телефон</div>📞 <a href="tel:' + esc(r.phone) + '">' + esc(r.phone) + '</a></div>'
+    ? '<div class="row"><div class="lbl">Телефон</div>📞 <a href="tel:' + esc(r.phone) + '" style="color:inherit;text-decoration:none">' + esc(r.phone) + '</a></div>'
     : '';
   document.getElementById('detail-box').innerHTML =
     '<div class="detail-hero">' +
-    '<div class="emoji">' + emoji + '</div>' +
+    '<div class="emoji">🍜</div>' +
     '<div class="name">' + esc(r.name) + '</div>' +
-    '<span class="detail-status">' + esc(r.status_text || '') + '</span>' +
+    statusBadge(r, 'detail-status') +
     '</div>' +
     '<div class="detail-card">' +
     '<div class="row"><div class="lbl">Адрес</div>📍 ' + esc(r.address) + '</div>' +
@@ -473,7 +564,7 @@ function renderDetail(r) {
     phoneRow +
     '<div class="detail-actions">' +
     (r.phone ? '<a href="tel:' + esc(r.phone) + '"><span class="btn-call">📞 Позвонить</span></a>' : '') +
-    '<a href="' + mapUrlFor(r) + '" target="_blank"><span class="btn-map">🗺 Открыть на Яндекс Картах</span></a>' +
+    '<a href="' + mapUrlFor(r) + '" target="_blank"><span class="btn-map">🗺 На Яндекс Картах</span></a>' +
     '</div>' +
     '</div>';
 }

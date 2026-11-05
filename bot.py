@@ -8,6 +8,7 @@ import re
 import time
 import aiohttp
 from datetime import datetime, timedelta
+from contextlib import contextmanager
 from urllib.parse import unquote
 
 from aiohttp import web
@@ -24,6 +25,7 @@ from aiogram.types import (
     WebAppInfo,
 )
 import psycopg2
+from psycopg2.pool import SimpleConnectionPool
 
 try:
     from zoneinfo import ZoneInfo
@@ -54,8 +56,27 @@ if not DB_URL:
 MINI_APP_URL = os.getenv("MINI_APP_URL", "https://ВАШ-ДОМЕН.amvera.io")
 
 
+# ================== ПУЛ СОЕДИНЕНИЙ С БАЗОЙ ==================
+
+_pool = None
+
+
+def init_pool():
+    global _pool
+    if _pool is None:
+        _pool = SimpleConnectionPool(1, 10, DB_URL)
+
+
+@contextmanager
 def get_conn():
-    return psycopg2.connect(DB_URL)
+    """Соединение из пула. with conn: сам делает commit/rollback."""
+    init_pool()
+    conn = _pool.getconn()
+    try:
+        with conn:
+            yield conn
+    finally:
+        _pool.putconn(conn)
 
 
 # Стартовые данные ресторанов. Дальше всё редактируется через админку,
@@ -68,7 +89,7 @@ RESTAURANTS_SEED = [
     {"key": "kuzminki_mall", "name": "Кузьминки Молл", "address": "Москва, ул. Зеленодольская, д. 42, ТРЦ «Кузьминки Молл», этаж 3", "hours": "Пн–вс: 10:00–22:00", "lat": 55.6980, "lon": 37.7750, "org": "vokker/24262320480", "phone": ""},
     {"key": "mega_teplyy_stan", "name": "Мега Тёплый стан", "address": "Москва, Калужское шоссе, 21-й километр, с1, ТЦ «Мега Тёплый Стан»", "hours": "Пн–вс: 10:00–22:00", "lat": 55.5790, "lon": 37.4870, "org": "vokker/1485953945", "phone": ""},
     {"key": "mega_himki", "name": "Мега Химки", "address": "Московская обл., г. Химки, микрорайон ИКЕА, к1, ТЦ «Мега Химки», этаж 1", "hours": "Пн–чт, вс: 10:00–23:00\nПт–сб: 10:00–24:00", "lat": 55.8970, "lon": 37.4120, "org": "vokker/132066311330", "phone": ""},
-    {"key": "metropolis", "name": "Метрополis".replace("is", "ис"), "address": "Москва, Ленинградское ш., д. 16А, стр. 4, ТРЦ «Метрополис», этаж 3", "hours": "Пн–вс: 10:00–23:00", "lat": 55.8120, "lon": 37.5060, "org": "vokker/1298559872", "phone": ""},
+    {"key": "metropolis", "name": "Метрополис", "address": "Москва, Ленинградское ш., д. 16А, стр. 4, ТРЦ «Метрополис», этаж 3", "hours": "Пн–вс: 10:00–23:00", "lat": 55.8120, "lon": 37.5060, "org": "vokker/1298559872", "phone": ""},
     {"key": "moskva_city", "name": "Москва-Сити", "address": "Москва, 1-й Красногвардейский пр., д. 22, стр. 1 (Neva Towers), этаж 2, фуд-корт", "hours": "Пн–вс: 10:00–22:00", "lat": 55.7490, "lon": 37.5380, "org": "vokker/25826174821", "phone": ""},
     {"key": "okeaniya", "name": "Океания", "address": "Москва, Кутузовский пр., д. 57, ТРЦ «Океания», этаж 3", "hours": "Пн–чт, вс: 10:00–22:00\nПт–сб: 10:00–23:00", "lat": 55.7330, "lon": 37.4950, "org": "vokker/9739651477", "phone": ""},
     {"key": "polkovaya", "name": "Полковая", "address": "Москва, ул. Полковая, д. 3, стр. 5, БЦ «Шереметьевский», этаж 1", "hours": "Пн–вс: 10:00–22:00", "lat": 55.8010, "lon": 37.5920, "org": "vokker/84984433800", "phone": ""},
@@ -80,6 +101,8 @@ RESTAURANTS_SEED = [
     {"key": "office", "name": "ОФИС", "address": "Центральный офис (уточните адрес у HR)", "hours": "Пн–пт: 09:00–18:00", "lat": None, "lon": None, "org": "", "phone": ""},
 ]
 
+
+init_pool()
 
 with get_conn() as conn:
     with conn.cursor() as cur:
@@ -138,6 +161,8 @@ with get_conn() as conn:
                 sort INT DEFAULT 100
             )
         """)
+        cur.execute("ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS force_status TEXT")
+        cur.execute("ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS sort INT DEFAULT 100")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS greetings_log (
                 user_id BIGINT,
@@ -153,6 +178,11 @@ with get_conn() as conn:
                 PRIMARY KEY (kind, year)
             )
         """)
+        # Индексы для быстрых запросов
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_users_blocked ON users (is_blocked)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_news_created ON news (created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_bot_msgs_user ON bot_messages (user_id, message_id DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_user_msgs_user ON user_messages (user_id, message_id DESC)")
         cur.execute("SELECT COUNT(*) FROM news")
         if cur.fetchone()[0] == 0:
             cur.execute(
@@ -172,7 +202,6 @@ with get_conn() as conn:
                     "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
                     (r["key"], r["name"], r["address"], r["hours"], r["lat"], r["lon"], r["org"], r["phone"], sort)
                 )
-    conn.commit()
 print("База данных подключена, таблицы готовы.")
 
 
@@ -232,7 +261,6 @@ FAQ = [
 # ================== ПРАЗДНИКИ И ПОЗДРАВЛЕНИЯ ==================
 
 # Праздники России: (месяц, день) -> (название, текст)
-# Легко пополнять — просто добавляйте новые даты в словарь.
 HOLIDAYS = {
     (1, 1): ("🎉 Новый год!", "С Новым годом! Пусть он принесёт яркие события, отдых и вкусный стол."),
     (1, 7): ("✨ Рождество Христово", "Светлого Рождества! Тепла, уюта и добрых людей рядом."),
@@ -294,7 +322,6 @@ def db_mark_greeted(user_id: int, kind: str, year: int):
                 "INSERT INTO greetings_log (user_id, kind, year) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
                 (user_id, kind, year)
             )
-        conn.commit()
 
 
 def db_holiday_broadcast_done(kind: str, year: int) -> bool:
@@ -314,7 +341,6 @@ def db_mark_holiday_broadcast(kind: str, year: int):
                 "INSERT INTO holiday_broadcast_log (kind, year) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                 (kind, year)
             )
-        conn.commit()
 
 
 # --- Фоновые процессы ---
@@ -325,7 +351,7 @@ async def birthday_checker():
         try:
             now = _moscow_now()
             year = now.year
-            today_md = f"{now.day:02d}.{now.month:02d}"  # формат ДД.ММ из ДД.ММ.ГГГГ
+            today_md = f"{now.day:02d}.{now.month:02d}"
             for user_id in db_list_active_users():
                 row = db_get(user_id)
                 if not row or not row[2]:
@@ -366,10 +392,7 @@ async def holiday_broadcaster():
                     for user_id in db_list_active_users():
                         try:
                             name = db_get_first_name(user_id) or "коллега"
-                            await bot.send_message(
-                                user_id,
-                                f"{title}\n\n{name}, {text}"
-                            )
+                            await bot.send_message(user_id, f"{title}\n\n{name}, {text}")
                             sent += 1
                         except Exception:
                             pass
@@ -507,8 +530,8 @@ def db_restaurant_update(key: str, field: str, value: str) -> bool:
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(f"UPDATE restaurants SET {field} = %s WHERE key = %s", (value, key))
-        conn.commit()
-        return cur.rowcount > 0
+            updated = cur.rowcount > 0
+        return updated
 
 
 def db_restaurant_set_status(key: str, force_status) -> bool:
@@ -520,8 +543,8 @@ def db_restaurant_set_status(key: str, force_status) -> bool:
                 "UPDATE restaurants SET force_status = %s WHERE key = %s",
                 (force_status, key)
             )
-        conn.commit()
-        return cur.rowcount > 0
+            updated = cur.rowcount > 0
+        return updated
 
 
 def db_get(user_id: int):
@@ -536,7 +559,7 @@ def db_get(user_id: int):
 
 
 def db_get_first_name(user_id: int):
-    """Имя из Telegram (сохраняется при запуске/регистрации). Fallback — нет."""
+    """Имя из Telegram (сохраняется при запуске/регистрации)."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT first_name FROM users WHERE user_id = %s", (user_id,))
@@ -553,7 +576,6 @@ def db_set_welcomed(user_id: int, first_name: str = None):
                 "first_name = COALESCE(EXCLUDED.first_name, users.first_name)",
                 (user_id, first_name)
             )
-        conn.commit()
 
 
 def db_save_profile(user_id: int, full_name: str, phone: str, birth_date: str, position: str, restaurant, first_name: str = None):
@@ -575,7 +597,6 @@ def db_save_profile(user_id: int, full_name: str, phone: str, birth_date: str, p
                 (user_id, full_name, phone, birth_date, position, restaurant, first_name,
                  full_name, phone, birth_date, position, restaurant)
             )
-        conn.commit()
 
 
 def db_update_user(user_id: int, field: str, value: str) -> bool:
@@ -585,8 +606,8 @@ def db_update_user(user_id: int, field: str, value: str) -> bool:
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(f"UPDATE users SET {field} = %s WHERE user_id = %s", (value, user_id))
-        conn.commit()
-        return cur.rowcount > 0
+            updated = cur.rowcount > 0
+        return updated
 
 
 def db_is_blocked(user_id: int) -> bool:
@@ -621,8 +642,8 @@ def db_delete_user(user_id: int):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM users WHERE user_id = %s", (user_id,))
-        conn.commit()
-        return cur.rowcount > 0
+            deleted = cur.rowcount > 0
+        return deleted
 
 
 def db_set_blocked(user_id: int, blocked: bool):
@@ -632,8 +653,8 @@ def db_set_blocked(user_id: int, blocked: bool):
                 "UPDATE users SET is_blocked = %s WHERE user_id = %s",
                 (blocked, user_id)
             )
-        conn.commit()
-        return cur.rowcount > 0
+            updated = cur.rowcount > 0
+        return updated
 
 
 def get_report_stats():
@@ -663,8 +684,7 @@ def db_add_news(title: str, body: str, level: str) -> int:
                 (title, body, level != "normal", level)
             )
             news_id = cur.fetchone()[0]
-        conn.commit()
-    return news_id
+        return news_id
 
 
 def db_list_news():
@@ -690,8 +710,8 @@ def db_delete_news(news_id: int) -> bool:
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM news WHERE id = %s", (news_id,))
-        conn.commit()
-        return cur.rowcount > 0
+            deleted = cur.rowcount > 0
+        return deleted
 
 
 def db_add_bot_msg(user_id: int, message_id: int):
@@ -701,7 +721,6 @@ def db_add_bot_msg(user_id: int, message_id: int):
                 "INSERT INTO bot_messages (user_id, message_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                 (user_id, message_id)
             )
-        conn.commit()
 
 
 def db_get_and_trim_bot_msgs(user_id: int, keep: int = 1):
@@ -718,7 +737,6 @@ def db_get_and_trim_bot_msgs(user_id: int, keep: int = 1):
                     "DELETE FROM bot_messages WHERE user_id = %s AND message_id = %s",
                     (user_id, mid)
                 )
-        conn.commit()
     return to_delete
 
 
@@ -729,7 +747,6 @@ def db_add_user_msg(user_id: int, message_id: int):
                 "INSERT INTO user_messages (user_id, message_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                 (user_id, message_id)
             )
-        conn.commit()
 
 
 def db_get_and_trim_user_msgs(user_id: int, keep: int = 1):
@@ -746,7 +763,6 @@ def db_get_and_trim_user_msgs(user_id: int, keep: int = 1):
                     "DELETE FROM user_messages WHERE user_id = %s AND message_id = %s",
                     (user_id, mid)
                 )
-        conn.commit()
     return to_delete
 
 
@@ -2214,7 +2230,9 @@ async def handle_index(request):
     index_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "index.html")
     if os.path.exists(index_path):
         resp = web.FileResponse(index_path)
-        resp.headers["Cache-Control"] = "no-store"
+        # Кэш HTML на 5 минут: повторное открытие приложения почти мгновенное.
+        # Свежесть данных это не затрагивает — они приходят через API.
+        resp.headers["Cache-Control"] = "public, max-age=300"
         return resp
     return web.Response(text="Mini App: файл frontend/index.html не найден", status=404)
 
@@ -2235,6 +2253,51 @@ def build_restaurants_payload():
             "status_text": status_text,
         })
     return out
+
+
+async def handle_bootstrap(request):
+    """Один запрос для всего стартового экрана: профиль, поздравление, новости,
+    рестораны, стандарты и FAQ. Вместо пяти обращений — одно."""
+    user_id, err = await get_auth_user(request)
+    if err:
+        return denied_response(err)
+
+    row = db_get(user_id)
+    profile = None
+    if row and row[0]:
+        full_name, phone, birth_date, position, restaurant, welcomed, is_blocked = row
+        profile = {
+            "full_name": full_name,
+            "first_name": db_get_first_name(user_id) or (full_name.split()[0] if full_name else ""),
+            "phone": phone,
+            "birth_date": birth_date,
+            "position": position or "—",
+            "restaurant": restaurant_name_by_key(restaurant) if restaurant else "—",
+        }
+
+    now = _moscow_now()
+    kind, title, sub = greeting_for_user(row[2] if row else None, now)
+
+    news_list = [
+        {
+            "id": news_id,
+            "title": t,
+            "text": b,
+            "date": d.strftime("%d.%m.%Y") if d else "",
+            "important": bool(imp),
+            "level": lv or "normal",
+        }
+        for news_id, t, b, imp, lv, d in db_list_news()
+    ]
+
+    return web.json_response({
+        "profile": profile,
+        "greeting": {"kind": kind, "title": title, "sub": sub},
+        "news": news_list,
+        "restaurants": build_restaurants_payload(),
+        "standards": STANDARDS,
+        "faq": FAQ,
+    }, dumps=json_dumps)
 
 
 async def handle_restaurants(request):
@@ -2385,6 +2448,7 @@ async def handle_health(request):
 
 app = web.Application()
 app.router.add_get("/", handle_index)
+app.router.add_post("/api/bootstrap", handle_bootstrap)
 app.router.add_post("/api/restaurants", handle_restaurants)
 app.router.add_post("/api/greeting", handle_greeting)
 app.router.add_post("/api/news", handle_news)
@@ -2417,6 +2481,8 @@ async def main():
     finally:
         await runner.cleanup()
         await bot.session.close()
+        if _pool:
+            _pool.closeall()
 
 
 if __name__ == "__main__":

@@ -100,6 +100,7 @@
     height: 100%;
     margin: 0;
     border: 2px solid #fff; /* белый зазор между кольцом и фото */
+    border-radius: 50%;     /* и фото, и заглушка — круг */
     background-color: rgba(255,255,255,.25);
     background-size: cover; background-position: center;
     display: flex; align-items: center; justify-content: center;
@@ -388,7 +389,10 @@ function greetingTexts() {
   return { hello: 'Доброй ночи', sub: 'Отдыхайте — завтра снова в бой 🌙' };
 }
 
-function firstNameOf(fullName) {
+/* Имя для обращения: сначала имя из Telegram, иначе первое слово из ФИО */
+function displayNameOf(fullName) {
+  const u = tgUserInfo();
+  if (u && u.first_name && u.first_name.trim()) return u.first_name.trim();
   if (!fullName) return '';
   const parts = fullName.trim().split(/\s+/);
   return parts[0] || '';
@@ -447,7 +451,8 @@ async function loadProfile() {
       const p = data.profile;
       const isOffice = p.restaurant === 'ОФИС';
       const restBadge = isOffice ? 'office' : 'normal';
-      const name = firstNameOf(p.full_name);
+      // Обращение по имени: из Telegram, затем из профиля (первое слово ФИО)
+      const name = displayNameOf(p.full_name) || firstNameFromProfile(p);
 
       // Поздравление (день рождения / праздник) — берём с бэкенда
       let greet = null;
@@ -519,6 +524,16 @@ async function loadProfile() {
   } catch (e) {
     box.innerHTML = '<div class="card">Ошибка загрузки профиля: ' + esc(String(e)) + '</div>';
   }
+}
+
+/* Запасной вариант: первое слово ФИО из профиля (когда имя из Telegram недоступно) */
+function firstNameFromProfile(p) {
+  if (p && p.first_name && p.first_name.trim()) return p.first_name.trim();
+  if (p && p.full_name) {
+    const parts = p.full_name.trim().split(/\s+/);
+    return parts[0] || '';
+  }
+  return '';
 }
 
 // ===== Рестораны: кэш + мгновенный поиск + сортировка =====
@@ -654,61 +669,3 @@ function renderDetail(r) {
     statusBadge(r, 'detail-status') +
     '</div>' +
     '<div class="detail-card">' +
-    '<div class="row"><div class="lbl">Адрес</div>📍 ' + esc(r.address) + '</div>' +
-    '<div class="row"><div class="lbl">Часы работы</div>🕒 ' + esc(r.hours).replaceAll('\n', '<br>') + '</div>' +
-    '<div class="detail-actions">' +
-    '<a href="' + mapUrlFor(r) + '" target="_blank"><span class="btn-map">🗺 На Яндекс Картах</span></a>' +
-    '</div>' +
-    '</div>';
-}
-
-async function showDetail(key) {
-  const section = document.getElementById('sec-detail');
-  const box = document.getElementById('detail-box');
-  try {
-    const list = await fetchRestaurants();
-    const r = list.find(x => x.key === key);
-    if (!r) {
-      box.innerHTML = '<div class="card">Ресторан не найден 🤷</div>';
-    } else {
-      renderDetail(r);
-    }
-    document.querySelector('.tabs').style.display = 'none';
-    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-    section.classList.add('active');
-    window.scrollTo(0, 0);
-  } catch (e) {
-    if (e && e.code === 403) { box.innerHTML = blockedHtml(); section.classList.add('active'); return; }
-    box.innerHTML = '<div class="card">Ошибка загрузки карточки ресторана</div>';
-    section.classList.add('active');
-  }
-}
-
-function exitDetailView() {
-  document.querySelector('.tabs').style.display = 'flex';
-}
-
-document.getElementById('detail-back').addEventListener('click', () => {
-  history.replaceState(null, '', location.pathname);
-  exitDetailView();
-  document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
-  document.querySelector('.tabs button[data-sec="sec-restaurants"]').classList.add('active');
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.getElementById('sec-restaurants').classList.add('active');
-  loadRestaurants();
-});
-
-async function loadNews() {
-  const box = document.getElementById('news-list');
-  try {
-    const resp = await fetch('/api/news', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ initData: getInitData() })
-    });
-    if (resp.status === 403) { box.innerHTML = blockedHtml(); return; }
-    if (resp.status === 401) { box.innerHTML = '<div class="card">⚠️ Ошибка авторизации. Открой приложение заново из бота.</div>'; return; }
-    const list = await resp.json();
-    if (!list.length) {
-      box.innerHTML = '<div class="card">Пока новостей нет 📰</div>';
-      return;

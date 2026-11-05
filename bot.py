@@ -2,6 +2,7 @@ import os
 import asyncio
 import logging
 from datetime import datetime
+from urllib.parse import quote
 
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types
@@ -317,9 +318,9 @@ def profile_text(row):
 def map_link(restaurant) -> str:
     if restaurant.get("org"):
         return f"https://yandex.ru/maps/org/{restaurant['org']}"
-    name = restaurant["name"].replace(" ", "+")
-    address = restaurant["address"].replace(" ", "+").replace(",", "+")
-    return f"https://yandex.ru/maps/?text={name}+{address}"
+    # Кодируем кириллицу, иначе Telegram отклонит кнопку (BUTTON_URL_INVALID)
+    query = quote(f"Воккер {restaurant['address']}", safe="")
+    return f"https://yandex.ru/maps/?text={query}"
 
 
 def admin_menu_kb():
@@ -523,7 +524,18 @@ async def show_restaurant_info(callback: types.CallbackQuery):
         [InlineKeyboardButton(text="← Назад к списку ресторанов", callback_data="restaurants")],
         [InlineKeyboardButton(text="🏠 В главное меню", callback_data="back_to_menu")],
     ])
-    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    try:
+        await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    except Exception as e:
+        logging.exception(f"Не удалось отправить карточку ресторана: {e}")
+        # Запасной вариант без кнопок, чтобы сообщение всё равно ушло
+        await callback.message.answer(
+            f"<b>{restaurant['name']}</b>\n\n"
+            f"📍 Адрес: {restaurant['address']}\n"
+            f"🕒 Часы работы: {restaurant['hours']}\n\n"
+            f"🗺 Карта: {map_link(restaurant)}",
+            parse_mode="HTML"
+        )
 
 
 @dp.callback_query(lambda c: c.data == "back_to_menu")

@@ -154,7 +154,7 @@ RESTAURANTS = [
     {
         "key": "metropolis",
         "name": "Метрополис",
-        "address": "Москва, Ленинградское ш., д. 16А, стр. 4, ТРЦ «Метрополis», этаж 3",
+        "address": "Москва, Ленинградское ш., д. 16А, стр. 4, ТРЦ «Метрополис», этаж 3",
         "hours": "Пн–вс: 10:00–23:00",
         "lat": 55.8120,
         "lon": 37.5060,
@@ -263,6 +263,23 @@ STANDARDS = [
         "category": "Сервис",
         "description": "Как реагировать на претензии и когда звать управляющего.",
         "url": "",
+    },
+]
+
+NEWS = [
+    {
+        "id": 1,
+        "title": "Открытие новой точки",
+        "date": "05.11.2026",
+        "text": "Скоро открываем новый ресторан! Подробности расскажет управляющий на ближайшей смене.",
+        "important": True,
+    },
+    {
+        "id": 2,
+        "title": "Обновление меню",
+        "date": "01.11.2026",
+        "text": "В сезоне осень появились новые позиции — уточните состав у шеф-повара на смене.",
+        "important": False,
     },
 ]
 
@@ -401,14 +418,23 @@ def db_add_bot_msg(user_id: int, message_id: int):
         conn.commit()
 
 
-def db_pop_bot_msgs(user_id: int):
+def db_get_and_trim_bot_msgs(user_id: int, keep: int = 1):
+    """Возвращает ID старых сообщений бота (кроме последних keep) и удаляет их из учёта."""
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT message_id FROM bot_messages WHERE user_id = %s", (user_id,))
+            cur.execute(
+                "SELECT message_id FROM bot_messages WHERE user_id = %s ORDER BY message_id DESC",
+                (user_id,)
+            )
             ids = [r[0] for r in cur.fetchall()]
-            cur.execute("DELETE FROM bot_messages WHERE user_id = %s", (user_id,))
+            to_delete = ids[keep:]  # всё, кроме последних keep сообщений
+            for mid in to_delete:
+                cur.execute(
+                    "DELETE FROM bot_messages WHERE user_id = %s AND message_id = %s",
+                    (user_id, mid)
+                )
         conn.commit()
-    return ids
+    return to_delete
 
 
 bot = Bot(token=TOKEN)
@@ -417,9 +443,9 @@ dp = Dispatcher()
 
 # ================== ОЧИСТКА ЧАТА ==================
 
-async def cleanup_chat(user_id: int):
-    """Удаляет все сообщения, которые бот раньше отправил этому пользователю."""
-    for mid in db_pop_bot_msgs(user_id):
+async def cleanup_chat(user_id: int, keep: int = 1):
+    """Удаляет старые сообщения бота, оставляя последнее (по умолчанию keep=1)."""
+    for mid in db_get_and_trim_bot_msgs(user_id, keep=keep):
         try:
             await bot.delete_message(user_id, mid)
         except Exception:
@@ -802,7 +828,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         await send_tracked(message.chat.id, user_id, "⛔ Доступ к боту ограничен. Обратитесь к администратору.")
         return
 
-    # Удаляем /start и всю старую переписку с ботом
+    # Удаляем /start и старые сообщения бота (кроме последнего)
     await delete_incoming(message)
     await cleanup_chat(user_id)
 
@@ -1102,6 +1128,10 @@ async def handle_restaurants(request):
     return web.json_response(RESTAURANTS, dumps=json_dumps)
 
 
+async def handle_news(request):
+    return web.json_response(NEWS, dumps=json_dumps)
+
+
 async def handle_standards(request):
     return web.json_response(STANDARDS, dumps=json_dumps)
 
@@ -1189,6 +1219,7 @@ async def handle_health(request):
 app = web.Application()
 app.router.add_get("/", handle_index)
 app.router.add_get("/api/restaurants", handle_restaurants)
+app.router.add_get("/api/news", handle_news)
 app.router.add_get("/api/standards", handle_standards)
 app.router.add_get("/api/faq", handle_faq)
 app.router.add_post("/api/profile", handle_profile)

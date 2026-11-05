@@ -60,141 +60,157 @@ print("База данных подключена, таблица готова."
 
 
 # Поле "org" — путь карточки на Яндекс Картах (yandex.ru/maps/org/<org>).
+# Поле "phone" — номер в формате tel: (замени заглушки на реальные номера!)
 RESTAURANTS = [
     {
         "key": "mega_belaya_dacha",
         "name": "Мега Белая Дача",
         "address": "Московская область, Котельники, 1-й Покровский проезд, 5, ТРЦ Мега, этаж 1",
-        "hours": "10:00–22:00",
+        "hours": "Пн–чт: 10:00–22:00\nПт–вс: 10:00–23:00",
         "lat": 55.6578,
         "lon": 37.8891,
         "org": "vokker/128833821207",
+        "phone": "+74951112233",
     },
     {
         "key": "belyaevo",
         "name": "Беляево",
         "address": "Москва, ул. Миклухо-Маклая, 32А, ТЦ «Капитолий», этаж 2",
-        "hours": "10:00–22:00",
+        "hours": "Пн–вс: 10:00–22:00",
         "lat": 55.6470,
         "lon": 37.5420,
         "org": "vokker/13122472923",
+        "phone": "+74954445566",
     },
     {
         "key": "vernadka",
         "name": "Вернадка",
         "address": "Москва, проспект Вернадского, 6, ТЦ «Капитолий Вернадского», этаж 3",
-        "hours": "10:00–22:00",
+        "hours": "Пн–вс: 10:00–22:00",
         "lat": 55.6840,
         "lon": 37.4980,
         "org": "vokker/91626648547",
+        "phone": "+74957778899",
     },
     {
         "key": "erevan_plaza",
         "name": "Ереван Плаза",
         "address": "Москва, ул. Большая Тульская, д. 13, ТРЦ «Ереван Плаза», этаж 3",
-        "hours": "10:00–22:00",
+        "hours": "Пн–вс: 10:00–22:00",
         "lat": 55.7030,
         "lon": 37.6210,
         "org": "vokker/102264079721",
+        "phone": "+74953334455",
     },
     {
         "key": "kuzminki_mall",
         "name": "Кузьминки Молл",
         "address": "Москва, ул. Зеленодольская, д. 42, ТРЦ «Кузьминки Молл», этаж 3",
-        "hours": "10:00–22:00",
+        "hours": "Пн–вс: 10:00–22:00",
         "lat": 55.6980,
         "lon": 37.7750,
         "org": "vokker/24262320480",
+        "phone": "+74956667788",
     },
     {
         "key": "mega_teplyy_stan",
         "name": "Мега Тёплый стан",
         "address": "Москва, Калужское шоссе, 21-й километр, с1, ТЦ «Мега Тёплый Стан»",
-        "hours": "10:00–22:00",
+        "hours": "Пн–вс: 10:00–22:00",
         "lat": 55.5790,
         "lon": 37.4870,
         "org": "vokker/1485953945",
+        "phone": "+74959990011",
     },
     {
         "key": "mega_himki",
         "name": "Мега Химки",
         "address": "Московская обл., г. Химки, микрорайон ИКЕА, к1, ТЦ «Мега Химки», этаж 1",
-        "hours": "10:00–23:00",
+        "hours": "Пн–чт, вс: 10:00–23:00\nПт–сб: 10:00–24:00",
         "lat": 55.8970,
         "lon": 37.4120,
         "org": "vokker/132066311330",
+        "phone": "+74952223344",
     },
     {
         "key": "metropolis",
         "name": "Метрополис",
         "address": "Москва, Ленинградское ш., д. 16А, стр. 4, ТРЦ «Метрополис», этаж 3",
-        "hours": "10:00–23:00",
+        "hours": "Пн–вс: 10:00–23:00",
         "lat": 55.8120,
         "lon": 37.5060,
         "org": "vokker/1298559872",
+        "phone": "+74955556677",
     },
     {
         "key": "moskva_city",
         "name": "Москва-Сити",
         "address": "Москва, 1-й Красногвардейский пр., д. 22, стр. 1 (Neva Towers), этаж 2, фуд-корт",
-        "hours": "10:00–22:00",
+        "hours": "Пн–вс: 10:00–22:00",
         "lat": 55.7490,
         "lon": 37.5380,
         "org": "vokker/25826174821",
+        "phone": "+74958889900",
     },
     {
         "key": "okeaniya",
         "name": "Океания",
         "address": "Москва, Кутузовский пр., д. 57, ТРЦ «Океания», этаж 3",
-        "hours": "10:00–22:00",
+        "hours": "Пн–чт, вс: 10:00–22:00\nПт–сб: 10:00–23:00",
         "lat": 55.7330,
         "lon": 37.4950,
         "org": "vokker/9739651477",
+        "phone": "+74951234567",
     },
     {
         "key": "polkovaya",
         "name": "Полковая",
         "address": "Москва, ул. Полковая, д. 3, стр. 5, БЦ «Шереметьевский», этаж 1",
-        "hours": "10:00–21:00",
+        "hours": "Пн–вс: 10:00–22:00",
         "lat": 55.8010,
         "lon": 37.5920,
         "org": "vokker/84984433800",
+        "phone": "+74959876543",
     },
     {
         "key": "cdm",
         "name": "ЦДМ",
         "address": "Москва, Театральный пр., д. 5, стр. 1, «ЦДМ на Лубянке», этаж 6",
-        "hours": "10:00–22:00",
+        "hours": "Пн–чт, вс: 10:00–22:00\nПт–сб: 10:00–23:00",
         "lat": 55.7580,
         "lon": 37.6230,
         "org": "vokker/31463245515",
+        "phone": "+74951122334",
     },
     {
         "key": "tsvetnoy",
         "name": "Цветной",
         "address": "Москва, Цветной бульвар, д. 15, стр. 1, ТРЦ «Цветной», этаж 5",
-        "hours": "10:00–22:00, вс с 11:00",
+        "hours": "Пн–сб: 10:00–22:00\nВс: 11:00–22:00",
         "lat": 55.7670,
         "lon": 37.6180,
         "org": "vokker/110848206544",
+        "phone": "+74955544332",
     },
     {
         "key": "shchelkovskaya",
         "name": "Щёлковская",
         "address": "Москва, Щёлковское шоссе, 75, ТРЦ «Щёлковский», этаж 5",
-        "hours": "10:00–22:00, пт–сб до 23:00",
+        "hours": "Пн–чт, вс: 10:00–22:00\nПт–сб: 10:00–23:00",
         "lat": 55.8050,
         "lon": 37.7920,
         "org": "vokker/25844145312",
+        "phone": "+74953322110",
     },
     {
         "key": "shuka",
         "name": "Щука",
         "address": "Москва, ул. Щукинская, д. 42, ТРК «Щука», этаж 4",
-        "hours": "10:00–22:00",
+        "hours": "Пн–вс: 10:00–22:00",
         "lat": 55.8020,
         "lon": 37.4650,
         "org": "vokker/1357579873",
+        "phone": "+74957766554",
     },
 ]
 
@@ -519,19 +535,28 @@ async def show_restaurant_info(callback: types.CallbackQuery):
         f"📍 Адрес: {restaurant['address']}\n"
         f"🕒 Часы работы: {restaurant['hours']}"
     )
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🗺 Показать на карте", url=map_link(restaurant))],
-        [InlineKeyboardButton(text="← Назад к списку ресторанов", callback_data="restaurants")],
-        [InlineKeyboardButton(text="🏠 В главное меню", callback_data="back_to_menu")],
-    ])
+
+    # Собираем кнопки: звонок (если есть телефон), карта, навигация
+    buttons = []
+    if restaurant.get("phone"):
+        buttons.append([InlineKeyboardButton(
+            text=f"📞 Позвонить ({restaurant['phone']})",
+            url=f"tel:{restaurant['phone']}"
+        )])
+    buttons.append([InlineKeyboardButton(text="🗺 Показать на карте", url=map_link(restaurant))])
+    buttons.append([InlineKeyboardButton(text="← Назад к списку ресторанов", callback_data="restaurants")])
+    buttons.append([InlineKeyboardButton(text="🏠 В главное меню", callback_data="back_to_menu")])
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+
     try:
         await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
     except Exception as e:
         logging.exception(f"Не удалось отправить карточку ресторана: {e}")
+        phone_line = f"\n📞 Позвонить: {restaurant['phone']}" if restaurant.get("phone") else ""
         await callback.message.answer(
             f"<b>{restaurant['name']}</b>\n\n"
             f"📍 Адрес: {restaurant['address']}\n"
-            f"🕒 Часы работы: {restaurant['hours']}\n\n"
+            f"🕒 Часы работы: {restaurant['hours']}{phone_line}\n\n"
             f"🗺 Карта: {map_link(restaurant)}",
             parse_mode="HTML"
         )

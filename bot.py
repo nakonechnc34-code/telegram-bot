@@ -74,6 +74,13 @@ with get_conn() as conn:
             )
         """)
         cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_messages (
+                user_id BIGINT,
+                message_id BIGINT,
+                PRIMARY KEY (user_id, message_id)
+            )
+        """)
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS news (
                 id SERIAL PRIMARY KEY,
                 title TEXT NOT NULL,
@@ -476,6 +483,37 @@ def db_get_and_trim_bot_msgs(user_id: int, keep: int = 1):
     return to_delete
 
 
+# --- учёт сообщений пользователя (последнее всегда остаётся) ---
+
+def db_add_user_msg(user_id: int, message_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO user_messages (user_id, message_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                (user_id, message_id)
+            )
+        conn.commit()
+
+
+def db_get_and_trim_user_msgs(user_id: int, keep: int = 1):
+    """Возвращает ID старых сообщений пользователя (кроме последних keep) и удаляет их из учёта."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT message_id FROM user_messages WHERE user_id = %s ORDER BY message_id DESC",
+                (user_id,)
+            )
+            ids = [r[0] for r in cur.fetchall()]
+            to_delete = ids[keep:]
+            for mid in to_delete:
+                cur.execute(
+                    "DELETE FROM user_messages WHERE user_id = %s AND message_id = %s",
+                    (user_id, mid)
+                )
+        conn.commit()
+    return to_delete
+
+
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
@@ -492,11 +530,17 @@ async def cleanup_chat(user_id: int, keep: int = 1):
 
 
 async def delete_incoming(message: types.Message):
-    """Удаляет сообщение пользователя (например, его /start или текст шага)."""
-    try:
-        await message.delete()
-    except Exception:
-        pass
+    """Подчищает сообщения пользователя, оставляя только последнее.
+    Сообщение, которое пришло прямо сейчас, сохраняем и оставляем в чате."""
+    if message is None:
+        return
+    user_id = message.from_user.id
+    db_add_user_msg(user_id, message.message_id)
+    for mid in db_get_and_trim_user_msgs(user_id, keep=1):
+        try:
+            await bot.delete_message(user_id, mid)
+        except Exception:
+            pass
 
 
 async def send_tracked(chat_id: int, user_id: int, text: str, **kwargs) -> types.Message:
@@ -1040,7 +1084,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         await send_tracked(message.chat.id, user_id, "⛔ Доступ к боту ограничен. Обратитесь к администратору.")
         return
 
-    # Удаляем /start и старые сообщения бота (кроме последнего)
+    # Удаляем /start (остаётся в чате до следующего действия) и старые сообщения бота
     await delete_incoming(message)
     await cleanup_chat(user_id)
 

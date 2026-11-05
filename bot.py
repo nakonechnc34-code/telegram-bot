@@ -68,7 +68,7 @@ RESTAURANTS_SEED = [
     {"key": "kuzminki_mall", "name": "Кузьминки Молл", "address": "Москва, ул. Зеленодольская, д. 42, ТРЦ «Кузьминки Молл», этаж 3", "hours": "Пн–вс: 10:00–22:00", "lat": 55.6980, "lon": 37.7750, "org": "vokker/24262320480", "phone": ""},
     {"key": "mega_teplyy_stan", "name": "Мега Тёплый стан", "address": "Москва, Калужское шоссе, 21-й километр, с1, ТЦ «Мега Тёплый Стан»", "hours": "Пн–вс: 10:00–22:00", "lat": 55.5790, "lon": 37.4870, "org": "vokker/1485953945", "phone": ""},
     {"key": "mega_himki", "name": "Мега Химки", "address": "Московская обл., г. Химки, микрорайон ИКЕА, к1, ТЦ «Мега Химки», этаж 1", "hours": "Пн–чт, вс: 10:00–23:00\nПт–сб: 10:00–24:00", "lat": 55.8970, "lon": 37.4120, "org": "vokker/132066311330", "phone": ""},
-    {"key": "metropolis", "name": "Метрополис", "address": "Москва, Ленинградское ш., д. 16А, стр. 4, ТРЦ «Метрополис», этаж 3", "hours": "Пн–вс: 10:00–23:00", "lat": 55.8120, "lon": 37.5060, "org": "vokker/1298559872", "phone": ""},
+    {"key": "metropolis", "name": "Метрополis".replace("is", "ис"), "address": "Москва, Ленинградское ш., д. 16А, стр. 4, ТРЦ «Метрополис», этаж 3", "hours": "Пн–вс: 10:00–23:00", "lat": 55.8120, "lon": 37.5060, "org": "vokker/1298559872", "phone": ""},
     {"key": "moskva_city", "name": "Москва-Сити", "address": "Москва, 1-й Красногвардейский пр., д. 22, стр. 1 (Neva Towers), этаж 2, фуд-корт", "hours": "Пн–вс: 10:00–22:00", "lat": 55.7490, "lon": 37.5380, "org": "vokker/25826174821", "phone": ""},
     {"key": "okeaniya", "name": "Океания", "address": "Москва, Кутузовский пр., д. 57, ТРЦ «Океания», этаж 3", "hours": "Пн–чт, вс: 10:00–22:00\nПт–сб: 10:00–23:00", "lat": 55.7330, "lon": 37.4950, "org": "vokker/9739651477", "phone": ""},
     {"key": "polkovaya", "name": "Полковая", "address": "Москва, ул. Полковая, д. 3, стр. 5, БЦ «Шереметьевский», этаж 1", "hours": "Пн–вс: 10:00–22:00", "lat": 55.8010, "lon": 37.5920, "org": "vokker/84984433800", "phone": ""},
@@ -98,6 +98,7 @@ with get_conn() as conn:
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS position TEXT")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS restaurant TEXT")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS bot_messages (
                 user_id BIGINT,
@@ -319,7 +320,7 @@ def db_mark_holiday_broadcast(kind: str, year: int):
 # --- Фоновые процессы ---
 
 async def birthday_checker():
-    """Раз в час: поздравляет сотрудников с днём рождения (по московскому времени)."""
+    """Раз в час: поздравляет сотрудников с днём рождения (по московскому времени). Обращение по имени."""
     while True:
         try:
             now = _moscow_now()
@@ -330,12 +331,15 @@ async def birthday_checker():
                 if not row or not row[2]:
                     continue
                 if row[2][:5] == today_md and not db_already_greeted(user_id, "birthday", year):
-                    name = (row[0] or "").split()[0] if row[0] else "коллега"
+                    # Обращение по имени: сначала имя из Telegram, иначе первое слово из ФИО
+                    name = db_get_first_name(user_id)
+                    if not name:
+                        name = (row[0] or "").split()[0] if row[0] else "коллега"
                     try:
                         await bot.send_message(
                             user_id,
                             f"🎂 <b>{name}, с Днём рождения!</b>\n\n"
-                            "Команда Wokker поздравляет вас! Пусть год будет лёгким, "
+                            "Команда Wokker поздравляет тебя! Пусть год будет лёгким, "
                             "смены — удачными, а гости — благодарными.\n"
                             "Хорошего праздника! 🥳",
                             parse_mode="HTML"
@@ -361,7 +365,11 @@ async def holiday_broadcaster():
                     sent = 0
                     for user_id in db_list_active_users():
                         try:
-                            await bot.send_message(user_id, f"{title}\n\n{text}")
+                            name = db_get_first_name(user_id) or "коллега"
+                            await bot.send_message(
+                                user_id,
+                                f"{title}\n\n{name}, {text}"
+                            )
                             sent += 1
                         except Exception:
                             pass
@@ -527,18 +535,28 @@ def db_get(user_id: int):
             return cur.fetchone()
 
 
-def db_set_welcomed(user_id: int):
+def db_get_first_name(user_id: int):
+    """Имя из Telegram (сохраняется при запуске/регистрации). Fallback — нет."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT first_name FROM users WHERE user_id = %s", (user_id,))
+            row = cur.fetchone()
+            return row[0] if row and row[0] else None
+
+
+def db_set_welcomed(user_id: int, first_name: str = None):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO users (user_id, welcomed) VALUES (%s, TRUE) "
-                "ON CONFLICT (user_id) DO UPDATE SET welcomed = TRUE",
-                (user_id,)
+                "INSERT INTO users (user_id, welcomed, first_name) VALUES (%s, TRUE, %s) "
+                "ON CONFLICT (user_id) DO UPDATE SET welcomed = TRUE, "
+                "first_name = COALESCE(EXCLUDED.first_name, users.first_name)",
+                (user_id, first_name)
             )
         conn.commit()
 
 
-def db_save_profile(user_id: int, full_name: str, phone: str, birth_date: str, position: str, restaurant):
+def db_save_profile(user_id: int, full_name: str, phone: str, birth_date: str, position: str, restaurant, first_name: str = None):
     if isinstance(restaurant, dict):
         restaurant = restaurant.get("key", "")
     if restaurant is not None:
@@ -548,12 +566,13 @@ def db_save_profile(user_id: int, full_name: str, phone: str, birth_date: str, p
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO users (user_id, full_name, phone, birth_date, position, restaurant, welcomed)
-                VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+                INSERT INTO users (user_id, full_name, phone, birth_date, position, restaurant, welcomed, first_name)
+                VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s)
                 ON CONFLICT (user_id) DO UPDATE SET
-                full_name = %s, phone = %s, birth_date = %s, position = %s, restaurant = %s, welcomed = TRUE
+                full_name = %s, phone = %s, birth_date = %s, position = %s, restaurant = %s, welcomed = TRUE,
+                first_name = COALESCE(EXCLUDED.first_name, users.first_name)
                 """,
-                (user_id, full_name, phone, birth_date, position, restaurant,
+                (user_id, full_name, phone, birth_date, position, restaurant, first_name,
                  full_name, phone, birth_date, position, restaurant)
             )
         conn.commit()
@@ -1918,6 +1937,8 @@ async def cmd_start(message: types.Message, state: FSMContext):
     row = db_get(user_id)
 
     if row and row[0]:
+        # Обновляем имя на всякий случай (если пользователь поменял его в Telegram)
+        db_set_welcomed(user_id, message.from_user.first_name)
         await send_tracked(message.chat.id, user_id, "Выбери действие:", reply_markup=FULL_MENU)
         return
 
@@ -1925,7 +1946,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         await send_tracked(message.chat.id, user_id, "Сначала заверши регистрацию 👇", reply_markup=REGISTER_ONLY)
         return
 
-    db_set_welcomed(user_id)
+    db_set_welcomed(user_id, message.from_user.first_name)
     await send_tracked(
         message.chat.id, user_id,
         f"👋 {message.from_user.first_name}, добро пожаловать в Wokker!\n\n"
@@ -2097,7 +2118,8 @@ async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMConte
     position = data.get("position", "")
 
     try:
-        db_save_profile(callback.from_user.id, full_name, phone, birth_date, position, restaurant["key"])
+        db_save_profile(callback.from_user.id, full_name, phone, birth_date, position,
+                        restaurant["key"], callback.from_user.first_name)
     except Exception as e:
         logging.error(f"Ошибка сохранения профиля для {callback.from_user.id}: {e}")
         await send_tracked(
@@ -2111,7 +2133,7 @@ async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMConte
 
     await send_tracked(
         callback.message.chat.id, callback.from_user.id,
-        "🎉 <b>Регистрация завершена!</b>\n\n"
+        f"🎉 <b>{callback.from_user.first_name}, регистрация завершена!</b>\n\n"
         f"👤 ФИО: {full_name}\n"
         f"📞 Телефон: {phone}\n"
         f"🎂 Дата рождения: {birth_date}\n"
@@ -2285,6 +2307,7 @@ async def handle_profile(request):
         "registered": True,
         "profile": {
             "full_name": full_name,
+            "first_name": db_get_first_name(user_id) or (full_name.split()[0] if full_name else ""),
             "phone": phone,
             "birth_date": birth_date,
             "position": position or "—",

@@ -379,6 +379,18 @@ def db_save_profile(user_id: int, full_name: str, phone: str, birth_date: str, p
         conn.commit()
 
 
+def db_update_user(user_id: int, field: str, value: str) -> bool:
+    """Обновляет одно поле пользователя (только из разрешённого списка)."""
+    allowed = ("full_name", "phone", "birth_date", "position", "restaurant")
+    if field not in allowed:
+        return False
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"UPDATE users SET {field} = %s WHERE user_id = %s", (value, user_id))
+        conn.commit()
+        return cur.rowcount > 0
+
+
 def db_is_blocked(user_id: int) -> bool:
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -603,6 +615,12 @@ class NewsAdmin(StatesGroup):
     important = State()
 
 
+class EditUser(StatesGroup):
+    full_name = State()
+    phone = State()
+    birth_date = State()
+
+
 # ================== ПРОВЕРКА MINI APP (initData) ==================
 
 def _parse_user_field(pairs_dict: dict):
@@ -787,7 +805,7 @@ def users_list_kb(rows):
         kb.append([
             InlineKeyboardButton(
                 text=f"{icon} {full_name or 'Без имени'} · {phone or user_id}",
-                callback_data="noop"
+                callback_data=f"adm_user:{user_id}"
             ),
             InlineKeyboardButton(text=action_text, callback_data=action_data),
             InlineKeyboardButton(text="🗑", callback_data=f"adm_del:{user_id}"),
@@ -809,6 +827,47 @@ def users_list_text(rows):
             f"   💼 {position or '—'} · 📍 {rest_name}\n"
         )
     return "\n".join(lines)
+
+
+def user_card_text(user_id: int, row):
+    full_name, phone, birth_date, position, restaurant, welcomed, is_blocked = row
+    rest_name = restaurant_name_by_key(restaurant) if restaurant else "—"
+    status = "🚫 Заблокирован" if is_blocked else "✅ Активен"
+    return (
+        f"👤 <b>Пользователь</b>\n"
+        f"🆔 <code>{user_id}</code> · {status}\n"
+        "──────────────────────────────\n"
+        f"👤 ФИО: <b>{full_name or '—'}</b>\n"
+        f"💼 Должность: {position or '—'}\n"
+        f"📍 Ресторан: {rest_name}\n"
+        f"📞 Телефон: {phone or '—'}\n"
+        f"🎂 Дата рождения: {birth_date or '—'}"
+    )
+
+
+def user_edit_kb(user_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✏️ ФИО", callback_data=f"edit_field:{user_id}:full_name")],
+        [InlineKeyboardButton(text="📞 Телефон", callback_data=f"edit_field:{user_id}:phone")],
+        [InlineKeyboardButton(text="🎂 Дата рождения", callback_data=f"edit_field:{user_id}:birth_date")],
+        [InlineKeyboardButton(text="💼 Должность", callback_data=f"edit_pos:{user_id}")],
+        [InlineKeyboardButton(text="📍 Ресторан", callback_data=f"edit_rest:{user_id}")],
+        [InlineKeyboardButton(text="🔙 К списку пользователей", callback_data="adm_users")],
+    ])
+
+
+def positions_edit_kb(user_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=pos, callback_data=f"editsetpos:{user_id}:{idx}")]
+        for idx, pos in enumerate(POSITIONS)
+    ] + [[InlineKeyboardButton(text="🔙 Назад", callback_data=f"adm_user:{user_id}")]])
+
+
+def restaurants_edit_kb(user_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=r["name"], callback_data=f"editsetrest:{user_id}:{r['key']}")]
+        for r in RESTAURANTS
+    ] + [[InlineKeyboardButton(text="🔙 Назад", callback_data=f"adm_user:{user_id}")]])
 
 
 # ================== РАССЫЛКА НОВОСТЕЙ ==================
@@ -897,6 +956,204 @@ async def adm_users(callback: types.CallbackQuery):
         callback.message.chat.id, callback.from_user.id,
         users_list_text(rows), parse_mode="HTML", reply_markup=users_list_kb(rows)
     )
+
+
+# --- карточка пользователя и редактирование ---
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("adm_user:"))
+async def adm_user_card(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
+        return
+    await callback.answer()
+    await state.clear()
+    target_id = int(callback.data.split(":")[1])
+    row = db_get(target_id)
+    await cleanup_chat(callback.from_user.id)
+    if not row:
+        await send_tracked(callback.message.chat.id, callback.from_user.id, "❌ Пользователь не найден.")
+        return
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
+        user_card_text(target_id, row), parse_mode="HTML", reply_markup=user_edit_kb(target_id)
+    )
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("edit_field:"))
+async def edit_field_start(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
+        return
+    await callback.answer()
+    _, target_id, field = callback.data.split(":")
+    if field == "full_name":
+        prompt = "✏️ Напиши новое ФИО (например: Иванов Иван Иванович)"
+        new_state = EditUser.full_name
+    elif field == "phone":
+        prompt = "📞 Напиши новый номер телефона (например: +79001234567)"
+        new_state = EditUser.phone
+    else:
+        prompt = "🎂 Напиши новую дату рождения в формате ДД.ММ.ГГГГ (например: 01.01.2000)"
+        new_state = EditUser.birth_date
+    await state.set_state(new_state)
+    await state.update_data(edit_target=int(target_id))
+    await cleanup_chat(callback.from_user.id)
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
+        f"{prompt}\n\nИли нажми «Отменить», чтобы ничего не менять:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отменить", callback_data=f"edit_cancel:{target_id}")]
+        ])
+    )
+
+
+@dp.message(EditUser.full_name)
+async def edit_full_name(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    name = (message.text or "").strip()
+    if len(name.split()) < 2:
+        await delete_incoming(message)
+        await cleanup_chat(message.from_user.id)
+        await send_tracked(message.chat.id, message.from_user.id, "Нужны минимум имя и фамилия через пробел. Попробуй ещё раз:")
+        return
+    await delete_incoming(message)
+    await cleanup_chat(message.from_user.id)
+    data = await state.get_data()
+    target_id = data.get("edit_target")
+    await state.clear()
+    db_update_user(target_id, "full_name", name)
+    await send_tracked(message.chat.id, message.from_user.id, f"✅ ФИО обновлено: <b>{name}</b>", parse_mode="HTML")
+    row = db_get(target_id)
+    await send_tracked(message.chat.id, message.from_user.id,
+                       user_card_text(target_id, row), parse_mode="HTML", reply_markup=user_edit_kb(target_id))
+
+
+@dp.message(EditUser.phone)
+async def edit_phone(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    digits = (message.text or "").replace("+", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+    if not digits.isdigit() or len(digits) < 10:
+        await delete_incoming(message)
+        await cleanup_chat(message.from_user.id)
+        await send_tracked(message.chat.id, message.from_user.id, "Это не похоже на номер. Попробуй ещё раз, например: +79001234567")
+        return
+    await delete_incoming(message)
+    await cleanup_chat(message.from_user.id)
+    data = await state.get_data()
+    target_id = data.get("edit_target")
+    await state.clear()
+    db_update_user(target_id, "phone", message.text.strip())
+    await send_tracked(message.chat.id, message.from_user.id, f"✅ Телефон обновлён: <b>{message.text.strip()}</b>", parse_mode="HTML")
+    row = db_get(target_id)
+    await send_tracked(message.chat.id, message.from_user.id,
+                       user_card_text(target_id, row), parse_mode="HTML", reply_markup=user_edit_kb(target_id))
+
+
+@dp.message(EditUser.birth_date)
+async def edit_birth_date(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    try:
+        birth_date = datetime.strptime((message.text or "").strip(), "%d.%m.%Y").date()
+        if birth_date.year < 1900 or birth_date > datetime.now().date():
+            raise ValueError
+    except ValueError:
+        await delete_incoming(message)
+        await cleanup_chat(message.from_user.id)
+        await send_tracked(message.chat.id, message.from_user.id, "Такой даты не бывает. Напиши ещё раз в формате ДД.ММ.ГГГГ:")
+        return
+    await delete_incoming(message)
+    await cleanup_chat(message.from_user.id)
+    data = await state.get_data()
+    target_id = data.get("edit_target")
+    await state.clear()
+    db_update_user(target_id, "birth_date", birth_date.strftime("%d.%m.%Y"))
+    await send_tracked(message.chat.id, message.from_user.id, f"✅ Дата рождения обновлена: <b>{birth_date.strftime('%d.%m.%Y')}</b>", parse_mode="HTML")
+    row = db_get(target_id)
+    await send_tracked(message.chat.id, message.from_user.id,
+                       user_card_text(target_id, row), parse_mode="HTML", reply_markup=user_edit_kb(target_id))
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("edit_cancel:"))
+async def edit_cancel(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
+        return
+    await callback.answer("Отменено")
+    await state.clear()
+    target_id = int(callback.data.split(":")[1])
+    await cleanup_chat(callback.from_user.id)
+    row = db_get(target_id)
+    await send_tracked(callback.message.chat.id, callback.from_user.id,
+                       user_card_text(target_id, row), parse_mode="HTML", reply_markup=user_edit_kb(target_id))
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("edit_pos:"))
+async def edit_pos_start(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
+        return
+    await callback.answer()
+    await state.clear()
+    target_id = int(callback.data.split(":")[1])
+    await cleanup_chat(callback.from_user.id)
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
+        "💼 Выбери новую должность:", reply_markup=positions_edit_kb(target_id)
+    )
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("editsetpos:"))
+async def edit_pos_set(callback: types.CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
+        return
+    await callback.answer()
+    _, target_id, idx = callback.data.split(":")
+    target_id = int(target_id)
+    position = POSITIONS[int(idx)]
+    db_update_user(target_id, "position", position)
+    await cleanup_chat(callback.from_user.id)
+    await send_tracked(callback.message.chat.id, callback.from_user.id,
+                       f"✅ Должность обновлена: <b>{position}</b>", parse_mode="HTML")
+    row = db_get(target_id)
+    await send_tracked(callback.message.chat.id, callback.from_user.id,
+                       user_card_text(target_id, row), parse_mode="HTML", reply_markup=user_edit_kb(target_id))
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("edit_rest:"))
+async def edit_rest_start(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
+        return
+    await callback.answer()
+    await state.clear()
+    target_id = int(callback.data.split(":")[1])
+    await cleanup_chat(callback.from_user.id)
+    await send_tracked(
+        callback.message.chat.id, callback.from_user.id,
+        "📍 Выбери новый ресторан (в списке есть и ОФИС):", reply_markup=restaurants_edit_kb(target_id)
+    )
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("editsetrest:"))
+async def edit_rest_set(callback: types.CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Недоступно", show_alert=True)
+        return
+    await callback.answer()
+    _, target_id, key = callback.data.split(":")
+    target_id = int(target_id)
+    db_update_user(target_id, "restaurant", key)
+    rest_name = restaurant_name_by_key(key)
+    await cleanup_chat(callback.from_user.id)
+    await send_tracked(callback.message.chat.id, callback.from_user.id,
+                       f"✅ Ресторан обновлён: <b>{rest_name}</b>", parse_mode="HTML")
+    row = db_get(target_id)
+    await send_tracked(callback.message.chat.id, callback.from_user.id,
+                       user_card_text(target_id, row), parse_mode="HTML", reply_markup=user_edit_kb(target_id))
 
 
 @dp.callback_query(lambda c: c.data == "adm_news")
@@ -1239,6 +1496,12 @@ async def cmd_start(message: types.Message, state: FSMContext):
             await send_tracked(message.chat.id, user_id, "✍️ Напиши текст новости:")
         elif current_state == NewsAdmin.important.state:
             await send_tracked(message.chat.id, user_id, "Выбери пометку:", reply_markup=news_important_kb())
+        elif current_state == EditUser.full_name.state:
+            await send_tracked(message.chat.id, user_id, "✍️ Напиши новое ФИО:")
+        elif current_state == EditUser.phone.state:
+            await send_tracked(message.chat.id, user_id, "✍️ Напиши новый номер телефона:")
+        elif current_state == EditUser.birth_date.state:
+            await send_tracked(message.chat.id, user_id, "✍️ Напиши новую дату рождения (ДД.ММ.ГГГГ):")
         return
 
     await state.clear()

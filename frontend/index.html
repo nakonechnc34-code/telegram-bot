@@ -17,7 +17,7 @@
          border-radius: 10px; padding: 10px 16px; font-size: 15px; margin-top: 8px; }
   .tabs { position: fixed; bottom: 0; left: 0; right: 0; display: flex; background: #fff;
           border-top: 1px solid #e5e5ea; }
-  .tabs button { flex: 1; border: 0; background: none; padding: 12px 4px; font-size: 12px; color: #8e8e93; }
+  .tabs button { flex: 1; border: 0; background: none; padding: 12px 2px; font-size: 11px; color: #8e8e93; }
   .tabs button.active { color: var(--blue); font-weight: 600; }
   .tabs span { display: block; font-size: 20px; }
   .section { display: none; }
@@ -32,6 +32,12 @@
     border-bottom: 1px solid #e5e5ea;
     margin-top: 8px;
   }
+  .news-date { color: #8e8e93; font-size: 12px; margin-top: 4px; }
+  .news-important {
+    border-left: 3px solid #ff9500;
+    padding-left: 8px;
+  }
+  .news-important b::before { content: "🔥 "; }
 </style>
 </head>
 <body>
@@ -43,6 +49,10 @@
 
 <div class="section" id="sec-restaurants">
   <div id="restaurants-list"></div>
+</div>
+
+<div class="section" id="sec-news">
+  <div id="news-list"></div>
 </div>
 
 <div class="section" id="sec-standards">
@@ -61,6 +71,7 @@
 <nav class="tabs">
   <button data-sec="sec-profile" class="active"><span>👤</span>Профиль</button>
   <button data-sec="sec-restaurants"><span>🏙️</span>Рестораны</button>
+  <button data-sec="sec-news"><span>📰</span>Новости</button>
   <button data-sec="sec-standards"><span>📚</span>Стандарты</button>
   <button data-sec="sec-faq"><span>❓</span>Вопрос/ответ</button>
 </nav>
@@ -138,6 +149,26 @@ async function loadRestaurants() {
   }
 }
 
+async function loadNews() {
+  const box = document.getElementById('news-list');
+  try {
+    const resp = await fetch('/api/news');
+    const list = await resp.json();
+    if (!list.length) {
+      box.innerHTML = '<div class="card">Пока новостей нет 📰</div>';
+      return;
+    }
+    box.innerHTML = list.map(n => `
+      <div class="card ${n.important ? 'news-important' : ''}">
+        <b>${esc(n.title)}</b>
+        <div>${esc(n.text)}</div>
+        <div class="news-date">${esc(n.date)}</div>
+      </div>`).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="card">Ошибка загрузки новостей</div>';
+  }
+}
+
 async function loadStandards() {
   const box = document.getElementById('standards-list');
   try {
@@ -195,6 +226,7 @@ document.getElementById('send-question').addEventListener('click', async () => {
 
 loadProfile();
 loadRestaurants();
+loadNews();
 loadStandards();
 loadFaq();
 </script>

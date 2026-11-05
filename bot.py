@@ -533,48 +533,31 @@ async def show_restaurant_info(callback: types.CallbackQuery):
         await callback.answer("Ресторан не найден", show_alert=True)
         return
 
+    # Телефон идёт обычным текстом — Telegram сам делает его кликабельным,
+    # и по нажатию откроется набор номера. Кнопку с tel: Telegram не принимает
+    # (BUTTON_URL_INVALID), поэтому кнопки звонка здесь нет.
+    phone_line = f"📞 Позвонить: {restaurant['phone']}\n\n" if restaurant.get("phone") else ""
+
     text = (
         f"<b>{restaurant['name']}</b>\n\n"
         f"📍 Адрес: {restaurant['address']}\n"
-        f"🕒 Часы работы:\n{restaurant['hours']}"
+        f"🕒 Часы работы:\n{restaurant['hours']}\n\n"
+        f"{phone_line}"
+        f"🗺 На карте: {map_link(restaurant)}"
     )
 
-    # Кнопки: телефон и карта в одной строке
-    row_actions = []
-    if restaurant.get("phone"):
-        row_actions.append(InlineKeyboardButton(
-            text="📞 Позвонить",
-            url=f"tel:{restaurant['phone']}"
-        ))
-    row_actions.append(InlineKeyboardButton(
-        text="🗺 На карте",
-        url=map_link(restaurant)
-    ))
-
+    # В кнопках только https-ссылки — их Telegram принимает без ошибок
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        row_actions,
+        [InlineKeyboardButton(text="🗺 Открыть на Яндекс Картах", url=map_link(restaurant))],
         [InlineKeyboardButton(text="← Назад к списку ресторанов", callback_data="restaurants")],
         [InlineKeyboardButton(text="🏠 В главное меню", callback_data="back_to_menu")],
     ])
 
-    # ИСПРАВЛЕНИЕ: используем edit_text для обновления сообщения с кнопками
     try:
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     except Exception as e:
-        logging.exception(f"Не удалось обновить сообщение с кнопками: {e}")
-        # Фоллбэк: новое сообщение с кнопками (не падаем)
-        try:
-            await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
-        except Exception:
-            logging.exception("Фоллбэк тоже не сработал, отправляем текст без кнопок")
-            phone_line = f"\n📞 Позвонить: {restaurant['phone']}" if restaurant.get("phone") else ""
-            await callback.message.answer(
-                f"<b>{restaurant['name']}</b>\n\n"
-                f"📍 Адрес: {restaurant['address']}\n"
-                f"🕒 Часы работы:\n{restaurant['hours']}{phone_line}\n\n"
-                f"🗺 Карта: {map_link(restaurant)}",
-                parse_mode="HTML"
-            )
+        logging.exception(f"edit_text не сработал: {e}")
+        await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
 @dp.callback_query(lambda c: c.data == "back_to_menu")

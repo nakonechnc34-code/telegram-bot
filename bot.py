@@ -434,23 +434,47 @@ async def adm_noop(callback: types.CallbackQuery):
     else:
         await callback.answer("⛔ Недоступно", show_alert=True)
 
+def restaurants_menu_kb():
+    kb = []
+    for r in RESTAURANTS:
+        kb.append([InlineKeyboardButton(text=r["name"], callback_data=f"rest_info:{r['key']}")])
+    kb.append([InlineKeyboardButton(text="← Назад в главное меню", callback_data="back_to_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
 @dp.callback_query(lambda c: c.data == "restaurants")
 async def show_restaurants_menu(callback: types.CallbackQuery):
     await callback.answer()
     if db_is_blocked(callback.from_user.id):
         await callback.message.answer("⛔ Доступ к боту ограничен.")
         return
-    for r in RESTAURANTS:
-        text = (
-            f"🏠 <b>{r['name']}</b>\n\n"
-            f"📍 Адрес: {r['address']}\n"
-            f"🕒 Часы работы: {r['hours']}"
-        )
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🗺 Показать на карте", url=map_link(r["lat"], r["lon"]))],
-            [InlineKeyboardButton(text="← Назад в главное меню", callback_data="back_to_menu")],
-        ])
-        await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    await callback.message.answer(
+        "🏙️ <b>Наши рестораны</b>\n\nВыбери точку из списка:",
+        parse_mode="HTML",
+        reply_markup=restaurants_menu_kb()
+    )
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("rest_info:"))
+async def show_restaurant_info(callback: types.CallbackQuery):
+    await callback.answer()
+    if db_is_blocked(callback.from_user.id):
+        await callback.message.answer("⛔ Доступ к боту ограничен.")
+        return
+    key = callback.data.split(":")[1]
+    restaurant = next((r for r in RESTAURANTS if r["key"] == key), None)
+    if not restaurant:
+        await callback.answer("Ресторан не найден", show_alert=True)
+        return
+    text = (
+        f"🏠 <b>{restaurant['name']}</b>\n\n"
+        f"📍 Адрес: {restaurant['address']}\n"
+        f"🕒 Часы работы: {restaurant['hours']}"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗺 Показать на карте", url=map_link(restaurant["lat"], restaurant["lon"]))],
+        [InlineKeyboardButton(text="← Назад к списку ресторанов", callback_data="restaurants")],
+        [InlineKeyboardButton(text="🏠 В главное меню", callback_data="back_to_menu")],
+    ])
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 @dp.callback_query(lambda c: c.data == "back_to_menu")
 async def back_to_menu(callback: types.CallbackQuery):

@@ -11,14 +11,11 @@
     --bg: #f2f2f7;
     --gray: #9aa0a6;
     --green: #34c759;
-    /* Бежевая палитра вкладки «Рестораны» */
     --beige: #c3a578;
     --beige-dark: #b2946a;
     --beige-soft: #f6efe3;
     --beige-border: #e6d8c2;
-    /* Акцентный край кнопки карты */
     --map-border: #d9534f;
-    --map-border-hover: #c1433f;
   }
   * { box-sizing: border-box; margin: 0; }
   body { font-family: -apple-system, sans-serif; background: var(--bg); padding-bottom: 96px; }
@@ -79,15 +76,26 @@
   summary { font-weight: 600; cursor: pointer; }
   details p { margin-top: 8px; color: #3a3a3c; }
 
-  /* ============================================================
-     ПРОФИЛЬ: приветствие + карточка с бежевым кольцом аватара
-     ============================================================ */
+  /* ===== Скелетон: мгновенная заглушка вместо пустого экрана ===== */
+  .skeleton-card {
+    background: #fff; border-radius: 14px; margin: 12px 12px 12px; padding: 16px;
+  }
+  .skeleton-line {
+    height: 14px; border-radius: 7px; margin-bottom: 10px;
+    background: linear-gradient(90deg, #f0e9dd 25%, #f8f3ea 50%, #f0e9dd 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.2s infinite linear;
+  }
+  .skeleton-line.short { width: 45%; margin-bottom: 0; }
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
 
   .greeting { margin: 14px 12px 4px; padding: 0 4px; }
   .greeting .g-title { font-size: 22px; font-weight: 700; color: #3a2f1f; line-height: 1.25; }
   .greeting .g-sub { font-size: 13px; color: #96876f; margin-top: 2px; }
 
-  /* Баннер поздравления: день рождения / праздник */
   .greet-banner { margin: 12px 12px 0; padding: 16px; border-radius: 16px;
     border: 1px solid var(--beige-border);
     background: linear-gradient(135deg, var(--beige-soft), #fdf9f2); text-align: center; }
@@ -123,21 +131,14 @@
   .profile-footer { background: #f8f8fb; padding: 10px 14px; font-size: 12px; color: #8e8e93; }
   .profile-footer button { background: none; border: 0; color: var(--blue); font-size: 12px;
     font-weight: 600; padding: 0; text-decoration: underline; cursor: pointer; }
-  .profile-footer button:active { opacity: .7; }
-
   .badge-rest { display: inline-block; padding: 2px 10px; border-radius: 12px;
     font-size: 12px; font-weight: 600; color: #fff; }
   .badge-rest.office { background: var(--gray); }
   .badge-rest.normal { background: var(--green); }
-
   @media (min-width: 600px) {
     .info-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 8px 14px 10px; }
     .info-row { border-bottom: none; padding: 8px 0; }
   }
-
-  /* ============================================================
-     РЕСТОРАНЫ: бежевый дизайн
-     ============================================================ */
 
   .rest-tab-header { margin: 12px 12px 4px; padding: 14px 16px;
     background: linear-gradient(135deg, var(--beige-soft), #fdf9f2);
@@ -175,9 +176,6 @@
 
   .no-results { text-align: center; color: #8e8e93; padding: 30px 12px; }
 
-  /* ============================================================
-     Карточка одной точки (глубокая ссылка из бота) — тот же стиль
-     ============================================================ */
   .detail-hero { background: linear-gradient(135deg, var(--beige-soft), #fdf9f2);
     border: 1px solid var(--beige-border); color: #4a3c28; border-radius: 18px;
     margin: 12px 12px 12px; padding: 24px 16px; text-align: center; }
@@ -202,14 +200,12 @@
     text-decoration: none; cursor: pointer; }
   .btn-back:active { background: var(--beige-soft); }
 
-  /* ===== Экран блокировки ===== */
   .blocked-screen { background: #fff; border-radius: 18px; margin: 40px 12px 12px;
     padding: 32px 20px; text-align: center; box-shadow: 0 4px 14px rgba(0,0,0,.07); }
   .blocked-screen .big { font-size: 44px; margin-bottom: 12px; }
   .blocked-screen .title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
   .blocked-screen .text { color: #8e8e93; font-size: 14px; }
 
-  /* ===== Уровни новостей: без цветных полосок ===== */
   .news-date { color: #8e8e93; font-size: 12px; margin-top: 4px; }
   .level-urgent b::before { content: "🔴 "; }
   .level-important b::before { content: "🟡 "; }
@@ -219,7 +215,7 @@
 <body>
 
 <div class="section" id="sec-profile">
-  <div id="profile-box">Загрузка профиля…</div>
+  <div id="profile-box"></div>
 </div>
 
 <div class="section" id="sec-restaurants">
@@ -297,6 +293,21 @@ document.querySelectorAll('.tabs button').forEach(btn => {
 const esc = s => (s || '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+function skeletonHtml() {
+  return '<div class="skeleton-card">' +
+    '<div class="skeleton-line"></div>' +
+    '<div class="skeleton-line"></div>' +
+    '<div class="skeleton-line short"></div>' +
+    '</div>';
+}
+
+/* Сразу показываем заглушки — экран живой с первого кадра */
+document.getElementById('news-list').innerHTML = skeletonHtml() + skeletonHtml();
+document.getElementById('profile-box').innerHTML = skeletonHtml();
+document.getElementById('restaurants-list').innerHTML = skeletonHtml() + skeletonHtml();
+document.getElementById('standards-list').innerHTML = skeletonHtml() + skeletonHtml();
+document.getElementById('faq-list').innerHTML = skeletonHtml() + skeletonHtml();
+
 function blockedHtml() {
   return '<div class="blocked-screen">' +
     '<div class="big">🚫</div>' +
@@ -350,20 +361,6 @@ function displayNameOf(p) {
   return firstNameFromProfile(p);
 }
 
-function waitInitData(maxAttempts = 20, delayMs = 250) {
-  return new Promise(resolve => {
-    let attempt = 0;
-    const check = () => {
-      if (getInitData()) { resolve(true); return; }
-      attempt++;
-      if (attempt >= maxAttempts) { resolve(false); return; }
-      setTimeout(check, delayMs);
-    };
-    if (getInitData()) { resolve(true); return; }
-    check();
-  });
-}
-
 async function fillAvatar() {
   const el = document.querySelector('#profile-box .avatar');
   if (!el) return;
@@ -393,33 +390,36 @@ async function loadProfile() {
   const box = document.getElementById('profile-box');
   const g = greetingTexts();
   try {
-    const resp = await fetch('/api/profile', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ initData: getInitData() })
-    });
+    /* Профиль и поздравление грузим параллельно — экономим один сетевой круг */
+    const [resp, gr] = await Promise.all([
+      fetch('/api/profile', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ initData: getInitData() })
+      }),
+      fetch('/api/greeting', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ initData: getInitData() })
+      }).catch(() => null)
+    ]);
+
+    let greet = null;
+    if (gr && gr.ok) {
+      try { greet = await gr.json(); } catch (e) { greet = null; }
+    }
+    const greetHtml = (greet && greet.kind && greet.kind !== 'normal')
+      ? '<div class="greet-banner ' + greet.kind + '">' +
+        '<div class="gb-title">' + esc(greet.title) + '</div>' +
+        '<div class="gb-sub">' + esc(greet.sub) + '</div></div>'
+      : '';
+
     const data = await resp.json();
     if (resp.ok && data.registered) {
       const p = data.profile;
       const isOffice = p.restaurant === 'ОФИС';
       const restBadge = isOffice ? 'office' : 'normal';
       const name = displayNameOf(p);
-
-      /* Поздравление (день рождения / праздник) — берём с бэкенда */
-      let greet = null;
-      try {
-        const gr = await fetch('/api/greeting', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ initData: getInitData() })
-        });
-        if (gr.ok) greet = await gr.json();
-      } catch (e) { /* без баннера */ }
-      const greetHtml = (greet && greet.kind && greet.kind !== 'normal')
-        ? '<div class="greet-banner ' + greet.kind + '">' +
-          '<div class="gb-title">' + esc(greet.title) + '</div>' +
-          '<div class="gb-sub">' + esc(greet.sub) + '</div></div>'
-        : '';
 
       box.innerHTML =
         '<div class="greeting">' +
@@ -445,7 +445,9 @@ async function loadProfile() {
         '<div class="profile-footer">💡 Изменить данные можно только через администратора. ' +
         '<button id="btn-report-error">Сообщить об ошибке</button></div>' +
         '</div>';
-      fillAvatar();
+
+      /* Аватар грузим после отрисовки карточки, не мешая ей */
+      setTimeout(fillAvatar, 250);
 
       document.getElementById('btn-report-error').addEventListener('click', async () => {
         const text = 'Ошибка в данных профиля: прошу проверить и скорректировать.';
@@ -531,7 +533,6 @@ function renderRestaurants(query) {
     ? ALL_RESTAURANTS.filter(r => r._search.indexOf(q) !== -1)
     : ALL_RESTAURANTS;
 
-  /* Сортировка: открытые сверху, потом закрытые; внутри групп — по sort, затем по названию */
   list.sort((a, b) => {
     const aOpen = a.status === 'open';
     const bOpen = b.status === 'open';
@@ -621,6 +622,7 @@ function renderDetail(r) {
 async function showDetail(key) {
   const section = document.getElementById('sec-detail');
   const box = document.getElementById('detail-box');
+  box.innerHTML = skeletonHtml();
   try {
     const list = await fetchRestaurants();
     const r = list.find(x => x.key === key);
@@ -753,9 +755,7 @@ document.getElementById('send-question').addEventListener('click', async () => {
   }
 });
 
-async function init() {
-  await waitInitData();
-
+async function boot() {
   const restKey = new URLSearchParams(location.search).get('rest');
   if (restKey) {
     /* Глубокая ссылка из бота: карточка ресторана важнее стартовой вкладки */
@@ -764,9 +764,7 @@ async function init() {
     return;
   }
 
-  /* Стартовая вкладка — «Новости»: она активна в HTML.
-     Профиль и остальные разделы грузим в фоне,
-     чтобы при первом переключении всё уже было готово. */
+  /* Все разделы грузим параллельно — каждый появляется сразу, как придёт */
   loadProfile();
   loadRestaurants();
   loadNews();
@@ -774,7 +772,22 @@ async function init() {
   loadFaq();
 }
 
-init();
+function startWhenReady() {
+  /* initData в Telegram доступен почти сразу — если он уже есть, стартуем мгновенно.
+     Если ещё нет, ждём максимум 1,5 с (вместо прежних 5) — и всё равно стартуем,
+     чтобы экран не «висел» в ожидании. */
+  if (getInitData()) { boot(); return; }
+  let waited = 0;
+  const timer = setInterval(() => {
+    waited += 100;
+    if (getInitData() || waited >= 1500) {
+      clearInterval(timer);
+      boot();
+    }
+  }, 100);
+}
+
+startWhenReady();
 </script>
 </body>
 </html>

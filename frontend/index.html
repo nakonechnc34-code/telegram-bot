@@ -7,7 +7,7 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   :root { --blue: #ff2d55; --bg: #f2f2f7; --gray: #9aa0a6; --green: #34c759;
-          --map-btn: #3d8f68; --map-btn-hover: #337a58; }
+          --map-btn: #c3a578; --map-btn-hover: #b2946a; }
   * { box-sizing: border-box; margin: 0; }
   body { font-family: -apple-system, sans-serif; background: var(--bg); padding-bottom: 70px; }
   .card { background: #fff; border-radius: 14px; margin: 0 12px 12px; padding: 14px; }
@@ -140,11 +140,9 @@
   .blocked-screen .title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
   .blocked-screen .text { color: #8e8e93; font-size: 14px; }
 
-  /* ===== Уровни новостей ===== */
+  /* ===== Уровни новостей: без цветных полосок слева ===== */
   .news-date { color: #8e8e93; font-size: 12px; margin-top: 4px; }
-  .level-urgent { border-left: 3px solid #ff3b30; padding-left: 8px; }
   .level-urgent b::before { content: "🔴 "; }
-  .level-important { border-left: 3px solid #ff9500; padding-left: 8px; }
   .level-important b::before { content: "🟡 "; }
   .level-normal b::before { content: "🔵 "; }
 </style>

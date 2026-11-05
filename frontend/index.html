@@ -1,76 +1,183 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Рестораны Wokker</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, Roboto, "Segoe UI", sans-serif;
-      padding: 12px;
-      margin: 0;
-      background: var(--tg-theme-bg-color, #f5f5f5);
-      color: var(--tg-theme-text-color, #000);
-    }
-    h1 { font-size: 22px; margin: 8px 0 12px; }
-    .card {
-      background: var(--tg-theme-secondary-bg-color, #fff);
-      padding: 12px;
-      margin-bottom: 12px;
-      border-radius: 12px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-    .card h3 { margin: 0 0 8px; font-size: 17px; }
-    .card p { margin: 4px 0; color: var(--tg-theme-hint-color, #666); font-size: 14px; }
-    .btn {
-      background: var(--tg-theme-button-color, #0088cc);
-      color: var(--tg-theme-button-text-color, #fff);
-      padding: 8px 12px;
-      border: none;
-      border-radius: 8px;
-      text-decoration: none;
-      display: inline-block;
-      font-weight: 500;
-      margin-top: 8px;
-    }
-    .phone { text-decoration: none; font-weight: 500; }
-    .error { color: #d33; padding: 12px; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wokker</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root { --blue: #007aff; --bg: #f2f2f7; }
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: -apple-system, sans-serif; background: var(--bg); padding-bottom: 70px; }
+  h1 { font-size: 22px; padding: 16px; }
+  .card { background: #fff; border-radius: 14px; margin: 0 12px 12px; padding: 14px; }
+  .card b { display: block; margin-bottom: 6px; }
+  .muted { color: #8e8e93; font-size: 14px; }
+  .btn { display: inline-block; background: var(--blue); color: #fff; border: 0;
+         border-radius: 10px; padding: 10px 16px; font-size: 15px; margin-top: 8px; }
+  .tabs { position: fixed; bottom: 0; left: 0; right: 0; display: flex; background: #fff;
+          border-top: 1px solid #e5e5ea; }
+  .tabs button { flex: 1; border: 0; background: none; padding: 12px 4px; font-size: 12px; color: #8e8e93; }
+  .tabs button.active { color: var(--blue); font-weight: 600; }
+  .tabs span { display: block; font-size: 20px; }
+  .section { display: none; }
+  .section.active { display: block; }
+  .q { width: 100%; border: 1px solid #e5e5ea; border-radius: 10px; padding: 10px; font-size: 15px; }
+  details { background: #fff; border-radius: 14px; margin: 0 12px 10px; padding: 14px; }
+  summary { font-weight: 600; cursor: pointer; }
+  details p { margin-top: 8px; color: #3a3a3c; }
+</style>
 </head>
 <body>
-  <h1>🏙️ Наши рестораны</h1>
-  <div id="list">Загружаю…</div>
+<h1 id="title">📱 Wokker</h1>
 
-  <script>
-    const tg = window.Telegram.WebApp;
-    tg.ready();
-    tg.expand();
+<div class="section" id="sec-profile">
+  <div class="card" id="profile-box">Загрузка профиля…</div>
+</div>
 
-    fetch('/api/restaurants')
-      .then(r => r.json())
-      .then(rests => {
-        const html = rests.map(r => {
-          const phone = r.phone
-            ? `<p>📞 <a class="phone" href="tel:${r.phone}">${r.phone}</a></p>`
-            : '';
-          return `
-            <div class="card">
-              <h3>${r.name}</h3>
-              <p>📍 ${r.address}</p>
-              <p>🕒 ${r.hours.replace(/\n/g, '<br>')}</p>
-              ${phone}
-              <a href="https://yandex.ru/maps/org/${r.org}" class="btn" target="_blank">Открыть на Яндекс Картах</a>
-            </div>
-          `;
-        }).join('');
-        document.getElementById('list').innerHTML = html;
-      })
-      .catch(e => {
-        console.error(e);
-        document.getElementById('list').innerHTML =
-          '<p class="error">Ошибка загрузки списка ресторанов. Попробуйте позже.</p>';
-      });
-  </script>
+<div class="section" id="sec-restaurants">
+  <div id="restaurants-list"></div>
+</div>
+
+<div class="section" id="sec-standards">
+  <div id="standards-list"></div>
+</div>
+
+<div class="section" id="sec-faq">
+  <div id="faq-list"></div>
+  <div class="card">
+    <b>Задать свой вопрос</b>
+    <input class="q" id="question-input" placeholder="Опиши вопрос — ответ придёт в бот">
+    <button class="btn" id="send-question">Отправить</button>
+  </div>
+</div>
+
+<nav class="tabs">
+  <button data-sec="sec-profile" class="active"><span>👤</span>Профиль</button>
+  <button data-sec="sec-restaurants"><span>🏙️</span>Рестораны</button>
+  <button data-sec="sec-standards"><span>📚</span>Стандарты</button>
+  <button data-sec="sec-faq"><span>❓</span>Вопрос/ответ</button>
+</nav>
+
+<script>
+const tg = window.Telegram.WebApp;
+tg.ready();
+tg.expand();
+
+document.querySelectorAll('.tabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.sec).classList.add('active');
+    window.scrollTo(0, 0);
+  });
+});
+
+const esc = s => (s || '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function loadProfile() {
+  const box = document.getElementById('profile-box');
+  try {
+    const resp = await fetch('/api/profile', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ initData: tg.initData })
+    });
+    const data = await resp.json();
+    if (data.registered) {
+      const p = data.profile;
+      box.innerHTML = `<b>${esc(p.full_name)}</b>
+        📞 ${esc(p.phone)}<br>
+        🎂 ${esc(p.birth_date)}<br>
+        💼 ${esc(p.position)}<br>
+        📍 ${esc(p.restaurant)}`;
+    } else {
+      box.innerHTML = 'Ты ещё не зарегистрирован.<br>Напиши /start в боте и пройди регистрацию.';
+    }
+  } catch (e) {
+    box.textContent = 'Ошибка загрузки профиля';
+  }
+}
+
+async function loadRestaurants() {
+  const box = document.getElementById('restaurants-list');
+  try {
+    const resp = await fetch('/api/restaurants');
+    const list = await resp.json();
+    box.innerHTML = list.map(r => `
+      <div class="card">
+        <b>${esc(r.name)}</b>
+        <div class="muted">📍 ${esc(r.address)}</div>
+        <div class="muted">🕒 ${esc(r.hours).replaceAll('\n', '<br>')}</div>
+        <div class="muted">📞 <a href="tel:${esc(r.phone)}">${esc(r.phone)}</a></div>
+        <a href="https://yandex.ru/maps/org/${r.org}" target="_blank">
+          <button class="btn">Открыть на Яндекс Картах</button>
+        </a>
+      </div>`).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="card">Ошибка загрузки списка ресторанов</div>';
+  }
+}
+
+async function loadStandards() {
+  const box = document.getElementById('standards-list');
+  try {
+    const resp = await fetch('/api/standards');
+    const list = await resp.json();
+    box.innerHTML = list.map(s => `
+      <div class="card">
+        <b>${esc(s.title)}</b>
+        <div class="muted">${esc(s.category)}</div>
+        <div style="margin-top:6px">${esc(s.description)}</div>
+        ${s.url ? `<a href="${esc(s.url)}" target="_blank"><button class="btn">Открыть</button></a>` : ''}
+      </div>`).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="card">Ошибка загрузки стандартов</div>';
+  }
+}
+
+async function loadFaq() {
+  const box = document.getElementById('faq-list');
+  try {
+    const resp = await fetch('/api/faq');
+    const list = await resp.json();
+    box.innerHTML = list.map(f => `
+      <details>
+        <summary>${esc(f.question)}</summary>
+        <p>${esc(f.answer)}</p>
+      </details>`).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="card">Ошибка загрузки вопросов</div>';
+  }
+}
+
+document.getElementById('send-question').addEventListener('click', async () => {
+  const input = document.getElementById('question-input');
+  const text = input.value.trim();
+  if (!text) return;
+  try {
+    const resp = await fetch('/api/questions', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ initData: tg.initData, question: text })
+    });
+    if (resp.ok) {
+      input.value = '';
+      alert('Вопрос отправлен! Ответ увидишь в боте.');
+    } else {
+      alert('Не удалось отправить вопрос. Попробуй позже.');
+    }
+  } catch (e) {
+    alert('Ошибка сети');
+  }
+});
+
+loadProfile();
+loadRestaurants();
+loadStandards();
+loadFaq();
+</script>
 </body>
 </html>

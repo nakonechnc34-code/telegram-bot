@@ -4,6 +4,7 @@ import csv
 import asyncio
 import logging
 import json
+import gzip
 import hmac
 import hashlib
 import re
@@ -194,7 +195,6 @@ with get_conn() as conn:
             )
         """)
         cur.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS level TEXT DEFAULT 'normal'")
-        # Scheduled publish
         cur.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS publish_at TIMESTAMPTZ DEFAULT NOW()")
         cur.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS published BOOLEAN DEFAULT TRUE")
         cur.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS auto_broadcast BOOLEAN DEFAULT FALSE")
@@ -597,7 +597,6 @@ def _sync_db_delete_news(news_id):
 
 
 def _sync_db_publish_due():
-    """Атомарно публикует все наступившие отложенные новости и возвращает их."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -837,6 +836,47 @@ async def db_audit(admin_id, action, tt="", ti="", details=""):
     except Exception as e:
         logging.warning(f"audit failed: {e}")
 async def db_audit_list(limit=100): return await _run(_sync_db_audit_list, limit)
+
+
+# ================== BOOTSTRAP: ОДИН ЗАПРОС К БД ==================
+
+def _sync_bootstrap_data(user_id):
+    """Всё для /api/bootstrap за 6 SQL в одном соединении. Без повторных запросов."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET last_seen_at = NOW() WHERE user_id = %s", (user_id,))
+            cur.execute(
+                "SELECT full_name, phone, birth_date, position, restaurant, welcomed, "
+                "is_blocked, first_name FROM users WHERE user_id = %s", (user_id,))
+            user_row = cur.fetchone()
+
+            cur.execute(
+                "SELECT id, title, body, important, level, created_at FROM news "
+                "WHERE published = TRUE ORDER BY created_at DESC, id DESC LIMIT 50")
+            news_rows = cur.fetchall()
+
+            cur.execute("SELECT id, title, category, description, url FROM standards ORDER BY id")
+            std_rows = cur.fetchall()
+
+            cur.execute("SELECT id, question, answer, category FROM faq ORDER BY id")
+            faq_rows = cur.fetchall()
+
+            cur.execute(
+                "SELECT key, name, address, hours, lat, lon, org, phone, force_status, sort "
+                "FROM restaurants ORDER BY sort, name")
+            rest_rows = cur.fetchall()
+
+    return {
+        "user_row": user_row,
+        "news_rows": news_rows,
+        "std_rows": std_rows,
+        "faq_rows": faq_rows,
+        "rest_rows": rest_rows,
+    }
+
+
+async def db_bootstrap_data(user_id):
+    return await _run(_sync_bootstrap_data, user_id)
 
 
 # ================== СТАТУС РЕСТОРАНОВ ==================
@@ -3661,40 +3701,64 @@ async def handle_bootstrap(request):
     user_id, err = await get_auth_user(request)
     if err:
         return denied_response(err)
-    await db_mark_seen(user_id)
-    row = await db_get(user_id)
+
+    # Один запрос к БД вместо восьми
+    data = await db_bootstrap_data(user_id)
+    user_row = data["user_row"]
+
+    # Карта key -> name из тех же данных — не дёргаем БД повторно
+    rest_map = {r[0]: r[1] for r in data["rest_rows"]}
+
     profile = None
-    if row and row[0]:
-        full_name, phone, birth_date, position, restaurant, welcomed, is_blocked = row
+    if user_row and user_row[0]:
+        full_name, phone, birth_date, position, restaurant, welcomed, is_blocked, first_name = user_row
         profile = {
             "full_name": full_name,
-            "first_name": await db_get_first_name(user_id) or (full_name.split()[0] if full_name else ""),
+            "first_name": first_name or (full_name.split()[0] if full_name else ""),
             "phone": phone,
             "birth_date": birth_date,
             "position": position or "—",
-            "restaurant": await restaurant_name_by_key(restaurant) if restaurant else "—",
+            "restaurant": rest_map.get(restaurant, restaurant) if restaurant else "—",
         }
+
     now = _moscow_now()
-    kind, title, sub = greeting_for_user(row[2] if row else None, now)
+    kind, title, sub = greeting_for_user(user_row[2] if user_row else None, now)
+
     news_list = [
         {"id": nid, "title": t, "text": b,
          "date": d.strftime("%d.%m.%Y") if d else "",
          "important": bool(imp), "level": lv or "normal"}
-        for nid, t, b, imp, lv, d in await db_list_news()
+        for nid, t, b, imp, lv, d in data["news_rows"]
     ]
     standards_list = [
         {"id": sid, "title": t, "category": c, "description": d, "url": u}
-        for sid, t, c, d, u in await db_list_standards()
+        for sid, t, c, d, u in data["std_rows"]
     ]
     faq_list = [
         {"id": fid, "question": q, "answer": a, "category": c}
-        for fid, q, a, c in await db_list_faq()
+        for fid, q, a, c in data["faq_rows"]
     ]
+
+    # Рестораны: собираем и парсим часы тут же, без второго запроса
+    restaurants_list = []
+    for r in data["rest_rows"]:
+        rkey, rname, raddr, rhours, rlat, rlon, rorg, rphone, rfs, rsort = r
+        if rkey == "office":
+            continue
+        rd = {"key": rkey, "hours": rhours or "", "force_status": rfs}
+        status, status_text = restaurant_status_for(rd)
+        restaurants_list.append({
+            "key": rkey, "name": rname, "address": raddr, "hours": rhours,
+            "org": rorg, "phone": rphone or "",
+            "sort": rsort if rsort is not None else 100,
+            "status": status, "status_text": status_text,
+        })
+
     return web.json_response({
         "profile": profile,
         "greeting": {"kind": kind, "title": title, "sub": sub},
         "news": news_list,
-        "restaurants": await build_restaurants_payload(),
+        "restaurants": restaurants_list,
         "standards": standards_list,
         "faq": faq_list,
     }, dumps=json_dumps)
@@ -3839,7 +3903,22 @@ async def handle_health(request):
     return web.Response(text="OK")
 
 
-app = web.Application()
+@web.middleware
+async def gzip_middleware(request, handler):
+    response = await handler(request)
+    if (response.body is not None
+            and len(response.body) > 500
+            and "gzip" in request.headers.get("Accept-Encoding", "")
+            and response.content_type in ("application/json", "text/plain")):
+        compressed = gzip.compress(response.body, compresslevel=6)
+        if len(compressed) < len(response.body):
+            response.body = compressed
+            response.headers["Content-Encoding"] = "gzip"
+            response.headers["Content-Length"] = str(len(compressed))
+    return response
+
+
+app = web.Application(middlewares=[gzip_middleware])
 app.router.add_get("/", handle_index)
 app.router.add_get("/favicon.ico", handle_favicon)
 app.router.add_post("/api/bootstrap", handle_bootstrap)

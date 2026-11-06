@@ -4907,12 +4907,15 @@ async def handle_health(request):
 @web.middleware
 async def gzip_middleware(request, handler):
     response = await handler(request)
-    if (response.body is not None
-            and len(response.body) > 500
+    # FileResponse / StreamResponse не имеют .body — пропускаем
+    body = getattr(response, "body", None)
+    if (body is not None
+            and len(body) > 500
             and "gzip" in request.headers.get("Accept-Encoding", "")
+            and not response.headers.get("Content-Encoding")
             and response.content_type in ("application/json", "text/plain")):
-        compressed = gzip.compress(response.body, compresslevel=6)
-        if len(compressed) < len(response.body):
+        compressed = gzip.compress(body, compresslevel=6)
+        if len(compressed) < len(body):
             response.body = compressed
             response.headers["Content-Encoding"] = "gzip"
             response.headers["Content-Length"] = str(len(compressed))

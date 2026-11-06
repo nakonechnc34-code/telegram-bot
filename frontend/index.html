@@ -352,6 +352,18 @@
 </head>
 <body>
 
+<!-- ПОЛНОЭКРАННЫЙ ЭКРАН БЛОКИРОВКИ -->
+<div id="sec-blocked" style="display: none; position: fixed; inset: 0; background: var(--bg); z-index: 99999; padding: 20px; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
+  <div class="card" style="max-width: 400px; width: 100%; border: 2px solid var(--brand); box-shadow: 0 10px 40px rgba(255,45,85,0.2);">
+    <div style="font-size: 64px; margin-bottom: 20px;">🚫</div>
+    <b style="font-size: 22px; color: var(--brand); display: block; margin-bottom: 12px;">Доступ ограничен</b>
+    <div style="font-size: 15px; line-height: 1.5; color: var(--text-color); margin-bottom: 24px;">
+      Ваш аккаунт был заблокирован администратором.<br>Для восстановления доступа обратитесь к управляющему.
+    </div>
+    <button class="btn" onclick="handleBlockedLogout()" style="background: var(--brand);">Выйти</button>
+  </div>
+</div>
+
 <!-- ЭКРАН АВТОРИЗАЦИИ -->
 <div class="section" id="sec-auth" style="display: none; padding-top: 40px;">
   <div class="card" style="text-align: center; padding: 30px 20px;">
@@ -514,6 +526,11 @@ function setWebToken(token) {
   } catch (e) {}
 }
 
+function handleBlockedLogout() {
+  setWebToken(null);
+  location.reload();
+}
+
 function isTelegramWebView() {
   const ua = navigator.userAgent || '';
   return /Telegram/i.test(ua) || /wv\)/i.test(ua);
@@ -522,6 +539,7 @@ function isTelegramWebView() {
 function showAuthScreen() {
   document.getElementById('sec-auth').style.display = 'block';
   document.getElementById('main-app').style.display = 'none';
+  document.getElementById('sec-blocked').style.display = 'none';
   const hint = document.getElementById('auth-webview-hint');
   if (hint) {
     hint.style.display = isTelegramWebView() ? 'block' : 'none';
@@ -640,18 +658,18 @@ document.querySelectorAll('.tabs button').forEach(btn => {
 const esc = s => (s || '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-function blockedHtml() {
-  return '<div class="blocked-screen"><div class="big">🚫</div>' +
-    '<div class="title">Доступ ограничен</div>' +
-    '<div class="text">Администратор ограничил доступ к приложению.<br>Обратитесь к управляющему.</div></div>';
-}
-
 function renderBlockedEverywhere() {
-  document.getElementById('profile-box').innerHTML = blockedHtml();
-  document.getElementById('news-list').innerHTML = blockedHtml();
-  document.getElementById('restaurants-list').innerHTML = blockedHtml();
-  document.getElementById('standards-list').innerHTML = blockedHtml();
-  document.getElementById('faq-list').innerHTML = blockedHtml();
+  // Очищаем токен, чтобы полностью разлогинить
+  setWebToken(null);
+  // Очищаем кэш
+  try { localStorage.removeItem(BOOT_CACHE_KEY); } catch(e) {}
+  
+  // Скрываем приложение и экран входа
+  document.getElementById('main-app').style.display = 'none';
+  document.getElementById('sec-auth').style.display = 'none';
+  
+  // Показываем полноэкранный блок
+  document.getElementById('sec-blocked').style.display = 'flex';
 }
 
 function avatarHtml(initial) { return '<div class="avatar">' + esc(initial) + '</div>'; }
@@ -1367,6 +1385,7 @@ function startWhenReady() {
     _booted = true;
     document.getElementById('main-app').style.display = 'block';
     document.getElementById('sec-auth').style.display = 'none';
+    document.getElementById('sec-blocked').style.display = 'none';
     boot();
   } else {
     showAuthScreen();

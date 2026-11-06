@@ -2,16 +2,10 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Wokker</title>
 <link rel="preconnect" href="https://api.telegram.org" crossorigin>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
-<script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
 
 <style>
   :root {
@@ -21,8 +15,8 @@
     --hint-color: var(--tg-theme-hint-color, #8e8e93);
     --accent: var(--tg-theme-button-color, #ff2d55);
     --accent-text: var(--tg-theme-button-text-color, #ffffff);
-    
-    --blue: #ff2d55;
+
+    --brand: #ff2d55;
     --green: #34c759;
     --beige: #c3a578;
     --beige-dark: #b2946a;
@@ -32,30 +26,30 @@
   }
 
   * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
-  
-  body { 
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
-    background: var(--bg); 
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
     color: var(--text-color);
-    padding-bottom: 96px; 
+    padding-bottom: 96px;
     transition: background 0.25s ease, color 0.25s ease;
   }
 
-  .card { 
-    background: var(--card-bg); 
-    border-radius: 16px; 
-    margin: 0 12px 12px; 
-    padding: 16px; 
+  .card {
+    background: var(--card-bg);
+    border-radius: 16px;
+    margin: 0 12px 12px;
+    padding: 16px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
     border: 1px solid rgba(128, 128, 128, 0.08);
   }
   .card b { display: block; margin-bottom: 6px; font-size: 16px; color: var(--text-color); }
   .card div { line-height: 1.5; font-size: 14px; color: var(--text-color); }
   .muted { color: var(--hint-color); font-size: 13px; }
-  
-  .btn { 
+
+  .btn {
     display: inline-block; background: var(--accent); color: var(--accent-text); border: 0;
-    border-radius: 12px; padding: 12px 18px; font-size: 15px; font-weight: 600; margin-top: 10px; 
+    border-radius: 12px; padding: 12px 18px; font-size: 15px; font-weight: 600; margin-top: 10px;
     box-shadow: 0 4px 12px rgba(255, 45, 85, 0.25);
     cursor: pointer; transition: transform 0.15s ease, opacity 0.15s ease;
   }
@@ -97,7 +91,7 @@
 
   .badge-dot {
     position: absolute; top: 6px; right: 28%;
-    width: 8px; height: 8px; background: var(--blue);
+    width: 8px; height: 8px; background: var(--brand);
     border-radius: 50%; border: 1.5px solid var(--card-bg);
     display: none;
   }
@@ -106,9 +100,9 @@
   .section { display: none; }
   .section.active { display: block; }
 
-  .q { 
+  .q {
     width: calc(100% - 24px); margin: 6px 12px 12px; border: 1.5px solid rgba(128,128,128,0.2);
-    border-radius: 12px; padding: 12px; font-size: 15px; background: var(--card-bg); color: var(--text-color); outline: none; 
+    border-radius: 12px; padding: 12px; font-size: 15px; background: var(--card-bg); color: var(--text-color); outline: none;
     transition: border-color 0.2s ease;
   }
   .q:focus { border-color: var(--beige); }
@@ -171,15 +165,15 @@
   .p-pos { font-size: 14px; opacity: .92; margin-top: 4px; }
   .badge { display: inline-block; margin-top: 12px; padding: 5px 14px;
     background: rgba(255,255,255,0.25); backdrop-filter: blur(6px); border-radius: 20px; font-size: 12px; font-weight: 600; }
-  
+
   .info-list { padding: 8px 16px 14px; }
   .info-row { display: flex; align-items: center; padding: 12px 4px;
     border-bottom: 1px solid rgba(128,128,128,0.08); font-size: 15px; color: var(--text-color); }
   .info-row:last-child { border-bottom: 0; }
-  
-  .info-row .ico-box { 
-    width: 32px; height: 32px; border-radius: 10px; 
-    display: flex; align-items: center; justify-content: center; 
+
+  .info-row .ico-box {
+    width: 32px; height: 32px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
     font-size: 16px; margin-right: 12px; flex-shrink: 0;
   }
   .ico-box.rest { background: rgba(52, 199, 89, 0.12); }
@@ -188,18 +182,13 @@
 
   .info-row .lbl { color: var(--hint-color); flex: 1; font-size: 14px; }
   .info-row .val { font-weight: 600; text-align: right; max-width: 62%; overflow-wrap: break-word; font-size: 14px; }
-  
-  .info-row .val .badge-rest {
-    color: #ffffff !important;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.15);
-  }
-  
+
   .profile-footer { background: rgba(128,128,128,0.04); padding: 12px 16px; font-size: 12px; color: var(--hint-color); border-top: 1px solid rgba(128,128,128,0.08); text-align: center; }
-  .profile-footer button { background: none; border: 0; color: var(--blue); font-size: 12px;
+  .profile-footer button { background: none; border: 0; color: var(--brand); font-size: 12px;
     font-weight: 600; padding: 0; text-decoration: underline; cursor: pointer; }
 
   .badge-rest { display: inline-block; padding: 3px 10px; border-radius: 12px;
-    font-size: 12px; font-weight: 600; color: #fff; }
+    font-size: 12px; font-weight: 600; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.15); }
   .badge-rest.office { background: #8e8e93; }
   .badge-rest.normal { background: var(--green); }
 
@@ -333,18 +322,18 @@
     border-radius: 50%; display: flex; align-items: center; justify-content: center;
     font-size: 30px; border: 1px solid var(--beige-border); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
   .detail-hero .name { font-size: 20px; font-weight: 700; line-height: 1.3; color: #3a2f1f; }
-  
+
   .detail-card { background: var(--card-bg); border-radius: 18px; margin: 0 12px 12px;
     padding: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.04); border: 1px solid rgba(128,128,128,0.08); }
   .detail-card .row { padding: 11px 0; border-bottom: 1px solid rgba(128,128,128,0.1); font-size: 15px; color: var(--text-color); }
   .detail-card .row:last-child { border-bottom: 0; }
   .detail-card .row .lbl { color: var(--hint-color); font-size: 13px; margin-bottom: 3px; }
-  
+
   .detail-status { display: inline-block; margin-top: 12px; padding: 6px 16px;
     border-radius: 20px; font-size: 13px; font-weight: 700; }
   .detail-status.open { background: #e8f5ec; color: #2e7d43; }
   .detail-status.closed { background: #fbeae4; color: #b04a2e; }
-  
+
   .btn-back { display: block; margin: 0 12px 16px; padding: 12px 16px;
     background: var(--card-bg); color: var(--beige-dark); border: 1.5px solid var(--beige);
     border-radius: 14px; font-size: 15px; font-weight: 600; text-align: center;
@@ -502,7 +491,7 @@
   <div id="faq-list"></div>
   <div class="card">
     <b>Задать свой вопрос</b>
-    <input class="q" id="question-input" placeholder="Опиши вопрос — ответ придёт в бот">
+    <input class="q" id="question-input" maxlength="1000" placeholder="Опиши вопрос — ответ придёт в бот">
     <button class="btn" id="send-question">Отправить</button>
   </div>
 </div>
@@ -597,6 +586,14 @@ const safeUrl = url => {
   return '#';
 };
 
+function debounce(fn, ms) {
+  let t;
+  return function (...args) {
+    clearTimeout(t);
+    t = setTimeout(() => fn.apply(this, args), ms);
+  };
+}
+
 const BOOT_CACHE_KEY = 'wokker_boot_cache_v2';
 const BOOT_CACHE_TTL = 30 * 60 * 1000;
 
@@ -676,7 +673,12 @@ function showWelcomeSplash() {
   try { tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred('medium'); } catch(e) {}
 
   markWelcomeSeen();
-  try { history.replaceState(null, '', location.pathname); } catch(e) {}
+  // удаляем только параметр welcome, остальные (если появятся в будущем) сохраняем
+  try {
+    const url = new URL(location.href);
+    url.searchParams.delete('welcome');
+    history.replaceState(null, '', url.pathname + (url.search || ''));
+  } catch(e) {}
 
   const dismiss = () => {
     if (!splash.classList.contains('show')) return;
@@ -693,6 +695,7 @@ function showWelcomeSplash() {
 }
 
 let cachedAvatarUrl = null;
+let _avatarRetryDone = false;
 let BOOT = null;
 let currentStandardCat = 'all';
 let currentRestFilter = 'all';
@@ -714,6 +717,7 @@ const sectionLoaders = {
   'sec-faq': () => { if (BOOT) renderFaqFromBoot(); },
 };
 
+// Один обработчик: и переключение, и refresh
 document.querySelectorAll('.tabs button').forEach(btn => {
   btn.addEventListener('click', () => {
     haptic('light');
@@ -725,6 +729,7 @@ document.querySelectorAll('.tabs button').forEach(btn => {
     window.scrollTo(0, 0);
     const loader = sectionLoaders[btn.dataset.sec];
     if (loader) loader();
+    if (BOOT) refreshSection(btn.dataset.sec);
   });
 });
 
@@ -821,15 +826,22 @@ function applyAvatarToEl(el) {
     return;
   }
   const u = tgUserInfo();
-  if (u && u.photo_url) {
-    const probe = new Image();
-    probe.onload = () => {
-      el.style.backgroundImage = "url('" + u.photo_url.replace(/'/g, '%27') + "')";
-      el.textContent = '';
-    };
-    probe.onerror = () => { loadAvatarFromApi().then(() => applyAvatarToEl(el)); };
-    probe.src = u.photo_url;
-  }
+  if (!u || !u.photo_url) return;
+
+  const probe = new Image();
+  probe.onload = () => {
+    el.style.backgroundImage = "url('" + String(u.photo_url).replace(/'/g, '%27') + "')";
+    el.textContent = '';
+  };
+  probe.onerror = () => {
+    // пробуем /api/avatar ровно один раз — без рекурсии
+    if (_avatarRetryDone) return;
+    _avatarRetryDone = true;
+    loadAvatarFromApi().then(() => {
+      if (cachedAvatarUrl) applyAvatarToEl(el);
+    });
+  };
+  probe.src = u.photo_url;
 }
 
 let _avatarPromise = null;
@@ -846,7 +858,9 @@ async function loadAvatarFromApi() {
       if (resp.ok) {
         const blob = await resp.blob();
         if (blob.size > 0) {
-          if (cachedAvatarUrl) URL.revokeObjectURL(cachedAvatarUrl);
+          if (cachedAvatarUrl) {
+            try { URL.revokeObjectURL(cachedAvatarUrl); } catch(e) {}
+          }
           cachedAvatarUrl = URL.createObjectURL(blob);
         }
       }
@@ -865,7 +879,8 @@ function renderProfileFromBoot() {
     return;
   }
 
-  const isOffice = p.restaurant === 'ОФИС';
+  // Поддержка и нового поля restaurant_key и старого имени «ОФИС»
+  const isOffice = (p.restaurant_key === 'office') || (p.restaurant === 'ОФИС');
   const restBadge = isOffice ? 'office' : 'normal';
   const name = displayNameOf(p);
 
@@ -946,10 +961,13 @@ function prepareRestaurants(list) {
   });
 }
 
+// Возвращаем валидный https:// всегда — при отсутствии/ошибке org ведём на поиск по адресу.
 function mapUrlFor(r) {
-  return r.org
-    ? safeUrl('https://yandex.ru/maps/org/' + r.org)
-    : safeUrl('https://yandex.ru/maps/?text=' + encodeURIComponent('Воккер ' + r.address));
+  const org = (r.org || '').trim();
+  const fallback = 'https://yandex.ru/maps/?text=' +
+    encodeURIComponent('Воккер ' + (r.address || r.name || ''));
+  if (!org) return fallback;
+  return 'https://yandex.ru/maps/org/' + org;
 }
 
 function statusBadge(r, cls) {
@@ -994,6 +1012,7 @@ function renderRestaurantsList(list, query) {
   box.innerHTML = filtered.map(r => {
     const myRestName = (BOOT && BOOT.profile) ? BOOT.profile.restaurant : '';
     const isMy = myRestName && r.name.toLowerCase().includes(myRestName.toLowerCase());
+    const routeUrl = esc(mapUrlFor(r));
 
     return '<div class="rest-card" data-key="' + esc(r.key) + '">' +
       (isMy ? '<div class="my-rest-tag">⭐ Ваш ресторан</div>' : '') +
@@ -1011,7 +1030,7 @@ function renderRestaurantsList(list, query) {
       (r.phone ? '<div class="rest-address-row"><span class="icon">📞</span> ' + esc(r.phone) + '</div>' : '') +
       '<div class="rest-actions">' +
       (r.phone ? '<a href="tel:' + esc(r.phone.replace(/[^\d+]/g, '')) + '" class="btn-call" onclick="event.stopPropagation()">📞 Позвонить</a>' : '') +
-      '<a href="' + mapUrlFor(r) + '" target="_blank" class="btn-route" onclick="event.stopPropagation()">🗺 Маршрут</a>' +
+      '<a href="' + routeUrl + '" target="_blank" rel="noopener noreferrer" class="btn-route" onclick="event.stopPropagation()">🗺 Маршрут</a>' +
       '</div>' +
       '</div>';
   }).join('');
@@ -1067,7 +1086,6 @@ function initInteractiveMap(restaurants) {
   if (!leafletMap) {
     leafletMap = L.map(mapContainer, { zoomControl: false }).setView([55.7558, 37.6173], 10);
 
-    // 🗺️ Используем OpenStreetMap — стабильно и без ключей
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '© OpenStreetMap'
@@ -1098,17 +1116,20 @@ function initInteractiveMap(restaurants) {
       iconAnchor: [16, 16]
     });
 
-    const marker = L.marker([r.lat, r.lon], { icon }).bindPopup(`
-      <div style="text-align:center; padding:4px; min-width:180px">
-        <b style="font-size:15px">${esc(r.name)}</b><br>
-        <span style="font-size:12px;color:#666">${esc(r.address)}</span><br>
-        <span style="font-size:12px;color:${isOpen ? '#2e7d43' : '#b04a2e'}; font-weight:600">
-          ${isOpen ? 'Открыто' : 'Закрыто'}
-        </span><br>
-        ${r.phone ? `<a href="tel:${esc(r.phone.replace(/[^\\d+]/g,''))}" style="display:inline-block; margin-top:8px; padding:6px 12px; background:#34c759; color:#fff; text-decoration:none; border-radius:10px; font-size:12px; font-weight:600">📞 Позвонить</a>` : ''}
-        <a href="${mapUrlFor(r)}" target="_blank" style="display:inline-block; margin-top:4px; padding:6px 12px; background:#ff2d55; color:#fff; text-decoration:none; border-radius:10px; font-size:12px; font-weight:600">🗺 Маршрут</a>
-      </div>
-    `);
+    const popupUrl = esc(mapUrlFor(r));
+    const popupTel = r.phone ? esc(r.phone.replace(/[^\d+]/g, '')) : '';
+    const popupHtml =
+      '<div style="text-align:center; padding:4px; min-width:180px">' +
+      '<b style="font-size:15px">' + esc(r.name) + '</b><br>' +
+      '<span style="font-size:12px;color:#666">' + esc(r.address) + '</span><br>' +
+      '<span style="font-size:12px;color:' + (isOpen ? '#2e7d43' : '#b04a2e') + '; font-weight:600">' +
+        (isOpen ? 'Открыто' : 'Закрыто') +
+      '</span><br>' +
+      (popupTel ? '<a href="tel:' + popupTel + '" style="display:inline-block; margin-top:8px; padding:6px 12px; background:#34c759; color:#fff; text-decoration:none; border-radius:10px; font-size:12px; font-weight:600">📞 Позвонить</a>' : '') +
+      '<a href="' + popupUrl + '" target="_blank" rel="noopener noreferrer" style="display:inline-block; margin-top:4px; padding:6px 12px; background:#ff2d55; color:#fff; text-decoration:none; border-radius:10px; font-size:12px; font-weight:600">🗺 Маршрут</a>' +
+      '</div>';
+
+    const marker = L.marker([r.lat, r.lon], { icon }).bindPopup(popupHtml);
 
     leafletMarkers.addLayer(marker);
     bounds.extend([r.lat, r.lon]);
@@ -1167,10 +1188,12 @@ document.getElementById('btn-view-map').addEventListener('click', async function
   }
 });
 
-document.getElementById('rest-search').addEventListener('input', () => {
-  if (!BOOT) return;
-  renderRestaurants();
-});
+document.getElementById('rest-search').addEventListener('input',
+  debounce(() => {
+    if (!BOOT) return;
+    renderRestaurants();
+  }, 150)
+);
 
 document.getElementById('restaurants-list').addEventListener('click', function(e) {
   const card = e.target.closest('.rest-card');
@@ -1190,7 +1213,7 @@ function renderDetail(r) {
     (r.phone ? '<div class="row"><div class="lbl">Телефон</div>📞 <a href="tel:' + esc(r.phone.replace(/[^\d+]/g, '')) + '" style="color:var(--beige-dark);font-weight:600;text-decoration:none;">' + esc(r.phone) + '</a></div>' : '') +
     '<div class="row"><div class="lbl">Часы работы</div>🕒 ' + esc(r.hours).replace(/\n/g, '<br>') + '</div>' +
     '<div class="detail-actions" style="margin-top:12px">' +
-    '<a href="' + mapUrlFor(r) + '" target="_blank" style="text-decoration:none"><span class="btn-map">🗺 На Яндекс Картах</span></a>' +
+    '<a href="' + esc(mapUrlFor(r)) + '" target="_blank" rel="noopener noreferrer" style="text-decoration:none"><span class="btn-map">🗺 На Яндекс Картах</span></a>' +
     '</div></div>';
 }
 
@@ -1229,7 +1252,9 @@ document.getElementById('detail-back').addEventListener('click', () => {
 
 window.addEventListener('popstate', () => {
   const params = new URLSearchParams(location.search);
-  if (!params.get('rest')) {
+  const inDetail = document.getElementById('sec-detail').classList.contains('active');
+  // Срабатываем только если реально были в detail и ушли из него
+  if (!params.get('rest') && inDetail) {
     exitDetailView();
     goToRestaurantsTab();
   }
@@ -1305,18 +1330,28 @@ function renderStandardsFromBoot() {
     const matchQuery = !query || (s.title + ' ' + s.description + ' ' + s.category).toLowerCase().indexOf(query) !== -1;
     return matchCat && matchQuery;
   });
-  htmlContent += filtered.map(s =>
-    '<div class="card"><b>' + esc(s.title) + '</b><div class="muted">' + esc(s.category) + '</div>' +
-    '<div style="margin-top:6px">' + esc(s.description) + '</div>' +
-    (s.url ? '<a href="' + safeUrl(s.url) + '" target="_blank"><button class="btn">Открыть документ</button></a>' : '') +
-    '</div>'
-  ).join('');
+  htmlContent += filtered.map(s => {
+    const url = safeUrl(s.url);
+    const showUrlBtn = s.url && url !== '#';
+    return '<div class="card"><b>' + esc(s.title) + '</b><div class="muted">' + esc(s.category) + '</div>' +
+      '<div style="margin-top:6px">' + esc(s.description) + '</div>' +
+      (showUrlBtn ? '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer"><button class="btn">Открыть документ</button></a>' : '') +
+      '</div>';
+  }).join('');
   if (!htmlContent.trim()) {
     box.innerHTML = '<div class="card">Ничего не найдено по вашему запросу 📚</div>';
     return;
   }
   box.innerHTML = htmlContent;
   if (document.getElementById('shift-checklist')) initShiftChecklist();
+}
+
+function localDateKey(d) {
+  const dt = d || new Date();
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
 }
 
 function initShiftChecklist() {
@@ -1328,7 +1363,8 @@ function initShiftChecklist() {
     { id: 't3', text: 'Проверить наличие необходимых упаковок и сырья' },
     { id: 't4', text: 'Синхронизироваться с командой на смене' }
   ];
-  const todayKey = 'wokker_checklist_' + new Date().toISOString().slice(0, 10);
+  // локальная дата, не UTC
+  const todayKey = 'wokker_checklist_' + localDateKey();
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem(todayKey) || '{}'); } catch(e){}
   container.innerHTML = tasks.map(t => {
@@ -1351,9 +1387,11 @@ function initShiftChecklist() {
   });
 }
 
-document.getElementById('standard-search').addEventListener('input', () => {
-  if (BOOT) renderStandardsFromBoot();
-});
+document.getElementById('standard-search').addEventListener('input',
+  debounce(() => {
+    if (BOOT) renderStandardsFromBoot();
+  }, 150)
+);
 
 function renderFaqFromBoot() {
   const box = document.getElementById('faq-list');
@@ -1416,12 +1454,6 @@ async function refreshSection(sec) {
     else if (sec === 'sec-faq') { BOOT.faq = data; renderFaqFromBoot(); }
   } catch (e) {}
 }
-
-document.querySelectorAll('.tabs button').forEach(btn => {
-  btn.addEventListener('click', () => {
-    if (BOOT) refreshSection(btn.dataset.sec);
-  });
-});
 
 function renderAllSections() {
   renderProfileFromBoot();
@@ -1488,7 +1520,7 @@ async function boot() {
     console.warn('bootstrap failed, using cache:', e);
   }
 
-  avatarPromise.then(() => {
+  avatarPromise?.then(() => {
     const el = document.querySelector('#profile-box .avatar');
     if (el && cachedAvatarUrl) {
       el.style.backgroundImage = "url('" + cachedAvatarUrl + "')";

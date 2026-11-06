@@ -4,20 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Wokker</title>
-<link rel="preconnect" href="https://telegram.org" crossorigin>
-<link rel="dns-prefetch" href="https://telegram.org">
-<script src="https://telegram.org/js/telegram-web-app.js"
-        onload="window.TG_SCRIPT_LOADED = true"
-        onerror="window.TG_SCRIPT_LOADED = false"></script>
 
 <style>
   :root {
-    --bg: var(--tg-theme-bg-color, #f2f2f7);
-    --card-bg: var(--tg-theme-secondary-bg-color, #ffffff);
-    --text-color: var(--tg-theme-text-color, #000000);
-    --hint-color: var(--tg-theme-hint-color, #8e8e93);
-    --accent: var(--tg-theme-button-color, #ff2d55);
-    --accent-text: var(--tg-theme-button-text-color, #ffffff);
+    --bg: #f2f2f7;
+    --card-bg: #ffffff;
+    --text-color: #000000;
+    --hint-color: #8e8e93;
+    --accent: #ff2d55;
+    --accent-text: #ffffff;
 
     --brand: #ff2d55;
     --green: #34c759;
@@ -353,36 +348,6 @@
   .level-urgent b::before { content: "🔴 "; }
   .level-important b::before { content: "🟡 "; }
   .level-normal b::before { content: "🔵 "; }
-
-  .welcome-overlay {
-    position: fixed; inset: 0; z-index: 9999;
-    background: linear-gradient(135deg, #ff2d55 0%, #ff6a3d 50%, #ff9558 100%);
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    color: #fff; opacity: 0; transition: opacity 0.4s ease;
-    cursor: pointer; -webkit-user-select: none; user-select: none; overflow: hidden;
-  }
-  .welcome-overlay.show { opacity: 1; }
-  .welcome-overlay.hide { opacity: 0; pointer-events: none; }
-
-  .welcome-emoji { font-size: 80px; margin-bottom: 24px; animation: welcomeEmoji 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both; filter: drop-shadow(0 8px 24px rgba(0,0,0,0.25)); }
-  @keyframes welcomeEmoji { 0% { transform: scale(0.3) rotate(-25deg); opacity: 0; } 60% { transform: scale(1.15) rotate(10deg); opacity: 1; } 100% { transform: scale(1) rotate(0); opacity: 1; } }
-
-  .welcome-logo { display: flex; gap: 2px; font-size: 44px; font-weight: 900; letter-spacing: 4px; margin-bottom: 12px; }
-  .welcome-logo span { display: inline-block; opacity: 0; transform: translateY(24px); animation: welcomeLetter 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; text-shadow: 0 4px 16px rgba(0,0,0,0.2); }
-  .welcome-logo span:nth-child(1) { animation-delay: 0.10s; }
-  .welcome-logo span:nth-child(2) { animation-delay: 0.18s; }
-  .welcome-logo span:nth-child(3) { animation-delay: 0.26s; }
-  .welcome-logo span:nth-child(4) { animation-delay: 0.34s; }
-  .welcome-logo span:nth-child(5) { animation-delay: 0.42s; }
-  .welcome-logo span:nth-child(6) { animation-delay: 0.50s; }
-  @keyframes welcomeLetter { to { opacity: 1; transform: translateY(0); } }
-
-  .welcome-sub { font-size: 17px; font-weight: 500; letter-spacing: 0.3px; opacity: 0; animation: welcomeFade 0.6s ease 0.9s forwards; }
-  @keyframes welcomeFade { to { opacity: 0.95; } }
-
-  .welcome-hint { position: absolute; bottom: calc(48px + env(safe-area-inset-bottom)); font-size: 13px; letter-spacing: 0.5px; opacity: 0; animation: welcomeFade 0.6s ease 2s forwards; }
-  .welcome-hint::after { content: ''; display: block; width: 100%; height: 2px; margin-top: 8px; background: rgba(255,255,255,0.35); border-radius: 2px; transform-origin: left; animation: welcomeProgress 3.5s linear; }
-  @keyframes welcomeProgress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 </style>
 </head>
 <body>
@@ -410,7 +375,7 @@
   </div>
 </div>
 
-<!-- ОСНОВНЫЕ ЭКРАНЫ (изначально скрыты, если нужен вход) -->
+<!-- ОСНОВНЫЕ ЭКРАНЫ -->
 <div id="main-app" style="display: none;">
   <div class="section" id="sec-profile">
     <div id="profile-box">
@@ -499,26 +464,6 @@
 </div>
 
 <script>
-let tg = null;
-
-function getTg() {
-  return (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
-}
-
-function initTg() {
-  const t = getTg();
-  if (!t) return null;
-  try {
-    if (typeof t.ready === 'function') t.ready();
-    if (typeof t.expand === 'function') t.expand();
-    if (typeof t.setHeaderColor === 'function') t.setHeaderColor('secondary_bg_color');
-    if (typeof t.setBackgroundColor === 'function') t.setBackgroundColor('bg_color');
-  } catch (e) {}
-  return t;
-}
-
-tg = initTg();
-
 let WEB_TOKEN = null;
 
 function getWebToken() {
@@ -546,25 +491,11 @@ function setWebToken(token) {
   try { localStorage.setItem('wokker_web_token', token); } catch(e){}
 }
 
-function getInitData() { return (tg && tg.initData) ? tg.initData : ''; }
-
 function getAuthPayload() {
-  return {
-    initData: getInitData(),
-    webToken: getWebToken()
-  };
-}
-
-function haptic(style) {
-  if (tg && tg.HapticFeedback && typeof tg.HapticFeedback.impactOccurred === 'function') {
-    try { tg.HapticFeedback.impactOccurred(style || 'light'); } catch (e) {}
-  }
+  return { webToken: getWebToken() };
 }
 
 function showAlert(msg) {
-  if (tg && typeof tg.showAlert === 'function') {
-    try { tg.showAlert(msg); return; } catch (e) {}
-  }
   alert(msg);
 }
 
@@ -588,23 +519,18 @@ const BOOT_CACHE_TTL = 5 * 60 * 1000;
 
 function readBootCache() {
   try {
-    const u = tgUserInfo();
-    if (!u || !u.id) return null;
     const raw = localStorage.getItem(BOOT_CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed.ts || Date.now() - parsed.ts > BOOT_CACHE_TTL) return null;
-    if (String(parsed.userId) !== String(u.id)) return null;
     return parsed.data || null;
   } catch (e) { return null; }
 }
 
 function writeBootCache(data) {
   try {
-    const u = tgUserInfo();
-    if (!u || !u.id) return;
     localStorage.setItem(BOOT_CACHE_KEY, JSON.stringify({
-      data, ts: Date.now(), userId: u.id
+      data, ts: Date.now()
     }));
   } catch (e) {}
 }
@@ -637,63 +563,6 @@ function bootChanged(oldB, newB) {
   return false;
 }
 
-function hasSeenWelcome() {
-  try {
-    const u = tgUserInfo();
-    if (!u || !u.id) return false;
-    return localStorage.getItem('wokker_welcome_' + u.id) === '1';
-  } catch (e) { return false; }
-}
-
-function markWelcomeSeen() {
-  try {
-    const u = tgUserInfo();
-    if (!u || !u.id) return;
-    localStorage.setItem('wokker_welcome_' + u.id, '1');
-  } catch (e) {}
-}
-
-function showWelcomeSplash() {
-  if (document.getElementById('welcome-splash')) return;
-  if (hasSeenWelcome()) return;
-
-  const splash = document.createElement('div');
-  splash.id = 'welcome-splash';
-  splash.className = 'welcome-overlay';
-  splash.innerHTML =
-    '<div class="welcome-emoji">🍜</div>' +
-    '<div class="welcome-logo">' +
-      '<span>W</span><span>O</span><span>K</span><span>K</span><span>E</span><span>R</span>' +
-    '</div>' +
-    '<div class="welcome-sub">Добро пожаловать!</div>' +
-    '<div class="welcome-hint">Нажми, чтобы продолжить</div>';
-  document.body.appendChild(splash);
-  document.body.style.overflow = 'hidden';
-  requestAnimationFrame(() => splash.classList.add('show'));
-
-  try { if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium'); } catch(e) {}
-
-  markWelcomeSeen();
-  try {
-    const url = new URL(location.href);
-    url.searchParams.delete('welcome');
-    history.replaceState(null, '', url.pathname + (url.search || ''));
-  } catch(e) {}
-
-  const dismiss = () => {
-    if (!splash.classList.contains('show')) return;
-    splash.classList.remove('show');
-    splash.classList.add('hide');
-    document.body.style.overflow = '';
-    setTimeout(() => splash.remove(), 500);
-    try { if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light'); } catch(e) {}
-  };
-
-  setTimeout(dismiss, 3500);
-  splash.addEventListener('click', dismiss, { once: true });
-  splash.addEventListener('touchstart', dismiss, { once: true, passive: true });
-}
-
 let cachedAvatarUrl = null;
 let _avatarRetryDone = false;
 let BOOT = null;
@@ -719,7 +588,6 @@ const sectionLoaders = {
 
 document.querySelectorAll('.tabs button').forEach(btn => {
   btn.addEventListener('click', () => {
-    haptic('light');
     exitDetailView();
     document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -749,20 +617,11 @@ function renderBlockedEverywhere() {
   document.getElementById('faq-list').innerHTML = blockedHtml();
 }
 
-function tgUserInfo() {
-  try {
-    if (!tg || !tg.initDataUnsafe) return null;
-    return tg.initDataUnsafe.user || null;
-  } catch (e) { return null; }
-}
-
 function avatarHtml(initial) { return '<div class="avatar">' + esc(initial) + '</div>'; }
 
 function initialFor(name) {
   const n = (name || '').trim();
   if (n) return n.charAt(0).toUpperCase();
-  const u = tgUserInfo();
-  if (u && u.first_name && u.first_name.trim()) return u.first_name.trim().charAt(0).toUpperCase();
   return '👤';
 }
 
@@ -774,19 +633,10 @@ function greetingTexts() {
   return { hello: 'Доброй ночи', sub: 'Отдыхайте — завтра снова в бой 🌙' };
 }
 
-function firstNameFromProfile(p) {
-  if (p && p.first_name && p.first_name.trim()) return p.first_name.trim();
-  if (p && p.full_name) {
-    const parts = p.full_name.trim().split(/\s+/);
-    return parts[0] || '';
-  }
-  return '';
-}
-
 function displayNameOf(p) {
-  const u = tgUserInfo();
-  if (u && u.first_name && u.first_name.trim()) return u.first_name.trim();
-  return firstNameFromProfile(p);
+  if (p && p.first_name && p.first_name.trim()) return p.first_name.trim();
+  if (p && p.full_name) return p.full_name.split(' ')[0];
+  return '';
 }
 
 function applyAvatarToEl(el) {
@@ -796,22 +646,12 @@ function applyAvatarToEl(el) {
     el.textContent = '';
     return;
   }
-  const u = tgUserInfo();
-  if (!u || !u.photo_url) return;
-
-  const probe = new Image();
-  probe.onload = () => {
-    el.style.backgroundImage = "url('" + String(u.photo_url).replace(/'/g, '%27') + "')";
-    el.textContent = '';
-  };
-  probe.onerror = () => {
-    if (_avatarRetryDone) return;
-    _avatarRetryDone = true;
-    loadAvatarFromApi().then(() => {
-      if (cachedAvatarUrl) applyAvatarToEl(el);
-    });
-  };
-  probe.src = u.photo_url;
+  loadAvatarFromApi().then(() => {
+    if (cachedAvatarUrl) {
+      el.style.backgroundImage = "url('" + cachedAvatarUrl + "')";
+      el.textContent = '';
+    }
+  });
 }
 
 let _avatarPromise = null;
@@ -889,25 +729,10 @@ function renderProfileFromBoot() {
     '</div>';
 
   const el = document.querySelector('#profile-box .avatar');
-  if (el) {
-    if (cachedAvatarUrl) {
-      applyAvatarToEl(el);
-    } else if (!tgUserInfo() || !tgUserInfo().photo_url) {
-      loadAvatarFromApi().then(() => {
-        const el2 = document.querySelector('#profile-box .avatar');
-        if (el2 && cachedAvatarUrl) {
-          el2.style.backgroundImage = "url('" + cachedAvatarUrl + "')";
-          el2.textContent = '';
-        }
-      });
-    } else {
-      applyAvatarToEl(el);
-    }
-  }
+  if (el) applyAvatarToEl(el);
 
   const btnReport = document.getElementById('btn-report-error');
   btnReport.addEventListener('click', async () => {
-    haptic('medium');
     if (btnReport.disabled) return;
     btnReport.disabled = true;
     try {
@@ -1130,7 +955,6 @@ function renderRestaurants() {
 
 document.querySelectorAll('#rest-filters .chip').forEach(chip => {
   chip.addEventListener('click', () => {
-    haptic('light');
     document.querySelectorAll('#rest-filters .chip').forEach(c => c.classList.remove('active'));
     chip.classList.add('active');
     currentRestFilter = chip.dataset.filter;
@@ -1139,7 +963,6 @@ document.querySelectorAll('#rest-filters .chip').forEach(chip => {
 });
 
 document.getElementById('btn-view-list').addEventListener('click', function() {
-  haptic('light');
   document.getElementById('btn-view-map').classList.remove('active');
   this.classList.add('active');
   document.getElementById('restaurants-map').style.display = 'none';
@@ -1147,7 +970,6 @@ document.getElementById('btn-view-list').addEventListener('click', function() {
 });
 
 document.getElementById('btn-view-map').addEventListener('click', async function() {
-  haptic('light');
   document.getElementById('btn-view-list').classList.remove('active');
   this.classList.add('active');
   document.getElementById('rest-list-wrapper').style.display = 'none';
@@ -1175,7 +997,6 @@ document.getElementById('rest-search').addEventListener('input',
 document.getElementById('restaurants-list').addEventListener('click', function(e) {
   const card = e.target.closest('.rest-card');
   if (card && card.dataset.key) {
-    haptic('light');
     showDetail(card.dataset.key, true);
   }
 });
@@ -1221,7 +1042,6 @@ function goToRestaurantsTab() {
 }
 
 document.getElementById('detail-back').addEventListener('click', () => {
-  haptic('light');
   try { history.replaceState(null, '', location.pathname); } catch (e) {}
   exitDetailView();
   goToRestaurantsTab();
@@ -1281,7 +1101,6 @@ function renderStandardsChips(standards) {
   }).join('');
   container.querySelectorAll('.chip').forEach(chip => {
     chip.addEventListener('click', () => {
-      haptic('light');
       currentStandardCat = chip.dataset.cat;
       document.getElementById('standard-search').value = '';
       renderStandardsChips(standards);
@@ -1350,7 +1169,6 @@ function initShiftChecklist() {
   }).join('');
   container.querySelectorAll('.check-item').forEach(item => {
     item.addEventListener('click', () => {
-      haptic('light');
       const id = item.dataset.id;
       saved[id] = !saved[id];
       try { localStorage.setItem(todayKey, JSON.stringify(saved)); } catch(e){}
@@ -1378,7 +1196,6 @@ function renderFaqFromBoot() {
 }
 
 document.getElementById('send-question').addEventListener('click', async function() {
-  haptic('medium');
   const input = document.getElementById('question-input');
   const text = input.value.trim();
   if (!text) return;
@@ -1413,7 +1230,7 @@ async function refreshSection(sec) {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(getAuthPayload())
     });
-    if (resp.status === 401) { renderAuthErrorEverywhere(); return; }
+    if (resp.status === 401) { localStorage.removeItem('wokker_web_token'); location.reload(); return; }
     if (resp.status === 403) { renderBlockedEverywhere(); return; }
     if (!resp.ok) return;
     const data = await resp.json();
@@ -1444,11 +1261,6 @@ function renderAllSections() {
 async function boot() {
   const params = new URLSearchParams(location.search);
   const restKey = params.get('rest');
-  const hasWelcomeParam = params.get('welcome') === '1';
-
-  if (hasWelcomeParam) {
-    showWelcomeSplash();
-  }
 
   const cached = readBootCache();
   let renderedFromCache = false;
@@ -1460,12 +1272,7 @@ async function boot() {
     renderedFromCache = true;
   }
 
-  const avatarPromise = (async () => {
-    if (cachedAvatarUrl) return;
-    const u = tgUserInfo();
-    if (u && u.photo_url) return;
-    await loadAvatarFromApi();
-  })();
+  const avatarPromise = loadAvatarFromApi();
 
   try {
     const resp = await fetch('/api/bootstrap', {
@@ -1474,7 +1281,7 @@ async function boot() {
     });
     if (resp.status === 403) { renderBlockedEverywhere(); return; }
     if (resp.status === 401) { 
-      // Если 401, значит токен невалиден. Показываем экран входа.
+      localStorage.removeItem('wokker_web_token');
       document.getElementById('main-app').style.display = 'none';
       document.getElementById('sec-auth').style.display = 'block';
       return; 
@@ -1495,7 +1302,7 @@ async function boot() {
     }
   } catch (e) {
     if (!renderedFromCache) {
-      renderNetErrorEverywhere();
+      document.getElementById('profile-box').innerHTML = '<div class="card">Ошибка сети. Проверь соединение.</div>';
       return;
     }
     console.warn('bootstrap failed, using cache:', e);
@@ -1524,44 +1331,12 @@ function startWhenReady() {
     _booted = true;
     document.getElementById('main-app').style.display = 'block';
     boot();
-    return;
+  } else {
+    document.getElementById('sec-auth').style.display = 'block';
+    document.getElementById('main-app').style.display = 'none';
   }
-
-  if (!tg) tg = initTg();
-  if (getInitData()) {
-    _booted = true;
-    document.getElementById('main-app').style.display = 'block';
-    boot();
-    return;
-  }
-
-  const start = Date.now();
-  const TIMEOUT_MS = 3000;
-
-  const tryLoop = () => {
-    if (_booted) return;
-    if (!tg) tg = initTg();
-
-    if (getInitData()) {
-      _booted = true;
-      document.getElementById('main-app').style.display = 'block';
-      boot();
-      return;
-    }
-
-    if (Date.now() - start > TIMEOUT_MS) {
-      // Не смогли получить данные из Telegram и нет веб-токена.
-      // Показываем форму входа.
-      document.getElementById('sec-auth').style.display = 'block';
-      document.getElementById('main-app').style.display = 'none';
-      return;
-    }
-    setTimeout(tryLoop, 100);
-  };
-  tryLoop();
 }
 
-// Обработчики кнопок авторизации
 document.getElementById('btn-auth-phone').addEventListener('click', async () => {
   const phoneInput = document.getElementById('auth-phone');
   const phone = phoneInput.value.trim();
@@ -1633,7 +1408,7 @@ document.getElementById('btn-auth-code').addEventListener('click', async () => {
       setWebToken(data.token);
       document.getElementById('sec-auth').style.display = 'none';
       document.getElementById('main-app').style.display = 'block';
-      startWhenReady(); // запускаем boot()
+      startWhenReady();
     } else {
       errDiv.textContent = 'Неверный код или истекло время.';
       errDiv.style.display = 'block';

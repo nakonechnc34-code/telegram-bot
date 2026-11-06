@@ -59,7 +59,6 @@ DB_URL = os.getenv("DATABASE_URL")
 if not DB_URL:
     raise ValueError("DATABASE_URL is not set")
 
-# Ссылка на веб-приложение (браузер)
 APP_URL = os.getenv("MINI_APP_URL", "https://ВАШ-ДОМЕН.amvera.io").rstrip("/")
 
 # ============= FSM STORAGE =============
@@ -1560,6 +1559,7 @@ async def get_auth_user(request):
 # ============= КЛАВИАТУРЫ =============
 FULL_MENU = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="🌐 Открыть приложение", url=APP_URL)],
+    [InlineKeyboardButton(text="📋 Скопировать ссылку", callback_data="copy_link")],
 ])
 
 REGISTER_ONLY = InlineKeyboardMarkup(inline_keyboard=[
@@ -1568,6 +1568,7 @@ REGISTER_ONLY = InlineKeyboardMarkup(inline_keyboard=[
 
 WELCOME_MENU = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="🌐 Открыть приложение", url=APP_URL)],
+    [InlineKeyboardButton(text="📋 Скопировать ссылку", callback_data="copy_link")],
 ])
 
 def phone_kb():
@@ -2052,11 +2053,15 @@ async def cmd_start(message: types.Message, state: FSMContext):
         phone = row[1] or "указанный при регистрации"
         await send_tracked(
             message.chat.id, user_id,
-            f"🌐 <b>Открыть приложение Wokker:</b>\n\n"
+            f"🌐 <b>Приложение Wokker</b>\n\n"
             f"{APP_URL}\n\n"
             f"🔑 Для входа введи свой номер телефона:\n"
             f"<b>{html.escape(phone)}</b>\n\n"
-            f"Код придёт сюда, в этот чат. Никому его не сообщай.",
+            f"Код придёт сюда, в этот чат.\n\n"
+            f"💡 <b>Совет:</b> для постоянного входа (чтобы не вводить код каждый раз) "
+            f"открой ссылку в <b>Safari</b> или <b>Chrome</b>. "
+            f"На iPhone: тапни <b>⋯</b> вверху → «Открыть в браузере». "
+            f"Или добавь на главный экран через «Поделиться → На экран Домой».",
             parse_mode="HTML",
             reply_markup=FULL_MENU,
             disable_web_page_preview=True,
@@ -2100,15 +2105,35 @@ async def cmd_web(message: types.Message):
     await delete_incoming(message)
     await cleanup_chat(message.from_user.id)
     row = await db_get(message.from_user.id)
-    phone = (row[1] if row and row[1] else None) or "указанный при регистрации"
+    if not row or not row[0]:
+        await send_tracked(
+            message.chat.id, message.from_user.id,
+            "Сначала пройди регистрацию — напиши /start.",
+        )
+        return
+    phone = row[1] or "указанный при регистрации"
     await send_tracked(
         message.chat.id, message.from_user.id,
-        f"🌐 <b>Открыть приложение Wokker:</b>\n\n"
+        f"🌐 <b>Приложение Wokker</b>\n\n"
         f"{APP_URL}\n\n"
         f"🔑 Войди по номеру:\n<b>{html.escape(phone)}</b>\n\n"
-        f"Код придёт сюда, в этот чат.",
+        f"Код придёт сюда, в этот чат.\n\n"
+        f"💡 <b>Совет:</b> открой ссылку в Safari/Chrome для постоянного входа.",
         parse_mode="HTML",
         reply_markup=FULL_MENU,
+        disable_web_page_preview=True,
+    )
+
+@user_router.callback_query(lambda c: c.data == "copy_link")
+async def cb_copy_link(callback: types.CallbackQuery):
+    await callback.answer("Ссылка ниже")
+    await cleanup_chat(callback.from_user.id)
+    await send_tracked(
+        cb_chat_id(callback), callback.from_user.id,
+        f"📋 <b>Ссылка для копирования:</b>\n\n"
+        f"<code>{APP_URL}</code>\n\n"
+        f"Скопируй и открой в Safari, Chrome или любом другом браузере.",
+        parse_mode="HTML",
         disable_web_page_preview=True,
     )
 
@@ -2279,11 +2304,11 @@ async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMConte
                        f"\n\n🎉 <b>{html.escape(callback.from_user.first_name)}, регистрация завершена!</b>\n\n"
                        f"👤 ФИО: {html.escape(full_name)}\n📞 {html.escape(phone)}\n🎂 {html.escape(birth_date)}\n"
                        f"💼 {html.escape(position)}\n📍 {html.escape(restaurant['name'])}\n\n"
-                       f"🌐 <b>Приложение Wokker:</b>\n"
-                       f"{APP_URL}\n\n"
-                       f"🔑 Для входа введи свой номер:\n"
-                       f"<b>{html.escape(phone)}</b>\n\n"
-                       f"Код придёт сюда, в этот чат.",
+                       f"🌐 <b>Приложение Wokker:</b>\n{APP_URL}\n\n"
+                       f"🔑 Для входа введи свой номер:\n<b>{html.escape(phone)}</b>\n\n"
+                       f"Код придёт сюда, в этот чат.\n\n"
+                       f"💡 <b>Совет:</b> для постоянного входа открой ссылку в Safari или Chrome "
+                       f"(⋯ → «Открыть в браузере»).",
                        parse_mode="HTML", reply_markup=WELCOME_MENU,
                        disable_web_page_preview=True)
     if ADMIN_ID:

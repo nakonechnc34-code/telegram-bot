@@ -11,23 +11,22 @@
     --bg: #f2f2f7;
     --gray: #9aa0a6;
     --green: #34c759;
-    /* Бежевая палитра вкладки «Рестораны» */
     --beige: #c3a578;
     --beige-dark: #b2946a;
     --beige-soft: #f6efe3;
     --beige-border: #e6d8c2;
-    /* Акцентный край кнопки карты */
     --map-border: #d9534f;
   }
   * { box-sizing: border-box; margin: 0; }
   body { font-family: -apple-system, sans-serif; background: var(--bg); padding-bottom: 96px; }
   .card { background: #fff; border-radius: 14px; margin: 0 12px 12px; padding: 14px; }
   .card b { display: block; margin-bottom: 6px; }
+  /* FIX: длинный текст новостей */
+  .card div { line-height: 1.5; }
   .muted { color: #8e8e93; font-size: 14px; }
   .btn { display: inline-block; background: var(--blue); color: #fff; border: 0;
          border-radius: 10px; padding: 10px 16px; font-size: 15px; margin-top: 8px; }
 
-  /* ===== Плавающая док-панель ===== */
   .tabs {
     position: fixed;
     bottom: calc(10px + env(safe-area-inset-bottom));
@@ -78,7 +77,6 @@
   summary { font-weight: 600; cursor: pointer; }
   details p { margin-top: 8px; color: #3a3a3c; }
 
-  /* ===== Скелетон: мгновенная заглушка вместо пустого экрана ===== */
   .skeleton-card { background: #fff; border-radius: 14px; margin: 12px 12px 12px; padding: 16px; }
   .skeleton-line {
     height: 14px; border-radius: 7px; margin-bottom: 10px;
@@ -92,9 +90,6 @@
     100% { background-position: -200% 0; }
   }
 
-  /* ============================================================
-     ПРОФИЛЬ
-     ============================================================ */
   .greeting { margin: 14px 12px 4px; padding: 0 4px; }
   .greeting .g-title { font-size: 22px; font-weight: 700; color: #3a2f1f; line-height: 1.25; }
   .greeting .g-sub { font-size: 13px; color: #96876f; margin-top: 2px; }
@@ -146,9 +141,6 @@
     .info-row { border-bottom: none; padding: 8px 0; }
   }
 
-  /* ============================================================
-     РЕСТОРАНЫ: бежевый дизайн
-     ============================================================ */
   .rest-tab-header { margin: 12px 12px 4px; padding: 14px 16px;
     background: linear-gradient(135deg, var(--beige-soft), #fdf9f2);
     border: 1px solid var(--beige-border); border-radius: 16px; }
@@ -189,9 +181,6 @@
 
   .no-results { text-align: center; color: #8e8e93; padding: 30px 12px; }
 
-  /* ============================================================
-     Карточка одной точки (глубокая ссылка из бота)
-     ============================================================ */
   .detail-hero { background: linear-gradient(135deg, var(--beige-soft), #fdf9f2);
     border: 1px solid var(--beige-border); color: #4a3c28; border-radius: 18px;
     margin: 12px 12px 12px; padding: 24px 16px; text-align: center; }
@@ -216,14 +205,12 @@
     text-decoration: none; cursor: pointer; }
   .btn-back:active { background: var(--beige-soft); }
 
-  /* ===== Экран блокировки ===== */
   .blocked-screen { background: #fff; border-radius: 18px; margin: 40px 12px 12px;
     padding: 32px 20px; text-align: center; box-shadow: 0 4px 14px rgba(0,0,0,.07); }
   .blocked-screen .big { font-size: 44px; margin-bottom: 12px; }
   .blocked-screen .title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
   .blocked-screen .text { color: #8e8e93; font-size: 14px; }
 
-  /* ===== Уровни новостей ===== */
   .news-date { color: #8e8e93; font-size: 12px; margin-top: 4px; }
   .level-urgent b::before { content: "🔴 "; }
   .level-important b::before { content: "🟡 "; }
@@ -287,7 +274,17 @@ function getInitData() {
   return (tg && tg.initData) ? tg.initData : '';
 }
 
-/* ===== Данные бутстрапа: один запрос на всё ===== */
+// FIX: нативный alert в Telegram работает нестабильно
+function showAlert(msg) {
+  if (tg && typeof tg.showAlert === 'function') {
+    try { tg.showAlert(msg); return; } catch (e) { /* fallback */ }
+  }
+  alert(msg);
+}
+
+/* FIX: кэш URL аватара — переживает перерисовку, не течёт */
+let cachedAvatarUrl = null;
+
 let BOOT = null;
 
 const sectionLoaders = {
@@ -314,7 +311,6 @@ document.querySelectorAll('.tabs button').forEach(btn => {
 const esc = s => (s || '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-/* ===== Скелетоны: показываем сразу, до любого запроса ===== */
 function skeletonHtml() {
   return '<div class="skeleton-card">' +
     '<div class="skeleton-line"></div>' +
@@ -329,7 +325,6 @@ document.getElementById('restaurants-list').innerHTML = skeletonHtml() + skeleto
 document.getElementById('standards-list').innerHTML = skeletonHtml() + skeletonHtml();
 document.getElementById('faq-list').innerHTML = skeletonHtml() + skeletonHtml();
 
-/* ===== Экраны ошибок ===== */
 function blockedHtml() {
   return '<div class="blocked-screen">' +
     '<div class="big">🚫</div>' +
@@ -364,7 +359,6 @@ function renderNetErrorEverywhere() {
   document.getElementById('faq-list').innerHTML = msg;
 }
 
-/* ===== Данные пользователя Telegram ===== */
 function tgUserInfo() {
   try {
     if (!tg || !tg.initDataUnsafe) return null;
@@ -384,7 +378,6 @@ function initialFor(name) {
   return '👤';
 }
 
-/* Приветствие по времени суток */
 function greetingTexts() {
   const h = new Date().getHours();
   if (h >= 5 && h < 12) return { hello: 'Доброе утро', sub: 'Хорошего начала дня и лёгких смен ☀️' };
@@ -393,7 +386,6 @@ function greetingTexts() {
   return { hello: 'Доброй ночи', sub: 'Отдыхайте — завтра снова в бой 🌙' };
 }
 
-/* Запасной вариант: имя из профиля (первое слово ФИО) */
 function firstNameFromProfile(p) {
   if (p && p.first_name && p.first_name.trim()) return p.first_name.trim();
   if (p && p.full_name) {
@@ -403,23 +395,30 @@ function firstNameFromProfile(p) {
   return '';
 }
 
-/* Имя для обращения: сначала имя из Telegram, затем из профиля */
 function displayNameOf(p) {
   const u = tgUserInfo();
   if (u && u.first_name && u.first_name.trim()) return u.first_name.trim();
   return firstNameFromProfile(p);
 }
 
-/* ===== Аватар: грузим отдельно, после отрисовки карточки ===== */
 async function fillAvatar() {
   const el = document.querySelector('#profile-box .avatar');
   if (!el) return;
+
   const u = tgUserInfo();
   if (u && u.photo_url) {
     el.style.backgroundImage = "url('" + esc(u.photo_url) + "')";
     el.textContent = '';
     return;
   }
+
+  // FIX: переиспользуем закэшированный URL, не дёргаем /api/avatar повторно
+  if (cachedAvatarUrl) {
+    el.style.backgroundImage = "url('" + cachedAvatarUrl + "')";
+    el.textContent = '';
+    return;
+  }
+
   try {
     const resp = await fetch('/api/avatar', {
       method: 'POST',
@@ -429,14 +428,14 @@ async function fillAvatar() {
     if (resp.ok) {
       const blob = await resp.blob();
       if (blob.size > 0) {
-        el.style.backgroundImage = "url('" + URL.createObjectURL(blob) + "')";
+        cachedAvatarUrl = URL.createObjectURL(blob);
+        el.style.backgroundImage = "url('" + cachedAvatarUrl + "')";
         el.textContent = '';
       }
     }
   } catch (e) { /* остаётся буква */ }
 }
 
-/* ===== Профиль из данных бутстрапа ===== */
 function renderProfileFromBoot() {
   const box = document.getElementById('profile-box');
   const g = greetingTexts();
@@ -451,7 +450,6 @@ function renderProfileFromBoot() {
   const restBadge = isOffice ? 'office' : 'normal';
   const name = displayNameOf(p);
 
-  /* Поздравление уже в бутстрапе — отдельный запрос не нужен */
   const greet = BOOT.greeting;
   const greetHtml = (greet && greet.kind && greet.kind !== 'normal')
     ? '<div class="greet-banner ' + greet.kind + '">' +
@@ -476,15 +474,14 @@ function renderProfileFromBoot() {
     '<div class="info-row"><span class="ico">📍</span><span class="lbl">Ресторан</span>' +
     '<span class="val"><span class="badge-rest ' + restBadge + '">' + esc(p.restaurant) + '</span></span></div>' +
     '<div class="info-row"><span class="ico">📞</span><span class="lbl">Телефон</span>' +
-    '<span class="val"><a href="tel:' + esc(p.phone) + '">' + esc(p.phone) + '</a></span></div>' +
+    '<span class="val"><a href="tel:' + esc(p.phone || '') + '">' + esc(p.phone || '—') + '</a></span></div>' +
     '<div class="info-row"><span class="ico">🎂</span><span class="lbl">Дата рождения</span>' +
-    '<span class="val">' + esc(p.birth_date) + '</span></div>' +
+    '<span class="val">' + esc(p.birth_date || '—') + '</span></div>' +
     '</div>' +
     '<div class="profile-footer">💡 Изменить данные можно только через администратора. ' +
     '<button id="btn-report-error">Сообщить об ошибке</button></div>' +
     '</div>';
 
-  /* Аватар — после отрисовки карточки, чтобы не мешал появлению текста */
   setTimeout(fillAvatar, 250);
 
   document.getElementById('btn-report-error').addEventListener('click', async () => {
@@ -496,17 +493,22 @@ function renderProfileFromBoot() {
         body: JSON.stringify({ initData: getInitData(), question: text })
       });
       if (r.ok) {
-        alert('Сообщение отправлено администратору.');
+        showAlert('Сообщение отправлено администратору.');
+      } else if (r.status === 429) {
+        showAlert('Слишком часто. Подожди минуту и попробуй снова.');
+      } else if (r.status === 401) {
+        showAlert('Ошибка авторизации. Открой приложение заново из бота.');
+      } else if (r.status === 403) {
+        showAlert('Доступ ограничен администратором.');
       } else {
-        alert('Не удалось отправить сообщение.');
+        showAlert('Не удалось отправить сообщение.');
       }
     } catch (e) {
-      alert('Ошибка сети');
+      showAlert('Ошибка сети');
     }
   });
 }
 
-/* ===== Рестораны: поиск + сортировка ===== */
 function prepareRestaurants(list) {
   return list.map(r => {
     const copy = Object.assign({}, r);
@@ -535,14 +537,11 @@ function renderRestaurantsList(list, query) {
     ? list.filter(r => r._search.indexOf(q) !== -1)
     : list;
 
-  /* Открытые сверху, потом закрытые; внутри групп — по sort, затем по названию */
   filtered.sort((a, b) => {
     const aOpen = a.status === 'open';
     const bOpen = b.status === 'open';
-
     if (aOpen && !bOpen) return -1;
     if (!aOpen && bOpen) return 1;
-
     if (a.sort !== b.sort) return a.sort - b.sort;
     return a.name.localeCompare(b.name);
   });
@@ -572,7 +571,8 @@ function renderRestaurantsList(list, query) {
       '</div>' +
       '<div class="rest-meta">' +
       '<div class="addr">📍 ' + esc(r.address) + '</div>' +
-      '<div class="rest-hours">🕒 ' + esc(r.hours).replaceAll('\n', ' · ') + '</div>' +
+      // FIX: replaceAll → replace(/\n/g)
+      '<div class="rest-hours">🕒 ' + esc(r.hours).replace(/\n/g, ' · ') + '</div>' +
       '</div>' +
       '<div class="rest-actions">' +
       '<a href="' + mapUrlFor(r) + '" target="_blank"><span class="btn-map">🗺 На Яндекс Картах</span></a>' +
@@ -591,8 +591,6 @@ document.getElementById('rest-search').addEventListener('input', e => {
   renderRestaurantsList(BOOT.restaurants, e.target.value);
 });
 
-/* ===== Карточка одного ресторана (глубокая ссылка ?rest=…) ===== */
-
 function renderDetail(r) {
   document.getElementById('detail-box').innerHTML =
     '<div class="detail-hero">' +
@@ -602,14 +600,15 @@ function renderDetail(r) {
     '</div>' +
     '<div class="detail-card">' +
     '<div class="row"><div class="lbl">Адрес</div>📍 ' + esc(r.address) + '</div>' +
-    '<div class="row"><div class="lbl">Часы работы</div>🕒 ' + esc(r.hours).replaceAll('\n', '<br>') + '</div>' +
+    // FIX: replaceAll → replace(/\n/g)
+    '<div class="row"><div class="lbl">Часы работы</div>🕒 ' + esc(r.hours).replace(/\n/g, '<br>') + '</div>' +
     '<div class="detail-actions">' +
     '<a href="' + mapUrlFor(r) + '" target="_blank"><span class="btn-map">🗺 На Яндекс Картах</span></a>' +
     '</div>' +
     '</div>';
 }
 
-function showDetail(key) {
+function showDetail(key, pushHistory) {
   const section = document.getElementById('sec-detail');
   const box = document.getElementById('detail-box');
   const list = BOOT ? BOOT.restaurants : [];
@@ -623,23 +622,42 @@ function showDetail(key) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   section.classList.add('active');
   window.scrollTo(0, 0);
+
+  // FIX: чтобы кнопка «Назад» в Telegram возвращала на список
+  if (pushHistory) {
+    try {
+      history.pushState({rest: key}, '', '?rest=' + encodeURIComponent(key));
+    } catch (e) { /* некоторые WebView не поддерживают pushState — не критично */ }
+  }
 }
 
 function exitDetailView() {
   document.querySelector('.tabs').style.display = 'flex';
 }
 
-document.getElementById('detail-back').addEventListener('click', () => {
-  history.replaceState(null, '', location.pathname);
-  exitDetailView();
+function goToRestaurantsTab() {
   document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
   document.querySelector('.tabs button[data-sec="sec-restaurants"]').classList.add('active');
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.getElementById('sec-restaurants').classList.add('active');
   renderRestaurants();
+}
+
+document.getElementById('detail-back').addEventListener('click', () => {
+  try { history.replaceState(null, '', location.pathname); } catch (e) {}
+  exitDetailView();
+  goToRestaurantsTab();
 });
 
-/* ===== Новости из данных бутстрапа ===== */
+// FIX: обработка системной кнопки «Назад»
+window.addEventListener('popstate', () => {
+  const params = new URLSearchParams(location.search);
+  if (!params.get('rest')) {
+    exitDetailView();
+    goToRestaurantsTab();
+  }
+});
+
 function renderNewsFromBoot() {
   const box = document.getElementById('news-list');
   const list = BOOT.news || [];
@@ -657,10 +675,14 @@ function renderNewsFromBoot() {
   }).join('');
 }
 
-/* ===== Стандарты из данных бутстрапа ===== */
 function renderStandardsFromBoot() {
   const box = document.getElementById('standards-list');
   const list = BOOT.standards || [];
+  // FIX: пустое состояние
+  if (!list.length) {
+    box.innerHTML = '<div class="card">Пока стандартов нет 📚</div>';
+    return;
+  }
   box.innerHTML = list.map(s =>
     '<div class="card">' +
     '<b>' + esc(s.title) + '</b>' +
@@ -671,10 +693,14 @@ function renderStandardsFromBoot() {
   ).join('');
 }
 
-/* ===== Вопросы/ответы из данных бутстрапа ===== */
 function renderFaqFromBoot() {
   const box = document.getElementById('faq-list');
   const list = BOOT.faq || [];
+  // FIX: пустое состояние
+  if (!list.length) {
+    box.innerHTML = '<div class="card">Пока вопросов нет ❓</div>';
+    return;
+  }
   box.innerHTML = list.map(f =>
     '<details>' +
     '<summary>' + esc(f.question) + '</summary>' +
@@ -683,11 +709,17 @@ function renderFaqFromBoot() {
   ).join('');
 }
 
-/* ===== Отправка вопроса ===== */
 document.getElementById('send-question').addEventListener('click', async () => {
   const input = document.getElementById('question-input');
   const text = input.value.trim();
   if (!text) return;
+
+  // FIX: проверка длины до запроса
+  if (text.length > 1000) {
+    showAlert('Слишком длинный вопрос (максимум 1000 символов).');
+    return;
+  }
+
   try {
     const resp = await fetch('/api/questions', {
       method: 'POST',
@@ -696,20 +728,22 @@ document.getElementById('send-question').addEventListener('click', async () => {
     });
     if (resp.ok) {
       input.value = '';
-      alert('Вопрос отправлен! Ответ увидишь в боте.');
+      showAlert('Вопрос отправлен! Ответ увидишь в боте.');
+    } else if (resp.status === 429) {
+      // FIX: отдельная обработка rate-limit
+      showAlert('Слишком часто. Подожди минуту и попробуй снова.');
     } else if (resp.status === 403) {
-      alert('Доступ ограничен администратором.');
+      showAlert('Доступ ограничен администратором.');
     } else if (resp.status === 401) {
-      alert('Ошибка авторизации. Закрой приложение и открой заново из бота.');
+      showAlert('Ошибка авторизации. Закрой приложение и открой заново из бота.');
     } else {
-      alert('Не удалось отправить вопрос. Попробуй позже.');
+      showAlert('Не удалось отправить вопрос. Попробуй позже.');
     }
   } catch (e) {
-    alert('Ошибка сети');
+    showAlert('Ошибка сети');
   }
 });
 
-/* ===== Обновление одной вкладки через старый эндпоинт ===== */
 async function refreshSection(sec) {
   const map = {
     'sec-news': '/api/news',
@@ -725,6 +759,8 @@ async function refreshSection(sec) {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ initData: getInitData() })
     });
+    // FIX: 401 теперь значит «auth_date протух» (24ч) — надо переоткрыть приложение
+    if (resp.status === 401) { renderAuthErrorEverywhere(); return; }
     if (resp.status === 403) { renderBlockedEverywhere(); return; }
     if (!resp.ok) return;
     const data = await resp.json();
@@ -745,14 +781,12 @@ async function refreshSection(sec) {
   } catch (e) { /* остаёмся на кэшированных данных */ }
 }
 
-/* При переключении вкладки данные обновляются в фоне, не блокируя показ */
 document.querySelectorAll('.tabs button').forEach(btn => {
   btn.addEventListener('click', () => {
     if (BOOT) refreshSection(btn.dataset.sec);
   });
 });
 
-/* ===== Старт ===== */
 async function boot() {
   const restKey = new URLSearchParams(location.search).get('rest');
   try {
@@ -772,22 +806,19 @@ async function boot() {
     return;
   }
 
-  /* Отрисовываем все разделы из полученных данных — мгновенно, без доп. запросов */
   renderProfileFromBoot();
   renderNewsFromBoot();
   renderRestaurants();
   renderStandardsFromBoot();
   renderFaqFromBoot();
 
-  /* Глубокая ссылка из бота: карточка ресторана важнее стартовой вкладки */
   if (restKey) {
-    showDetail(restKey);
+    // Не пушим историю — эта запись уже в URL
+    showDetail(restKey, false);
   }
 }
 
 function startWhenReady() {
-  /* initData в Telegram доступен почти сразу — если он уже есть, стартуем мгновенно.
-     Если ещё нет, ждём максимум 1,5 с — и всё равно стартуем, чтобы не «висеть». */
   if (getInitData()) { boot(); return; }
   let waited = 0;
   const timer = setInterval(() => {

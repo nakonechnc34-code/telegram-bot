@@ -7,14 +7,12 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   :root {
-    /* Автоматические цвета из темы Telegram (с фоллбеками) */
     --bg: var(--tg-theme-bg-color, #f2f2f7);
     --card-bg: var(--tg-theme-secondary-bg-color, #ffffff);
     --text-color: var(--tg-theme-text-color, #000000);
     --hint-color: var(--tg-theme-hint-color, #8e8e93);
     --accent: var(--tg-theme-button-color, #ff2d55);
     --accent-text: var(--tg-theme-button-text-color, #ffffff);
-    --separator: var(--tg-theme-section-separator-color, rgba(0,0,0,0.06));
     
     --blue: #ff2d55;
     --green: #34c759;
@@ -42,7 +40,6 @@
     padding: 16px; 
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
     border: 1px solid rgba(128, 128, 128, 0.08);
-    transition: background 0.25s ease;
   }
   .card b { display: block; margin-bottom: 6px; font-size: 16px; color: var(--text-color); }
   .card div { line-height: 1.5; font-size: 14px; color: var(--text-color); }
@@ -72,13 +69,13 @@
     padding: 6px;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
     z-index: 100;
-    transition: background 0.25s ease;
   }
 
   .tabs button {
     flex: 1; border: 0; background: none; padding: 8px 2px 6px;
     font-size: 10px; font-weight: 500; color: var(--hint-color); border-radius: 20px;
     transition: color .2s ease, background .25s ease, transform .2s ease;
+    position: relative;
   }
   .tabs button:active { transform: scale(0.92); }
   .tabs button.active {
@@ -94,6 +91,20 @@
   .tabs button.active .tab-icon { transform: translateY(-2px) scale(1.12); }
   .tabs .tab-icon svg { width: 22px; height: 22px; display: block; }
 
+  /* Бейдж непрочитанных новостей */
+  .badge-dot {
+    position: absolute;
+    top: 6px;
+    right: 28%;
+    width: 8px;
+    height: 8px;
+    background: var(--blue);
+    border-radius: 50%;
+    border: 1.5px solid var(--card-bg);
+    display: none;
+  }
+  .badge-dot.show { display: block; }
+
   .section { display: none; opacity: 0; transform: translateY(6px); transition: opacity 0.25s ease, transform 0.25s ease; }
   .section.active { display: block; opacity: 1; transform: translateY(0); }
 
@@ -103,6 +114,34 @@
     transition: border-color 0.2s ease;
   }
   .q:focus { border-color: var(--beige); }
+
+  /* Чипсы-фильтры категорий */
+  .chips-container {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 0 12px 12px;
+    scrollbar-width: none;
+  }
+  .chips-container::-webkit-scrollbar { display: none; }
+  .chip {
+    padding: 6px 14px;
+    background: var(--card-bg);
+    border: 1px solid rgba(128,128,128,0.2);
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-color);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .chip.active {
+    background: var(--beige);
+    color: #fff;
+    border-color: var(--beige);
+    font-weight: 600;
+  }
 
   details { background: var(--card-bg); border-radius: 16px; margin: 0 12px 10px; padding: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.03); border: 1px solid rgba(128,128,128,0.08); }
   summary { font-weight: 600; cursor: pointer; color: var(--text-color); }
@@ -182,10 +221,11 @@
 
   .rest-card { background: var(--card-bg); border-radius: 18px; margin: 8px 12px 12px;
     padding: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.04); border: 1px solid rgba(128,128,128,0.08); cursor: pointer; 
-    transition: transform 0.15s ease; }
+    transition: transform 0.15s ease; position: relative; }
   .rest-card:active { transform: scale(0.98); }
-  .rest-card.rest-card-closed { opacity: 0.88; }
-  
+  .rest-card.is-my-rest { border: 2px solid var(--beige); }
+  .my-rest-tag { position: absolute; top: 12px; right: 16px; font-size: 11px; background: var(--beige-soft); color: var(--beige-dark); padding: 2px 8px; border-radius: 8px; font-weight: 600; }
+
   .rest-head { display: flex; align-items: center; gap: 14px; }
   .rest-logo { width: 48px; height: 48px; border-radius: 14px; flex-shrink: 0;
     background: linear-gradient(135deg, var(--beige-soft), #f1e6d2);
@@ -209,6 +249,15 @@
     font-size: 14px; font-weight: 600; text-align: center; text-decoration: none; 
     transition: background 0.2s ease, color 0.2s ease; }
   .btn-map:active { background: var(--map-border); color: #fff; }
+
+  /* Чек-лист смены */
+  .checklist-card { background: var(--card-bg); border-radius: 18px; margin: 12px; padding: 16px; border: 1px solid rgba(128,128,128,0.08); }
+  .check-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(128,128,128,0.08); cursor: pointer; }
+  .check-item:last-child { border-bottom: 0; }
+  .check-box { width: 22px; height: 22px; border-radius: 6px; border: 2px solid var(--beige); display: flex; align-items: center; justify-content: center; transition: background 0.2s; }
+  .check-item.checked .check-box { background: var(--green); border-color: var(--green); color: #fff; }
+  .check-item.checked .check-text { text-decoration: line-through; opacity: 0.6; }
+  .check-text { font-size: 14px; font-weight: 500; color: var(--text-color); }
 
   .no-results { text-align: center; color: var(--hint-color); padding: 40px 12px; }
 
@@ -247,6 +296,10 @@
 
 <div class="section" id="sec-profile">
   <div id="profile-box"></div>
+  <div class="checklist-card">
+    <b style="margin-bottom: 12px;">📋 Чек-лист открытия смены</b>
+    <div id="shift-checklist"></div>
+  </div>
 </div>
 
 <div class="section" id="sec-restaurants">
@@ -264,6 +317,10 @@
 </div>
 
 <div class="section" id="sec-standards">
+  <input class="q" id="standard-search" placeholder="🔍 Поиск по стандартам…">
+  <div class="chips-container" id="standards-chips">
+    <div class="chip active" data-cat="all">Все</div>
+  </div>
   <div id="standards-list"></div>
 </div>
 
@@ -310,6 +367,7 @@
       </svg>
     </span>
     Новости
+    <span class="badge-dot" id="news-badge"></span>
   </button>
   <button data-sec="sec-standards">
     <span class="tab-icon">
@@ -337,7 +395,6 @@ const tg = window.Telegram ? window.Telegram.WebApp : null;
 if (tg) {
   tg.ready();
   tg.expand();
-  // Устанавливаем цвета интерфейса Telegram в тон фону приложения
   try {
     if (tg.setHeaderColor) tg.setHeaderColor('secondary_bg_color');
     if (tg.setBackgroundColor) tg.setBackgroundColor('bg_color');
@@ -363,11 +420,12 @@ function showAlert(msg) {
 
 let cachedAvatarUrl = null;
 let BOOT = null;
+let currentStandardCat = 'all';
 
 const sectionLoaders = {
   'sec-profile': () => { if (BOOT) renderProfileFromBoot(); },
   'sec-restaurants': () => { if (BOOT) renderRestaurants(); },
-  'sec-news': () => { if (BOOT) renderNewsFromBoot(); },
+  'sec-news': () => { if (BOOT) { renderNewsFromBoot(); markNewsAsRead(); } },
   'sec-standards': () => { if (BOOT) renderStandardsFromBoot(); },
   'sec-faq': () => { if (BOOT) renderFaqFromBoot(); },
 };
@@ -581,23 +639,51 @@ function renderProfileFromBoot() {
     haptic('medium');
     if (btnReport.disabled) return;
     btnReport.disabled = true;
-    const text = 'Ошибка в данных профиля: прошу проверить и скорректировать.';
     try {
       const r = await fetch('/api/questions', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ initData: getInitData(), question: text })
+        body: JSON.stringify({ initData: getInitData(), question: 'Ошибка в данных профиля: прошу проверить и скорректировать.' })
       });
-      if (r.ok) {
-        showAlert('Сообщение отправлено администратору.');
-      } else {
-        showAlert('Не удалось отправить сообщение.');
-      }
-    } catch (e) {
-      showAlert('Ошибка сети');
-    } finally {
-      btnReport.disabled = false;
-    }
+      if (r.ok) showAlert('Сообщение отправлено администратору.');
+      else showAlert('Не удалось отправить сообщение.');
+    } catch (e) { showAlert('Ошибка сети'); }
+    finally { btnReport.disabled = false; }
+  });
+
+  renderShiftChecklist();
+}
+
+/* Интерактивный чек-лист смены */
+function renderShiftChecklist() {
+  const container = document.getElementById('shift-checklist');
+  const tasks = [
+    { id: 't1', text: 'Проверить чистоту рабочей зоны и форму' },
+    { id: 't2', text: 'Убедиться в корректности цен и меню' },
+    { id: 't3', text: 'Проверить наличие необходимых упаковок и сырья' },
+    { id: 't4', text: 'Синхронизироваться с командой на смене' }
+  ];
+
+  const todayKey = 'wokker_checklist_' + new Date().toISOString().slice(0, 10);
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(todayKey) || '{}'); } catch(e){}
+
+  container.innerHTML = tasks.map(t => {
+    const isDone = !!saved[t.id];
+    return '<div class="check-item ' + (isDone ? 'checked' : '') + '" data-id="' + t.id + '">' +
+      '<div class="check-box">' + (isDone ? '✓' : '') + '</div>' +
+      '<div class="check-text">' + esc(t.text) + '</div>' +
+      '</div>';
+  }).join('');
+
+  container.querySelectorAll('.check-item').forEach(item => {
+    item.addEventListener('click', () => {
+      haptic('light');
+      const id = item.dataset.id;
+      saved[id] = !saved[id];
+      try { localStorage.setItem(todayKey, JSON.stringify(saved)); } catch(e){}
+      renderShiftChecklist();
+    });
   });
 }
 
@@ -623,6 +709,7 @@ function statusBadge(r, cls) {
 function renderRestaurantsList(list, query) {
   const box = document.getElementById('restaurants-list');
   const countEl = document.getElementById('rest-count');
+  const myRestName = (BOOT && BOOT.profile) ? BOOT.profile.restaurant : '';
 
   const q = (query || '').trim().toLowerCase();
   const filtered = q
@@ -630,11 +717,15 @@ function renderRestaurantsList(list, query) {
     : list.slice();
 
   filtered.sort((a, b) => {
+    const aIsMy = myRestName && a.name.toLowerCase().includes(myRestName.toLowerCase());
+    const bIsMy = myRestName && b.name.toLowerCase().includes(myRestName.toLowerCase());
+    if (aIsMy && !bIsMy) return -1;
+    if (!aIsMy && bIsMy) return 1;
+
     const aOpen = a.status === 'open';
     const bOpen = b.status === 'open';
     if (aOpen && !bOpen) return -1;
     if (!aOpen && bOpen) return 1;
-    if (a.sort !== b.sort) return a.sort - b.sort;
     return a.name.localeCompare(b.name);
   });
 
@@ -653,7 +744,9 @@ function renderRestaurantsList(list, query) {
   }
 
   box.innerHTML = filtered.map(r => {
-    return '<div class="rest-card ' + (r.status !== 'open' ? 'rest-card-closed' : '') + '" data-key="' + esc(r.key) + '">' +
+    const isMy = myRestName && r.name.toLowerCase().includes(myRestName.toLowerCase());
+    return '<div class="rest-card ' + (r.status !== 'open' ? 'rest-card-closed' : '') + (isMy ? ' is-my-rest' : '') + '" data-key="' + esc(r.key) + '">' +
+      (isMy ? '<div class="my-rest-tag">⭐ Ваш ресторан</div>' : '') +
       '<div class="rest-head">' +
       '<div class="rest-logo">🍜</div>' +
       '<div class="rest-head-main">' +
@@ -722,9 +815,7 @@ function showDetail(key, pushHistory) {
   window.scrollTo(0, 0);
 
   if (pushHistory) {
-    try {
-      history.pushState({rest: key}, '', '?rest=' + encodeURIComponent(key));
-    } catch (e) {}
+    try { history.pushState({rest: key}, '', '?rest=' + encodeURIComponent(key)); } catch (e) {}
   }
 }
 
@@ -755,6 +846,28 @@ window.addEventListener('popstate', () => {
   }
 });
 
+/* Проверка и отображение бейджа новостей */
+function checkNewsBadge() {
+  const list = BOOT ? BOOT.news || [] : [];
+  if (!list.length) return;
+  const latestId = list[0].id || list[0].date;
+  const lastRead = localStorage.getItem('wokker_last_read_news');
+  const badge = document.getElementById('news-badge');
+  if (lastRead !== String(latestId)) {
+    badge.classList.add('show');
+  } else {
+    badge.classList.remove('show');
+  }
+}
+
+function markNewsAsRead() {
+  const list = BOOT ? BOOT.news || [] : [];
+  if (!list.length) return;
+  const latestId = list[0].id || list[0].date;
+  localStorage.setItem('wokker_last_read_news', String(latestId));
+  document.getElementById('news-badge').classList.remove('show');
+}
+
 function renderNewsFromBoot() {
   const box = document.getElementById('news-list');
   const list = BOOT.news || [];
@@ -772,22 +885,58 @@ function renderNewsFromBoot() {
   }).join('');
 }
 
+/* Стандарты с поиском и фильтрацией по категориям */
+function renderStandardsChips(standards) {
+  const container = document.getElementById('standards-chips');
+  const cats = ['all', ...new Set(standards.map(s => s.category).filter(Boolean))];
+  
+  container.innerHTML = cats.map(cat => {
+    const label = cat === 'all' ? 'Все' : cat;
+    const active = currentStandardCat === cat ? ' active' : '';
+    return '<div class="chip' + active + '" data-cat="' + esc(cat) + '">' + esc(label) + '</div>';
+  }).join('');
+
+  container.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      haptic('light');
+      currentStandardCat = chip.dataset.cat;
+      renderStandardsChips(standards);
+      renderStandardsFromBoot();
+    });
+  });
+}
+
 function renderStandardsFromBoot() {
   const box = document.getElementById('standards-list');
   const list = BOOT.standards || [];
-  if (!list.length) {
-    box.innerHTML = '<div class="card">Пока стандартов нет 📚</div>';
+  renderStandardsChips(list);
+
+  const query = (document.getElementById('standard-search').value || '').trim().toLowerCase();
+
+  const filtered = list.filter(s => {
+    const matchCat = currentStandardCat === 'all' || s.category === currentStandardCat;
+    const matchQuery = !query || (s.title + ' ' + s.description + ' ' + s.category).toLowerCase().indexOf(query) !== -1;
+    return matchCat && matchQuery;
+  });
+
+  if (!filtered.length) {
+    box.innerHTML = '<div class="card">Ничего не найдено по вашему запросу 📚</div>';
     return;
   }
-  box.innerHTML = list.map(s =>
+
+  box.innerHTML = filtered.map(s =>
     '<div class="card">' +
     '<b>' + esc(s.title) + '</b>' +
     '<div class="muted">' + esc(s.category) + '</div>' +
     '<div style="margin-top:6px">' + esc(s.description) + '</div>' +
-    (s.url ? '<a href="' + esc(s.url) + '" target="_blank"><button class="btn">Открыть</button></a>' : '') +
+    (s.url ? '<a href="' + esc(s.url) + '" target="_blank"><button class="btn">Открыть документ</button></a>' : '') +
     '</div>'
   ).join('');
 }
+
+document.getElementById('standard-search').addEventListener('input', () => {
+  if (BOOT) renderStandardsFromBoot();
+});
 
 function renderFaqFromBoot() {
   const box = document.getElementById('faq-list');
@@ -825,7 +974,7 @@ document.getElementById('send-question').addEventListener('click', async functio
       body: JSON.stringify({ initData: getInitData(), question: text })
     });
     if (resp.ok) {
-      input.value = 'ʽ';
+      input.value = '';
       showAlert('Вопрос отправлен! Ответ увидишь в боте.');
     } else if (resp.status === 429) {
       showAlert('Слишком часто. Подожди минуту и попробуй снова.');
@@ -865,7 +1014,7 @@ async function refreshSection(sec) {
     if (!resp.ok) return;
     const data = await resp.json();
 
-    if (sec === 'sec-news') { BOOT.news = data; renderNewsFromBoot(); }
+    if (sec === 'sec-news') { BOOT.news = data; renderNewsFromBoot(); checkNewsBadge(); }
     else if (sec === 'sec-restaurants') { BOOT.restaurants = prepareRestaurants(data); renderRestaurants(); }
     else if (sec === 'sec-standards') { BOOT.standards = data; renderStandardsFromBoot(); }
     else if (sec === 'sec-faq') { BOOT.faq = data; renderFaqFromBoot(); }
@@ -898,12 +1047,12 @@ async function boot() {
     BOOT = await resp.json();
     if (BOOT.restaurants) BOOT.restaurants = prepareRestaurants(BOOT.restaurants);
   } catch (e) {
-    renderNetErrorEverywhere();
-    return;
+    renderNetErrorEverysystem: return;
   }
 
   renderProfileFromBoot();
   renderNewsFromBoot();
+  checkNewsBadge();
   renderRestaurants();
   renderStandardsFromBoot();
   renderFaqFromBoot();

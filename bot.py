@@ -14,11 +14,12 @@ from contextlib import contextmanager
 from urllib.parse import unquote
 
 from aiohttp import web
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, Router, BaseMiddleware, types
 from aiogram.exceptions import TelegramRetryAfter, TelegramForbiddenError
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -56,6 +57,24 @@ if not DB_URL:
     raise ValueError("DATABASE_URL is not set")
 
 MINI_APP_URL = os.getenv("MINI_APP_URL", "https://ВАШ-ДОМЕН.amvera.io")
+
+
+# ================== FSM STORAGE: Redis или Memory ==================
+
+REDIS_URL = os.getenv("REDIS_URL", "").strip()
+
+if REDIS_URL:
+    try:
+        from aiogram.fsm.storage.redis import RedisStorage
+        fsm_storage = RedisStorage.from_url(REDIS_URL)
+        print(f"FSM: Redis storage ({REDIS_URL.split('@')[-1] if '@' in REDIS_URL else REDIS_URL})")
+    except Exception as e:
+        print(f"⚠ Не удалось подключить Redis ({e}), fallback на MemoryStorage")
+        fsm_storage = MemoryStorage()
+else:
+    fsm_storage = MemoryStorage()
+    print("⚠ FSM: MemoryStorage — данные FSM не переживут рестарт сервера. "
+          "Задай REDIS_URL для устойчивого хранения.")
 
 
 # ================== ПУЛ СОЕДИНЕНИЙ ==================
@@ -139,11 +158,8 @@ with get_conn() as conn:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id BIGINT PRIMARY KEY,
-                full_name TEXT,
-                phone TEXT,
-                birth_date TEXT,
-                position TEXT,
-                restaurant TEXT,
+                full_name TEXT, phone TEXT, birth_date TEXT,
+                position TEXT, restaurant TEXT,
                 welcomed BOOLEAN DEFAULT FALSE,
                 is_blocked BOOLEAN DEFAULT FALSE
             )
@@ -152,7 +168,6 @@ with get_conn() as conn:
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS restaurant TEXT")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT")
-        # НОВОЕ: отметки блокировки ботом и активности
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS bot_blocked BOOLEAN DEFAULT FALSE")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ")
@@ -179,6 +194,10 @@ with get_conn() as conn:
             )
         """)
         cur.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS level TEXT DEFAULT 'normal'")
+        # Scheduled publish
+        cur.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS publish_at TIMESTAMPTZ DEFAULT NOW()")
+        cur.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS published BOOLEAN DEFAULT TRUE")
+        cur.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS auto_broadcast BOOLEAN DEFAULT FALSE")
 
         cur.execute("""
             CREATE TABLE IF NOT EXISTS restaurants (
@@ -214,8 +233,6 @@ with get_conn() as conn:
                 kind TEXT, year INT, PRIMARY KEY (kind, year)
             )
         """)
-
-        # НОВОЕ: должности
         cur.execute("""
             CREATE TABLE IF NOT EXISTS positions (
                 id SERIAL PRIMARY KEY,
@@ -224,27 +241,20 @@ with get_conn() as conn:
                 is_archived BOOLEAN DEFAULT FALSE
             )
         """)
-
-        # НОВОЕ: аудит действий админа
         cur.execute("""
             CREATE TABLE IF NOT EXISTS admin_audit (
                 id SERIAL PRIMARY KEY,
-                admin_id BIGINT,
-                action TEXT,
-                target_type TEXT,
-                target_id TEXT,
-                details TEXT,
+                admin_id BIGINT, action TEXT,
+                target_type TEXT, target_id TEXT, details TEXT,
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )
         """)
         cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_created ON admin_audit (created_at DESC)")
-
-        # Индексы
         cur.execute("CREATE INDEX IF NOT EXISTS idx_users_blocked ON users (is_blocked)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_users_bot_blocked ON users (bot_blocked)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_news_created ON news (created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_news_publish ON news (published, publish_at)")
 
-        # Seed
         cur.execute("SELECT COUNT(*) FROM news")
         if cur.fetchone()[0] == 0:
             cur.execute("INSERT INTO news (title, body, important, level) VALUES (%s, %s, %s, %s)",
@@ -538,14 +548,21 @@ def _sync_get_report_stats():
             "date": _moscow_now().strftime("%d.%m.%Y %H:%M")}
 
 
-def _sync_db_add_news(title, body, level):
+def _sync_db_add_news(title, body, level, publish_at=None):
     if level not in ("urgent", "important", "normal"):
         level = "normal"
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO news (title, body, important, level) VALUES (%s, %s, %s, %s) RETURNING id",
-                (title, body, level != "normal", level))
+            if publish_at:
+                cur.execute(
+                    "INSERT INTO news (title, body, important, level, published, publish_at, auto_broadcast) "
+                    "VALUES (%s, %s, %s, %s, FALSE, %s, TRUE) RETURNING id",
+                    (title, body, level != "normal", level, publish_at))
+            else:
+                cur.execute(
+                    "INSERT INTO news (title, body, important, level, published, publish_at) "
+                    "VALUES (%s, %s, %s, %s, TRUE, NOW()) RETURNING id",
+                    (title, body, level != "normal", level))
             return cur.fetchone()[0]
 
 
@@ -553,6 +570,14 @@ def _sync_db_list_news():
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id, title, body, important, level, created_at "
+                        "FROM news WHERE published = TRUE ORDER BY created_at DESC, id DESC")
+            return cur.fetchall()
+
+
+def _sync_db_list_news_admin():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, title, body, important, level, created_at, published, publish_at "
                         "FROM news ORDER BY created_at DESC, id DESC")
             return cur.fetchall()
 
@@ -569,6 +594,17 @@ def _sync_db_delete_news(news_id):
         with conn.cursor() as cur:
             cur.execute("DELETE FROM news WHERE id = %s", (news_id,))
             return cur.rowcount > 0
+
+
+def _sync_db_publish_due():
+    """Атомарно публикует все наступившие отложенные новости и возвращает их."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE news SET published = TRUE "
+                "WHERE NOT published AND publish_at <= NOW() "
+                "RETURNING id, title, body, level, auto_broadcast")
+            return cur.fetchall()
 
 
 def _sync_db_list_standards():
@@ -700,8 +736,6 @@ def _sync_db_mark_holiday_broadcast(kind, year):
                         (kind, year))
 
 
-# --- НОВОЕ: должности ---
-
 def _sync_db_positions_list(include_archived=False):
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -732,8 +766,6 @@ def _sync_db_position_archive(pid):
             return cur.rowcount > 0
 
 
-# --- НОВОЕ: аудит ---
-
 def _sync_db_audit(admin_id, action, target_type="", target_id="", details=""):
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -743,7 +775,7 @@ def _sync_db_audit(admin_id, action, target_type="", target_id="", details=""):
                 (admin_id, action, target_type, str(target_id), details))
 
 
-def _sync_db_audit_list(limit=100):
+def _sync_db_audit_list(limit=200):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id, admin_id, action, target_type, target_id, details, created_at "
@@ -774,10 +806,12 @@ async def db_set_blocked(uid, b): return await _run(_sync_db_set_blocked, uid, b
 async def db_mark_bot_blocked(uid): return await _run(_sync_db_mark_bot_blocked, uid)
 async def db_mark_seen(uid): return await _run(_sync_db_mark_seen, uid)
 async def get_report_stats(): return await _run(_sync_get_report_stats)
-async def db_add_news(t, b, l): return await _run(_sync_db_add_news, t, b, l)
+async def db_add_news(t, b, l, publish_at=None): return await _run(_sync_db_add_news, t, b, l, publish_at)
 async def db_list_news(): return await _run(_sync_db_list_news)
+async def db_list_news_admin(): return await _run(_sync_db_list_news_admin)
 async def db_get_news(nid): return await _run(_sync_db_get_news, nid)
 async def db_delete_news(nid): return await _run(_sync_db_delete_news, nid)
+async def db_publish_due(): return await _run(_sync_db_publish_due)
 async def db_list_standards(): return await _run(_sync_db_list_standards)
 async def db_add_standard(*a, **kw): return await _run(_sync_db_add_standard, *a, **kw)
 async def db_delete_standard(sid): return await _run(_sync_db_delete_standard, sid)
@@ -805,67 +839,6 @@ async def db_audit(admin_id, action, tt="", ti="", details=""):
 async def db_audit_list(limit=100): return await _run(_sync_db_audit_list, limit)
 
 
-# ================== ФОНОВЫЕ ПРОЦЕССЫ ==================
-
-async def birthday_checker():
-    while True:
-        try:
-            now = _moscow_now()
-            year = now.year
-            today_md = f"{now.day:02d}.{now.month:02d}"
-            for user_id in await db_list_active_users():
-                row = await db_get(user_id)
-                if not row or not row[2]:
-                    continue
-                if row[2][:5] == today_md and not await db_already_greeted(user_id, "birthday", year):
-                    name = await db_get_first_name(user_id)
-                    if not name:
-                        name = (row[0] or "").split()[0] if row[0] else "коллега"
-                    try:
-                        await bot.send_message(
-                            user_id,
-                            f"🎂 <b>{name}, с Днём рождения!</b>\n\n"
-                            "Команда Wokker поздравляет тебя! Пусть год будет лёгким, "
-                            "смены — удачными, а гости — благодарными.\n"
-                            "Хорошего праздника! 🥳",
-                            parse_mode="HTML")
-                        await db_mark_greeted(user_id, "birthday", year)
-                    except TelegramForbiddenError:
-                        await db_mark_bot_blocked(user_id)
-                    except Exception as e:
-                        logging.warning(f"birthday {user_id}: {e}")
-        except Exception as e:
-            logging.error(f"birthday_checker: {e}")
-        await asyncio.sleep(3600)
-
-
-async def holiday_broadcaster():
-    while True:
-        try:
-            now = _moscow_now()
-            hol = HOLIDAYS.get((now.month, now.day))
-            if hol:
-                kind = f"holiday:{now.month:02d}-{now.day:02d}"
-                if not await db_holiday_broadcast_done(kind, now.year):
-                    title, text = hol
-                    sent = 0
-                    for user_id in await db_list_active_users():
-                        try:
-                            name = await db_get_first_name(user_id) or "коллега"
-                            await bot.send_message(user_id, f"{title}\n\n{name}, {text}")
-                            sent += 1
-                        except TelegramForbiddenError:
-                            await db_mark_bot_blocked(user_id)
-                        except Exception:
-                            pass
-                        await asyncio.sleep(0.05)
-                    await db_mark_holiday_broadcast(kind, now.year)
-                    logging.info(f"holiday {kind}: {sent}")
-        except Exception as e:
-            logging.error(f"holiday_broadcaster: {e}")
-        await asyncio.sleep(3600)
-
-
 # ================== СТАТУС РЕСТОРАНОВ ==================
 
 DAY_MAP = {"пн": 0, "вт": 1, "ср": 2, "чт": 3, "пт": 4, "сб": 5, "вс": 6}
@@ -881,7 +854,6 @@ def invalidate_rest_cache():
 
 
 def validate_hours_schedule(text):
-    """Все временные диапазоны в тексте должны быть в допустимых пределах."""
     ranges = re.findall(r"(\d{1,2}):(\d{2})\s*[–\-—]\s*(\d{1,2}):(\d{2})", text)
     if not ranges:
         return False
@@ -1042,7 +1014,6 @@ async def build_restaurants_payload():
     return out
 
 
-# Защита от повторной рассылки
 _broadcast_locks = set()
 
 
@@ -1057,8 +1028,36 @@ def unlock_broadcast(key):
     _broadcast_locks.discard(key)
 
 
+# ================== BOT + ROUTERS + STORAGE ==================
+
 bot = Bot(token=TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(storage=fsm_storage)
+user_router = Router()
+admin_router = Router()
+
+
+def is_admin(user_id: int) -> bool:
+    return ADMIN_ID is not None and user_id == ADMIN_ID
+
+
+class AdminOnlyMiddleware(BaseMiddleware):
+    async def __call__(self, handler, event, data):
+        user = getattr(event, "from_user", None)
+        if user and not is_admin(user.id):
+            if isinstance(event, types.CallbackQuery):
+                try:
+                    await event.answer("⛔ Недоступно", show_alert=True)
+                except Exception:
+                    pass
+            return
+        return await handler(event, data)
+
+
+admin_router.message.middleware(AdminOnlyMiddleware())
+admin_router.callback_query.middleware(AdminOnlyMiddleware())
+
+dp.include_router(user_router)
+dp.include_router(admin_router)
 
 
 # ================== ОЧИСТКА ЧАТА ==================
@@ -1089,10 +1088,6 @@ async def send_tracked(chat_id: int, user_id: int, text: str, **kwargs) -> types
     return msg
 
 
-def is_admin(user_id: int) -> bool:
-    return ADMIN_ID is not None and user_id == ADMIN_ID
-
-
 # ================== FSM ==================
 
 class Registration(StatesGroup):
@@ -1107,6 +1102,8 @@ class NewsAdmin(StatesGroup):
     title = State()
     body = State()
     important = State()
+    schedule_choice = State()
+    schedule_time = State()
     preview = State()
 
 
@@ -1282,7 +1279,7 @@ async def profile_text(row):
 
 async def admin_menu_kb():
     users_n = len([r for r in await db_list_users() if r[1]])
-    news_n = len(await db_list_news())
+    news_n = len(await db_list_news_admin())
     std_n = len(await db_list_standards())
     faq_n = len(await db_list_faq())
     rest_n = len(await db_restaurants_for_app())
@@ -1307,7 +1304,7 @@ LEVEL_LABELS = {
 }
 
 
-# ================== СПИСОК ПОЛЬЗОВАТЕЛЕЙ ==================
+# ================== КАРТОЧКИ ==================
 
 async def users_list_text(rows, page, pages, total):
     if not rows:
@@ -1379,25 +1376,33 @@ def user_edit_kb(target_id: int, is_blocked: bool = False) -> InlineKeyboardMark
     ])
 
 
-# ================== СПИСОК НОВОСТЕЙ ==================
-
 def news_admin_text(rows, page, pages, total):
     if not rows:
         return "📰 Новостей пока нет. Нажми «➕ Добавить новость»."
     lines = [f"📰 Новости · всего {total} · стр. {page+1}/{pages}\n"]
-    for news_id, title, body, important, level, created_at in rows:
+    for row in rows:
+        news_id, title, body, important, level, created_at = row[0], row[1], row[2], row[3], row[4], row[5]
+        published = row[6] if len(row) > 6 else True
+        publish_at = row[7] if len(row) > 7 else None
         lvl = level if level in LEVEL_LABELS else "normal"
         date_str = created_at.strftime("%d.%m.%Y") if created_at else ""
-        lines.append(f"{LEVEL_LABELS[lvl]} <b>{title}</b> ({date_str})")
+        if not published and publish_at:
+            mark = f" · ⏰ {publish_at.strftime('%d.%m.%Y %H:%M')}"
+        else:
+            mark = ""
+        lines.append(f"{LEVEL_LABELS[lvl]} <b>{title}</b>{mark} ({date_str})")
     return "\n".join(lines)
 
 
 def news_admin_kb(rows, page, pages):
     kb = []
-    for news_id, title, body, important, level, created_at in rows:
+    for row in rows:
+        news_id, title = row[0], row[1]
+        published = row[6] if len(row) > 6 else True
         short = (title or "Без названия")[:28]
+        icon = "📢" if published else "⏰"
         kb.append([
-            InlineKeyboardButton(text=f"📢 {short}", callback_data=f"news_send:{news_id}"),
+            InlineKeyboardButton(text=f"{icon} {short}", callback_data=f"news_send:{news_id}"),
             InlineKeyboardButton(text="🗑", callback_data=f"news_del:{news_id}"),
         ])
     nav = []
@@ -1422,6 +1427,13 @@ def news_important_kb():
     ])
 
 
+def news_schedule_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📤 Опубликовать сейчас", callback_data="news_sched_now")],
+        [InlineKeyboardButton(text="⏰ Отложить", callback_data="news_sched_later")],
+    ])
+
+
 def news_preview_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Опубликовать", callback_data="news_pub")],
@@ -1429,8 +1441,6 @@ def news_preview_kb():
         [InlineKeyboardButton(text="❌ Отмена", callback_data="adm_news")],
     ])
 
-
-# ================== РАССЫЛКА ==================
 
 async def broadcast_news(title, body, level, restaurant_key=None):
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -1467,7 +1477,7 @@ async def broadcast_news(title, body, level, restaurant_key=None):
             pass
 
 
-# ================== АДМИНКА РЕСТОРАНОВ ==================
+# ================== РЕСТОРАНЫ (карточка/клавиатуры) ==================
 
 FIELD_LABELS = {
     "name": "Название",
@@ -1516,7 +1526,6 @@ def rest_card_kb(r: dict) -> InlineKeyboardMarkup:
         status_btn = InlineKeyboardButton(text="🟢 Открыть (вручную)", callback_data=f"restset:{r['key']}:open")
     else:
         status_btn = InlineKeyboardButton(text="🔴 Закрыть (вручную)", callback_data=f"restset:{r['key']}:closed")
-
     rows = [
         [InlineKeyboardButton(text="✏️ Название", callback_data=f"restedit:{r['key']}:name"),
          InlineKeyboardButton(text="✏️ Адрес", callback_data=f"restedit:{r['key']}:address")],
@@ -1525,7 +1534,6 @@ def rest_card_kb(r: dict) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="✏️ Яндекс Карты", callback_data=f"restedit:{r['key']}:org")],
         [status_btn],
     ]
-    # Удаление — только если не ОФИС и нет сотрудников
     if r["key"] != "office":
         rows.append([InlineKeyboardButton(text="🗑 Удалить точку", callback_data=f"rest_del_ask:{r['key']}")])
     rows.append([InlineKeyboardButton(text="🔙 К списку ресторанов", callback_data="adm_rests")])
@@ -1571,12 +1579,270 @@ def rests_list_text(rests, page, pages, total):
     return "\n".join(lines)
 
 
-# ================== ХЕНДЛЕРЫ: БАЗОВЫЕ ==================
+# ================== USER ROUTER: /start, /cancel, /profile ==================
 
-@dp.message(Command("admin"))
-async def cmd_admin(message: types.Message):
-    if not is_admin(message.from_user.id):
+@user_router.message(CommandStart())
+async def cmd_start(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+    if await db_is_blocked(user_id):
+        await delete_incoming(message)
+        await cleanup_chat(user_id)
+        await send_tracked(message.chat.id, user_id, "⛔ Доступ к боту ограничен.")
         return
+    await delete_incoming(message)
+    await cleanup_chat(user_id)
+
+    current_state = await state.get_state()
+    if current_state:
+        if current_state == Registration.full_name.state:
+            await send_tracked(message.chat.id, user_id, "Шаг 1 из 5.\nНапиши ФИО:")
+        elif current_state == Registration.phone.state:
+            await send_tracked(message.chat.id, user_id, "Шаг 2 из 5.\nОтправь номер телефона:",
+                               reply_markup=phone_kb())
+        elif current_state == Registration.birth_date.state:
+            await send_tracked(message.chat.id, user_id, "Шаг 3 из 5.\nДата рождения ДД.ММ.ГГГГ:",
+                               reply_markup=ReplyKeyboardRemove())
+        elif current_state == Registration.position.state:
+            await send_tracked(message.chat.id, user_id, "Шаг 4 из 5.\nВыбери должность:",
+                               reply_markup=await positions_kb())
+        elif current_state == Registration.restaurant.state:
+            await send_tracked(message.chat.id, user_id, "Шаг 5 из 5.\nВыбери ресторан:",
+                               reply_markup=await restaurants_pick_kb())
+        else:
+            await send_tracked(message.chat.id, user_id,
+                               "Продолжаем заполнение. Напиши /cancel для сброса.")
+        return
+
+    await state.clear()
+    row = await db_get(user_id)
+    if row and row[0]:
+        await db_set_welcomed(user_id, message.from_user.first_name)
+        await send_tracked(message.chat.id, user_id, "Выбери действие:", reply_markup=FULL_MENU)
+        return
+    if row and row[5]:
+        await send_tracked(message.chat.id, user_id, "Заверши регистрацию 👇", reply_markup=REGISTER_ONLY)
+        return
+    await db_set_welcomed(user_id, message.from_user.first_name)
+    await send_tracked(message.chat.id, user_id,
+                       f"👋 {message.from_user.first_name}, добро пожаловать в Wokker!")
+    await send_tracked(message.chat.id, user_id, "Нажми кнопку ниже, чтобы зарегистрироваться:",
+                       reply_markup=REGISTER_ONLY)
+
+
+@user_router.message(Command("cancel"))
+async def cmd_cancel(message: types.Message, state: FSMContext):
+    await delete_incoming(message)
+    await cleanup_chat(message.from_user.id)
+    await state.clear()
+    await send_tracked(message.chat.id, message.from_user.id, "Отменено.")
+
+
+@user_router.message(Command("profile"))
+async def cmd_profile(message: types.Message):
+    if await db_is_blocked(message.from_user.id):
+        await delete_incoming(message)
+        await cleanup_chat(message.from_user.id)
+        await send_tracked(message.chat.id, message.from_user.id, "⛔ Доступ ограничен.")
+        return
+    await delete_incoming(message)
+    await cleanup_chat(message.from_user.id)
+    row = await db_get(message.from_user.id)
+    if row and row[0]:
+        await send_tracked(message.chat.id, message.from_user.id, await profile_text(row), parse_mode="HTML")
+    else:
+        await send_tracked(message.chat.id, message.from_user.id,
+                           "Ты не зарегистрирован. Напиши /start.")
+
+
+@user_router.callback_query(lambda c: c.data == "register")
+async def start_registration(callback: types.CallbackQuery, state: FSMContext):
+    if await db_is_blocked(callback.from_user.id):
+        await callback.answer("Доступ ограничен", show_alert=True)
+        return
+    await callback.answer()
+    await state.clear()
+    await cleanup_chat(callback.from_user.id)
+    await state.set_state(Registration.full_name)
+    await send_tracked(callback.message.chat.id, callback.from_user.id,
+                       "Шаг 1 из 5.\nНапиши ФИО (например: Иванов Иван Иванович)")
+
+
+@user_router.message(Registration.full_name)
+async def process_name(message: types.Message, state: FSMContext):
+    if await db_is_blocked(message.from_user.id):
+        await delete_incoming(message); await cleanup_chat(message.from_user.id)
+        await send_tracked(message.chat.id, message.from_user.id, "⛔ Доступ ограничен.")
+        await state.clear()
+        return
+    if not message.text:
+        await delete_incoming(message); await cleanup_chat(message.from_user.id)
+        await send_tracked(message.chat.id, message.from_user.id, "Отправь текст с ФИО.")
+        return
+    name = message.text.strip()
+    if not NAME_RE.match(name) or len(name.split()) < 2:
+        await delete_incoming(message); await cleanup_chat(message.from_user.id)
+        await send_tracked(message.chat.id, message.from_user.id,
+                           "Нужны минимум имя и фамилия, только буквы и дефис.")
+        return
+    await delete_incoming(message); await cleanup_chat(message.from_user.id)
+    await state.update_data(full_name=name)
+    await state.set_state(Registration.phone)
+    await send_tracked(message.chat.id, message.from_user.id,
+                       "Шаг 2 из 5.\nОтправь номер телефона:",
+                       reply_markup=phone_kb())
+
+
+@user_router.message(Registration.phone, lambda m: m.contact is not None)
+async def process_phone_button(message: types.Message, state: FSMContext):
+    if message.contact.user_id != message.from_user.id:
+        await delete_incoming(message); await cleanup_chat(message.from_user.id)
+        await send_tracked(message.chat.id, message.from_user.id,
+                           "Пожалуйста, поделись своим номером.", reply_markup=phone_kb())
+        return
+    await delete_incoming(message); await cleanup_chat(message.from_user.id)
+    await state.update_data(phone=message.contact.phone_number)
+    await state.set_state(Registration.birth_date)
+    await send_tracked(message.chat.id, message.from_user.id,
+                       "Номер получен ✅\nШаг 3 из 5.\nДата рождения ДД.ММ.ГГГГ:",
+                       reply_markup=ReplyKeyboardRemove())
+
+
+@user_router.message(Registration.phone)
+async def process_phone_text(message: types.Message, state: FSMContext):
+    if not message.text:
+        await delete_incoming(message); await cleanup_chat(message.from_user.id)
+        await send_tracked(message.chat.id, message.from_user.id, "Отправь номер текстом.")
+        return
+    digits = message.text.replace("+", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+    if not digits.isdigit() or len(digits) < 10:
+        await delete_incoming(message); await cleanup_chat(message.from_user.id)
+        await send_tracked(message.chat.id, message.from_user.id,
+                           "Не похоже на номер. Пример: +79001234567")
+        return
+    await delete_incoming(message); await cleanup_chat(message.from_user.id)
+    await state.update_data(phone=message.text.strip())
+    await state.set_state(Registration.birth_date)
+    await send_tracked(message.chat.id, message.from_user.id,
+                       "Номер записан ✅\nШаг 3 из 5.\nДата рождения ДД.ММ.ГГГГ:",
+                       reply_markup=ReplyKeyboardRemove())
+
+
+@user_router.message(Registration.birth_date)
+async def process_birth_date(message: types.Message, state: FSMContext):
+    if await db_is_blocked(message.from_user.id):
+        await delete_incoming(message); await cleanup_chat(message.from_user.id)
+        await send_tracked(message.chat.id, message.from_user.id, "⛔ Доступ ограничен.")
+        await state.clear()
+        return
+    if not message.text:
+        await delete_incoming(message); await cleanup_chat(message.from_user.id)
+        await send_tracked(message.chat.id, message.from_user.id, "Дату текстом ДД.ММ.ГГГГ:")
+        return
+    try:
+        bd = datetime.strptime(message.text.strip(), "%d.%m.%Y").date()
+        if bd.year < 1900 or bd > datetime.now().date():
+            raise ValueError
+    except ValueError:
+        await delete_incoming(message); await cleanup_chat(message.from_user.id)
+        await send_tracked(message.chat.id, message.from_user.id,
+                           "Такой даты не бывает. ДД.ММ.ГГГГ:")
+        return
+    await delete_incoming(message); await cleanup_chat(message.from_user.id)
+    await state.update_data(birth_date=bd.strftime("%d.%m.%Y"))
+    await state.set_state(Registration.position)
+    await send_tracked(message.chat.id, message.from_user.id,
+                       "Дата записана ✅\nШаг 4 из 5. Должность:",
+                       reply_markup=ReplyKeyboardRemove())
+    await send_tracked(message.chat.id, message.from_user.id,
+                       "Выбери должность:", reply_markup=await positions_kb())
+
+
+@user_router.callback_query(Registration.position, lambda c: c.data and c.data.startswith("pos:"))
+async def process_position(callback: types.CallbackQuery, state: FSMContext):
+    if await db_is_blocked(callback.from_user.id):
+        await callback.answer("Доступ ограничен", show_alert=True)
+        await state.clear()
+        return
+    await callback.answer()
+    await cleanup_chat(callback.from_user.id)
+    pid = safe_int(callback.data.split(":")[1])
+    positions = {p[0]: p[1] for p in await db_positions_list()}
+    position = positions.get(pid)
+    if not position:
+        await send_tracked(callback.message.chat.id, callback.from_user.id,
+                           "Должность не найдена. Выбери из списка.")
+        return
+    await state.update_data(position=position)
+    await state.set_state(Registration.restaurant)
+    await send_tracked(callback.message.chat.id, callback.from_user.id,
+                       f"Должность: <b>{position}</b> ✅\n\nШаг 5 из 5. Ресторан 👇",
+                       parse_mode="HTML", reply_markup=await restaurants_pick_kb())
+
+
+@user_router.callback_query(Registration.restaurant, lambda c: c.data and c.data.startswith("restpick:"))
+async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMContext):
+    if await db_is_blocked(callback.from_user.id):
+        await callback.answer("Доступ ограничен", show_alert=True)
+        await state.clear()
+        return
+    key = callback.data.split(":")[1]
+    restaurant = await db_restaurant(key)
+    if not restaurant:
+        await callback.answer("Ресторан не найден", show_alert=True)
+        return
+    await callback.answer()
+    await cleanup_chat(callback.from_user.id)
+    data = await state.get_data()
+    full_name = data.get("full_name", "")
+    phone = data.get("phone", "")
+    birth_date = data.get("birth_date", "")
+    position = data.get("position", "")
+    try:
+        await db_save_profile(callback.from_user.id, full_name, phone, birth_date, position,
+                              restaurant["key"], callback.from_user.first_name)
+    except Exception as e:
+        logging.error(f"save profile: {e}")
+        await send_tracked(callback.message.chat.id, callback.from_user.id,
+                           "❌ Ошибка сохранения. Попробуй позже.")
+        await state.clear()
+        return
+    await state.clear()
+    await send_tracked(callback.message.chat.id, callback.from_user.id,
+                       f"🎉 <b>{callback.from_user.first_name}, регистрация завершена!</b>\n\n"
+                       f"👤 ФИО: {full_name}\n📞 {phone}\n🎂 {birth_date}\n"
+                       f"💼 {position}\n📍 {restaurant['name']}\n\n"
+                       "Открой приложение:",
+                       parse_mode="HTML", reply_markup=FULL_MENU)
+    if ADMIN_ID:
+        uname = f"@{callback.from_user.username}" if callback.from_user.username else "нет"
+        try:
+            await bot.send_message(ADMIN_ID,
+                                   f"🔔 Новая регистрация!\n\n{full_name}\n{phone}\n{birth_date}\n"
+                                   f"{position}\n{restaurant['name']}\n"
+                                   f"ID: <code>{callback.from_user.id}</code>\n{uname}",
+                                   parse_mode="HTML")
+        except Exception as e:
+            logging.error(f"notify admin: {e}")
+
+
+@user_router.callback_query(lambda c: c.data == "hide_notification")
+async def hide_notification(callback: types.CallbackQuery):
+    try:
+        await callback.message.delete()
+    except Exception as e:
+        logging.warning(f"hide: {e}")
+    await callback.answer("Скрыто")
+
+
+@user_router.callback_query(lambda c: c.data == "noop")
+async def user_noop(callback: types.CallbackQuery):
+    await callback.answer()
+
+
+# ================== ADMIN ROUTER ==================
+
+@admin_router.message(Command("admin"))
+async def cmd_admin(message: types.Message):
     await delete_incoming(message)
     await cleanup_chat(message.chat.id)
     await send_tracked(message.chat.id, message.from_user.id,
@@ -1584,10 +1850,8 @@ async def cmd_admin(message: types.Message):
                        parse_mode="HTML", reply_markup=await admin_menu_kb())
 
 
-@dp.message(Command("stats"))
+@admin_router.message(Command("stats"))
 async def cmd_stats(message: types.Message):
-    if not is_admin(message.from_user.id):
-        return
     await delete_incoming(message)
     await cleanup_chat(message.chat.id)
     stats = await get_report_stats()
@@ -1608,11 +1872,8 @@ async def cmd_stats(message: types.Message):
         parse_mode="HTML")
 
 
-@dp.message(Command("user"))
+@admin_router.message(Command("user"))
 async def cmd_user_search(message: types.Message):
-    """Быстрый поиск пользователя: /user Иванов или /user 123456789"""
-    if not is_admin(message.from_user.id):
-        return
     await delete_incoming(message)
     await cleanup_chat(message.chat.id)
     q = (message.text or "").replace("/user", "", 1).strip()
@@ -1623,7 +1884,7 @@ async def cmd_user_search(message: types.Message):
         return
     rows = await db_search_users(q)
     if not rows:
-        await send_tracked(message.chat.id, message.from_user.id, f"Никого не нашёл по запросу «{q}» 🤷")
+        await send_tracked(message.chat.id, message.from_user.id, f"Никого не нашёл по «{q}» 🤷")
         return
     if len(rows) > 30:
         await send_tracked(message.chat.id, message.from_user.id,
@@ -1634,13 +1895,19 @@ async def cmd_user_search(message: types.Message):
                        parse_mode="HTML", reply_markup=users_list_kb(rows, 0, 1))
 
 
-# ================== АДМИНКА: РЕСТОРАНЫ ==================
+@admin_router.callback_query(lambda c: c.data == "adm_menu")
+async def adm_menu(callback: types.CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.clear()
+    await cleanup_chat(callback.from_user.id)
+    await send_tracked(callback.message.chat.id, callback.from_user.id,
+                       "🛠 Админ-панель", reply_markup=await admin_menu_kb())
 
-@dp.callback_query(lambda c: c.data == "adm_rests")
+
+# ---------- Рестораны ----------
+
+@admin_router.callback_query(lambda c: c.data == "adm_rests")
 async def adm_rests(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     await state.clear()
     await cleanup_chat(callback.from_user.id)
@@ -1651,11 +1918,8 @@ async def adm_rests(callback: types.CallbackQuery, state: FSMContext):
                        parse_mode="HTML", reply_markup=rests_list_kb(chunk, page, pages))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("adm_rests_p:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_rests_p:"))
 async def adm_rests_p(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     page = safe_int(callback.data.split(":")[1])
     await callback.answer()
     await cleanup_chat(callback.from_user.id)
@@ -1666,11 +1930,8 @@ async def adm_rests_p(callback: types.CallbackQuery):
                        parse_mode="HTML", reply_markup=rests_list_kb(chunk, page, pages))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("restadm:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("restadm:"))
 async def rest_card_view(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     await state.clear()
     key = callback.data.split(":")[1]
@@ -1683,11 +1944,8 @@ async def rest_card_view(callback: types.CallbackQuery, state: FSMContext):
                        rest_card_text(r), parse_mode="HTML", reply_markup=rest_card_kb(r))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("restset:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("restset:"))
 async def rest_set_status(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     try:
         _, key, new_status = callback.data.split(":")
     except ValueError:
@@ -1708,11 +1966,8 @@ async def rest_set_status(callback: types.CallbackQuery):
     await callback.answer("Не удалось изменить статус", show_alert=True)
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("restedit:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("restedit:"))
 async def rest_edit_start(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     try:
         _, key, field = callback.data.split(":")
@@ -1731,11 +1986,8 @@ async def rest_edit_start(callback: types.CallbackQuery, state: FSMContext):
                        ]))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("restedit_cancel:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("restedit_cancel:"))
 async def rest_edit_cancel(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer("Отменено")
     await state.clear()
     key = callback.data.split(":")[1]
@@ -1746,10 +1998,8 @@ async def rest_edit_cancel(callback: types.CallbackQuery, state: FSMContext):
                            rest_card_text(r), parse_mode="HTML", reply_markup=rest_card_kb(r))
 
 
-@dp.message(RestEdit.value)
+@admin_router.message(RestEdit.value)
 async def rest_edit_value(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     data = await state.get_data()
     rest_key = data.get("rest_key")
     rest_field = data.get("rest_field")
@@ -1788,7 +2038,6 @@ async def rest_edit_value(message: types.Message, state: FSMContext):
     await delete_incoming(message)
     await cleanup_chat(message.from_user.id)
     await state.clear()
-
     await db_restaurant_update(rest_key, rest_field, value)
     invalidate_rest_cache()
     await db_audit(message.from_user.id, "rest_update", "restaurant", rest_key, f"{rest_field}={value}")
@@ -1801,34 +2050,27 @@ async def rest_edit_value(message: types.Message, state: FSMContext):
                            rest_card_text(r), parse_mode="HTML", reply_markup=rest_card_kb(r))
 
 
-# --- Добавление ресторана ---
-
-@dp.callback_query(lambda c: c.data == "rest_add")
+@admin_router.callback_query(lambda c: c.data == "rest_add")
 async def rest_add_start(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     await state.clear()
     await state.set_state(RestAdd.name)
     await cleanup_chat(callback.from_user.id)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
-                       "🏪 <b>Новый ресторан</b>\n\nШаг 1 из 5.\nНазвание точки (например: Мега Химки):",
+                       "🏪 <b>Новый ресторан</b>\n\nШаг 1 из 5.\nНазвание точки:",
                        parse_mode="HTML",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                            [InlineKeyboardButton(text="❌ Отменить", callback_data="adm_rests")]
                        ]))
 
 
-@dp.message(RestAdd.name)
+@admin_router.message(RestAdd.name)
 async def rest_add_name(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await delete_incoming(message)
     await cleanup_chat(message.from_user.id)
     name = (message.text or "").strip()
     if len(name) < 2:
-        await send_tracked(message.chat.id, message.from_user.id, "Слишком короткое название. Ещё раз:")
+        await send_tracked(message.chat.id, message.from_user.id, "Слишком короткое. Ещё раз:")
         return
     await state.update_data(name=name)
     await state.set_state(RestAdd.address)
@@ -1836,15 +2078,13 @@ async def rest_add_name(message: types.Message, state: FSMContext):
                        f"Название: <b>{name}</b> ✅\n\nШаг 2 из 5. Адрес:", parse_mode="HTML")
 
 
-@dp.message(RestAdd.address)
+@admin_router.message(RestAdd.address)
 async def rest_add_address(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await delete_incoming(message)
     await cleanup_chat(message.from_user.id)
     addr = (message.text or "").strip()
     if len(addr) < 5:
-        await send_tracked(message.chat.id, message.from_user.id, "Слишком короткий адрес. Ещё раз:")
+        await send_tracked(message.chat.id, message.from_user.id, "Слишком короткий адрес.")
         return
     await state.update_data(address=addr)
     await state.set_state(RestAdd.hours)
@@ -1854,10 +2094,8 @@ async def rest_add_address(message: types.Message, state: FSMContext):
                        parse_mode="HTML")
 
 
-@dp.message(RestAdd.hours)
+@admin_router.message(RestAdd.hours)
 async def rest_add_hours(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await delete_incoming(message)
     await cleanup_chat(message.from_user.id)
     hours = (message.text or "").strip()
@@ -1871,10 +2109,8 @@ async def rest_add_hours(message: types.Message, state: FSMContext):
                        "Часы записаны ✅\n\nШаг 4 из 5. Телефон (или «нет»):")
 
 
-@dp.message(RestAdd.phone)
+@admin_router.message(RestAdd.phone)
 async def rest_add_phone(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await delete_incoming(message)
     await cleanup_chat(message.from_user.id)
     value = (message.text or "").strip()
@@ -1894,35 +2130,25 @@ async def rest_add_phone(message: types.Message, state: FSMContext):
                        parse_mode="HTML")
 
 
-@dp.message(RestAdd.org)
+@admin_router.message(RestAdd.org)
 async def rest_add_org(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await delete_incoming(message)
     await cleanup_chat(message.from_user.id)
     value = (message.text or "").strip()
     if value.lower() in ("нет", "-", "—", ""):
         value = ""
     await state.update_data(org=value)
-
     data = await state.get_data()
     await state.clear()
-
     name = data.get("name", "")
     key = slugify(name)
-    address = data.get("address", "")
-    hours = data.get("hours", "")
-    phone = data.get("phone", "")
-    org = data.get("org", "")
-
-    ok = await db_restaurant_add(key, name, address, hours, phone, org)
+    ok = await db_restaurant_add(key, name, data.get("address", ""), data.get("hours", ""),
+                                 data.get("phone", ""), data.get("org", ""))
     if not ok:
         await send_tracked(message.chat.id, message.from_user.id,
-                           f"❌ Ресторан с ключом <code>{key}</code> уже существует. "
-                           "Попробуй другое название или свяжись с разработчиком.",
+                           f"❌ Ресторан с ключом <code>{key}</code> уже существует.",
                            parse_mode="HTML")
         return
-
     invalidate_rest_cache()
     await db_audit(message.from_user.id, "rest_add", "restaurant", key, name)
     await send_tracked(message.chat.id, message.from_user.id,
@@ -1934,13 +2160,8 @@ async def rest_add_org(message: types.Message, state: FSMContext):
                            rest_card_text(r), parse_mode="HTML", reply_markup=rest_card_kb(r))
 
 
-# --- Удаление ресторана ---
-
-@dp.callback_query(lambda c: c.data and c.data.startswith("rest_del_ask:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("rest_del_ask:"))
 async def rest_del_ask(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     key = callback.data.split(":")[1]
     r = await db_restaurant(key)
     if not r:
@@ -1950,7 +2171,7 @@ async def rest_del_ask(callback: types.CallbackQuery):
     await cleanup_chat(callback.from_user.id)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        f"🗑 Удалить ресторан <b>{r['name']}</b>?\n\n"
-                       "Если к нему привязаны сотрудники — удалить не получится, сначала переназначь их.",
+                       "Если к нему привязаны сотрудники — удалить не получится.",
                        parse_mode="HTML",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                            [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"rest_del_yes:{key}")],
@@ -1958,11 +2179,8 @@ async def rest_del_ask(callback: types.CallbackQuery):
                        ]))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("rest_del_yes:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("rest_del_yes:"))
 async def rest_del_yes(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     key = callback.data.split(":")[1]
     ok, reason = await db_restaurant_delete(key)
     if not ok:
@@ -1982,27 +2200,10 @@ async def rest_del_yes(callback: types.CallbackQuery):
                        parse_mode="HTML", reply_markup=rests_list_kb(chunk, page, pages))
 
 
-# ================== АДМИН-МЕНЮ ==================
+# ---------- Пользователи ----------
 
-@dp.callback_query(lambda c: c.data == "adm_menu")
-async def adm_menu(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
-    await callback.answer()
-    await state.clear()
-    await cleanup_chat(callback.from_user.id)
-    await send_tracked(callback.message.chat.id, callback.from_user.id,
-                       "🛠 Админ-панель", reply_markup=await admin_menu_kb())
-
-
-# ================== АДМИНКА: ПОЛЬЗОВАТЕЛИ ==================
-
-@dp.callback_query(lambda c: c.data == "adm_users")
+@admin_router.callback_query(lambda c: c.data == "adm_users")
 async def adm_users(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     await cleanup_chat(callback.from_user.id)
     rows = await db_list_users()
@@ -2012,11 +2213,8 @@ async def adm_users(callback: types.CallbackQuery):
                        parse_mode="HTML", reply_markup=users_list_kb(chunk, page, pages))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("adm_users_p:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_users_p:"))
 async def adm_users_p(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     page = safe_int(callback.data.split(":")[1])
     await callback.answer()
     await cleanup_chat(callback.from_user.id)
@@ -2027,11 +2225,8 @@ async def adm_users_p(callback: types.CallbackQuery):
                        parse_mode="HTML", reply_markup=users_list_kb(chunk, page, pages))
 
 
-@dp.callback_query(lambda c: c.data == "adm_users_search")
+@admin_router.callback_query(lambda c: c.data == "adm_users_search")
 async def adm_users_search(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     await state.set_state(UserSearch.query)
     await cleanup_chat(callback.from_user.id)
@@ -2042,10 +2237,8 @@ async def adm_users_search(callback: types.CallbackQuery, state: FSMContext):
                        ]))
 
 
-@dp.message(UserSearch.query)
+@admin_router.message(UserSearch.query)
 async def adm_users_search_do(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await delete_incoming(message)
     await cleanup_chat(message.from_user.id)
     q = (message.text or "").strip()
@@ -2063,11 +2256,8 @@ async def adm_users_search_do(message: types.Message, state: FSMContext):
                        parse_mode="HTML", reply_markup=users_list_kb(chunk, page, pages))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("adm_user:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_user:"))
 async def adm_user_card(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     await state.clear()
     target_id = safe_int(callback.data.split(":")[1])
@@ -2084,11 +2274,8 @@ async def adm_user_card(callback: types.CallbackQuery, state: FSMContext):
                        reply_markup=user_edit_kb(target_id, bool(row[6])))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("edit_field:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("edit_field:"))
 async def edit_field_start(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     try:
         _, target_id, field = callback.data.split(":")
@@ -2114,10 +2301,8 @@ async def edit_field_start(callback: types.CallbackQuery, state: FSMContext):
                        ]))
 
 
-@dp.message(EditUser.full_name)
+@admin_router.message(EditUser.full_name)
 async def edit_full_name(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     name = (message.text or "").strip()
     if not NAME_RE.match(name) or len(name.split()) < 2:
         await delete_incoming(message); await cleanup_chat(message.from_user.id)
@@ -2139,10 +2324,8 @@ async def edit_full_name(message: types.Message, state: FSMContext):
                            reply_markup=user_edit_kb(target_id, bool(row[6])))
 
 
-@dp.message(EditUser.phone)
+@admin_router.message(EditUser.phone)
 async def edit_phone(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     digits = (message.text or "").replace("+", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
     if not digits.isdigit() or len(digits) < 10:
         await delete_incoming(message); await cleanup_chat(message.from_user.id)
@@ -2164,10 +2347,8 @@ async def edit_phone(message: types.Message, state: FSMContext):
                            reply_markup=user_edit_kb(target_id, bool(row[6])))
 
 
-@dp.message(EditUser.birth_date)
+@admin_router.message(EditUser.birth_date)
 async def edit_birth_date(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     try:
         birth_date = datetime.strptime((message.text or "").strip(), "%d.%m.%Y").date()
         if birth_date.year < 1900 or birth_date > datetime.now().date():
@@ -2193,11 +2374,8 @@ async def edit_birth_date(message: types.Message, state: FSMContext):
                            reply_markup=user_edit_kb(target_id, bool(row[6])))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("edit_cancel:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("edit_cancel:"))
 async def edit_cancel(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer("Отменено")
     await state.clear()
     target_id = safe_int(callback.data.split(":")[1])
@@ -2209,11 +2387,8 @@ async def edit_cancel(callback: types.CallbackQuery, state: FSMContext):
                            reply_markup=user_edit_kb(target_id, bool(row[6])))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("edit_pos:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("edit_pos:"))
 async def edit_pos_start(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     await state.clear()
     target_id = safe_int(callback.data.split(":")[1])
@@ -2222,11 +2397,8 @@ async def edit_pos_start(callback: types.CallbackQuery, state: FSMContext):
                        "💼 Выбери новую должность:", reply_markup=await positions_edit_kb(target_id))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("editsetpos:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("editsetpos:"))
 async def edit_pos_set(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     try:
         _, target_id, pid = callback.data.split(":")
@@ -2251,25 +2423,19 @@ async def edit_pos_set(callback: types.CallbackQuery):
                            reply_markup=user_edit_kb(target_id, bool(row[6])))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("edit_rest:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("edit_rest:"))
 async def edit_rest_start(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     await state.clear()
     target_id = safe_int(callback.data.split(":")[1])
     await cleanup_chat(callback.from_user.id)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
-                       "📍 Выбери новый ресторан (в списке есть и ОФИС):",
+                       "📍 Выбери новый ресторан:",
                        reply_markup=await restaurants_edit_kb(target_id))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("editsetrest:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("editsetrest:"))
 async def edit_rest_set(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     try:
         _, target_id, key = callback.data.split(":")
@@ -2289,13 +2455,8 @@ async def edit_rest_set(callback: types.CallbackQuery):
                            reply_markup=user_edit_kb(target_id, bool(row[6])))
 
 
-# --- Блокировка с подтверждением ---
-
-@dp.callback_query(lambda c: c.data and c.data.startswith("adm_ban_ask:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_ban_ask:"))
 async def adm_ban_ask(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     target_id = safe_int(callback.data.split(":")[1])
     if target_id == ADMIN_ID:
         await callback.answer("Нельзя заблокировать самого себя", show_alert=True)
@@ -2307,8 +2468,7 @@ async def adm_ban_ask(callback: types.CallbackQuery):
     await callback.answer()
     await cleanup_chat(callback.from_user.id)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
-                       f"🚫 Заблокировать <b>{row[0] or 'без имени'}</b> (<code>{target_id}</code>)?\n\n"
-                       "Пользователь потеряет доступ к боту и приложению.",
+                       f"🚫 Заблокировать <b>{row[0] or 'без имени'}</b> (<code>{target_id}</code>)?",
                        parse_mode="HTML",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                            [InlineKeyboardButton(text="✅ Да, заблокировать", callback_data=f"adm_ban:{target_id}")],
@@ -2316,11 +2476,8 @@ async def adm_ban_ask(callback: types.CallbackQuery):
                        ]))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("adm_ban:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_ban:"))
 async def adm_ban(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     target_id = safe_int(callback.data.split(":")[1])
     if target_id == ADMIN_ID:
         await callback.answer("Нельзя заблокировать самого себя", show_alert=True)
@@ -2342,11 +2499,8 @@ async def adm_ban(callback: types.CallbackQuery):
                            reply_markup=user_edit_kb(target_id, True))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("adm_unban:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_unban:"))
 async def adm_unban(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     target_id = safe_int(callback.data.split(":")[1])
     if await db_set_blocked(target_id, False):
         await db_audit(callback.from_user.id, "user_unblock", "user", target_id)
@@ -2361,11 +2515,8 @@ async def adm_unban(callback: types.CallbackQuery):
                            reply_markup=user_edit_kb(target_id, False))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("adm_del:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_del:"))
 async def adm_del_ask(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     target_id = safe_int(callback.data.split(":")[1])
     if target_id == ADMIN_ID:
         await callback.answer("Нельзя удалить самого себя", show_alert=True)
@@ -2374,7 +2525,7 @@ async def adm_del_ask(callback: types.CallbackQuery):
     await cleanup_chat(callback.from_user.id)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        f"🗑 Удалить пользователя <code>{target_id}</code> из базы?\n\n"
-                       "Он сможет зарегистрироваться заново. Если нужно закрыть доступ — используй блокировку.",
+                       "Он сможет зарегистрироваться заново.",
                        parse_mode="HTML",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                            [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"adm_del_yes:{target_id}")],
@@ -2382,11 +2533,8 @@ async def adm_del_ask(callback: types.CallbackQuery):
                        ]))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("adm_del_yes:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_del_yes:"))
 async def adm_del_yes(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     target_id = safe_int(callback.data.split(":")[1])
     if await db_delete_user(target_id):
         await db_audit(callback.from_user.id, "user_delete", "user", target_id)
@@ -2398,21 +2546,17 @@ async def adm_del_yes(callback: types.CallbackQuery):
         await callback.answer("Пользователь не найден", show_alert=True)
 
 
-# ================== АДМИНКА: ДОЛЖНОСТИ ==================
+# ---------- Должности ----------
 
-@dp.callback_query(lambda c: c.data == "adm_positions")
+@admin_router.callback_query(lambda c: c.data == "adm_positions")
 async def adm_positions(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     await state.clear()
     await cleanup_chat(callback.from_user.id)
     rows = await db_positions_list(include_archived=True)
     active = [r for r in rows if not r[3]]
     archived = [r for r in rows if r[3]]
-    lines = ["💼 <b>Должности</b>\n"]
-    lines.append(f"Активных: {len(active)}")
+    lines = ["💼 <b>Должности</b>\n", f"Активных: {len(active)}"]
     for pid, name, sort, arch in active:
         lines.append(f"• {name}")
     if archived:
@@ -2428,11 +2572,8 @@ async def adm_positions(callback: types.CallbackQuery, state: FSMContext):
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 
-@dp.callback_query(lambda c: c.data == "pos_add")
+@admin_router.callback_query(lambda c: c.data == "pos_add")
 async def pos_add_start(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     await state.set_state(PosAdmin.name)
     await cleanup_chat(callback.from_user.id)
@@ -2443,10 +2584,8 @@ async def pos_add_start(callback: types.CallbackQuery, state: FSMContext):
                        ]))
 
 
-@dp.message(PosAdmin.name)
+@admin_router.message(PosAdmin.name)
 async def pos_add_do(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await delete_incoming(message); await cleanup_chat(message.from_user.id)
     name = (message.text or "").strip()
     if len(name) < 2:
@@ -2462,11 +2601,8 @@ async def pos_add_do(message: types.Message, state: FSMContext):
     await send_tracked(message.chat.id, message.from_user.id, f"✅ Должность «{name}» добавлена.")
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("pos_archive:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("pos_archive:"))
 async def pos_archive(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     pid = safe_int(callback.data.split(":")[1])
     if await db_position_archive(pid):
         await db_audit(callback.from_user.id, "pos_archive", "position", pid)
@@ -2488,43 +2624,34 @@ async def pos_archive(callback: types.CallbackQuery):
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 
-# ================== АДМИНКА: НОВОСТИ ==================
+# ---------- Новости (с отложенной публикацией) ----------
 
-@dp.callback_query(lambda c: c.data == "adm_news")
+@admin_router.callback_query(lambda c: c.data == "adm_news")
 async def adm_news(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     await state.clear()
     await cleanup_chat(callback.from_user.id)
-    rows = await db_list_news()
+    rows = await db_list_news_admin()
     chunk, page, pages = paginate(rows, 0, PAGE_NEWS)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        news_admin_text(chunk, page, pages, len(rows)),
                        parse_mode="HTML", reply_markup=news_admin_kb(chunk, page, pages))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("adm_news_p:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_news_p:"))
 async def adm_news_p(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     page = safe_int(callback.data.split(":")[1])
     await callback.answer()
     await cleanup_chat(callback.from_user.id)
-    rows = await db_list_news()
+    rows = await db_list_news_admin()
     chunk, page, pages = paginate(rows, page, PAGE_NEWS)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        news_admin_text(chunk, page, pages, len(rows)),
                        parse_mode="HTML", reply_markup=news_admin_kb(chunk, page, pages))
 
 
-@dp.callback_query(lambda c: c.data == "news_add")
+@admin_router.callback_query(lambda c: c.data == "news_add")
 async def news_add_start(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     await state.clear()
     await state.set_state(NewsAdmin.title)
@@ -2536,10 +2663,8 @@ async def news_add_start(callback: types.CallbackQuery, state: FSMContext):
                        ]))
 
 
-@dp.message(NewsAdmin.title)
+@admin_router.message(NewsAdmin.title)
 async def news_add_title(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await delete_incoming(message); await cleanup_chat(message.from_user.id)
     if not message.text:
         await send_tracked(message.chat.id, message.from_user.id, "Заголовок должен быть текстом.")
@@ -2555,10 +2680,8 @@ async def news_add_title(message: types.Message, state: FSMContext):
                        parse_mode="HTML")
 
 
-@dp.message(NewsAdmin.body)
+@admin_router.message(NewsAdmin.body)
 async def news_add_body(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await delete_incoming(message); await cleanup_chat(message.from_user.id)
     if not message.text:
         await send_tracked(message.chat.id, message.from_user.id, "Текст должен быть текстом.")
@@ -2574,65 +2697,126 @@ async def news_add_body(message: types.Message, state: FSMContext):
                        reply_markup=news_important_kb())
 
 
-@dp.callback_query(NewsAdmin.important, lambda c: c.data and c.data.startswith("news_imp:"))
-async def news_add_preview(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
+@admin_router.callback_query(NewsAdmin.important, lambda c: c.data and c.data.startswith("news_imp:"))
+async def news_schedule_choice(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
     level = callback.data.split(":")[1]
     if level not in LEVEL_LABELS:
         level = "normal"
     await state.update_data(level=level)
+    await state.set_state(NewsAdmin.schedule_choice)
+    await cleanup_chat(callback.from_user.id)
+    await send_tracked(callback.message.chat.id, callback.from_user.id,
+                       "⏰ Когда опубликовать?",
+                       reply_markup=news_schedule_kb())
+
+
+@admin_router.callback_query(NewsAdmin.schedule_choice, lambda c: c.data == "news_sched_now")
+async def news_sched_now(callback: types.CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.update_data(publish_at=None, publish_display=None)
     await state.set_state(NewsAdmin.preview)
+    await _show_news_preview(callback.message.chat.id, callback.from_user.id, state)
+
+
+@admin_router.callback_query(NewsAdmin.schedule_choice, lambda c: c.data == "news_sched_later")
+async def news_sched_later(callback: types.CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.set_state(NewsAdmin.schedule_time)
+    await cleanup_chat(callback.from_user.id)
+    await send_tracked(callback.message.chat.id, callback.from_user.id,
+                       "⏰ Введи дату и время публикации:\n\n"
+                       "Формат: <code>ДД.ММ.ГГГГ ЧЧ:ММ</code>\n"
+                       "Пример: <code>25.11.2026 09:00</code>\n\n"
+                       "В назначенное время новость появится в приложении "
+                       "и автоматически разошлётся сотрудникам.",
+                       parse_mode="HTML",
+                       reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                           [InlineKeyboardButton(text="❌ Отмена", callback_data="adm_news")]
+                       ]))
+
+
+@admin_router.message(NewsAdmin.schedule_time)
+async def news_sched_time(message: types.Message, state: FSMContext):
+    await delete_incoming(message); await cleanup_chat(message.from_user.id)
+    raw = (message.text or "").strip()
+    try:
+        dt = datetime.strptime(raw, "%d.%m.%Y %H:%M")
+    except ValueError:
+        await send_tracked(message.chat.id, message.from_user.id,
+                           "Не получилось разобрать дату. Формат: ДД.ММ.ГГГГ ЧЧ:ММ\n"
+                           "Пример: 25.11.2026 09:00")
+        return
+    now_naive = _moscow_now().replace(tzinfo=None)
+    if dt <= now_naive:
+        await send_tracked(message.chat.id, message.from_user.id,
+                           "Дата уже прошла. Введи дату и время в будущем:")
+        return
+    if MOSCOW_TZ:
+        iso = dt.replace(tzinfo=MOSCOW_TZ).isoformat()
+    else:
+        iso = dt.isoformat()
+    display = dt.strftime("%d.%m.%Y %H:%M")
+    await state.update_data(publish_at=iso, publish_display=display)
+    await state.set_state(NewsAdmin.preview)
+    await _show_news_preview(message.chat.id, message.from_user.id, state)
+
+
+async def _show_news_preview(chat_id, user_id, state):
     data = await state.get_data()
     title = data.get("title", "")
     body = data.get("body", "")
-    icon = LEVEL_LABELS[level]
-    await cleanup_chat(callback.from_user.id)
-    await send_tracked(callback.message.chat.id, callback.from_user.id,
+    level = data.get("level", "normal")
+    publish_display = data.get("publish_display")
+    icon = LEVEL_LABELS.get(level, LEVEL_LABELS["normal"])
+    if publish_display:
+        sched_line = f"\n\n⏰ Публикация: <b>{publish_display}</b>\n<i>В это время разошлётся всем автоматически.</i>"
+    else:
+        sched_line = "\n\n📤 Публикуется сейчас."
+    await cleanup_chat(user_id)
+    await send_tracked(chat_id, user_id,
                        f"👀 <b>Превью</b> — так увидят сотрудники:\n\n"
-                       f"{icon} <b>{title}</b>\n\n{body}\n\n"
-                       f"<i>Опубликовать?</i>",
+                       f"{icon} <b>{title}</b>\n\n{body}{sched_line}\n\n<i>Опубликовать?</i>",
                        parse_mode="HTML", reply_markup=news_preview_kb())
 
 
-@dp.callback_query(NewsAdmin.preview, lambda c: c.data == "news_pub")
-async def news_add_publish(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
+@admin_router.callback_query(NewsAdmin.preview, lambda c: c.data == "news_pub")
+async def news_publish(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
     data = await state.get_data()
     title = data.get("title", "")
     body = data.get("body", "")
     level = data.get("level", "normal")
+    publish_at = data.get("publish_at")
+    publish_display = data.get("publish_display")
     await state.clear()
     try:
-        news_id = await db_add_news(title, body, level)
-        await db_audit(callback.from_user.id, "news_add", "news", news_id, title)
+        news_id = await db_add_news(title, body, level, publish_at=publish_at)
+        await db_audit(callback.from_user.id, "news_add", "news", news_id,
+                       f"{title} | {'scheduled ' + str(publish_display) if publish_at else 'immediate'}")
     except Exception as e:
         logging.error(f"news_add: {e}")
         await send_tracked(callback.message.chat.id, callback.from_user.id,
                            "❌ Не удалось сохранить. Попробуй позже.")
         return
+    if publish_at:
+        head = (f"⏰ Новость отложена до <b>{publish_display}</b>.\n"
+                "В назначенное время она будет опубликована и разослана автоматически.")
+    else:
+        head = "✅ Новость опубликована!"
     await cleanup_chat(callback.from_user.id)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
-                       f"✅ Новость опубликована!\n\n{LEVEL_LABELS[level]} — <b>{title}</b>\n\n"
-                       "Разослать уведомление можно в списке новостей (кнопка 📢).",
+                       f"{head}\n\n{LEVEL_LABELS[level]} — <b>{title}</b>",
                        parse_mode="HTML")
-    rows = await db_list_news()
+    rows = await db_list_news_admin()
     chunk, page, pages = paginate(rows, 0, PAGE_NEWS)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        news_admin_text(chunk, page, pages, len(rows)),
                        parse_mode="HTML", reply_markup=news_admin_kb(chunk, page, pages))
 
 
-@dp.callback_query(NewsAdmin.preview, lambda c: c.data == "news_restart")
+@admin_router.callback_query(NewsAdmin.preview, lambda c: c.data == "news_restart")
 async def news_add_restart(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer("Начинаем заново")
     await state.clear()
     await state.set_state(NewsAdmin.title)
@@ -2641,11 +2825,8 @@ async def news_add_restart(callback: types.CallbackQuery, state: FSMContext):
                        "✍️ Шаг 1 из 3.\nНапиши заголовок новости:")
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("news_del:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("news_del:"))
 async def news_del(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     news_id = safe_int(callback.data.split(":")[1])
     if await db_delete_news(news_id):
         await db_audit(callback.from_user.id, "news_delete", "news", news_id)
@@ -2653,20 +2834,15 @@ async def news_del(callback: types.CallbackQuery):
     else:
         await callback.answer("Не найдена", show_alert=True)
     await cleanup_chat(callback.from_user.id)
-    rows = await db_list_news()
+    rows = await db_list_news_admin()
     chunk, page, pages = paginate(rows, 0, PAGE_NEWS)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        news_admin_text(chunk, page, pages, len(rows)),
                        parse_mode="HTML", reply_markup=news_admin_kb(chunk, page, pages))
 
 
-# --- Рассылка новости ---
-
-@dp.callback_query(lambda c: c.data and c.data.startswith("news_send:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("news_send:"))
 async def news_send_menu(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     news_id = safe_int(callback.data.split(":")[1])
     await callback.answer()
     await cleanup_chat(callback.from_user.id)
@@ -2679,23 +2855,19 @@ async def news_send_menu(callback: types.CallbackQuery):
                        ]))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("news_ask_all:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("news_ask_all:"))
 async def news_ask_all(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     news_id = safe_int(callback.data.split(":")[1])
     row = await db_get_news(news_id)
     if not row:
-        await callback.answer("Новость не найдена", show_alert=True)
+        await callback.answer("Не найдена", show_alert=True)
         return
     title, body, level = row
     n = len(await db_list_active_users())
     await callback.answer()
     await cleanup_chat(callback.from_user.id)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
-                       f"📬 Разослать «<b>{title}</b>» на <b>{n}</b> сотрудников?\n\n"
-                       f"{LEVEL_LABELS.get(level, LEVEL_LABELS['normal'])}",
+                       f"📬 Разослать «<b>{title}</b>» на <b>{n}</b> сотрудников?",
                        parse_mode="HTML",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                            [InlineKeyboardButton(text=f"✅ Да, отправить ({n})", callback_data=f"news_confirm_all:{news_id}")],
@@ -2704,15 +2876,12 @@ async def news_ask_all(callback: types.CallbackQuery):
                        ]))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("news_confirm_all:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("news_confirm_all:"))
 async def news_confirm_all(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     news_id = safe_int(callback.data.split(":")[1])
     row = await db_get_news(news_id)
     if not row:
-        await callback.answer("Новость не найдена", show_alert=True)
+        await callback.answer("Не найдена", show_alert=True)
         return
     lock_key = f"all:{news_id}"
     if not try_lock_broadcast(lock_key):
@@ -2733,15 +2902,12 @@ async def news_confirm_all(callback: types.CallbackQuery):
                        f"✅ Рассылка «{title}» запущена. Придёт отчёт по завершении.")
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("news_test:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("news_test:"))
 async def news_test(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     news_id = safe_int(callback.data.split(":")[1])
     row = await db_get_news(news_id)
     if not row:
-        await callback.answer("Новость не найдена", show_alert=True)
+        await callback.answer("Не найдена", show_alert=True)
         return
     title, body, level = row
     icon = LEVEL_LABELS.get(level, LEVEL_LABELS["normal"])
@@ -2754,28 +2920,22 @@ async def news_test(callback: types.CallbackQuery):
         await callback.answer(f"Ошибка: {e}", show_alert=True)
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("news_send_rest:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("news_send_rest:"))
 async def news_send_rest(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     news_id = safe_int(callback.data.split(":")[1])
     await callback.answer()
     kb = [
         [InlineKeyboardButton(text=r["name"], callback_data=f"news_ask_rest:{news_id}:{r['key']}")]
         for r in await db_restaurants_all()
     ]
-    kb.append([InlineKeyboardButton(text="🔙 К выбору аудитории", callback_data=f"news_send:{news_id}")])
+    kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"news_send:{news_id}")])
     await cleanup_chat(callback.from_user.id)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        "📍 Выбери ресторан:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("news_ask_rest:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("news_ask_rest:"))
 async def news_ask_rest(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     try:
         _, news_id, key = callback.data.split(":", 2)
         news_id = safe_int(news_id)
@@ -2783,7 +2943,7 @@ async def news_ask_rest(callback: types.CallbackQuery):
         return
     row = await db_get_news(news_id)
     if not row:
-        await callback.answer("Новость не найдена", show_alert=True)
+        await callback.answer("Не найдена", show_alert=True)
         return
     title, body, level = row
     rest_name = await restaurant_name_by_key(key)
@@ -2800,11 +2960,8 @@ async def news_ask_rest(callback: types.CallbackQuery):
                        ]))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("news_confirm_rest:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("news_confirm_rest:"))
 async def news_confirm_rest(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     try:
         _, news_id, key = callback.data.split(":", 2)
         news_id = safe_int(news_id)
@@ -2812,7 +2969,7 @@ async def news_confirm_rest(callback: types.CallbackQuery):
         return
     row = await db_get_news(news_id)
     if not row:
-        await callback.answer("Новость не найдена", show_alert=True)
+        await callback.answer("Не найдена", show_alert=True)
         return
     lock_key = f"rest:{news_id}:{key}"
     if not try_lock_broadcast(lock_key):
@@ -2834,16 +2991,7 @@ async def news_confirm_rest(callback: types.CallbackQuery):
                        f"✅ Рассылка для «{rest_name}» запущена.")
 
 
-@dp.callback_query(lambda c: c.data == "hide_notification")
-async def hide_notification(callback: types.CallbackQuery):
-    try:
-        await callback.message.delete()
-    except Exception as e:
-        logging.warning(f"hide: {e}")
-    await callback.answer("Скрыто")
-
-
-# ================== АДМИНКА: СТАНДАРТЫ ==================
+# ---------- Стандарты ----------
 
 STD_FIELDS = {
     "title": ("Название", "✏️ Напиши новое название стандарта:"),
@@ -2900,11 +3048,8 @@ def std_admin_text(rows, page, pages, total):
     return "\n".join(lines) if rows else "Пока пусто."
 
 
-@dp.callback_query(lambda c: c.data == "adm_std")
+@admin_router.callback_query(lambda c: c.data == "adm_std")
 async def adm_std(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     await state.clear()
     await cleanup_chat(callback.from_user.id)
@@ -2915,11 +3060,8 @@ async def adm_std(callback: types.CallbackQuery, state: FSMContext):
                        parse_mode="HTML", reply_markup=std_admin_kb(chunk, page, pages))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("adm_std_p:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_std_p:"))
 async def adm_std_p(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     page = safe_int(callback.data.split(":")[1])
     await callback.answer()
     await cleanup_chat(callback.from_user.id)
@@ -2930,11 +3072,8 @@ async def adm_std_p(callback: types.CallbackQuery):
                        parse_mode="HTML", reply_markup=std_admin_kb(chunk, page, pages))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("std_card:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("std_card:"))
 async def std_card_view(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     await state.clear()
     sid = safe_int(callback.data.split(":")[1])
@@ -2947,11 +3086,8 @@ async def std_card_view(callback: types.CallbackQuery, state: FSMContext):
                        std_card_text(rows[0]), parse_mode="HTML", reply_markup=std_card_kb(sid))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("std_edit:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("std_edit:"))
 async def std_edit_start(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     try:
         _, sid, field = callback.data.split(":")
@@ -2971,10 +3107,8 @@ async def std_edit_start(callback: types.CallbackQuery, state: FSMContext):
                        ]))
 
 
-@dp.message(StdEdit.value)
+@admin_router.message(StdEdit.value)
 async def std_edit_value(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     data = await state.get_data()
     sid, field = data.get("std_id"), data.get("std_field")
     if sid is None or field not in STD_FIELDS:
@@ -3004,11 +3138,8 @@ async def std_edit_value(message: types.Message, state: FSMContext):
                            std_card_text(rows[0]), parse_mode="HTML", reply_markup=std_card_kb(sid))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("std_del:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("std_del:"))
 async def std_del(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     sid = safe_int(callback.data.split(":")[1])
     await db_delete_standard(sid)
     await db_audit(callback.from_user.id, "std_delete", "standard", sid)
@@ -3021,11 +3152,8 @@ async def std_del(callback: types.CallbackQuery):
                        parse_mode="HTML", reply_markup=std_admin_kb(chunk, page, pages))
 
 
-@dp.callback_query(lambda c: c.data == "std_add")
+@admin_router.callback_query(lambda c: c.data == "std_add")
 async def std_add_start(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     await state.clear()
     await state.set_state(StdAdmin.title)
@@ -3037,10 +3165,8 @@ async def std_add_start(callback: types.CallbackQuery, state: FSMContext):
                        ]))
 
 
-@dp.message(StdAdmin.title)
+@admin_router.message(StdAdmin.title)
 async def std_add_title(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await delete_incoming(message); await cleanup_chat(message.from_user.id)
     title = (message.text or "").strip()
     if len(title) < 3:
@@ -3052,10 +3178,8 @@ async def std_add_title(message: types.Message, state: FSMContext):
                        f"Название: <b>{title}</b> ✅\nШаг 2 из 3. Категория:", parse_mode="HTML")
 
 
-@dp.message(StdAdmin.category)
+@admin_router.message(StdAdmin.category)
 async def std_add_category(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await delete_incoming(message); await cleanup_chat(message.from_user.id)
     category = (message.text or "").strip()
     await state.update_data(category=category)
@@ -3064,10 +3188,8 @@ async def std_add_category(message: types.Message, state: FSMContext):
                        f"Категория: <b>{category}</b> ✅\nШаг 3 из 3. Описание:", parse_mode="HTML")
 
 
-@dp.message(StdAdmin.description)
+@admin_router.message(StdAdmin.description)
 async def std_add_desc(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await delete_incoming(message); await cleanup_chat(message.from_user.id)
     description = (message.text or "").strip()
     if len(description) < 5:
@@ -3086,7 +3208,7 @@ async def std_add_desc(message: types.Message, state: FSMContext):
                        parse_mode="HTML", reply_markup=std_admin_kb(chunk, page, pages))
 
 
-# ================== АДМИНКА: FAQ ==================
+# ---------- FAQ ----------
 
 FAQ_FIELDS = {
     "question": ("Вопрос", "✏️ Напиши новый текст вопроса:"),
@@ -3130,11 +3252,8 @@ def faq_admin_text(rows, page, pages, total):
     return "\n".join(lines) if rows else "Пока пусто."
 
 
-@dp.callback_query(lambda c: c.data == "adm_faq")
+@admin_router.callback_query(lambda c: c.data == "adm_faq")
 async def adm_faq(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     await state.clear()
     await cleanup_chat(callback.from_user.id)
@@ -3145,11 +3264,8 @@ async def adm_faq(callback: types.CallbackQuery, state: FSMContext):
                        parse_mode="HTML", reply_markup=faq_admin_kb(chunk, page, pages))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("adm_faq_p:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_faq_p:"))
 async def adm_faq_p(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     page = safe_int(callback.data.split(":")[1])
     await callback.answer()
     await cleanup_chat(callback.from_user.id)
@@ -3160,11 +3276,8 @@ async def adm_faq_p(callback: types.CallbackQuery):
                        parse_mode="HTML", reply_markup=faq_admin_kb(chunk, page, pages))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("faq_edit_show:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("faq_edit_show:"))
 async def faq_card_view(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     await state.clear()
     fid = safe_int(callback.data.split(":")[1])
@@ -3179,11 +3292,8 @@ async def faq_card_view(callback: types.CallbackQuery, state: FSMContext):
                        parse_mode="HTML", reply_markup=faq_card_kb(fid))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("faq_edit:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("faq_edit:"))
 async def faq_edit_start(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     try:
         _, fid, field = callback.data.split(":")
@@ -3203,10 +3313,8 @@ async def faq_edit_start(callback: types.CallbackQuery, state: FSMContext):
                        ]))
 
 
-@dp.message(FaqEdit.value)
+@admin_router.message(FaqEdit.value)
 async def faq_edit_value(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     data = await state.get_data()
     fid, field = data.get("faq_id"), data.get("faq_field")
     if fid is None or field not in FAQ_FIELDS:
@@ -3229,11 +3337,8 @@ async def faq_edit_value(message: types.Message, state: FSMContext):
                            parse_mode="HTML", reply_markup=faq_card_kb(fid))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("faq_del:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("faq_del:"))
 async def faq_del(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     fid = safe_int(callback.data.split(":")[1])
     await db_delete_faq(fid)
     await db_audit(callback.from_user.id, "faq_delete", "faq", fid)
@@ -3246,11 +3351,8 @@ async def faq_del(callback: types.CallbackQuery):
                        parse_mode="HTML", reply_markup=faq_admin_kb(chunk, page, pages))
 
 
-@dp.callback_query(lambda c: c.data == "faq_add")
+@admin_router.callback_query(lambda c: c.data == "faq_add")
 async def faq_add_start(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     await state.clear()
     await state.set_state(FaqAdmin.question)
@@ -3262,10 +3364,8 @@ async def faq_add_start(callback: types.CallbackQuery, state: FSMContext):
                        ]))
 
 
-@dp.message(FaqAdmin.question)
+@admin_router.message(FaqAdmin.question)
 async def faq_add_question(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await delete_incoming(message); await cleanup_chat(message.from_user.id)
     question = (message.text or "").strip()
     if len(question) < 5:
@@ -3277,10 +3377,8 @@ async def faq_add_question(message: types.Message, state: FSMContext):
                        f"Вопрос: <b>{question}</b> ✅\nШаг 2 из 2. Ответ:", parse_mode="HTML")
 
 
-@dp.message(FaqAdmin.answer)
+@admin_router.message(FaqAdmin.answer)
 async def faq_add_answer(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await delete_incoming(message); await cleanup_chat(message.from_user.id)
     answer = (message.text or "").strip()
     if len(answer) < 3:
@@ -3298,13 +3396,10 @@ async def faq_add_answer(message: types.Message, state: FSMContext):
                        parse_mode="HTML", reply_markup=faq_admin_kb(chunk, page, pages))
 
 
-# ================== ОТЧЁТЫ + ЭКСПОРТ ==================
+# ---------- Отчёты + экспорт + аудит ----------
 
-@dp.callback_query(lambda c: c.data == "adm_reports")
+@admin_router.callback_query(lambda c: c.data == "adm_reports")
 async def adm_reports(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     await cleanup_chat(callback.from_user.id)
     stats = await get_report_stats()
@@ -3336,11 +3431,8 @@ async def adm_reports(callback: types.CallbackQuery):
                        ]))
 
 
-@dp.callback_query(lambda c: c.data == "adm_export_users")
+@admin_router.callback_query(lambda c: c.data == "adm_export_users")
 async def adm_export_users(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer("Формирую CSV...")
     rows = await db_list_users()
     output = io.StringIO()
@@ -3360,19 +3452,21 @@ async def adm_export_users(callback: types.CallbackQuery):
         await send_tracked(callback.message.chat.id, callback.from_user.id, f"❌ Ошибка: {e}")
 
 
-@dp.callback_query(lambda c: c.data == "adm_export_news")
+@admin_router.callback_query(lambda c: c.data == "adm_export_news")
 async def adm_export_news(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer("Формирую CSV...")
-    rows = await db_list_news()
+    rows = await db_list_news_admin()
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["id", "title", "body", "level", "created_at"])
-    for nid, title, body, imp, lvl, created in rows:
+    writer.writerow(["id", "title", "body", "level", "created_at", "published", "publish_at"])
+    for row in rows:
+        nid, title, body, imp, lvl, created = row[0], row[1], row[2], row[3], row[4], row[5]
+        published = row[6] if len(row) > 6 else True
+        publish_at = row[7] if len(row) > 7 else None
         writer.writerow([nid, title, body, lvl or "normal",
-                         created.strftime("%d.%m.%Y %H:%M") if created else ""])
+                         created.strftime("%d.%m.%Y %H:%M") if created else "",
+                         "yes" if published else "no",
+                         publish_at.strftime("%d.%m.%Y %H:%M") if publish_at else ""])
     data = output.getvalue().encode("utf-8-sig")
     fname = f"news_{_moscow_now().strftime('%Y%m%d_%H%M')}.csv"
     try:
@@ -3384,11 +3478,8 @@ async def adm_export_news(callback: types.CallbackQuery):
         await send_tracked(callback.message.chat.id, callback.from_user.id, f"❌ Ошибка: {e}")
 
 
-@dp.callback_query(lambda c: c.data == "adm_audit")
+@admin_router.callback_query(lambda c: c.data == "adm_audit")
 async def adm_audit(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     await callback.answer()
     await state.clear()
     await cleanup_chat(callback.from_user.id)
@@ -3399,11 +3490,8 @@ async def adm_audit(callback: types.CallbackQuery, state: FSMContext):
                        parse_mode="HTML", reply_markup=audit_kb(page, pages))
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("adm_audit_p:"))
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_audit_p:"))
 async def adm_audit_p(callback: types.CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ Недоступно", show_alert=True)
-        return
     page = safe_int(callback.data.split(":")[1])
     await callback.answer()
     await cleanup_chat(callback.from_user.id)
@@ -3440,254 +3528,92 @@ def audit_kb(page, pages):
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 
-@dp.callback_query(lambda c: c.data == "noop")
-async def adm_noop(callback: types.CallbackQuery):
-    await callback.answer()
+# ================== ФОНОВЫЕ ПРОЦЕССЫ ==================
 
-
-# ================== СТАРТ / РЕГИСТРАЦИЯ ==================
-
-@dp.message(CommandStart())
-async def cmd_start(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id
-    if await db_is_blocked(user_id):
-        await delete_incoming(message)
-        await cleanup_chat(user_id)
-        await send_tracked(message.chat.id, user_id, "⛔ Доступ к боту ограничен.")
-        return
-    await delete_incoming(message)
-    await cleanup_chat(user_id)
-
-    current_state = await state.get_state()
-    if current_state:
-        if current_state == Registration.full_name.state:
-            await send_tracked(message.chat.id, user_id, "Шаг 1 из 5.\nНапиши ФИО:")
-        elif current_state == Registration.phone.state:
-            await send_tracked(message.chat.id, user_id, "Шаг 2 из 5.\nОтправь номер телефона:",
-                               reply_markup=phone_kb())
-        elif current_state == Registration.birth_date.state:
-            await send_tracked(message.chat.id, user_id, "Шаг 3 из 5.\nДата рождения ДД.ММ.ГГГГ:",
-                               reply_markup=ReplyKeyboardRemove())
-        elif current_state == Registration.position.state:
-            await send_tracked(message.chat.id, user_id, "Шаг 4 из 5.\nВыбери должность:",
-                               reply_markup=await positions_kb())
-        elif current_state == Registration.restaurant.state:
-            await send_tracked(message.chat.id, user_id, "Шаг 5 из 5.\nВыбери ресторан:",
-                               reply_markup=await restaurants_pick_kb())
-        else:
-            await send_tracked(message.chat.id, user_id, "Продолжаем заполнение. Напиши /cancel для сброса.")
-        return
-
-    await state.clear()
-    row = await db_get(user_id)
-    if row and row[0]:
-        await db_set_welcomed(user_id, message.from_user.first_name)
-        await send_tracked(message.chat.id, user_id, "Выбери действие:", reply_markup=FULL_MENU)
-        return
-    if row and row[5]:
-        await send_tracked(message.chat.id, user_id, "Заверши регистрацию 👇", reply_markup=REGISTER_ONLY)
-        return
-    await db_set_welcomed(user_id, message.from_user.first_name)
-    await send_tracked(message.chat.id, user_id,
-                       f"👋 {message.from_user.first_name}, добро пожаловать в Wokker!")
-    await send_tracked(message.chat.id, user_id, "Нажми кнопку ниже, чтобы зарегистрироваться:",
-                       reply_markup=REGISTER_ONLY)
-
-
-@dp.message(Command("cancel"))
-async def cmd_cancel(message: types.Message, state: FSMContext):
-    await delete_incoming(message)
-    await cleanup_chat(message.from_user.id)
-    await state.clear()
-    await send_tracked(message.chat.id, message.from_user.id, "Отменено.")
-
-
-@dp.message(Command("profile"))
-async def cmd_profile(message: types.Message):
-    if await db_is_blocked(message.from_user.id):
-        await delete_incoming(message)
-        await cleanup_chat(message.from_user.id)
-        await send_tracked(message.chat.id, message.from_user.id, "⛔ Доступ ограничен.")
-        return
-    await delete_incoming(message)
-    await cleanup_chat(message.from_user.id)
-    row = await db_get(message.from_user.id)
-    if row and row[0]:
-        await send_tracked(message.chat.id, message.from_user.id, await profile_text(row), parse_mode="HTML")
-    else:
-        await send_tracked(message.chat.id, message.from_user.id,
-                           "Ты не зарегистрирован. Напиши /start.")
-
-
-@dp.callback_query(lambda c: c.data == "register")
-async def start_registration(callback: types.CallbackQuery, state: FSMContext):
-    if await db_is_blocked(callback.from_user.id):
-        await callback.answer("Доступ ограничен", show_alert=True)
-        return
-    await callback.answer()
-    await state.clear()
-    await cleanup_chat(callback.from_user.id)
-    await state.set_state(Registration.full_name)
-    await send_tracked(callback.message.chat.id, callback.from_user.id,
-                       "Шаг 1 из 5.\nНапиши ФИО (например: Иванов Иван Иванович)")
-
-
-@dp.message(Registration.full_name)
-async def process_name(message: types.Message, state: FSMContext):
-    if await db_is_blocked(message.from_user.id):
-        await delete_incoming(message); await cleanup_chat(message.from_user.id)
-        await send_tracked(message.chat.id, message.from_user.id, "⛔ Доступ ограничен.")
-        await state.clear()
-        return
-    if not message.text:
-        await delete_incoming(message); await cleanup_chat(message.from_user.id)
-        await send_tracked(message.chat.id, message.from_user.id, "Отправь текст с ФИО.")
-        return
-    name = message.text.strip()
-    if not NAME_RE.match(name) or len(name.split()) < 2:
-        await delete_incoming(message); await cleanup_chat(message.from_user.id)
-        await send_tracked(message.chat.id, message.from_user.id,
-                           "Нужны минимум имя и фамилия, только буквы и дефис.")
-        return
-    await delete_incoming(message); await cleanup_chat(message.from_user.id)
-    await state.update_data(full_name=name)
-    await state.set_state(Registration.phone)
-    await send_tracked(message.chat.id, message.from_user.id,
-                       "Шаг 2 из 5.\nОтправь номер телефона:",
-                       reply_markup=phone_kb())
-
-
-@dp.message(Registration.phone, lambda m: m.contact is not None)
-async def process_phone_button(message: types.Message, state: FSMContext):
-    if message.contact.user_id != message.from_user.id:
-        await delete_incoming(message); await cleanup_chat(message.from_user.id)
-        await send_tracked(message.chat.id, message.from_user.id,
-                           "Пожалуйста, поделись своим номером.", reply_markup=phone_kb())
-        return
-    await delete_incoming(message); await cleanup_chat(message.from_user.id)
-    await state.update_data(phone=message.contact.phone_number)
-    await state.set_state(Registration.birth_date)
-    await send_tracked(message.chat.id, message.from_user.id,
-                       "Номер получен ✅\nШаг 3 из 5.\nДата рождения ДД.ММ.ГГГГ:",
-                       reply_markup=ReplyKeyboardRemove())
-
-
-@dp.message(Registration.phone)
-async def process_phone_text(message: types.Message, state: FSMContext):
-    if not message.text:
-        await delete_incoming(message); await cleanup_chat(message.from_user.id)
-        await send_tracked(message.chat.id, message.from_user.id, "Отправь номер текстом.")
-        return
-    digits = message.text.replace("+", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-    if not digits.isdigit() or len(digits) < 10:
-        await delete_incoming(message); await cleanup_chat(message.from_user.id)
-        await send_tracked(message.chat.id, message.from_user.id,
-                           "Не похоже на номер. Пример: +79001234567")
-        return
-    await delete_incoming(message); await cleanup_chat(message.from_user.id)
-    await state.update_data(phone=message.text.strip())
-    await state.set_state(Registration.birth_date)
-    await send_tracked(message.chat.id, message.from_user.id,
-                       "Номер записан ✅\nШаг 3 из 5.\nДата рождения ДД.ММ.ГГГГ:",
-                       reply_markup=ReplyKeyboardRemove())
-
-
-@dp.message(Registration.birth_date)
-async def process_birth_date(message: types.Message, state: FSMContext):
-    if await db_is_blocked(message.from_user.id):
-        await delete_incoming(message); await cleanup_chat(message.from_user.id)
-        await send_tracked(message.chat.id, message.from_user.id, "⛔ Доступ ограничен.")
-        await state.clear()
-        return
-    if not message.text:
-        await delete_incoming(message); await cleanup_chat(message.from_user.id)
-        await send_tracked(message.chat.id, message.from_user.id, "Дату текстом ДД.ММ.ГГГГ:")
-        return
-    try:
-        bd = datetime.strptime(message.text.strip(), "%d.%m.%Y").date()
-        if bd.year < 1900 or bd > datetime.now().date():
-            raise ValueError
-    except ValueError:
-        await delete_incoming(message); await cleanup_chat(message.from_user.id)
-        await send_tracked(message.chat.id, message.from_user.id,
-                           "Такой даты не бывает. ДД.ММ.ГГГГ:")
-        return
-    await delete_incoming(message); await cleanup_chat(message.from_user.id)
-    await state.update_data(birth_date=bd.strftime("%d.%m.%Y"))
-    await state.set_state(Registration.position)
-    await send_tracked(message.chat.id, message.from_user.id,
-                       "Дата записана ✅\nШаг 4 из 5. Должность:",
-                       reply_markup=ReplyKeyboardRemove())
-    await send_tracked(message.chat.id, message.from_user.id,
-                       "Выбери должность:", reply_markup=await positions_kb())
-
-
-@dp.callback_query(Registration.position, lambda c: c.data and c.data.startswith("pos:"))
-async def process_position(callback: types.CallbackQuery, state: FSMContext):
-    if await db_is_blocked(callback.from_user.id):
-        await callback.answer("Доступ ограничен", show_alert=True)
-        await state.clear()
-        return
-    await callback.answer()
-    await cleanup_chat(callback.from_user.id)
-    pid = safe_int(callback.data.split(":")[1])
-    positions = {p[0]: p[1] for p in await db_positions_list()}
-    position = positions.get(pid)
-    if not position:
-        await send_tracked(callback.message.chat.id, callback.from_user.id,
-                           "Должность не найдена. Выбери из списка.")
-        return
-    await state.update_data(position=position)
-    await state.set_state(Registration.restaurant)
-    await send_tracked(callback.message.chat.id, callback.from_user.id,
-                       f"Должность: <b>{position}</b> ✅\n\nШаг 5 из 5. Ресторан 👇",
-                       parse_mode="HTML", reply_markup=await restaurants_pick_kb())
-
-
-@dp.callback_query(Registration.restaurant, lambda c: c.data and c.data.startswith("restpick:"))
-async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMContext):
-    if await db_is_blocked(callback.from_user.id):
-        await callback.answer("Доступ ограничен", show_alert=True)
-        await state.clear()
-        return
-    key = callback.data.split(":")[1]
-    restaurant = await db_restaurant(key)
-    if not restaurant:
-        await callback.answer("Ресторан не найден", show_alert=True)
-        return
-    await callback.answer()
-    await cleanup_chat(callback.from_user.id)
-    data = await state.get_data()
-    full_name = data.get("full_name", "")
-    phone = data.get("phone", "")
-    birth_date = data.get("birth_date", "")
-    position = data.get("position", "")
-    try:
-        await db_save_profile(callback.from_user.id, full_name, phone, birth_date, position,
-                              restaurant["key"], callback.from_user.first_name)
-    except Exception as e:
-        logging.error(f"save profile: {e}")
-        await send_tracked(callback.message.chat.id, callback.from_user.id,
-                           "❌ Ошибка сохранения. Попробуй позже.")
-        await state.clear()
-        return
-    await state.clear()
-    await send_tracked(callback.message.chat.id, callback.from_user.id,
-                       f"🎉 <b>{callback.from_user.first_name}, регистрация завершена!</b>\n\n"
-                       f"👤 ФИО: {full_name}\n📞 {phone}\n🎂 {birth_date}\n"
-                       f"💼 {position}\n📍 {restaurant['name']}\n\n"
-                       "Открой приложение:",
-                       parse_mode="HTML", reply_markup=FULL_MENU)
-    if ADMIN_ID:
-        uname = f"@{callback.from_user.username}" if callback.from_user.username else "нет"
+async def birthday_checker():
+    while True:
         try:
-            await bot.send_message(ADMIN_ID,
-                                   f"🔔 Новая регистрация!\n\n{full_name}\n{phone}\n{birth_date}\n"
-                                   f"{position}\n{restaurant['name']}\n"
-                                   f"ID: <code>{callback.from_user.id}</code>\n{uname}",
-                                   parse_mode="HTML")
+            now = _moscow_now()
+            year = now.year
+            today_md = f"{now.day:02d}.{now.month:02d}"
+            for user_id in await db_list_active_users():
+                row = await db_get(user_id)
+                if not row or not row[2]:
+                    continue
+                if row[2][:5] == today_md and not await db_already_greeted(user_id, "birthday", year):
+                    name = await db_get_first_name(user_id)
+                    if not name:
+                        name = (row[0] or "").split()[0] if row[0] else "коллега"
+                    try:
+                        await bot.send_message(
+                            user_id,
+                            f"🎂 <b>{name}, с Днём рождения!</b>\n\n"
+                            "Команда Wokker поздравляет тебя! Пусть год будет лёгким, "
+                            "смены — удачными, а гости — благодарными.\n"
+                            "Хорошего праздника! 🥳",
+                            parse_mode="HTML")
+                        await db_mark_greeted(user_id, "birthday", year)
+                    except TelegramForbiddenError:
+                        await db_mark_bot_blocked(user_id)
+                    except Exception as e:
+                        logging.warning(f"birthday {user_id}: {e}")
         except Exception as e:
-            logging.error(f"notify admin: {e}")
+            logging.error(f"birthday_checker: {e}")
+        await asyncio.sleep(3600)
+
+
+async def holiday_broadcaster():
+    while True:
+        try:
+            now = _moscow_now()
+            hol = HOLIDAYS.get((now.month, now.day))
+            if hol:
+                kind = f"holiday:{now.month:02d}-{now.day:02d}"
+                if not await db_holiday_broadcast_done(kind, now.year):
+                    title, text = hol
+                    sent = 0
+                    for user_id in await db_list_active_users():
+                        try:
+                            name = await db_get_first_name(user_id) or "коллега"
+                            await bot.send_message(user_id, f"{title}\n\n{name}, {text}")
+                            sent += 1
+                        except TelegramForbiddenError:
+                            await db_mark_bot_blocked(user_id)
+                        except Exception:
+                            pass
+                        await asyncio.sleep(0.05)
+                    await db_mark_holiday_broadcast(kind, now.year)
+                    logging.info(f"holiday {kind}: {sent}")
+        except Exception as e:
+            logging.error(f"holiday_broadcaster: {e}")
+        await asyncio.sleep(3600)
+
+
+async def scheduled_publisher():
+    """Раз в минуту публикует наступившие отложенные новости и рассылает их."""
+    while True:
+        try:
+            due = await db_publish_due()
+            for news_id, title, body, level, auto_b in due:
+                logging.info(f"📤 Опубликована отложенная новость #{news_id}: {title}")
+                if auto_b:
+                    try:
+                        await broadcast_news(title, body, level)
+                    except Exception as e:
+                        logging.warning(f"scheduled broadcast {news_id}: {e}")
+                if ADMIN_ID:
+                    try:
+                        await bot.send_message(
+                            ADMIN_ID,
+                            f"⏰ Отложенная новость опубликована:\n\n"
+                            f"{LEVEL_LABELS.get(level, LEVEL_LABELS['normal'])} <b>{title}</b>\n"
+                            + ("📤 Рассылка запущена автоматически." if auto_b else "")
+                        )
+                    except Exception:
+                        pass
+        except Exception as e:
+            logging.error(f"scheduled_publisher: {e}")
+        await asyncio.sleep(60)
 
 
 # ================== ВЕБ-СЕРВЕР ==================
@@ -3939,6 +3865,7 @@ async def main():
     logging.info(f"Web server on port {port}")
     spawn(birthday_checker())
     spawn(holiday_broadcaster())
+    spawn(scheduled_publisher())
     print("STARTING BOT SCRIPT...")
     try:
         await dp.start_polling(bot, drop_pending_updates=True)
@@ -3946,6 +3873,10 @@ async def main():
         for task in list(_bg_tasks):
             task.cancel()
         await runner.cleanup()
+        try:
+            await fsm_storage.close()
+        except Exception:
+            pass
         await bot.session.close()
         if _pool:
             _pool.closeall()

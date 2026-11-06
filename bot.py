@@ -16,7 +16,6 @@ from contextlib import contextmanager
 from urllib.parse import unquote
 
 from aiohttp import web
-import aiohttp_cors
 from aiogram import Bot, Dispatcher, Router, BaseMiddleware, types
 from aiogram.exceptions import TelegramRetryAfter, TelegramForbiddenError
 from aiogram.filters import Command, CommandStart
@@ -4596,15 +4595,6 @@ async def gzip_middleware(request, handler):
 
 app = web.Application(middlewares=[error_middleware, gzip_middleware])
 
-cors = aiohttp_cors.setup(app, defaults={
-    MINI_APP_URL: aiohttp_cors.ResourceOptions(
-        allow_credentials=True,
-        expose_headers="*",
-        allow_headers="*",
-        allow_methods=["POST", "GET", "OPTIONS"]
-    )
-})
-
 app.router.add_get("/", handle_index)
 app.router.add_get("/favicon.ico", handle_favicon)
 app.router.add_post("/api/bootstrap", handle_bootstrap)
@@ -4617,9 +4607,6 @@ app.router.add_post("/api/profile", handle_profile)
 app.router.add_post("/api/avatar", handle_avatar)
 app.router.add_post("/api/questions", handle_questions)
 app.router.add_get("/api/health", handle_health)
-
-for route in list(app.router.routes()):
-    cors.add(route)
 
 async def main():
     port = int(os.getenv("PORT", 8080))

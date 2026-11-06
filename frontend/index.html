@@ -251,7 +251,6 @@
   .rest-status.open { background: #e8f5ec; color: #2e7d43; }
   .rest-status.closed { background: #fbeae4; color: #b04a2e; }
   
-  /* FIX: Добавлены стили для детальной карточки */
   .detail-status { 
     display: inline-block; 
     margin-top: 12px; 
@@ -275,7 +274,6 @@
     transition: background 0.2s ease, color 0.2s ease; }
   .btn-map:active { background: var(--map-border); color: #fff; }
 
-  /* Чек-лист во вкладке стандарты */
   .checklist-card { background: var(--card-bg); border-radius: 16px; margin: 0 12px 12px; padding: 16px; border: 1px solid rgba(128,128,128,0.08); box-shadow: 0 4px 16px rgba(0,0,0,0.03); }
   .check-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(128,128,128,0.08); cursor: pointer; }
   .check-item:last-child { border-bottom: 0; }
@@ -439,6 +437,14 @@ function showAlert(msg) {
   }
   alert(msg);
 }
+
+// Защита от внедрения javascript: ссылок
+const safeUrl = url => {
+  if (!url) return '';
+  const u = url.trim().toLowerCase();
+  if (u.startsWith('http://') || u.startsWith('https://') || u.startsWith('tel:')) return url;
+  return '#';
+};
 
 let cachedAvatarUrl = null;
 let BOOT = null;
@@ -622,7 +628,6 @@ function renderProfileFromBoot() {
       '<div class="gb-sub">' + esc(greet.sub) + '</div></div>'
     : '';
 
-  // FIX: Очищаем телефон от скобок и пробелов для href
   const phoneHtml = p.phone
     ? '<a href="tel:' + esc(p.phone.replace(/[^\d+]/g, '')) + '" style="color:var(--text-color);text-decoration:none">' + esc(p.phone) + '</a>'
     : '—';
@@ -698,8 +703,8 @@ function prepareRestaurants(list) {
 
 function mapUrlFor(r) {
   return r.org
-    ? 'https://yandex.ru/maps/org/' + r.org
-    : 'https://yandex.ru/maps/?text=' + encodeURIComponent('Воккер ' + r.address);
+    ? safeUrl('https://yandex.ru/maps/org/' + r.org)
+    : safeUrl('https://yandex.ru/maps/?text=' + encodeURIComponent('Воккер ' + r.address));
 }
 
 function statusBadge(r, cls) {
@@ -847,7 +852,6 @@ window.addEventListener('popstate', () => {
   }
 });
 
-// FIX: Обернули localStorage в try/catch
 function getLastReadNews() {
   try { return localStorage.getItem('wokker_last_read_news'); } catch (e) { return null; }
 }
@@ -894,7 +898,6 @@ function renderNewsFromBoot() {
   }).join('');
 }
 
-// FIX: Переименовали 'checklists' в 'shift_checklist', чтобы не пересекаться с БД
 function renderStandardsChips(standards) {
   const container = document.getElementById('standards-chips');
   const cats = ['all', 'shift_checklist', ...new Set(standards.map(s => s.category).filter(Boolean))];
@@ -911,7 +914,6 @@ function renderStandardsChips(standards) {
     chip.addEventListener('click', () => {
       haptic('light');
       currentStandardCat = chip.dataset.cat;
-      // FIX: сбрасываем поиск при смене категории
       document.getElementById('standard-search').value = '';
       renderStandardsChips(standards);
       renderStandardsFromBoot();
@@ -928,7 +930,6 @@ function renderStandardsFromBoot() {
 
   let htmlContent = '';
 
-  // FIX: используем shift_checklist вместо checklists
   const showChecklists = currentStandardCat === 'shift_checklist' || currentStandardCat === 'all';
   const checklistMatchesQuery = !query || 'чек-лист открытия смены проверка чистоты рабочей зоны'.includes(query);
 
@@ -950,7 +951,7 @@ function renderStandardsFromBoot() {
     '<b>' + esc(s.title) + '</b>' +
     '<div class="muted">' + esc(s.category) + '</div>' +
     '<div style="margin-top:6px">' + esc(s.description) + '</div>' +
-    (s.url ? '<a href="' + esc(s.url) + '" target="_blank"><button class="btn">Открыть документ</button></a>' : '') +
+    (s.url ? '<a href="' + safeUrl(s.url) + '" target="_blank"><button class="btn">Открыть документ</button></a>' : '') +
     '</div>'
   ).join('');
 
@@ -996,7 +997,6 @@ function initShiftChecklist() {
       saved[id] = !saved[id];
       try { localStorage.setItem(todayKey, JSON.stringify(saved)); } catch(e){}
       
-      // FIX: Обновляем только конкретный DOM-элемент вместо перерисовки всего списка
       const checked = saved[id];
       item.classList.toggle('checked', !!checked);
       const box = item.querySelector('.check-box');
@@ -1088,7 +1088,7 @@ async function refreshSection(sec) {
     if (sec === 'sec-news') { 
       BOOT.news = data; 
       renderNewsFromBoot(); 
-      markNewsAsRead(); // FIX: помечаем прочитанным
+      markNewsAsRead();
       checkNewsBadge(); 
     }
     else if (sec === 'sec-restaurants') { BOOT.restaurants = prepareRestaurants(data); renderRestaurants(); }
@@ -1129,7 +1129,7 @@ async function boot() {
 
   renderProfileFromBoot();
   renderNewsFromBoot();
-  markNewsAsRead(); // FIX: Новости прочитаны при загрузке, т.к. вкладка открыта по умолчанию
+  markNewsAsRead();
   checkNewsBadge();
   renderRestaurants();
   renderStandardsFromBoot();

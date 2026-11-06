@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Wokker</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+<!-- Leaflet CSS & JS (Интерактивная карта) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
 <style>
   :root {
     --bg: var(--tg-theme-bg-color, #f2f2f7);
@@ -232,6 +237,65 @@
     background: #fff; border: 1px solid var(--beige-border);
     border-radius: 12px; font-size: 12px; color: #7c6b52; font-weight: 600; }
 
+  /* Переключатель режимов Вида (Список / Карта) */
+  .view-toggle-container {
+    display: flex;
+    margin: 0 12px 10px;
+    background: rgba(128,128,128,0.12);
+    border-radius: 14px;
+    padding: 3px;
+  }
+  .view-toggle-btn {
+    flex: 1;
+    border: 0;
+    background: transparent;
+    padding: 8px 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--hint-color);
+    border-radius: 11px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .view-toggle-btn.active {
+    background: var(--card-bg);
+    color: var(--text-color);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+
+  /* Контейнер интерактивной карты Leaflet */
+  #restaurants-map {
+    height: 62vh;
+    margin: 0 12px 12px;
+    border-radius: 20px;
+    overflow: hidden;
+    border: 1px solid rgba(128,128,128,0.15);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+    display: none;
+    z-index: 1;
+  }
+
+  /* Кастомный маркер карты */
+  .leaflet-wokker-marker {
+    background: #ff2d55;
+    color: #fff;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    width: 34px !important;
+    height: 34px !important;
+    margin-left: -17px !important;
+    margin-top: -17px !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    box-shadow: 0 4px 12px rgba(255, 45, 85, 0.4);
+  }
+  .leaflet-wokker-marker.is-my {
+    background: #c3a578;
+    box-shadow: 0 4px 12px rgba(195, 165, 120, 0.6);
+  }
+
   .rest-card { background: var(--card-bg); border-radius: 18px; margin: 8px 12px 12px;
     padding: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.04); border: 1px solid rgba(128,128,128,0.08); cursor: pointer; 
     transition: transform 0.15s ease; position: relative; }
@@ -274,6 +338,7 @@
     transition: background 0.2s ease, color 0.2s ease; }
   .btn-map:active { background: var(--map-border); color: #fff; }
 
+  /* Чек-лист во вкладке стандарты */
   .checklist-card { background: var(--card-bg); border-radius: 16px; margin: 0 12px 12px; padding: 16px; border: 1px solid rgba(128,128,128,0.08); box-shadow: 0 4px 16px rgba(0,0,0,0.03); }
   .check-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(128,128,128,0.08); cursor: pointer; }
   .check-item:last-child { border-bottom: 0; }
@@ -327,8 +392,20 @@
     <div class="sub">Адреса, часы работы и маршруты всех точек</div>
     <div id="rest-count" style="display:none"></div>
   </div>
-  <input class="q" id="rest-search" placeholder="🔍 Поиск ресторана или адреса…">
-  <div id="restaurants-list"></div>
+
+  <!-- Переключатель Список / Карта -->
+  <div class="view-toggle-container">
+    <button class="view-toggle-btn active" id="btn-view-list">📋 Список</button>
+    <button class="view-toggle-btn" id="btn-view-map">🗺 Карта</button>
+  </div>
+
+  <div id="rest-list-wrapper">
+    <input class="q" id="rest-search" placeholder="🔍 Поиск ресторана или адреса…">
+    <div id="restaurants-list"></div>
+  </div>
+
+  <!-- Карта -->
+  <div id="restaurants-map"></div>
 </div>
 
 <div class="section active" id="sec-news">
@@ -449,6 +526,8 @@ const safeUrl = url => {
 let cachedAvatarUrl = null;
 let BOOT = null;
 let currentStandardCat = 'all';
+let leafletMap = null;
+let leafletMarkers = [];
 
 const sectionLoaders = {
   'sec-profile': () => { if (BOOT) renderProfileFromBoot(); },
@@ -771,10 +850,88 @@ function renderRestaurantsList(list, query) {
   }).join('');
 }
 
+/* Инициализация и рендеринг Leaflet-карты */
+function initInteractiveMap() {
+  const mapContainer = document.getElementById('restaurants-map');
+  if (!BOOT || !BOOT.restaurants || !window.L) return;
+
+  if (!leafletMap) {
+    // Центр Москвы по умолчанию
+    leafletMap = L.map(mapContainer, { zoomControl: false }).setView([55.7558, 37.6173], 10);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(leafletMap);
+    L.control.zoom({ position: 'bottomright' }).addTo(leafletMap);
+  }
+
+  // Очищаем старые маркеры
+  leafletMarkers.forEach(m => leafletMap.removeLayer(m));
+  leafletMarkers = [];
+
+  const bounds = L.latLngBounds();
+  const myRestName = (BOOT && BOOT.profile) ? BOOT.profile.restaurant : '';
+
+  BOOT.restaurants.forEach(r => {
+    // Берём lat/lng из объекта если есть, иначе примерные координаты Москвы
+    const lat = r.lat || 55.75 + (Math.random() - 0.5) * 0.15;
+    const lng = r.lng || 37.61 + (Math.random() - 0.5) * 0.15;
+    
+    const isMy = myRestName && r.name.toLowerCase().includes(myRestName.toLowerCase());
+
+    const icon = L.divIcon({
+      className: 'leaflet-wokker-marker ' + (isMy ? 'is-my' : ''),
+      html: isMy ? '⭐' : '🍜',
+      iconSize: [34, 34]
+    });
+
+    const popupHtml = 
+      '<div style="text-align:center; padding:4px;">' +
+      '<b style="font-size:15px;">' + esc(r.name) + '</b><br>' +
+      '<span style="font-size:12px; color:#666;">📍 ' + esc(r.address) + '</span><br>' +
+      '<a href="' + mapUrlFor(r) + '" target="_blank" style="display:inline-block; margin-top:8px; padding:6px 12px; background:#ff2d55; color:#fff; text-decoration:none; border-radius:10px; font-weight:600; font-size:12px;">🗺 Построить маршрут</a>' +
+      '</div>';
+
+    const marker = L.marker([lat, lng], { icon: icon })
+      .bindPopup(popupHtml)
+      .addTo(leafletMap);
+
+    leafletMarkers.push(marker);
+    bounds.extend([lat, lng]);
+  });
+
+  if (leafletMarkers.length > 0) {
+    leafletMap.fitBounds(bounds, { padding: [30, 30] });
+  }
+
+  setTimeout(() => {
+    leafletMap.invalidateSize();
+  }, 200);
+}
+
 function renderRestaurants() {
   if (!BOOT) return;
   renderRestaurantsList(BOOT.restaurants, document.getElementById('rest-search').value);
 }
+
+/* Обработчики переключения Список / Карта */
+document.getElementById('btn-view-list').addEventListener('click', function() {
+  haptic('light');
+  document.getElementById('btn-view-map').classList.remove('active');
+  this.classList.add('active');
+  document.getElementById('restaurants-map').style.display = 'none';
+  document.getElementById('rest-list-wrapper').style.display = 'block';
+});
+
+document.getElementById('btn-view-map').addEventListener('click', function() {
+  haptic('light');
+  document.getElementById('btn-view-list').classList.remove('active');
+  this.classList.add('active');
+  document.getElementById('rest-list-wrapper').style.display = 'none';
+  const mapContainer = document.getElementById('restaurants-map');
+  mapContainer.style.display = 'block';
+  initInteractiveMap();
+});
 
 document.getElementById('rest-search').addEventListener('input', e => {
   if (!BOOT) return;

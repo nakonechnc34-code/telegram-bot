@@ -324,7 +324,7 @@
   <input class="q" id="standard-search" placeholder="🔍 Поиск по стандартам…">
   <div class="chips-container" id="standards-chips">
     <div class="chip active" data-cat="all">Все</div>
-    <div class="chip" data-cat="checklist">📋 Чек-лист</div>
+    <div class="chip" data-cat="checklists">📋 Чек-листы</div>
   </div>
   <div id="standards-list"></div>
 </div>
@@ -869,10 +869,10 @@ function renderNewsFromBoot() {
 
 function renderStandardsChips(standards) {
   const container = document.getElementById('standards-chips');
-  const cats = ['all', 'checklist', ...new Set(standards.map(s => s.category).filter(Boolean))];
+  const cats = ['all', 'checklists', ...new Set(standards.map(s => s.category).filter(Boolean))];
   
   container.innerHTML = cats.map(cat => {
-    let label = cat === 'all' ? 'Все' : (cat === 'checklist' ? '📋 Чек-лист смены' : cat);
+    let label = cat === 'all' ? 'Все' : (cat === 'checklists' ? '📋 Чек-листы' : cat);
     const active = currentStandardCat === cat ? ' active' : '';
     return '<div class="chip' + active + '" data-cat="' + esc(cat) + '">' + esc(label) + '</div>';
   }).join('');
@@ -896,11 +896,10 @@ function renderStandardsFromBoot() {
 
   let htmlContent = '';
 
-  // Если выбран чек-лист или категория "Все" (и нет поискового запроса, либо запрос подходит)
-  const showChecklist = currentStandardCat === 'checklist' || currentStandardCat === 'all';
+  const showChecklists = currentStandardCat === 'checklists' || currentStandardCat === 'all';
   const checklistMatchesQuery = !query || 'чек-лист открытия смены проверка чистоты рабочей зоны'.includes(query);
 
-  if (showChecklist && checklistMatchesQuery && currentStandardCat === 'checklist') {
+  if (showChecklists && checklistMatchesQuery) {
     htmlContent += '<div class="checklist-card">' +
       '<b style="margin-bottom: 12px;">📋 Чек-лист открытия смены</b>' +
       '<div id="shift-checklist"></div>' +

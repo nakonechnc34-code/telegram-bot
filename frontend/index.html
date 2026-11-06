@@ -594,8 +594,11 @@ function debounce(fn, ms) {
   };
 }
 
-const BOOT_CACHE_KEY = 'wokker_boot_cache_v2';
-const BOOT_CACHE_TTL = 30 * 60 * 1000;
+// ============================================================
+// КЭШ: v3 + TTL 5 минут (было v2 + 30 минут)
+// ============================================================
+const BOOT_CACHE_KEY = 'wokker_boot_cache_v3';
+const BOOT_CACHE_TTL = 5 * 60 * 1000;
 
 function readBootCache() {
   try {
@@ -620,17 +623,33 @@ function writeBootCache(data) {
   } catch (e) {}
 }
 
+// Сравнение — теперь поштучно по ресторанам, включая координаты
 function bootChanged(oldB, newB) {
   if (!oldB) return true;
   if (JSON.stringify(oldB.profile) !== JSON.stringify(newB.profile)) return true;
-  const o = oldB.news || [], n = newB.news || [];
-  if (o.length !== n.length) return true;
-  if (o[0] && n[0] && o[0].id !== n[0].id) return true;
-  if ((oldB.restaurants || []).length !== (newB.restaurants || []).length) return true;
-  if ((oldB.standards || []).length !== (newB.standards || []).length) return true;
-  if ((oldB.faq || []).length !== (newB.faq || []).length) return true;
-  const og = oldB.greeting || {}, ng = newB.greeting || {};
-  if (og.kind !== ng.kind || og.title !== ng.title) return true;
+  if (JSON.stringify(oldB.greeting) !== JSON.stringify(newB.greeting)) return true;
+  if (JSON.stringify(oldB.news) !== JSON.stringify(newB.news)) return true;
+  if (JSON.stringify(oldB.standards) !== JSON.stringify(newB.standards)) return true;
+  if (JSON.stringify(oldB.faq) !== JSON.stringify(newB.faq)) return true;
+
+  // Рестораны: поштучно по key + координатам + статусу + основным полям
+  const or = oldB.restaurants || [];
+  const nr = newB.restaurants || [];
+  if (or.length !== nr.length) return true;
+
+  const om = {};
+  or.forEach(r => { om[r.key] = r; });
+  for (const b of nr) {
+    const a = om[b.key];
+    if (!a) return true;
+    if (a.lat !== b.lat) return true;
+    if (a.lon !== b.lon) return true;
+    if (a.status !== b.status) return true;
+    if (a.name !== b.name) return true;
+    if (a.address !== b.address) return true;
+    if (a.phone !== b.phone) return true;
+    if (a.hours !== b.hours) return true;
+  }
   return false;
 }
 
@@ -673,7 +692,6 @@ function showWelcomeSplash() {
   try { tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred('medium'); } catch(e) {}
 
   markWelcomeSeen();
-  // удаляем только параметр welcome, остальные (если появятся в будущем) сохраняем
   try {
     const url = new URL(location.href);
     url.searchParams.delete('welcome');
@@ -717,7 +735,6 @@ const sectionLoaders = {
   'sec-faq': () => { if (BOOT) renderFaqFromBoot(); },
 };
 
-// Один обработчик: и переключение, и refresh
 document.querySelectorAll('.tabs button').forEach(btn => {
   btn.addEventListener('click', () => {
     haptic('light');
@@ -834,7 +851,6 @@ function applyAvatarToEl(el) {
     el.textContent = '';
   };
   probe.onerror = () => {
-    // пробуем /api/avatar ровно один раз — без рекурсии
     if (_avatarRetryDone) return;
     _avatarRetryDone = true;
     loadAvatarFromApi().then(() => {
@@ -879,7 +895,6 @@ function renderProfileFromBoot() {
     return;
   }
 
-  // Поддержка и нового поля restaurant_key и старого имени «ОФИС»
   const isOffice = (p.restaurant_key === 'office') || (p.restaurant === 'ОФИС');
   const restBadge = isOffice ? 'office' : 'normal';
   const name = displayNameOf(p);
@@ -961,7 +976,6 @@ function prepareRestaurants(list) {
   });
 }
 
-// Возвращаем валидный https:// всегда — при отсутствии/ошибке org ведём на поиск по адресу.
 function mapUrlFor(r) {
   const org = (r.org || '').trim();
   const fallback = 'https://yandex.ru/maps/?text=' +
@@ -1253,7 +1267,6 @@ document.getElementById('detail-back').addEventListener('click', () => {
 window.addEventListener('popstate', () => {
   const params = new URLSearchParams(location.search);
   const inDetail = document.getElementById('sec-detail').classList.contains('active');
-  // Срабатываем только если реально были в detail и ушли из него
   if (!params.get('rest') && inDetail) {
     exitDetailView();
     goToRestaurantsTab();
@@ -1363,7 +1376,6 @@ function initShiftChecklist() {
     { id: 't3', text: 'Проверить наличие необходимых упаковок и сырья' },
     { id: 't4', text: 'Синхронизироваться с командой на смене' }
   ];
-  // локальная дата, не UTC
   const todayKey = 'wokker_checklist_' + localDateKey();
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem(todayKey) || '{}'); } catch(e){}
@@ -1431,7 +1443,8 @@ async function refreshSection(sec) {
   const url = map[sec];
   if (!url) return;
   const now = Date.now();
-  if (now - (_refreshCache[sec] || 0) < 30000) return;
+  // 15 секунд вместо 30 — быстрее подтягиваем свежие координаты
+  if (now - (_refreshCache[sec] || 0) < 15000) return;
   _refreshCache[sec] = now;
   try {
     const resp = await fetch(url, {
@@ -1449,6 +1462,8 @@ async function refreshSection(sec) {
       if (document.getElementById('btn-view-map').classList.contains('active') && window.L) {
         initInteractiveMap(getFilteredRestaurants(BOOT.restaurants, document.getElementById('rest-search').value));
       }
+      // обновляем и в localStorage, чтобы следующий запуск не показал старое
+      try { writeBootCache(Object.assign({}, BOOT)); } catch(e) {}
     }
     else if (sec === 'sec-standards') { BOOT.standards = data; renderStandardsFromBoot(); }
     else if (sec === 'sec-faq') { BOOT.faq = data; renderFaqFromBoot(); }

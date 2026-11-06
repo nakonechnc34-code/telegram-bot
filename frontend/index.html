@@ -7,9 +7,16 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   :root {
+    /* Автоматические цвета из темы Telegram (с фоллбеками) */
+    --bg: var(--tg-theme-bg-color, #f2f2f7);
+    --card-bg: var(--tg-theme-secondary-bg-color, #ffffff);
+    --text-color: var(--tg-theme-text-color, #000000);
+    --hint-color: var(--tg-theme-hint-color, #8e8e93);
+    --accent: var(--tg-theme-button-color, #ff2d55);
+    --accent-text: var(--tg-theme-button-text-color, #ffffff);
+    --separator: var(--tg-theme-section-separator-color, rgba(0,0,0,0.06));
+    
     --blue: #ff2d55;
-    --bg: #f2f2f7;
-    --gray: #9aa0a6;
     --green: #34c759;
     --beige: #c3a578;
     --beige-dark: #b2946a;
@@ -17,42 +24,67 @@
     --beige-border: #e6d8c2;
     --map-border: #d9534f;
   }
-  * { box-sizing: border-box; margin: 0; }
-  body { font-family: -apple-system, sans-serif; background: var(--bg); padding-bottom: 96px; }
-  .card { background: #fff; border-radius: 14px; margin: 0 12px 12px; padding: 14px; }
-  .card b { display: block; margin-bottom: 6px; }
-  .card div { line-height: 1.5; }
-  .muted { color: #8e8e93; font-size: 14px; }
-  .btn { display: inline-block; background: var(--blue); color: #fff; border: 0;
-         border-radius: 10px; padding: 10px 16px; font-size: 15px; margin-top: 8px; }
-  .btn:disabled { opacity: .5; }
 
+  * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
+  
+  body { 
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+    background: var(--bg); 
+    color: var(--text-color);
+    padding-bottom: 96px; 
+    transition: background 0.25s ease, color 0.25s ease;
+  }
+
+  .card { 
+    background: var(--card-bg); 
+    border-radius: 16px; 
+    margin: 0 12px 12px; 
+    padding: 16px; 
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(128, 128, 128, 0.08);
+    transition: background 0.25s ease;
+  }
+  .card b { display: block; margin-bottom: 6px; font-size: 16px; color: var(--text-color); }
+  .card div { line-height: 1.5; font-size: 14px; color: var(--text-color); }
+  .muted { color: var(--hint-color); font-size: 13px; }
+  
+  .btn { 
+    display: inline-block; background: var(--accent); color: var(--accent-text); border: 0;
+    border-radius: 12px; padding: 12px 18px; font-size: 15px; font-weight: 600; margin-top: 10px; 
+    box-shadow: 0 4px 12px rgba(255, 45, 85, 0.25);
+    cursor: pointer; transition: transform 0.15s ease, opacity 0.15s ease;
+  }
+  .btn:active { transform: scale(0.96); opacity: 0.9; }
+  .btn:disabled { opacity: .5; transform: none; box-shadow: none; }
+
+  /* Навигационная панель (Dock) */
   .tabs {
     position: fixed;
-    bottom: calc(10px + env(safe-area-inset-bottom));
-    left: 10px;
-    right: 10px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    left: 12px;
+    right: 12px;
     display: flex;
-    background: rgba(255, 255, 255, .78);
-    backdrop-filter: blur(18px) saturate(1.4);
-    -webkit-backdrop-filter: blur(18px) saturate(1.4);
-    border: 1px solid rgba(0, 0, 0, .05);
-    border-radius: 24px;
+    background: var(--card-bg);
+    backdrop-filter: blur(20px) saturate(1.8);
+    -webkit-backdrop-filter: blur(20px) saturate(1.8);
+    border: 1px solid rgba(128, 128, 128, 0.15);
+    border-radius: 26px;
     padding: 6px;
-    box-shadow: 0 8px 24px rgba(30, 20, 10, .12);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
     z-index: 100;
+    transition: background 0.25s ease;
   }
+
   .tabs button {
-    flex: 1; border: 0; background: none; padding: 7px 2px 6px;
-    font-size: 10px; color: #9a938a; border-radius: 18px;
+    flex: 1; border: 0; background: none; padding: 8px 2px 6px;
+    font-size: 10px; font-weight: 500; color: var(--hint-color); border-radius: 20px;
     transition: color .2s ease, background .25s ease, transform .2s ease;
-    -webkit-tap-highlight-color: transparent;
   }
-  .tabs button:active { transform: scale(.94); }
+  .tabs button:active { transform: scale(0.92); }
   .tabs button.active {
     color: #b2946a; font-weight: 700;
     background: linear-gradient(135deg, var(--beige-soft), #fdf8ef);
-    box-shadow: inset 0 0 0 1px rgba(195, 165, 120, .25);
+    box-shadow: inset 0 0 0 1px rgba(195, 165, 120, 0.3);
   }
   .tabs .tab-icon {
     display: flex; align-items: center; justify-content: center;
@@ -62,19 +94,24 @@
   .tabs button.active .tab-icon { transform: translateY(-2px) scale(1.12); }
   .tabs .tab-icon svg { width: 22px; height: 22px; display: block; }
 
-  .section { display: none; }
-  .section.active { display: block; }
-  .q { width: calc(100% - 24px); margin: 4px 12px 12px; border: 1px solid #e5e5ea;
-       border-radius: 10px; padding: 10px; font-size: 15px; background: #fff; outline: none; }
-  .q:focus { border-color: var(--beige); }
-  details { background: #fff; border-radius: 14px; margin: 0 12px 10px; padding: 14px; }
-  summary { font-weight: 600; cursor: pointer; }
-  details p { margin-top: 8px; color: #3a3a3c; }
+  .section { display: none; opacity: 0; transform: translateY(6px); transition: opacity 0.25s ease, transform 0.25s ease; }
+  .section.active { display: block; opacity: 1; transform: translateY(0); }
 
-  .skeleton-card { background: #fff; border-radius: 14px; margin: 12px 12px 12px; padding: 16px; }
+  .q { 
+    width: calc(100% - 24px); margin: 6px 12px 12px; border: 1.5px solid rgba(128,128,128,0.2);
+    border-radius: 12px; padding: 12px; font-size: 15px; background: var(--card-bg); color: var(--text-color); outline: none; 
+    transition: border-color 0.2s ease;
+  }
+  .q:focus { border-color: var(--beige); }
+
+  details { background: var(--card-bg); border-radius: 16px; margin: 0 12px 10px; padding: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.03); border: 1px solid rgba(128,128,128,0.08); }
+  summary { font-weight: 600; cursor: pointer; color: var(--text-color); }
+  details p { margin-top: 10px; color: var(--hint-color); font-size: 14px; }
+
+  .skeleton-card { background: var(--card-bg); border-radius: 16px; margin: 12px; padding: 18px; }
   .skeleton-line {
-    height: 14px; border-radius: 7px; margin-bottom: 10px;
-    background: linear-gradient(90deg, #f0e9dd 25%, #f8f3ea 50%, #f0e9dd 75%);
+    height: 14px; border-radius: 7px; margin-bottom: 12px;
+    background: linear-gradient(90deg, rgba(128,128,128,0.1) 25%, rgba(128,128,128,0.2) 50%, rgba(128,128,128,0.1) 75%);
     background-size: 200% 100%;
     animation: shimmer 1.2s infinite linear;
   }
@@ -84,132 +121,123 @@
     100% { background-position: -200% 0; }
   }
 
-  .greeting { margin: 14px 12px 4px; padding: 0 4px; }
-  .greeting .g-title { font-size: 22px; font-weight: 700; color: #3a2f1f; line-height: 1.25; }
-  .greeting .g-sub { font-size: 13px; color: #96876f; margin-top: 2px; }
+  .greeting { margin: 16px 12px 8px; padding: 0 4px; }
+  .greeting .g-title { font-size: 24px; font-weight: 800; color: var(--text-color); line-height: 1.2; letter-spacing: -0.5px; }
+  .greeting .g-sub { font-size: 14px; color: var(--hint-color); margin-top: 4px; }
 
-  .greet-banner { margin: 12px 12px 0; padding: 16px; border-radius: 16px;
+  .greet-banner { margin: 12px; padding: 18px; border-radius: 18px;
     border: 1px solid var(--beige-border);
     background: linear-gradient(135deg, var(--beige-soft), #fdf9f2); text-align: center; }
   .greet-banner .gb-title { font-size: 18px; font-weight: 700; color: #3a2f1f; }
-  .greet-banner .gb-sub { font-size: 13px; color: #7c6b52; margin-top: 4px; line-height: 1.45; }
+  .greet-banner .gb-sub { font-size: 13px; color: #7c6b52; margin-top: 6px; line-height: 1.45; }
   .greet-banner.birthday { background: linear-gradient(135deg, #ffe9ec, #fff5f0); border-color: #f3c1c9; }
   .greet-banner.birthday .gb-title { color: #b0435f; }
   .greet-banner.holiday { background: linear-gradient(135deg, #fff7e6, #fffaf0); border-color: #f0d89c; }
   .greet-banner.holiday .gb-title { color: #8a6d2b; }
   .greet-banner.holiday .gb-sub { color: #9a7c3d; }
 
-  .profile-card { background: #fff; border-radius: 18px; margin: 8px 12px 12px;
-    overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,.07); }
+  .profile-card { background: var(--card-bg); border-radius: 20px; margin: 8px 12px 16px;
+    overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.06); border: 1px solid rgba(128,128,128,0.08); }
   .profile-header { background: linear-gradient(135deg, #ff2d55, #ff6a3d);
-    color: #fff; padding: 24px 16px 18px; text-align: center; }
-  .avatar-ring { width: 84px; height: 84px; border-radius: 50%; margin: 0 auto 12px;
-    padding: 3px; background: linear-gradient(135deg, var(--beige-soft), var(--beige));
-    box-sizing: border-box; }
+    color: #fff; padding: 28px 16px 20px; text-align: center; }
+  .avatar-ring { width: 88px; height: 88px; border-radius: 50%; margin: 0 auto 12px;
+    padding: 3px; background: linear-gradient(135deg, rgba(255,255,255,0.6), rgba(255,255,255,0.2));
+    box-sizing: border-box; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
   .avatar-ring .avatar { width: 100%; height: 100%; margin: 0;
     border: 2px solid #fff; border-radius: 50%;
     background-color: rgba(255,255,255,.25);
     background-size: cover; background-position: center;
     display: flex; align-items: center; justify-content: center;
-    font-size: 30px; font-weight: 700; color: #fff; }
-  .p-name { font-size: 19px; font-weight: 700; line-height: 1.25; }
-  .p-pos { font-size: 13px; opacity: .92; margin-top: 3px; }
-  .badge { display: inline-block; margin-top: 10px; padding: 4px 14px;
-    background: rgba(255,255,255,.28); border-radius: 20px; font-size: 12px; font-weight: 600; }
-  .info-list { padding: 4px 14px 10px; }
-  .info-row { display: flex; align-items: center; padding: 11px 2px;
-    border-bottom: 1px solid #f0f0f4; font-size: 15px; }
+    font-size: 32px; font-weight: 700; color: #fff; }
+  .p-name { font-size: 20px; font-weight: 700; line-height: 1.25; letter-spacing: -0.3px; }
+  .p-pos { font-size: 14px; opacity: .92; margin-top: 4px; }
+  .badge { display: inline-block; margin-top: 10px; padding: 5px 14px;
+    background: rgba(255,255,255,0.25); backdrop-filter: blur(4px); border-radius: 20px; font-size: 12px; font-weight: 600; }
+  
+  .info-list { padding: 6px 16px 12px; }
+  .info-row { display: flex; align-items: center; padding: 13px 2px;
+    border-bottom: 1px solid rgba(128,128,128,0.1); font-size: 15px; color: var(--text-color); }
   .info-row:last-child { border-bottom: 0; }
-  .info-row .ico { width: 28px; font-size: 16px; }
-  .info-row .lbl { color: #8e8e93; flex: 1; }
+  .info-row .ico { width: 30px; font-size: 16px; }
+  .info-row .lbl { color: var(--hint-color); flex: 1; }
   .info-row .val { font-weight: 600; text-align: right; max-width: 62%; overflow-wrap: break-word; }
-  .profile-footer { background: #f8f8fb; padding: 10px 14px; font-size: 12px; color: #8e8e93; }
+  
+  .profile-footer { background: rgba(128,128,128,0.04); padding: 12px 16px; font-size: 12px; color: var(--hint-color); border-top: 1px solid rgba(128,128,128,0.08); }
   .profile-footer button { background: none; border: 0; color: var(--blue); font-size: 12px;
     font-weight: 600; padding: 0; text-decoration: underline; cursor: pointer; }
-  .profile-footer button:active { opacity: .7; }
-  .profile-footer button:disabled { opacity: .4; cursor: default; }
 
-  .badge-rest { display: inline-block; padding: 2px 10px; border-radius: 12px;
+  .badge-rest { display: inline-block; padding: 3px 10px; border-radius: 12px;
     font-size: 12px; font-weight: 600; color: #fff; }
   .badge-rest.office { background: var(--gray); }
   .badge-rest.normal { background: var(--green); }
 
-  @media (min-width: 600px) {
-    .info-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 8px 14px 10px; }
-    .info-row { border-bottom: none; padding: 8px 0; }
-  }
-
-  .rest-tab-header { margin: 12px 12px 4px; padding: 14px 16px;
+  .rest-tab-header { margin: 12px 12px 6px; padding: 16px;
     background: linear-gradient(135deg, var(--beige-soft), #fdf9f2);
-    border: 1px solid var(--beige-border); border-radius: 16px; }
+    border: 1px solid var(--beige-border); border-radius: 18px; }
   .rest-tab-header .title { font-size: 17px; font-weight: 700; color: #5c4a33; }
   .rest-tab-header .sub { font-size: 13px; color: #96876f; margin-top: 2px; }
-  .rest-count { display: inline-block; margin-top: 8px; padding: 3px 10px;
+  .rest-count { display: inline-block; margin-top: 8px; padding: 4px 12px;
     background: #fff; border: 1px solid var(--beige-border);
     border-radius: 12px; font-size: 12px; color: #7c6b52; font-weight: 600; }
 
-  .rest-card { background: #fff; border-radius: 16px; margin: 8px 12px 12px;
-    padding: 14px; box-shadow: 0 2px 10px rgba(0,0,0,.05); border: 1px solid #f0ebe2; }
-  .rest-card.rest-card-closed { opacity: 0.92; box-shadow: 0 2px 6px rgba(0,0,0,.03); }
-  .rest-head { display: flex; align-items: center; gap: 12px; }
-  .rest-logo { width: 46px; height: 46px; border-radius: 14px; flex-shrink: 0;
+  .rest-card { background: var(--card-bg); border-radius: 18px; margin: 8px 12px 12px;
+    padding: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.04); border: 1px solid rgba(128,128,128,0.08); cursor: pointer; 
+    transition: transform 0.15s ease; }
+  .rest-card:active { transform: scale(0.98); }
+  .rest-card.rest-card-closed { opacity: 0.88; }
+  
+  .rest-head { display: flex; align-items: center; gap: 14px; }
+  .rest-logo { width: 48px; height: 48px; border-radius: 14px; flex-shrink: 0;
     background: linear-gradient(135deg, var(--beige-soft), #f1e6d2);
     border: 1px solid var(--beige-border);
     display: flex; align-items: center; justify-content: center; font-size: 22px; }
   .rest-head-main { flex: 1; min-width: 0; }
-  .rest-name { font-size: 16px; font-weight: 700; line-height: 1.25; color: #2c2620; }
-  .rest-status { display: inline-block; margin-top: 4px; padding: 3px 10px;
+  .rest-name { font-size: 16px; font-weight: 700; line-height: 1.25; color: var(--text-color); }
+  .rest-status { display: inline-block; margin-top: 5px; padding: 3px 10px;
     border-radius: 12px; font-size: 11px; font-weight: 700; }
   .rest-status.open { background: #e8f5ec; color: #2e7d43; }
   .rest-status.closed { background: #fbeae4; color: #b04a2e; }
-  .rest-meta { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--beige-border);
-    font-size: 13px; color: #8e8e93; line-height: 1.5; }
-  .rest-meta .addr {
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  .rest-hours { color: #a3988a; font-size: 12px; margin-top: 3px; }
+  
+  .rest-meta { margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(128,128,128,0.15);
+    font-size: 13px; color: var(--hint-color); line-height: 1.5; }
+  .rest-hours { color: var(--hint-color); font-size: 12px; margin-top: 4px; }
 
   .rest-actions { display: flex; gap: 8px; margin-top: 12px; }
   .rest-actions a { flex: 1; display: block; text-decoration: none; }
   .btn-map { display: block; width: 100%; background: transparent; color: var(--beige-dark);
-    border: 2px solid var(--map-border); border-radius: 12px; padding: 11px 8px;
-    font-size: 14px; font-weight: 600; text-align: center; text-decoration: none; }
+    border: 2px solid var(--map-border); border-radius: 12px; padding: 10px 8px;
+    font-size: 14px; font-weight: 600; text-align: center; text-decoration: none; 
+    transition: background 0.2s ease, color 0.2s ease; }
   .btn-map:active { background: var(--map-border); color: #fff; }
 
-  .no-results { text-align: center; color: #8e8e93; padding: 30px 12px; }
+  .no-results { text-align: center; color: var(--hint-color); padding: 40px 12px; }
 
   .detail-hero { background: linear-gradient(135deg, var(--beige-soft), #fdf9f2);
-    border: 1px solid var(--beige-border); color: #4a3c28; border-radius: 18px;
-    margin: 12px 12px 12px; padding: 24px 16px; text-align: center; }
-  .detail-hero .emoji { width: 60px; height: 60px; margin: 0 auto 10px; background: #fff;
+    border: 1px solid var(--beige-border); color: #4a3c28; border-radius: 20px;
+    margin: 12px; padding: 26px 16px; text-align: center; }
+  .detail-hero .emoji { width: 64px; height: 64px; margin: 0 auto 12px; background: #fff;
     border-radius: 50%; display: flex; align-items: center; justify-content: center;
-    font-size: 28px; border: 1px solid var(--beige-border); }
+    font-size: 30px; border: 1px solid var(--beige-border); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
   .detail-hero .name { font-size: 20px; font-weight: 700; line-height: 1.3; color: #3a2f1f; }
-  .detail-status { display: inline-block; margin-top: 10px; padding: 5px 14px;
-    border-radius: 20px; font-size: 13px; font-weight: 700; }
-  .detail-status.open { background: #e8f5ec; color: #2e7d43; }
-  .detail-status.closed { background: #fbeae4; color: #b04a2e; }
-  .detail-card { background: #fff; border-radius: 16px; margin: 0 12px 12px;
-    padding: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.05); border: 1px solid #f0ebe2; }
-  .detail-card .row { padding: 9px 0; border-bottom: 1px solid #f5f0e7; font-size: 15px; }
+  
+  .detail-card { background: var(--card-bg); border-radius: 18px; margin: 0 12px 12px;
+    padding: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.04); border: 1px solid rgba(128,128,128,0.08); }
+  .detail-card .row { padding: 11px 0; border-bottom: 1px solid rgba(128,128,128,0.1); font-size: 15px; color: var(--text-color); }
   .detail-card .row:last-child { border-bottom: 0; }
-  .detail-card .row .lbl { color: #a3988a; font-size: 13px; margin-bottom: 2px; }
-  .detail-actions { display: flex; gap: 8px; margin-top: 12px; }
-  .detail-actions a { flex: 1; display: block; }
-  .btn-back { display: block; margin: 0 12px 12px; padding: 11px 16px;
-    background: #fff; color: var(--beige-dark); border: 1.5px solid var(--beige);
-    border-radius: 12px; font-size: 15px; font-weight: 600; text-align: center;
+  .detail-card .row .lbl { color: var(--hint-color); font-size: 13px; margin-bottom: 3px; }
+  
+  .btn-back { display: block; margin: 0 12px 16px; padding: 12px 16px;
+    background: var(--card-bg); color: var(--beige-dark); border: 1.5px solid var(--beige);
+    border-radius: 14px; font-size: 15px; font-weight: 600; text-align: center;
     text-decoration: none; cursor: pointer; }
-  .btn-back:active { background: var(--beige-soft); }
 
-  .blocked-screen { background: #fff; border-radius: 18px; margin: 40px 12px 12px;
-    padding: 32px 20px; text-align: center; box-shadow: 0 4px 14px rgba(0,0,0,.07); }
-  .blocked-screen .big { font-size: 44px; margin-bottom: 12px; }
-  .blocked-screen .title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
-  .blocked-screen .text { color: #8e8e93; font-size: 14px; }
+  .blocked-screen { background: var(--card-bg); border-radius: 20px; margin: 40px 12px 12px;
+    padding: 36px 20px; text-align: center; box-shadow: 0 8px 24px rgba(0,0,0,0.06); border: 1px solid rgba(128,128,128,0.08); }
+  .blocked-screen .big { font-size: 48px; margin-bottom: 14px; }
+  .blocked-screen .title { font-size: 20px; font-weight: 700; margin-bottom: 8px; color: var(--text-color); }
+  .blocked-screen .text { color: var(--hint-color); font-size: 14px; line-height: 1.5; }
 
-  .news-date { color: #8e8e93; font-size: 12px; margin-top: 4px; }
+  .news-date { color: var(--hint-color); font-size: 12px; margin-top: 6px; }
   .level-urgent b::before { content: "🔴 "; }
   .level-important b::before { content: "🟡 "; }
   .level-normal b::before { content: "🔵 "; }
@@ -309,10 +337,21 @@ const tg = window.Telegram ? window.Telegram.WebApp : null;
 if (tg) {
   tg.ready();
   tg.expand();
+  // Устанавливаем цвета интерфейса Telegram в тон фону приложения
+  try {
+    if (tg.setHeaderColor) tg.setHeaderColor('secondary_bg_color');
+    if (tg.setBackgroundColor) tg.setBackgroundColor('bg_color');
+  } catch(e) {}
 }
 
 function getInitData() {
   return (tg && tg.initData) ? tg.initData : '';
+}
+
+function haptic(style = 'light') {
+  if (tg && tg.HapticFeedback && typeof tg.HapticFeedback.impactOccurred === 'function') {
+    try { tg.HapticFeedback.impactOccurred(style); } catch (e) {}
+  }
 }
 
 function showAlert(msg) {
@@ -335,6 +374,7 @@ const sectionLoaders = {
 
 document.querySelectorAll('.tabs button').forEach(btn => {
   btn.addEventListener('click', () => {
+    haptic('light');
     exitDetailView();
     document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -439,7 +479,6 @@ function displayNameOf(p) {
   return firstNameFromProfile(p);
 }
 
-/* Применяет avatar (из кэша / photo_url / API) к элементу */
 function applyAvatarToEl(el) {
   if (!el) return;
   if (cachedAvatarUrl) {
@@ -460,7 +499,6 @@ function applyAvatarToEl(el) {
 }
 
 let _avatarPromise = null;
-
 async function loadAvatarFromApi() {
   if (cachedAvatarUrl) return;
   if (_avatarPromise) return _avatarPromise;
@@ -533,7 +571,6 @@ function renderProfileFromBoot() {
     '<button id="btn-report-error">Сообщить об ошибке</button></div>' +
     '</div>';
 
-  /* Аватар — 0мс задержка. Если boot() уже подгрузил — применится сразу. */
   setTimeout(() => {
     const el = document.querySelector('#profile-box .avatar');
     if (el) applyAvatarToEl(el);
@@ -541,6 +578,7 @@ function renderProfileFromBoot() {
 
   const btnReport = document.getElementById('btn-report-error');
   btnReport.addEventListener('click', async () => {
+    haptic('medium');
     if (btnReport.disabled) return;
     btnReport.disabled = true;
     const text = 'Ошибка в данных профиля: прошу проверить и скорректировать.';
@@ -552,12 +590,6 @@ function renderProfileFromBoot() {
       });
       if (r.ok) {
         showAlert('Сообщение отправлено администратору.');
-      } else if (r.status === 429) {
-        showAlert('Слишком часто. Подожди минуту и попробуй снова.');
-      } else if (r.status === 401) {
-        showAlert('Ошибка авторизации. Открой приложение заново из бота.');
-      } else if (r.status === 403) {
-        showAlert('Доступ ограничен администратором.');
       } else {
         showAlert('Не удалось отправить сообщение.');
       }
@@ -621,7 +653,7 @@ function renderRestaurantsList(list, query) {
   }
 
   box.innerHTML = filtered.map(r => {
-    return '<div class="rest-card ' + (r.status !== 'open' ? 'rest-card-closed' : '') + '">' +
+    return '<div class="rest-card ' + (r.status !== 'open' ? 'rest-card-closed' : '') + '" data-key="' + esc(r.key) + '">' +
       '<div class="rest-head">' +
       '<div class="rest-logo">🍜</div>' +
       '<div class="rest-head-main">' +
@@ -634,7 +666,7 @@ function renderRestaurantsList(list, query) {
       '<div class="rest-hours">🕒 ' + esc(r.hours).replace(/\n/g, ' · ') + '</div>' +
       '</div>' +
       '<div class="rest-actions">' +
-      '<a href="' + mapUrlFor(r) + '" target="_blank"><span class="btn-map">🗺 На Яндекс Картах</span></a>' +
+      '<a href="' + mapUrlFor(r) + '" target="_blank" onclick="event.stopPropagation()"><span class="btn-map">🗺 На Яндекс Картах</span></a>' +
       '</div>' +
       '</div>';
   }).join('');
@@ -650,6 +682,14 @@ document.getElementById('rest-search').addEventListener('input', e => {
   renderRestaurantsList(BOOT.restaurants, e.target.value);
 });
 
+document.getElementById('restaurants-list').addEventListener('click', function(e) {
+  const card = e.target.closest('.rest-card');
+  if (card && card.dataset.key) {
+    haptic('light');
+    showDetail(card.dataset.key, true);
+  }
+});
+
 function renderDetail(r) {
   document.getElementById('detail-box').innerHTML =
     '<div class="detail-hero">' +
@@ -660,8 +700,8 @@ function renderDetail(r) {
     '<div class="detail-card">' +
     '<div class="row"><div class="lbl">Адрес</div>📍 ' + esc(r.address) + '</div>' +
     '<div class="row"><div class="lbl">Часы работы</div>🕒 ' + esc(r.hours).replace(/\n/g, '<br>') + '</div>' +
-    '<div class="detail-actions">' +
-    '<a href="' + mapUrlFor(r) + '" target="_blank"><span class="btn-map">🗺 На Яндекс Картах</span></a>' +
+    '<div class="detail-actions" style="margin-top:12px">' +
+    '<a href="' + mapUrlFor(r) + '" target="_blank" style="text-decoration:none"><span class="btn-map">🗺 На Яндекс Картах</span></a>' +
     '</div>' +
     '</div>';
 }
@@ -701,6 +741,7 @@ function goToRestaurantsTab() {
 }
 
 document.getElementById('detail-back').addEventListener('click', () => {
+  haptic('light');
   try { history.replaceState(null, '', location.pathname); } catch (e) {}
   exitDetailView();
   goToRestaurantsTab();
@@ -764,6 +805,7 @@ function renderFaqFromBoot() {
 }
 
 document.getElementById('send-question').addEventListener('click', async function() {
+  haptic('medium');
   const input = document.getElementById('question-input');
   const text = input.value.trim();
   if (!text) return;
@@ -783,14 +825,10 @@ document.getElementById('send-question').addEventListener('click', async functio
       body: JSON.stringify({ initData: getInitData(), question: text })
     });
     if (resp.ok) {
-      input.value = '';
+      input.value = 'ʽ';
       showAlert('Вопрос отправлен! Ответ увидишь в боте.');
     } else if (resp.status === 429) {
       showAlert('Слишком часто. Подожди минуту и попробуй снова.');
-    } else if (resp.status === 403) {
-      showAlert('Доступ ограничен администратором.');
-    } else if (resp.status === 401) {
-      showAlert('Ошибка авторизации. Закрой приложение и открой заново из бота.');
     } else {
       showAlert('Не удалось отправить вопрос. Попробуй позже.');
     }
@@ -801,7 +839,6 @@ document.getElementById('send-question').addEventListener('click', async functio
   }
 });
 
-/* FIX: не дёргаем сервер чаще раза в 30 сек на вкладку */
 const _refreshCache = {};
 async function refreshSection(sec) {
   const map = {
@@ -814,8 +851,7 @@ async function refreshSection(sec) {
   if (!url) return;
 
   const now = Date.now();
-  const last = _refreshCache[sec] || 0;
-  if (now - last < 30000) return;
+  if (now - (_refreshCache[sec] || 0) < 30000) return;
   _refreshCache[sec] = now;
 
   try {
@@ -829,20 +865,11 @@ async function refreshSection(sec) {
     if (!resp.ok) return;
     const data = await resp.json();
 
-    if (sec === 'sec-news') {
-      BOOT.news = data;
-      renderNewsFromBoot();
-    } else if (sec === 'sec-restaurants') {
-      BOOT.restaurants = prepareRestaurants(data);
-      renderRestaurants();
-    } else if (sec === 'sec-standards') {
-      BOOT.standards = data;
-      renderStandardsFromBoot();
-    } else if (sec === 'sec-faq') {
-      BOOT.faq = data;
-      renderFaqFromBoot();
-    }
-  } catch (e) { /* оставляем кэш */ }
+    if (sec === 'sec-news') { BOOT.news = data; renderNewsFromBoot(); }
+    else if (sec === 'sec-restaurants') { BOOT.restaurants = prepareRestaurants(data); renderRestaurants(); }
+    else if (sec === 'sec-standards') { BOOT.standards = data; renderStandardsFromBoot(); }
+    else if (sec === 'sec-faq') { BOOT.faq = data; renderFaqFromBoot(); }
+  } catch (e) {}
 }
 
 document.querySelectorAll('.tabs button').forEach(btn => {
@@ -851,16 +878,12 @@ document.querySelectorAll('.tabs button').forEach(btn => {
   });
 });
 
-/* FIX: bootstrap и avatar параллельно, рендер не ждёт аватар */
 async function boot() {
   const restKey = new URLSearchParams(location.search).get('rest');
-
-  // Аватар параллельно — не блокирует рендер.
-  // Если photo_url есть в Telegram — API не нужен (сэкономим запрос).
   const avatarPromise = (async () => {
     if (cachedAvatarUrl) return;
     const u = tgUserInfo();
-    if (u && u.photo_url) return; // используем напрямую
+    if (u && u.photo_url) return;
     await loadAvatarFromApi();
   })();
 
@@ -873,15 +896,12 @@ async function boot() {
     if (resp.status === 403) { renderBlockedEverywhere(); return; }
     if (resp.status === 401) { renderAuthErrorEverywhere(); return; }
     BOOT = await resp.json();
-    if (BOOT.restaurants) {
-      BOOT.restaurants = prepareRestaurants(BOOT.restaurants);
-    }
+    if (BOOT.restaurants) BOOT.restaurants = prepareRestaurants(BOOT.restaurants);
   } catch (e) {
     renderNetErrorEverywhere();
     return;
   }
 
-  // Рендер — мгновенно, без ожидания аватара
   renderProfileFromBoot();
   renderNewsFromBoot();
   renderRestaurants();
@@ -890,7 +910,6 @@ async function boot() {
 
   if (restKey) showDetail(restKey, false);
 
-  // Аватар подставится, как только придёт
   avatarPromise.then(() => {
     const el = document.querySelector('#profile-box .avatar');
     if (el && cachedAvatarUrl) {
@@ -900,7 +919,6 @@ async function boot() {
   });
 }
 
-/* FIX: ждём initData не 1.5 сек, а 300мс — этого достаточно */
 function startWhenReady() {
   if (getInitData()) { boot(); return; }
   let waited = 0;

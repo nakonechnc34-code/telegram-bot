@@ -1,6 +1,7 @@
 import os
 import io
 import csv
+import html
 import asyncio
 import logging
 import json
@@ -15,6 +16,7 @@ from contextlib import contextmanager
 from urllib.parse import unquote
 
 from aiohttp import web
+import aiohttp_cors
 from aiogram import Bot, Dispatcher, Router, BaseMiddleware, types
 from aiogram.exceptions import TelegramRetryAfter, TelegramForbiddenError
 from aiogram.filters import Command, CommandStart
@@ -52,8 +54,7 @@ DB_URL = os.getenv("DATABASE_URL")
 if not DB_URL:
     raise ValueError("DATABASE_URL is not set")
 
-MINI_APP_URL = os.getenv("MINI_APP_URL", "https://ВАШ-ДОМЕН.amvera.io")
-
+MINI_APP_URL = os.getenv("MINI_APP_URL", "https://ВАШ-ДОМЕН.amvera.io").rstrip('/')
 
 # ============= FSM STORAGE =============
 REDIS_URL = os.getenv("REDIS_URL", "").strip()
@@ -70,16 +71,13 @@ else:
     fsm_storage = MemoryStorage()
     print("⚠ FSM: MemoryStorage — задай REDIS_URL для устойчивого хранения.")
 
-
 # ============= ПУЛ =============
 _pool = None
-
 
 def init_pool():
     global _pool
     if _pool is None:
         _pool = SimpleConnectionPool(1, 10, DB_URL)
-
 
 @contextmanager
 def get_conn():
@@ -91,20 +89,16 @@ def get_conn():
     finally:
         _pool.putconn(conn)
 
-
 async def _run(fn, *args, **kwargs):
     return await asyncio.to_thread(fn, *args, **kwargs)
 
-
 _bg_tasks = set()
-
 
 def spawn(coro):
     task = asyncio.create_task(coro)
     _bg_tasks.add(task)
     task.add_done_callback(_bg_tasks.discard)
     return task
-
 
 # ============= SEED =============
 RESTAURANTS_SEED = [
@@ -139,7 +133,6 @@ FAQ_SEED = [
 ]
 
 POSITIONS_SEED = ["Холодный Цех", "Жарщик", "Управляющий сменой", "Территориальный управляющий"]
-
 
 # ============= ИНИЦИАЛИЗАЦИЯ БД =============
 init_pool()
@@ -239,7 +232,6 @@ with get_conn() as conn:
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )
         """)
-        # НОВОЕ: вопросы с ответами
         cur.execute("""
             CREATE TABLE IF NOT EXISTS questions (
                 id SERIAL PRIMARY KEY,
@@ -253,7 +245,6 @@ with get_conn() as conn:
             )
         """)
         cur.execute("CREATE INDEX IF NOT EXISTS idx_questions_open ON questions (created_at DESC) WHERE replied = FALSE")
-        # НОВОЕ: закреплённые пользователи
         cur.execute("""
             CREATE TABLE IF NOT EXISTS admin_pinned (
                 admin_id BIGINT,
@@ -269,6 +260,7 @@ with get_conn() as conn:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_news_created ON news (created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_news_publish ON news (published, publish_at)")
 
+        # Заполнение тестовыми данными при первом запуске
         cur.execute("SELECT COUNT(*) FROM news")
         if cur.fetchone()[0] == 0:
             cur.execute("INSERT INTO news (title, body, important, level) VALUES (%s, %s, %s, %s)",
@@ -300,7 +292,6 @@ with get_conn() as conn:
 
 print("База данных подключена, таблицы готовы.")
 
-
 # ============= ПРАЗДНИКИ =============
 HOLIDAYS = {
     (1, 1): ("🎉 Новый год!", "С Новым годом! Пусть он принесёт яркие события, отдых и вкусный стол."),
@@ -317,12 +308,10 @@ HOLIDAYS = {
     (12, 31): ("🎄 Канун Нового года", "Последний день года — выдохните и подведите итоги. Праздник уже на пороге!"),
 }
 
-
 def _moscow_now() -> datetime:
     if MOSCOW_TZ:
         return datetime.now(MOSCOW_TZ)
     return datetime.now(timezone(timedelta(hours=3)))
-
 
 def greeting_for_user(birth_date: str, now=None):
     now = now or _moscow_now()
@@ -339,10 +328,8 @@ def greeting_for_user(birth_date: str, now=None):
         return ("holiday", hol[0], hol[1])
     return ("normal", "", "")
 
-
 # ============= СИНХРОННЫЕ DB =============
 RESTAURANT_DB_FIELDS = ("name", "address", "phone", "hours", "org")
-
 
 def _sync_db_restaurants_all():
     with get_conn() as conn:
@@ -352,10 +339,8 @@ def _sync_db_restaurants_all():
             cols = ["key", "name", "address", "hours", "lat", "lon", "org", "phone", "force_status", "sort"]
             return [dict(zip(cols, row)) for row in cur.fetchall()]
 
-
 def _sync_db_restaurants_for_app():
     return [r for r in _sync_db_restaurants_all() if r["key"] != "office"]
-
 
 def _sync_db_restaurant(key):
     for r in _sync_db_restaurants_all():
@@ -363,15 +348,22 @@ def _sync_db_restaurant(key):
             return r
     return None
 
-
 def _sync_db_restaurant_update(key, field, value):
-    if field not in RESTAURANT_DB_FIELDS:
+    # Строгая проверка поля для предотвращения SQL-инъекций
+    sqls = {
+        "name": "UPDATE restaurants SET name = %s WHERE key = %s",
+        "address": "UPDATE restaurants SET address = %s WHERE key = %s",
+        "phone": "UPDATE restaurants SET phone = %s WHERE key = %s",
+        "hours": "UPDATE restaurants SET hours = %s WHERE key = %s",
+        "org": "UPDATE restaurants SET org = %s WHERE key = %s"
+    }
+    sql = sqls.get(field)
+    if not sql:
         return False
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(f"UPDATE restaurants SET {field} = %s WHERE key = %s", (value, key))
+            cur.execute(sql, (value, key))
             return cur.rowcount > 0
-
 
 def _sync_db_restaurant_set_status(key, fs):
     if fs not in (None, "open", "closed"):
@@ -380,7 +372,6 @@ def _sync_db_restaurant_set_status(key, fs):
         with conn.cursor() as cur:
             cur.execute("UPDATE restaurants SET force_status = %s WHERE key = %s", (fs, key))
             return cur.rowcount > 0
-
 
 def _sync_db_restaurant_add(key, name, address, hours, phone, org):
     with get_conn() as conn:
@@ -395,7 +386,6 @@ def _sync_db_restaurant_add(key, name, address, hours, phone, org):
                         (key, name, address, hours, phone, org, next_sort))
             return True
 
-
 def _sync_db_restaurant_delete(key):
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -405,14 +395,12 @@ def _sync_db_restaurant_delete(key):
             cur.execute("DELETE FROM restaurants WHERE key = %s", (key,))
             return cur.rowcount > 0, None
 
-
 def _sync_db_get(user_id):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT full_name, phone, birth_date, position, restaurant, welcomed, is_blocked "
                         "FROM users WHERE user_id = %s", (user_id,))
             return cur.fetchone()
-
 
 def _sync_db_get_first_name(user_id):
     with get_conn() as conn:
@@ -421,7 +409,6 @@ def _sync_db_get_first_name(user_id):
             row = cur.fetchone()
             return row[0] if row and row[0] else None
 
-
 def _sync_db_set_welcomed(user_id, first_name=None):
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -429,7 +416,6 @@ def _sync_db_set_welcomed(user_id, first_name=None):
                         "ON CONFLICT (user_id) DO UPDATE SET welcomed = TRUE, "
                         "first_name = COALESCE(EXCLUDED.first_name, users.first_name)",
                         (user_id, first_name))
-
 
 def _sync_db_save_profile(user_id, full_name, phone, birth_date, position, restaurant, first_name=None):
     if isinstance(restaurant, dict):
@@ -448,16 +434,22 @@ def _sync_db_save_profile(user_id, full_name, phone, birth_date, position, resta
                 (user_id, full_name, phone, birth_date, position, restaurant, first_name,
                  full_name, phone, birth_date, position, restaurant))
 
-
 def _sync_db_update_user(user_id, field, value):
-    allowed = ("full_name", "phone", "birth_date", "position", "restaurant")
-    if field not in allowed:
+    # Строгая проверка поля для предотвращения SQL-инъекций
+    sqls = {
+        "full_name": "UPDATE users SET full_name = %s WHERE user_id = %s",
+        "phone": "UPDATE users SET phone = %s WHERE user_id = %s",
+        "birth_date": "UPDATE users SET birth_date = %s WHERE user_id = %s",
+        "position": "UPDATE users SET position = %s WHERE user_id = %s",
+        "restaurant": "UPDATE users SET restaurant = %s WHERE user_id = %s"
+    }
+    sql = sqls.get(field)
+    if not sql:
         return False
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(f"UPDATE users SET {field} = %s WHERE user_id = %s", (value, user_id))
+            cur.execute(sql, (value, user_id))
             return cur.rowcount > 0
-
 
 def _sync_db_is_blocked(user_id):
     with get_conn() as conn:
@@ -466,14 +458,12 @@ def _sync_db_is_blocked(user_id):
             row = cur.fetchone()
             return bool(row and row[0])
 
-
 def _sync_db_list_users():
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT user_id, full_name, phone, position, restaurant, welcomed, is_blocked "
                         "FROM users ORDER BY user_id")
             return cur.fetchall()
-
 
 def _sync_db_search_users(q):
     ql = f"%{q.lower()}%"
@@ -489,7 +479,6 @@ def _sync_db_search_users(q):
             """, (ql, ql, f"%{q}%"))
             return cur.fetchall()
 
-
 def _sync_db_list_active_users(restaurant_key=None):
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -501,13 +490,11 @@ def _sync_db_list_active_users(restaurant_key=None):
                             "AND full_name IS NOT NULL")
             return [r[0] for r in cur.fetchall()]
 
-
 def _sync_db_delete_user(user_id):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM users WHERE user_id = %s", (user_id,))
             return cur.rowcount > 0
-
 
 def _sync_db_set_blocked(user_id, blocked):
     with get_conn() as conn:
@@ -515,18 +502,15 @@ def _sync_db_set_blocked(user_id, blocked):
             cur.execute("UPDATE users SET is_blocked = %s WHERE user_id = %s", (blocked, user_id))
             return cur.rowcount > 0
 
-
 def _sync_db_mark_bot_blocked(user_id):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET bot_blocked = TRUE WHERE user_id = %s", (user_id,))
 
-
 def _sync_db_mark_seen(user_id):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET last_seen_at = NOW() WHERE user_id = %s", (user_id,))
-
 
 def _sync_get_report_stats():
     with get_conn() as conn:
@@ -547,7 +531,6 @@ def _sync_get_report_stats():
             "inactive7": inactive7, "new7": new7,
             "date": _moscow_now().strftime("%d.%m.%Y %H:%M")}
 
-
 def _sync_db_dashboard_stats():
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -566,7 +549,6 @@ def _sync_db_dashboard_stats():
             chart_rows = cur.fetchall()
             cur.execute("SELECT COUNT(*) FROM news WHERE NOT published AND publish_at > NOW()")
             news_scheduled = cur.fetchone()[0] or 0
-    # chart за 7 дней с нулями
     chart = []
     today = _moscow_now().date()
     by_date = {r[0]: r[1] for r in chart_rows}
@@ -577,7 +559,6 @@ def _sync_db_dashboard_stats():
         "new_today": new_today, "unfinished": unfinished, "questions_open": questions_open,
         "inactive": inactive, "chart": chart, "news_scheduled": news_scheduled,
     }
-
 
 def _sync_db_add_news(title, body, level, publish_at=None):
     if level not in ("urgent", "important", "normal"):
@@ -594,14 +575,12 @@ def _sync_db_add_news(title, body, level, publish_at=None):
                             (title, body, level != "normal", level))
             return cur.fetchone()[0]
 
-
 def _sync_db_list_news():
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id, title, body, important, level, created_at "
                         "FROM news WHERE published = TRUE ORDER BY created_at DESC, id DESC")
             return cur.fetchall()
-
 
 def _sync_db_list_news_admin():
     with get_conn() as conn:
@@ -610,13 +589,11 @@ def _sync_db_list_news_admin():
                         "FROM news ORDER BY created_at DESC, id DESC")
             return cur.fetchall()
 
-
 def _sync_db_get_news(news_id):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT title, body, level FROM news WHERE id = %s", (news_id,))
             return cur.fetchone()
-
 
 def _sync_db_get_news_full(news_id):
     with get_conn() as conn:
@@ -625,20 +602,17 @@ def _sync_db_get_news_full(news_id):
                         "FROM news WHERE id = %s", (news_id,))
             return cur.fetchone()
 
-
 def _sync_db_news_update_title(news_id, title):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE news SET title = %s WHERE id = %s", (title, news_id))
             return cur.rowcount > 0
 
-
 def _sync_db_delete_news(news_id):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM news WHERE id = %s", (news_id,))
             return cur.rowcount > 0
-
 
 def _sync_db_publish_due():
     with get_conn() as conn:
@@ -648,13 +622,11 @@ def _sync_db_publish_due():
                         "RETURNING id, title, body, level, auto_broadcast")
             return cur.fetchall()
 
-
 def _sync_db_list_standards():
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id, title, category, description, url FROM standards ORDER BY id")
             return cur.fetchall()
-
 
 def _sync_db_add_standard(title, category, description, url=""):
     with get_conn() as conn:
@@ -662,22 +634,26 @@ def _sync_db_add_standard(title, category, description, url=""):
             cur.execute("INSERT INTO standards (title, category, description, url) VALUES (%s, %s, %s, %s)",
                         (title, category, description, url))
 
-
 def _sync_db_delete_standard(sid):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM standards WHERE id = %s", (sid,))
             return cur.rowcount > 0
 
-
 def _sync_db_update_standard(sid, field, value):
-    if field not in ("title", "category", "description", "url"):
+    sqls = {
+        "title": "UPDATE standards SET title = %s WHERE id = %s",
+        "category": "UPDATE standards SET category = %s WHERE id = %s",
+        "description": "UPDATE standards SET description = %s WHERE id = %s",
+        "url": "UPDATE standards SET url = %s WHERE id = %s"
+    }
+    sql = sqls.get(field)
+    if not sql:
         return False
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(f"UPDATE standards SET {field} = %s WHERE id = %s", (value, sid))
+            cur.execute(sql, (value, sid))
             return cur.rowcount > 0
-
 
 def _sync_db_list_faq():
     with get_conn() as conn:
@@ -685,13 +661,11 @@ def _sync_db_list_faq():
             cur.execute("SELECT id, question, answer, category FROM faq ORDER BY id")
             return cur.fetchall()
 
-
 def _sync_db_add_faq(question, answer, category=""):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("INSERT INTO faq (question, answer, category) VALUES (%s, %s, %s)",
                         (question, answer, category))
-
 
 def _sync_db_delete_faq(fid):
     with get_conn() as conn:
@@ -699,22 +673,24 @@ def _sync_db_delete_faq(fid):
             cur.execute("DELETE FROM faq WHERE id = %s", (fid,))
             return cur.rowcount > 0
 
-
 def _sync_db_update_faq(fid, field, value):
-    if field not in ("question", "answer"):
+    sqls = {
+        "question": "UPDATE faq SET question = %s WHERE id = %s",
+        "answer": "UPDATE faq SET answer = %s WHERE id = %s"
+    }
+    sql = sqls.get(field)
+    if not sql:
         return False
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(f"UPDATE faq SET {field} = %s WHERE id = %s", (value, fid))
+            cur.execute(sql, (value, fid))
             return cur.rowcount > 0
-
 
 def _sync_db_add_bot_msg(user_id, message_id):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("INSERT INTO bot_messages (user_id, message_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                         (user_id, message_id))
-
 
 def _sync_db_get_and_trim_bot_msgs(user_id, keep=1):
     with get_conn() as conn:
@@ -727,13 +703,11 @@ def _sync_db_get_and_trim_bot_msgs(user_id, keep=1):
                 cur.execute("DELETE FROM bot_messages WHERE user_id = %s AND message_id = %s", (user_id, mid))
     return to_delete
 
-
 def _sync_db_add_user_msg(user_id, message_id):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("INSERT INTO user_messages (user_id, message_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                         (user_id, message_id))
-
 
 def _sync_db_get_and_trim_user_msgs(user_id, keep=1):
     with get_conn() as conn:
@@ -746,7 +720,6 @@ def _sync_db_get_and_trim_user_msgs(user_id, keep=1):
                 cur.execute("DELETE FROM user_messages WHERE user_id = %s AND message_id = %s", (user_id, mid))
     return to_delete
 
-
 def _sync_db_already_greeted(user_id, kind, year):
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -754,13 +727,11 @@ def _sync_db_already_greeted(user_id, kind, year):
                         (user_id, kind, year))
             return cur.fetchone() is not None
 
-
 def _sync_db_mark_greeted(user_id, kind, year):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("INSERT INTO greetings_log (user_id, kind, year) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
                         (user_id, kind, year))
-
 
 def _sync_db_holiday_broadcast_done(kind, year):
     with get_conn() as conn:
@@ -768,13 +739,11 @@ def _sync_db_holiday_broadcast_done(kind, year):
             cur.execute("SELECT 1 FROM holiday_broadcast_log WHERE kind = %s AND year = %s", (kind, year))
             return cur.fetchone() is not None
 
-
 def _sync_db_mark_holiday_broadcast(kind, year):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("INSERT INTO holiday_broadcast_log (kind, year) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                         (kind, year))
-
 
 def _sync_db_positions_list(include_archived=False):
     with get_conn() as conn:
@@ -785,7 +754,6 @@ def _sync_db_positions_list(include_archived=False):
                 cur.execute("SELECT id, name, sort, is_archived FROM positions "
                             "WHERE is_archived = FALSE ORDER BY sort, name")
             return cur.fetchall()
-
 
 def _sync_db_position_add(name):
     with get_conn() as conn:
@@ -798,13 +766,11 @@ def _sync_db_position_add(name):
             cur.execute("INSERT INTO positions (name, sort) VALUES (%s, %s)", (name, next_sort))
             return True
 
-
 def _sync_db_position_archive(pid):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE positions SET is_archived = TRUE WHERE id = %s", (pid,))
             return cur.rowcount > 0
-
 
 def _sync_db_audit(admin_id, action, target_type="", target_id="", details=""):
     with get_conn() as conn:
@@ -813,7 +779,6 @@ def _sync_db_audit(admin_id, action, target_type="", target_id="", details=""):
                         "VALUES (%s, %s, %s, %s, %s)",
                         (admin_id, action, target_type, str(target_id), details))
 
-
 def _sync_db_audit_list(limit=200):
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -821,16 +786,12 @@ def _sync_db_audit_list(limit=200):
                         "FROM admin_audit ORDER BY created_at DESC LIMIT %s", (limit,))
             return cur.fetchall()
 
-
-# --- НОВОЕ: вопросы ---
-
 def _sync_db_question_add(user_id, text):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("INSERT INTO questions (user_id, text) VALUES (%s, %s) RETURNING id",
                         (user_id, text))
             return cur.fetchone()[0]
-
 
 def _sync_db_questions_list(unanswered_only=True, limit=50):
     with get_conn() as conn:
@@ -846,7 +807,6 @@ def _sync_db_questions_list(unanswered_only=True, limit=50):
                                ORDER BY q.created_at DESC LIMIT %s""", (limit,))
             return cur.fetchall()
 
-
 def _sync_db_question_get(qid):
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -859,7 +819,6 @@ def _sync_db_question_get(qid):
             return {"id": row[0], "user_id": row[1], "text": row[2],
                     "replied": row[3], "reply_text": row[4], "full_name": row[5]}
 
-
 def _sync_db_question_reply(qid, reply_text, admin_id):
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -867,9 +826,6 @@ def _sync_db_question_reply(qid, reply_text, admin_id):
                            replied_at = NOW(), replied_by = %s WHERE id = %s""",
                         (reply_text, admin_id, qid))
             return cur.rowcount > 0
-
-
-# --- НОВОЕ: pinned / recent ---
 
 def _sync_db_pin_toggle(admin_id, user_id):
     with get_conn() as conn:
@@ -882,7 +838,6 @@ def _sync_db_pin_toggle(admin_id, user_id):
                         (admin_id, user_id))
             return True
 
-
 def _sync_db_pinned_list(admin_id):
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -891,14 +846,12 @@ def _sync_db_pinned_list(admin_id):
                            WHERE p.admin_id = %s ORDER BY p.created_at DESC""", (admin_id,))
             return cur.fetchall()
 
-
 def _sync_db_is_pinned(admin_id, user_id):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT 1 FROM admin_pinned WHERE admin_id = %s AND user_id = %s",
                         (admin_id, user_id))
             return cur.fetchone() is not None
-
 
 def _sync_db_recent_users(admin_id, limit=5):
     with get_conn() as conn:
@@ -910,7 +863,6 @@ def _sync_db_recent_users(admin_id, limit=5):
                         (admin_id, limit))
             return [r[0] for r in cur.fetchall()]
 
-
 def _sync_db_recent_restaurant_keys(limit=3):
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -921,7 +873,6 @@ def _sync_db_recent_restaurant_keys(limit=3):
                            GROUP BY SPLIT_PART(details, '=', 2)
                            ORDER BY last_at DESC LIMIT %s""", (limit,))
             return [r[0] for r in cur.fetchall() if r[0]]
-
 
 # ============= АСИНХРОННЫЕ ОБЁРТКИ =============
 async def db_restaurants_all(): return await _run(_sync_db_restaurants_all)
@@ -989,8 +940,6 @@ async def db_is_pinned(aid, uid): return await _run(_sync_db_is_pinned, aid, uid
 async def db_recent_users(aid, limit=5): return await _run(_sync_db_recent_users, aid, limit)
 async def db_recent_restaurant_keys(limit=3): return await _run(_sync_db_recent_restaurant_keys, limit)
 
-
-# ============= BOOTSTRAP DATA =============
 def _sync_bootstrap_data(user_id):
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -1011,10 +960,8 @@ def _sync_bootstrap_data(user_id):
     return {"user_row": user_row, "news_rows": news_rows, "std_rows": std_rows,
             "faq_rows": faq_rows, "rest_rows": rest_rows}
 
-
 async def db_bootstrap_data(user_id):
     return await _run(_sync_bootstrap_data, user_id)
-
 
 # ============= СТАТУС РЕСТОРАНОВ =============
 DAY_MAP = {"пн": 0, "вт": 1, "ср": 2, "чт": 3, "пт": 4, "сб": 5, "вс": 6}
@@ -1023,11 +970,9 @@ DAY_NAMES = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
 REST_CACHE = {"data": None, "ts": 0.0}
 REST_CACHE_TTL = 60
 
-
 def invalidate_rest_cache():
     REST_CACHE["data"] = None
     REST_CACHE["ts"] = 0.0
-
 
 def validate_hours_schedule(text):
     ranges = re.findall(r"(\d{1,2}):(\d{2})\s*[–\-—]\s*(\d{1,2}):(\d{2})", text)
@@ -1040,7 +985,6 @@ def validate_hours_schedule(text):
         if not (0 <= h2 <= 24 and 0 <= m2 <= 59):
             return False
     return True
-
 
 def parse_hours(hours_text: str):
     schedule = {}
@@ -1077,11 +1021,9 @@ def parse_hours(hours_text: str):
             schedule[d] = (open_m, close_m)
     return schedule
 
-
 def _fmt_minutes(total_min: int) -> str:
     total_min = total_min % 1440
     return f"{total_min // 60:02d}:{total_min % 60:02d}"
-
 
 def restaurant_status(hours_text: str):
     schedule = parse_hours(hours_text)
@@ -1111,7 +1053,6 @@ def restaurant_status(hours_text: str):
             return "closed", f"Закрыто · откроется в {DAY_NAMES[d]} {_fmt_minutes(o)}"
     return "closed", "Закрыто"
 
-
 def restaurant_status_for(r: dict):
     fs = r.get("force_status")
     if fs == "open":
@@ -1119,7 +1060,6 @@ def restaurant_status_for(r: dict):
     if fs == "closed":
         return "closed", "Закрыто (администратором)"
     return restaurant_status(r.get("hours") or "")
-
 
 # ============= УТИЛИТЫ =============
 PAGE_USERS = 10
@@ -1133,7 +1073,6 @@ PAGE_QUESTIONS = 8
 NAME_RE = re.compile(r"^[А-Яа-яЁёA-Za-z\- ]{2,100}$")
 URL_RE = re.compile(r"^https?://[^\s]+$")
 
-
 def paginate(items, page, size):
     total = len(items)
     pages = max(1, (total + size - 1) // size)
@@ -1141,13 +1080,11 @@ def paginate(items, page, size):
     start = page * size
     return items[start:start + size], page, pages
 
-
 def safe_int(s, default=0):
     try:
         return int(s)
     except (ValueError, TypeError):
         return default
-
 
 def slugify(name):
     translit = {"а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e", "ж": "zh", "з": "z",
@@ -1166,11 +1103,9 @@ def slugify(name):
     result = re.sub(r"_+", "_", "".join(out)).strip("_")
     return result or "rest"
 
-
 def progress_bar(step, total, width=10):
     filled = max(0, min(width, int(step / total * width)))
     return "▓" * filled + "░" * (width - filled) + f"  {step}/{total}"
-
 
 def sparkline(values):
     if not values:
@@ -1186,7 +1121,6 @@ def sparkline(values):
         out.append(chars[idx])
     return "".join(out)
 
-
 SOURCE_LABELS = {
     "users": "👥 Пользователи",
     "search": "🔍 Поиск",
@@ -1198,7 +1132,6 @@ SOURCE_LABELS = {
     "questions": "❓ Вопросы",
     "rests": "🏪 Рестораны",
 }
-
 
 def back_callback(source, page):
     if source == "users":
@@ -1215,18 +1148,15 @@ def back_callback(source, page):
         return "adm_users_recent"
     return "adm_menu"
 
-
 def breadcrumbs(source, current):
     s = SOURCE_LABELS.get(source, "🏠 Админка")
     return f"{s} → {current}"
-
 
 async def restaurant_name_by_key(key):
     if not key:
         return key
     r = await db_restaurant(key)
     return r["name"] if r else key
-
 
 async def build_restaurants_payload():
     out = []
@@ -1238,9 +1168,7 @@ async def build_restaurants_payload():
                     "status": status, "status_text": status_text})
     return out
 
-
 _broadcast_locks = set()
-
 
 def try_lock_broadcast(key):
     if key in _broadcast_locks:
@@ -1248,10 +1176,8 @@ def try_lock_broadcast(key):
     _broadcast_locks.add(key)
     return True
 
-
 def unlock_broadcast(key):
     _broadcast_locks.discard(key)
-
 
 # ============= BOT / ROUTERS =============
 bot = Bot(token=TOKEN)
@@ -1259,10 +1185,8 @@ dp = Dispatcher(storage=fsm_storage)
 user_router = Router()
 admin_router = Router()
 
-
 def is_admin(user_id: int) -> bool:
     return ADMIN_ID is not None and user_id == ADMIN_ID
-
 
 class AdminOnlyMiddleware(BaseMiddleware):
     async def __call__(self, handler, event, data):
@@ -1276,22 +1200,33 @@ class AdminOnlyMiddleware(BaseMiddleware):
             return
         return await handler(event, data)
 
+# Антифлуд: не более 1 сообщения в секунду от пользователя
+class AntiFloodMiddleware(BaseMiddleware):
+    def __init__(self):
+        self.cache = {}
+    async def __call__(self, handler, event, data):
+        user = getattr(event, "from_user", None)
+        if user:
+            now = time.time()
+            last = self.cache.get(user.id, 0)
+            if now - last < 1.0:
+                return
+            self.cache[user.id] = now
+        return await handler(event, data)
 
 admin_router.message.middleware(AdminOnlyMiddleware())
 admin_router.callback_query.middleware(AdminOnlyMiddleware())
+user_router.message.middleware(AntiFloodMiddleware())
 
 dp.include_router(user_router)
 dp.include_router(admin_router)
 
-
-# ============= ОЧИСТКА =============
 async def cleanup_chat(user_id: int, keep: int = 1):
     for mid in await db_get_and_trim_bot_msgs(user_id, keep=keep):
         try:
             await bot.delete_message(user_id, mid)
         except Exception:
             pass
-
 
 async def delete_incoming(message: types.Message):
     if message is None:
@@ -1304,12 +1239,10 @@ async def delete_incoming(message: types.Message):
         except Exception:
             pass
 
-
 async def send_tracked(chat_id: int, user_id: int, text: str, **kwargs) -> types.Message:
     msg = await bot.send_message(chat_id, text, **kwargs)
     await db_add_bot_msg(user_id, msg.message_id)
     return msg
-
 
 # ============= FSM =============
 class Registration(StatesGroup):
@@ -1319,7 +1252,6 @@ class Registration(StatesGroup):
     position = State()
     restaurant = State()
 
-
 class NewsAdmin(StatesGroup):
     title = State()
     body = State()
@@ -1328,20 +1260,16 @@ class NewsAdmin(StatesGroup):
     schedule_time = State()
     preview = State()
 
-
 class NewsEditTitle(StatesGroup):
     text = State()
-
 
 class EditUser(StatesGroup):
     full_name = State()
     phone = State()
     birth_date = State()
 
-
 class RestEdit(StatesGroup):
     value = State()
-
 
 class RestAdd(StatesGroup):
     name = State()
@@ -1350,45 +1278,35 @@ class RestAdd(StatesGroup):
     phone = State()
     org = State()
 
-
 class StdAdmin(StatesGroup):
     title = State()
     category = State()
     description = State()
 
-
 class StdEdit(StatesGroup):
     value = State()
-
 
 class FaqAdmin(StatesGroup):
     question = State()
     answer = State()
 
-
 class FaqEdit(StatesGroup):
     value = State()
-
 
 class PosAdmin(StatesGroup):
     name = State()
 
-
 class UserSearch(StatesGroup):
     query = State()
-
 
 class QuestionReply(StatesGroup):
     text = State()
 
-
 class BulkSelect(StatesGroup):
     active = State()
 
-
 class BulkMessage(StatesGroup):
     text = State()
-
 
 # ============= ВАЛИДАЦИЯ INIT DATA =============
 def _check_auth_date(pairs_dict):
@@ -1400,14 +1318,12 @@ def _check_auth_date(pairs_dict):
     except (ValueError, TypeError):
         return False
 
-
 def _parse_user_field(pairs_dict):
     try:
         return json.loads(unquote(pairs_dict.get("user", "{}")))
     except Exception as e:
         logging.warning(f"initData user: {e}")
         return None
-
 
 def validate_init_data(init_data: str):
     if not init_data:
@@ -1440,7 +1356,6 @@ def validate_init_data(init_data: str):
         return _parse_user_field(pairs_dict)
     return None
 
-
 async def get_auth_user(request):
     try:
         payload = await request.json()
@@ -1454,7 +1369,6 @@ async def get_auth_user(request):
         return None, 403
     return user_id, None
 
-
 # ============= КЛАВИАТУРЫ =============
 FULL_MENU = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="📱 Открыть приложение Wokker", web_app=WebAppInfo(url=MINI_APP_URL))],
@@ -1464,12 +1378,10 @@ REGISTER_ONLY = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="✍️ Зарегистрироваться", callback_data="register")],
 ])
 
-
 def phone_kb():
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="📱 Поделиться номером", request_contact=True)]],
         resize_keyboard=True, one_time_keyboard=True)
-
 
 async def positions_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -1477,13 +1389,11 @@ async def positions_kb():
         for pid, name, sort, arch in await db_positions_list()
     ])
 
-
 async def positions_edit_kb(target_id: int):
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=name, callback_data=f"editsetpos:{target_id}:{pid}")]
         for pid, name, sort, arch in await db_positions_list()
     ] + [[InlineKeyboardButton(text="🔙 К карточке", callback_data=f"adm_user:{target_id}")]])
-
 
 async def restaurants_pick_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -1491,12 +1401,10 @@ async def restaurants_pick_kb():
         for r in await db_restaurants_all()
     ])
 
-
 async def restaurants_edit_kb(target_id: int, recent_only=False):
     if recent_only:
         keys = await db_recent_restaurant_keys(limit=3)
         rows = [r for r in await db_restaurants_all() if r["key"] in keys]
-        # упорядочим как в keys
         key_order = {k: i for i, k in enumerate(keys)}
         rows.sort(key=lambda r: key_order.get(r["key"], 999))
         kb = [[InlineKeyboardButton(text=f"🕒 {r['name']}",
@@ -1511,15 +1419,13 @@ async def restaurants_edit_kb(target_id: int, recent_only=False):
         for r in await db_restaurants_all()
     ] + [[InlineKeyboardButton(text="🔙 К карточке", callback_data=f"adm_user:{target_id}")]])
 
-
 async def profile_text(row):
     full_name, phone, birth_date, position, restaurant = row[0], row[1], row[2], row[3], row[4]
     rest_name = await restaurant_name_by_key(restaurant) if restaurant else "—"
     return (f"📋 <b>Твой профиль</b>\n──────────────────────────────\n"
-            f"👤 ФИО: <b>{full_name}</b>\n💼 Должность: {position or '—'}\n"
-            f"📍 Ресторан: {rest_name}\n📞 Телефон: {phone}\n🎂 Дата рождения: {birth_date}\n"
-            "──────────────────────────────")
-
+            f"👤 ФИО: <b>{html.escape(full_name or '')}</b>\n💼 Должность: {html.escape(position or '—')}\n"
+            f"📍 Ресторан: {html.escape(rest_name)}\n📞 Телефон: {html.escape(phone or '—')}\n"
+            f"🎂 Дата рождения: {html.escape(birth_date or '—')}\n──────────────────────────────")
 
 async def admin_menu_kb(stats=None):
     if stats is None:
@@ -1549,11 +1455,8 @@ async def admin_menu_kb(stats=None):
         [InlineKeyboardButton(text="🔄 Обновить", callback_data="adm_menu")],
     ])
 
-
 LEVEL_LABELS = {"urgent": "🔴 Срочная", "important": "🟡 Важная", "normal": "🔵 Обычная"}
 
-
-# ============= КАРТОЧКИ (ТЕКСТ) =============
 async def users_list_text(rows, page, pages, total, title="Пользователи"):
     if not rows:
         return f"📋 {title} — пока пусто."
@@ -1564,9 +1467,8 @@ async def users_list_text(rows, page, pages, total, title="Пользовате�
             continue
         mark = " 🚫" if is_blocked else ""
         rest = await restaurant_name_by_key(restaurant) if restaurant else "—"
-        lines.append(f"• <b>{full_name}</b>{mark} — {position or '—'}, {rest}")
+        lines.append(f"• <b>{html.escape(full_name)}</b>{mark} — {html.escape(position or '—')}, {html.escape(rest)}")
     return "\n".join(lines)
-
 
 def users_list_kb(rows, page, pages, source="users"):
     kb = []
@@ -1587,7 +1489,6 @@ def users_list_kb(rows, page, pages, source="users"):
                                         callback_data=f"adm_users_p:{page+1}"))
     if nav:
         kb.append(nav)
-    # Быстрые ссылки
     kb.append([
         InlineKeyboardButton(text="🔍 Поиск", callback_data="adm_users_search"),
         InlineKeyboardButton(text="📌 Закреплённые", callback_data="adm_users_pinned"),
@@ -1595,7 +1496,6 @@ def users_list_kb(rows, page, pages, source="users"):
     kb.append([InlineKeyboardButton(text="☑️ Массовые действия", callback_data="adm_users_bulk")])
     kb.append([InlineKeyboardButton(text="🔙 В админ-меню", callback_data="adm_menu")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
-
 
 async def user_card_text(target_id: int, row, is_pinned=False, source="users") -> str:
     if not row:
@@ -1607,13 +1507,12 @@ async def user_card_text(target_id: int, row, is_pinned=False, source="users") -
     header = breadcrumbs(source, f"👤 {pin}Пользователь")
     return (f"{header}\n──────────────────────────────\n"
             f"🆔 ID: <code>{target_id}</code>\n"
-            f"👤 ФИО: <b>{full_name or '—'}</b>\n"
-            f"💼 Должность: {position or '—'}\n"
-            f"📍 Ресторан: {rest_name}\n"
-            f"📞 Телефон: {phone or '—'}\n"
-            f"🎂 Дата рождения: {birth_date or '—'}\n"
+            f"👤 ФИО: <b>{html.escape(full_name or '—')}</b>\n"
+            f"💼 Должность: {html.escape(position or '—')}\n"
+            f"📍 Ресторан: {html.escape(rest_name)}\n"
+            f"📞 Телефон: {html.escape(phone or '—')}\n"
+            f"🎂 Дата рождения: {html.escape(birth_date or '—')}\n"
             f"📊 Статус: {status}")
-
 
 def user_edit_kb(target_id: int, is_blocked: bool = False, is_pinned: bool = False,
                  source: str = "users", page: int = 0) -> InlineKeyboardMarkup:
@@ -1636,7 +1535,6 @@ def user_edit_kb(target_id: int, is_blocked: bool = False, is_pinned: bool = Fal
          InlineKeyboardButton(text="🏠 Меню", callback_data="adm_menu")],
     ])
 
-
 def news_admin_text(rows, page, pages, total):
     if not rows:
         return "📰 Новостей пока нет. Нажми «➕ Добавить новость»."
@@ -1651,9 +1549,8 @@ def news_admin_text(rows, page, pages, total):
             mark = f" · ⏰ {publish_at.strftime('%d.%m %H:%M')}"
         else:
             mark = ""
-        lines.append(f"{LEVEL_LABELS[lvl]} <b>{title}</b>{mark} ({date_str})")
+        lines.append(f"{LEVEL_LABELS[lvl]} <b>{html.escape(title)}</b>{mark} ({date_str})")
     return "\n".join(lines)
-
 
 def news_admin_kb(rows, page, pages):
     kb = []
@@ -1683,7 +1580,6 @@ def news_admin_kb(rows, page, pages):
     kb.append([InlineKeyboardButton(text="🔙 В админ-меню", callback_data="adm_menu")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
-
 def news_important_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=LEVEL_LABELS["urgent"], callback_data="news_imp:urgent")],
@@ -1691,13 +1587,11 @@ def news_important_kb():
         [InlineKeyboardButton(text=LEVEL_LABELS["normal"], callback_data="news_imp:normal")],
     ])
 
-
 def news_schedule_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📤 Опубликовать сейчас", callback_data="news_sched_now")],
         [InlineKeyboardButton(text="⏰ Отложить", callback_data="news_sched_later")],
     ])
-
 
 def news_preview_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -1706,13 +1600,12 @@ def news_preview_kb():
         [InlineKeyboardButton(text="❌ Отмена", callback_data="adm_news")],
     ])
 
-
 async def broadcast_news(title, body, level, restaurant_key=None):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🗑 Скрыть уведомление", callback_data="hide_notification")]
     ])
     icon = LEVEL_LABELS.get(level, LEVEL_LABELS["normal"])
-    text = f"{icon} <b>{title}</b>\n\n{body}"
+    text = f"{icon} <b>{html.escape(title)}</b>\n\n{html.escape(body)}"
     sent, failed = 0, 0
     for user_id in await db_list_active_users(restaurant_key):
         try:
@@ -1735,13 +1628,11 @@ async def broadcast_news(title, body, level, restaurant_key=None):
         target = await restaurant_name_by_key(restaurant_key) if restaurant_key else "всем"
         try:
             await bot.send_message(ADMIN_ID,
-                                   f"📬 Рассылка завершена.\n\n📰 «{title}»\n🎯 Аудитория: {target}\n"
+                                   f"📬 Рассылка завершена.\n\n📰 «{html.escape(title)}»\n🎯 Аудитория: {html.escape(target)}\n"
                                    f"✅ Доставлено: {sent}\n❌ Не доставлено: {failed}")
         except Exception:
             pass
 
-
-# ============= РЕСТОРАНЫ (карточки) =============
 FIELD_LABELS = {"name": "Название", "address": "Адрес", "phone": "Телефон",
                 "hours": "Часы работы", "org": "Ссылка на Яндекс Картах"}
 
@@ -1753,7 +1644,6 @@ FIELD_PROMPTS = {
     "org": "🗺 Напиши путь карточки Яндекс Карт (например: vokker/1234567890)\nили «нет», чтобы искать по адресу",
 }
 
-
 def rest_status_label(r: dict) -> str:
     status, status_text = restaurant_status_for(r)
     if r.get("force_status") == "open":
@@ -1762,17 +1652,15 @@ def rest_status_label(r: dict) -> str:
         return f"🔴 {status_text}"
     return f"♻️ Авто: {status_text}"
 
-
 def rest_card_text(r: dict, source="rests") -> str:
     phone = r.get("phone") or "—"
-    header = breadcrumbs(source, f"🏪 {r['name']}")
+    header = breadcrumbs(source, f"🏪 {html.escape(r['name'])}")
     return (f"{header}\n──────────────────────────────\n"
             f"{'🟢' if restaurant_status_for(r)[0] == 'open' else '🔴'} Статус: {rest_status_label(r)}\n"
-            f"📍 Адрес: {r.get('address') or '—'}\n📞 Телефон: {phone}\n"
-            f"🕒 Часы: {(r.get('hours') or '—').replace(chr(10), ' / ')}\n"
-            f"🗺 Яндекс Карты: {r.get('org') or 'по адресу'}\n"
+            f"📍 Адрес: {html.escape(r.get('address') or '—')}\n📞 Телефон: {html.escape(phone)}\n"
+            f"🕒 Часы: {html.escape((r.get('hours') or '—').replace(chr(10), ' / '))}\n"
+            f"🗺 Яндекс Карты: {html.escape(r.get('org') or 'по адресу')}\n"
             f"🔑 Key: <code>{r['key']}</code>")
-
 
 def rest_card_kb(r: dict, source="rests", page=0) -> InlineKeyboardMarkup:
     fs = r.get("force_status")
@@ -1795,7 +1683,6 @@ def rest_card_kb(r: dict, source="rests", page=0) -> InlineKeyboardMarkup:
     rows.append([InlineKeyboardButton(text="⬅️ Назад", callback_data=back_callback(source, page)),
                  InlineKeyboardButton(text="🏠 Меню", callback_data="adm_menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
 
 def rests_list_kb(rests, page, pages):
     kb = []
@@ -1820,7 +1707,6 @@ def rests_list_kb(rests, page, pages):
     kb.append([InlineKeyboardButton(text="🔙 В админ-меню", callback_data="adm_menu")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
-
 def rests_list_text(rests, page, pages, total):
     if not rests:
         return "🏪 Список ресторанов пуст."
@@ -1830,15 +1716,13 @@ def rests_list_text(rests, page, pages, total):
         icon = "🟢" if status == "open" else "🔴"
         fs = r.get("force_status")
         mark = " (вручную)" if fs else ""
-        lines.append(f"{icon} <b>{r['name']}</b>{mark} — {r.get('address') or '—'}")
+        lines.append(f"{icon} <b>{html.escape(r['name'])}</b>{mark} — {html.escape(r.get('address') or '—')}")
     return "\n".join(lines)
-
 
 def std_card_text(row) -> str:
     sid, title, category, description, url = row
-    return (f"📚 <b>{title}</b>\nКатегория: {category or '—'}\n"
-            f"Описание: {description or '—'}\nСсылка: {url or '—'}")
-
+    return (f"📚 <b>{html.escape(title)}</b>\nКатегория: {html.escape(category or '—')}\n"
+            f"Описание: {html.escape(description or '—')}\nСсылка: {html.escape(url or '—')}")
 
 def std_card_kb(sid: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -1850,11 +1734,10 @@ def std_card_kb(sid: int) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🔙 К списку", callback_data="adm_std")],
     ])
 
-
 def std_admin_kb(rows, page, pages):
     kb = []
     for sid, title, category, description, url in rows:
-        kb.append([InlineKeyboardButton(text=f"📚 {title[:28]}", callback_data=f"std_card:{sid}"),
+        kb.append([InlineKeyboardButton(text=f"📚 {html.escape(title[:28])}", callback_data=f"std_card:{sid}"),
                    InlineKeyboardButton(text="🗑", callback_data=f"std_del:{sid}")])
     nav = []
     if page > 0:
@@ -1869,13 +1752,11 @@ def std_admin_kb(rows, page, pages):
     kb.append([InlineKeyboardButton(text="🔙 В админ-меню", callback_data="adm_menu")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
-
 def std_admin_text(rows, page, pages, total):
     lines = [f"📚 Стандарты · всего {total} · стр. {page+1}/{pages}\n"]
     for sid, title, category, description, url in rows:
-        lines.append(f"• {title}")
+        lines.append(f"• {html.escape(title)}")
     return "\n".join(lines) if rows else "Пока пусто."
-
 
 def faq_card_kb(fid: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -1885,11 +1766,10 @@ def faq_card_kb(fid: int) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🔙 К списку", callback_data="adm_faq")],
     ])
 
-
 def faq_admin_kb(rows, page, pages):
     kb = []
     for fid, question, answer, category in rows:
-        kb.append([InlineKeyboardButton(text=f"❓ {question[:28]}",
+        kb.append([InlineKeyboardButton(text=f"❓ {html.escape(question[:28])}",
                                         callback_data=f"faq_edit_show:{fid}"),
                    InlineKeyboardButton(text="🗑", callback_data=f"faq_del:{fid}")])
     nav = []
@@ -1905,21 +1785,14 @@ def faq_admin_kb(rows, page, pages):
     kb.append([InlineKeyboardButton(text="🔙 В админ-меню", callback_data="adm_menu")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
-
 def faq_admin_text(rows, page, pages, total):
     lines = [f"❓ FAQ · всего {total} · стр. {page+1}/{pages}\n"]
     for fid, q, a, c in rows:
-        lines.append(f"• {q}")
+        lines.append(f"• {html.escape(q)}")
     return "\n".join(lines) if rows else "Пока пусто."
 
-
 # ============================================================
-# ============== ГРАНИЦА МЕЖДУ ЧАСТЯМИ ========================
-# Всё ниже — вторая часть. Просто продолжи этот же файл.
-# ============================================================
-
-# ============================================================
-# USER ROUTER
+# ХЕНДЛЕРЫ БОТА
 # ============================================================
 
 @user_router.message(CommandStart())
@@ -1965,10 +1838,9 @@ async def cmd_start(message: types.Message, state: FSMContext):
         return
     await db_set_welcomed(user_id, message.from_user.first_name)
     await send_tracked(message.chat.id, user_id,
-                       f"👋 {message.from_user.first_name}, добро пожаловать в Wokker!")
+                       f"👋 {html.escape(message.from_user.first_name)}, добро пожаловать в Wokker!")
     await send_tracked(message.chat.id, user_id, "Нажми кнопку ниже, чтобы зарегистрироваться:",
                        reply_markup=REGISTER_ONLY)
-
 
 @user_router.message(Command("cancel"))
 async def cmd_cancel(message: types.Message, state: FSMContext):
@@ -1976,7 +1848,6 @@ async def cmd_cancel(message: types.Message, state: FSMContext):
     await cleanup_chat(message.from_user.id)
     await state.clear()
     await send_tracked(message.chat.id, message.from_user.id, "Отменено.")
-
 
 @user_router.message(Command("profile"))
 async def cmd_profile(message: types.Message):
@@ -1995,7 +1866,6 @@ async def cmd_profile(message: types.Message):
         await send_tracked(message.chat.id, message.from_user.id,
                            "Ты не зарегистрирован. Напиши /start.")
 
-
 @user_router.callback_query(lambda c: c.data == "register")
 async def start_registration(callback: types.CallbackQuery, state: FSMContext):
     if await db_is_blocked(callback.from_user.id):
@@ -2007,7 +1877,6 @@ async def start_registration(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(Registration.full_name)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        "Шаг 1 из 5.\nНапиши ФИО (например: Иванов Иван Иванович)")
-
 
 @user_router.message(Registration.full_name)
 async def process_name(message: types.Message, state: FSMContext):
@@ -2030,10 +1899,9 @@ async def process_name(message: types.Message, state: FSMContext):
     await state.update_data(full_name=name)
     await state.set_state(Registration.phone)
     await send_tracked(message.chat.id, message.from_user.id,
-                       f"ФИО: <b>{name}</b> ✅\n\n" + progress_bar(1, 5) +
+                       f"ФИО: <b>{html.escape(name)}</b> ✅\n\n" + progress_bar(1, 5) +
                        "\n\nШаг 2 из 5.\nОтправь номер телефона:",
                        parse_mode="HTML", reply_markup=phone_kb())
-
 
 @user_router.message(Registration.phone, lambda m: m.contact is not None)
 async def process_phone_button(message: types.Message, state: FSMContext):
@@ -2049,7 +1917,6 @@ async def process_phone_button(message: types.Message, state: FSMContext):
                        progress_bar(2, 5) +
                        "\n\nНомер получен ✅\nШаг 3 из 5.\nДата рождения ДД.ММ.ГГГГ:",
                        reply_markup=ReplyKeyboardRemove())
-
 
 @user_router.message(Registration.phone)
 async def process_phone_text(message: types.Message, state: FSMContext):
@@ -2070,7 +1937,6 @@ async def process_phone_text(message: types.Message, state: FSMContext):
                        progress_bar(2, 5) +
                        "\n\nНомер записан ✅\nШаг 3 из 5.\nДата рождения ДД.ММ.ГГГГ:",
                        reply_markup=ReplyKeyboardRemove())
-
 
 @user_router.message(Registration.birth_date)
 async def process_birth_date(message: types.Message, state: FSMContext):
@@ -2102,7 +1968,6 @@ async def process_birth_date(message: types.Message, state: FSMContext):
     await send_tracked(message.chat.id, message.from_user.id,
                        "Выбери должность:", reply_markup=await positions_kb())
 
-
 @user_router.callback_query(Registration.position, lambda c: c.data and c.data.startswith("pos:"))
 async def process_position(callback: types.CallbackQuery, state: FSMContext):
     if await db_is_blocked(callback.from_user.id):
@@ -2122,9 +1987,8 @@ async def process_position(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(Registration.restaurant)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        progress_bar(4, 5) +
-                       f"\n\nДолжность: <b>{position}</b> ✅\n\nШаг 5 из 5. Ресторан 👇",
+                       f"\n\nДолжность: <b>{html.escape(position)}</b> ✅\n\nШаг 5 из 5. Ресторан 👇",
                        parse_mode="HTML", reply_markup=await restaurants_pick_kb())
-
 
 @user_router.callback_query(Registration.restaurant, lambda c: c.data and c.data.startswith("restpick:"))
 async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMContext):
@@ -2156,14 +2020,13 @@ async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMConte
     await state.clear()
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        progress_bar(5, 5) +
-                       f"\n\n🎉 <b>{callback.from_user.first_name}, регистрация завершена!</b>\n\n"
-                       f"👤 ФИО: {full_name}\n📞 {phone}\n🎂 {birth_date}\n"
-                       f"💼 {position}\n📍 {restaurant['name']}\n\n"
+                       f"\n\n🎉 <b>{html.escape(callback.from_user.first_name)}, регистрация завершена!</b>\n\n"
+                       f"👤 ФИО: {html.escape(full_name)}\n📞 {html.escape(phone)}\n🎂 {html.escape(birth_date)}\n"
+                       f"💼 {html.escape(position)}\n📍 {html.escape(restaurant['name'])}\n\n"
                        "Открой приложение:",
                        parse_mode="HTML", reply_markup=FULL_MENU)
-    # Уведомление админу — с inline-кнопками
     if ADMIN_ID:
-        uname = f"@{callback.from_user.username}" if callback.from_user.username else "нет"
+        uname = f"@{html.escape(callback.from_user.username)}" if callback.from_user.username else "нет"
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📋 Открыть карточку",
                                   callback_data=f"adm_user:{callback.from_user.id}:newreg:0")],
@@ -2173,13 +2036,12 @@ async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMConte
         try:
             await bot.send_message(ADMIN_ID,
                                    f"🔔 <b>Новая регистрация!</b>\n\n"
-                                   f"👤 {full_name}\n📞 {phone}\n🎂 {birth_date}\n"
-                                   f"💼 {position}\n📍 {restaurant['name']}\n"
+                                   f"👤 {html.escape(full_name)}\n📞 {html.escape(phone)}\n🎂 {html.escape(birth_date)}\n"
+                                   f"💼 {html.escape(position)}\n📍 {html.escape(restaurant['name'])}\n"
                                    f"🆔 <code>{callback.from_user.id}</code>\n🔗 {uname}",
                                    parse_mode="HTML", reply_markup=kb)
         except Exception as e:
             logging.error(f"notify admin: {e}")
-
 
 @user_router.callback_query(lambda c: c.data == "hide_notification")
 async def hide_notification(callback: types.CallbackQuery):
@@ -2189,29 +2051,22 @@ async def hide_notification(callback: types.CallbackQuery):
         logging.warning(f"hide: {e}")
     await callback.answer("Скрыто")
 
-
 @user_router.callback_query(lambda c: c.data == "noop")
 async def user_noop(callback: types.CallbackQuery):
     await callback.answer()
 
-
-# ============================================================
 # ADMIN ROUTER
-# ============================================================
-
 @admin_router.message(Command("admin"))
 async def cmd_admin(message: types.Message):
     await delete_incoming(message)
     await cleanup_chat(message.chat.id)
     await _show_dashboard(message.chat.id, message.from_user.id)
 
-
 @admin_router.message(Command("stats"))
 async def cmd_stats(message: types.Message):
     await delete_incoming(message)
     await cleanup_chat(message.chat.id)
     await _show_stats(message.chat.id, message.from_user.id)
-
 
 @admin_router.message(Command("user", "u"))
 async def cmd_user_search(message: types.Message):
@@ -2229,23 +2084,21 @@ async def cmd_user_search(message: types.Message):
         return
     rows = await db_search_users(q)
     if not rows:
-        await send_tracked(message.chat.id, message.from_user.id, f"Никого не нашёл по «{q}» 🤷")
+        await send_tracked(message.chat.id, message.from_user.id, f"Никого не нашёл по «{html.escape(q)}» 🤷")
         return
     if len(rows) > 30:
         await send_tracked(message.chat.id, message.from_user.id,
                            f"Слишком много совпадений ({len(rows)}). Уточни запрос.")
         return
     await send_tracked(message.chat.id, message.from_user.id,
-                       await users_list_text(rows, 0, 1, len(rows), title=f"Поиск: {q}"),
+                       await users_list_text(rows, 0, 1, len(rows), title=f"Поиск: {html.escape(q)}"),
                        parse_mode="HTML", reply_markup=users_list_kb(rows, 0, 1, source="search"))
-
 
 @admin_router.message(Command("q", "questions"))
 async def cmd_questions(message: types.Message):
     await delete_incoming(message)
     await cleanup_chat(message.chat.id)
     await _show_questions(message.chat.id, message.from_user.id, 0)
-
 
 @admin_router.message(Command("news"))
 async def cmd_news(message: types.Message):
@@ -2256,7 +2109,6 @@ async def cmd_news(message: types.Message):
     await send_tracked(message.chat.id, message.from_user.id,
                        news_admin_text(chunk, page, pages, len(rows)),
                        parse_mode="HTML", reply_markup=news_admin_kb(chunk, page, pages))
-
 
 @admin_router.message(Command("broadcast"))
 async def cmd_broadcast(message: types.Message):
@@ -2277,15 +2129,12 @@ async def cmd_broadcast(message: types.Message):
         [InlineKeyboardButton(text=f"✅ Отправить всем ({n})", callback_data="quick_bc_confirm")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="adm_menu")],
     ])
-    # сохраняем в стейт? Проще — использовать in-memory словарь
     _quick_broadcast_cache[message.from_user.id] = text
     await send_tracked(message.chat.id, message.from_user.id,
-                       f"👀 <b>Превью:</b>\n\n🔵 {text}\n\nОтправить всем <b>{n}</b> сотрудникам?",
+                       f"👀 <b>Превью:</b>\n\n🔵 {html.escape(text)}\n\nОтправить всем <b>{n}</b> сотрудникам?",
                        parse_mode="HTML", reply_markup=kb)
 
-
 _quick_broadcast_cache = {}
-
 
 @admin_router.callback_query(lambda c: c.data == "quick_bc_confirm")
 async def quick_broadcast_confirm(callback: types.CallbackQuery):
@@ -2309,9 +2158,6 @@ async def quick_broadcast_confirm(callback: types.CallbackQuery):
     await cleanup_chat(callback.from_user.id)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        "✅ Рассылка запущена. Придёт отчёт по завершении.")
-
-
-# ---------- Дашборд ----------
 
 async def _show_dashboard(chat_id, user_id):
     stats = await db_dashboard_stats()
@@ -2346,7 +2192,6 @@ async def _show_dashboard(chat_id, user_id):
     await send_tracked(chat_id, user_id, text, parse_mode="HTML",
                        reply_markup=await admin_menu_kb(stats))
 
-
 async def _show_stats(chat_id, user_id):
     stats = await get_report_stats()
     rests = await db_restaurants_all()
@@ -2355,7 +2200,7 @@ async def _show_stats(chat_id, user_id):
         if r[1]:
             rn = await restaurant_name_by_key(r[4]) if r[4] else "Не указан"
             counts[rn] = counts.get(rn, 0) + 1
-    rest_lines = "\n".join(f"• {k}: {v}" for k, v in
+    rest_lines = "\n".join(f"• {html.escape(k)}: {v}" for k, v in
                            sorted(counts.items(), key=lambda x: -x[1])) or "• пока нет данных"
     await send_tracked(chat_id, user_id,
                        f"📊 <b>Сводка</b> ({stats['date']})\n\n"
@@ -2366,16 +2211,12 @@ async def _show_stats(chat_id, user_id):
                        f"<b>По ресторанам:</b>\n{rest_lines}",
                        parse_mode="HTML")
 
-
 @admin_router.callback_query(lambda c: c.data == "adm_menu")
 async def adm_menu(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.clear()
     await cleanup_chat(callback.from_user.id)
     await _show_dashboard(callback.message.chat.id, callback.from_user.id)
-
-
-# ---------- Внимание ----------
 
 @admin_router.callback_query(lambda c: c.data == "adm_attention")
 async def adm_attention(callback: types.CallbackQuery, state: FSMContext):
@@ -2390,17 +2231,14 @@ async def adm_attention(callback: types.CallbackQuery, state: FSMContext):
         lines.append(f"❓ <b>{stats['questions_open']}</b> вопросов без ответа")
         kb.append([InlineKeyboardButton(text=f"❓ Открыть вопросы ({stats['questions_open']})",
                                         callback_data="adm_questions")])
-
     if stats.get("unfinished", 0):
         lines.append(f"🆕 <b>{stats['unfinished']}</b> регистраций не завершены")
         kb.append([InlineKeyboardButton(text=f"🆕 Показать ({stats['unfinished']})",
                                         callback_data="adm_attention_unfinished")])
-
     if stats.get("inactive", 0):
         lines.append(f"💤 <b>{stats['inactive']}</b> не заходили 7+ дней")
         kb.append([InlineKeyboardButton(text=f"💤 Показать ({stats['inactive']})",
                                         callback_data="adm_attention_inactive")])
-
     if stats.get("news_scheduled", 0):
         lines.append(f"⏰ <b>{stats['news_scheduled']}</b> отложенных новостей")
         kb.append([InlineKeyboardButton(text=f"⏰ Открыть новости",
@@ -2413,7 +2251,6 @@ async def adm_attention(callback: types.CallbackQuery, state: FSMContext):
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        "\n".join(lines), parse_mode="HTML",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
-
 
 @admin_router.callback_query(lambda c: c.data == "adm_attention_unfinished")
 async def adm_attention_unfinished(callback: types.CallbackQuery):
@@ -2430,12 +2267,10 @@ async def adm_attention_unfinished(callback: types.CallbackQuery):
                        parse_mode="HTML",
                        reply_markup=users_list_kb(rows, 0, 1, source="attention"))
 
-
 @admin_router.callback_query(lambda c: c.data == "adm_attention_inactive")
 async def adm_attention_inactive(callback: types.CallbackQuery):
     await callback.answer()
     all_rows = await db_list_users()
-    # приблизительно: без last_seen, но активные (это редко бывает массово)
     rows = [r for r in all_rows if r[1] and not r[6]][:30]
     if not rows:
         await send_tracked(callback.message.chat.id, callback.from_user.id,
@@ -2447,9 +2282,6 @@ async def adm_attention_inactive(callback: types.CallbackQuery):
                                              title="Не заходили 7+ дней (примерно)"),
                        parse_mode="HTML",
                        reply_markup=users_list_kb(rows, 0, 1, source="attention"))
-
-
-# ---------- Вопросы ----------
 
 async def _show_questions(chat_id, user_id, page=0):
     rows = await db_questions_list(unanswered_only=True, limit=200)
@@ -2468,8 +2300,8 @@ async def _show_questions(chat_id, user_id, page=0):
     kb = []
     for qid, uid, text, created_at, replied, full_name in chunk:
         date = created_at.strftime("%d.%m %H:%M") if created_at else ""
-        who = full_name or f"ID {uid}"
-        lines.append(f"• <b>{who}</b> · {date}\n  «{text[:70]}{'…' if len(text) > 70 else ''}»")
+        who = html.escape(full_name) if full_name else f"ID {uid}"
+        lines.append(f"• <b>{who}</b> · {date}\n  «{html.escape(text[:70])}{'…' if len(text) > 70 else ''}»")
         kb.append([InlineKeyboardButton(text=f"💬 {who[:25]} · {date}",
                                         callback_data=f"question_view:{qid}")])
     nav = []
@@ -2486,7 +2318,6 @@ async def _show_questions(chat_id, user_id, page=0):
     await send_tracked(chat_id, user_id, "\n".join(lines), parse_mode="HTML",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
-
 @admin_router.callback_query(lambda c: c.data == "adm_questions")
 async def adm_questions(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -2494,14 +2325,12 @@ async def adm_questions(callback: types.CallbackQuery, state: FSMContext):
     await cleanup_chat(callback.from_user.id)
     await _show_questions(callback.message.chat.id, callback.from_user.id, 0)
 
-
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_questions_p:"))
 async def adm_questions_p(callback: types.CallbackQuery):
     page = safe_int(callback.data.split(":")[1])
     await callback.answer()
     await cleanup_chat(callback.from_user.id)
     await _show_questions(callback.message.chat.id, callback.from_user.id, page)
-
 
 @admin_router.callback_query(lambda c: c.data == "adm_questions_all")
 async def adm_questions_all(callback: types.CallbackQuery):
@@ -2516,7 +2345,7 @@ async def adm_questions_all(callback: types.CallbackQuery):
     for qid, uid, text, created_at, replied, full_name in rows[:20]:
         date = created_at.strftime("%d.%m %H:%M") if created_at else ""
         mark = "✅" if replied else "❓"
-        who = full_name or f"ID {uid}"
+        who = html.escape(full_name) if full_name else f"ID {uid}"
         kb.append([InlineKeyboardButton(text=f"{mark} {who[:22]} · {date}",
                                         callback_data=f"question_view:{qid}")])
     kb.append([InlineKeyboardButton(text="⬅️ Только открытые", callback_data="adm_questions")])
@@ -2524,7 +2353,6 @@ async def adm_questions_all(callback: types.CallbackQuery):
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        "\n".join(lines), parse_mode="HTML",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("question_view:"))
 async def question_view(callback: types.CallbackQuery, state: FSMContext):
@@ -2536,18 +2364,18 @@ async def question_view(callback: types.CallbackQuery, state: FSMContext):
         await send_tracked(callback.message.chat.id, callback.from_user.id, "Вопрос не найден.")
         return
     await cleanup_chat(callback.from_user.id)
-    who = q["full_name"] or f"ID {q['user_id']}"
+    who = html.escape(q["full_name"]) if q["full_name"] else f"ID {q['user_id']}"
     status = "✅ отвечен" if q["replied"] else "❓ открыт"
     text = (f"❓ <b>Вопрос #{qid}</b> · {status}\n"
             f"──────────────────────────────\n"
             f"👤 {who} (<code>{q['user_id']}</code>)\n\n"
-            f"💬 {q['text']}")
+            f"💬 {html.escape(q['text'])}")
     kb_rows = []
     if not q["replied"]:
         kb_rows.append([InlineKeyboardButton(text="✍️ Ответить",
                                              callback_data=f"question_reply:{qid}")])
     else:
-        text += f"\n\n✅ <b>Ответ:</b> {q['reply_text'] or '—'}"
+        text += f"\n\n✅ <b>Ответ:</b> {html.escape(q['reply_text'] or '—')}"
     kb_rows.append([
         InlineKeyboardButton(text="📋 Профиль",
                              callback_data=f"adm_user:{q['user_id']}:questions:0"),
@@ -2559,7 +2387,6 @@ async def question_view(callback: types.CallbackQuery, state: FSMContext):
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        text, parse_mode="HTML",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_rows))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("question_reply:"))
 async def question_reply_start(callback: types.CallbackQuery, state: FSMContext):
@@ -2574,13 +2401,12 @@ async def question_reply_start(callback: types.CallbackQuery, state: FSMContext)
     await cleanup_chat(callback.from_user.id)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        f"✍️ <b>Ответ на вопрос #{qid}</b>\n\n"
-                       f"💬 «{q['text'][:200]}»\n\n"
+                       f"💬 «{html.escape(q['text'][:200])}»\n\n"
                        f"Напиши ответ — пользователь получит его в боте:",
                        parse_mode="HTML",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                            [InlineKeyboardButton(text="❌ Отмена", callback_data=f"question_view:{qid}")]
                        ]))
-
 
 @admin_router.message(QuestionReply.text)
 async def question_reply_do(message: types.Message, state: FSMContext):
@@ -2601,11 +2427,10 @@ async def question_reply_do(message: types.Message, state: FSMContext):
     await db_question_reply(qid, text, message.from_user.id)
     await db_audit(message.from_user.id, "question_reply", "question", qid, text[:80])
 
-    # Отправляем пользователю
     sent = False
     try:
         await bot.send_message(q_uid,
-                               f"💬 <b>Ответ от администратора</b>\n\n{text}",
+                               f"💬 <b>Ответ от администратора</b>\n\n{html.escape(text)}",
                                parse_mode="HTML")
         sent = True
     except Exception as e:
@@ -2616,9 +2441,6 @@ async def question_reply_do(message: types.Message, state: FSMContext):
                        parse_mode="HTML")
     await _show_questions(message.chat.id, message.from_user.id, 0)
 
-
-# ---------- Пользователи ----------
-
 @admin_router.callback_query(lambda c: c.data == "adm_users")
 async def adm_users(callback: types.CallbackQuery):
     await callback.answer()
@@ -2628,7 +2450,6 @@ async def adm_users(callback: types.CallbackQuery):
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        await users_list_text(chunk, page, pages, len(rows)),
                        parse_mode="HTML", reply_markup=users_list_kb(chunk, page, pages))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_users_p:"))
 async def adm_users_p(callback: types.CallbackQuery):
@@ -2641,7 +2462,6 @@ async def adm_users_p(callback: types.CallbackQuery):
                        await users_list_text(chunk, page, pages, len(rows)),
                        parse_mode="HTML", reply_markup=users_list_kb(chunk, page, pages))
 
-
 @admin_router.callback_query(lambda c: c.data == "adm_users_search")
 async def adm_users_search(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -2652,7 +2472,6 @@ async def adm_users_search(callback: types.CallbackQuery, state: FSMContext):
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                            [InlineKeyboardButton(text="❌ Отмена", callback_data="adm_users")]
                        ]))
-
 
 @admin_router.message(UserSearch.query)
 async def adm_users_search_do(message: types.Message, state: FSMContext):
@@ -2665,13 +2484,12 @@ async def adm_users_search_do(message: types.Message, state: FSMContext):
     await state.clear()
     rows = await db_search_users(q)
     if not rows:
-        await send_tracked(message.chat.id, message.from_user.id, f"Никого не нашёл по «{q}» 🤷")
+        await send_tracked(message.chat.id, message.from_user.id, f"Никого не нашёл по «{html.escape(q)}» 🤷")
         return
     chunk, page, pages = paginate(rows, 0, PAGE_USERS)
     await send_tracked(message.chat.id, message.from_user.id,
-                       await users_list_text(chunk, page, pages, len(rows), title=f"Поиск: {q}"),
+                       await users_list_text(chunk, page, pages, len(rows), title=f"Поиск: {html.escape(q)}"),
                        parse_mode="HTML", reply_markup=users_list_kb(chunk, page, pages, source="search"))
-
 
 @admin_router.callback_query(lambda c: c.data == "adm_users_pinned")
 async def adm_users_pinned(callback: types.CallbackQuery):
@@ -2689,7 +2507,7 @@ async def adm_users_pinned(callback: types.CallbackQuery):
     kb = []
     lines = [f"📌 <b>Закреплённые</b> ({len(pinned)})\n"]
     for uid, fn, pos in pinned:
-        lines.append(f"• <b>{fn or '—'}</b> — {pos or '—'}")
+        lines.append(f"• <b>{html.escape(fn or '—')}</b> — {html.escape(pos or '—')}")
         kb.append([InlineKeyboardButton(text=fn or f"ID {uid}",
                                         callback_data=f"adm_user:{uid}:pinned:0")])
     kb.append([InlineKeyboardButton(text="⬅️ К пользователям", callback_data="adm_users")])
@@ -2697,7 +2515,6 @@ async def adm_users_pinned(callback: types.CallbackQuery):
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        "\n".join(lines), parse_mode="HTML",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
-
 
 @admin_router.callback_query(lambda c: c.data == "adm_users_recent")
 async def adm_users_recent(callback: types.CallbackQuery):
@@ -2718,9 +2535,6 @@ async def adm_users_recent(callback: types.CallbackQuery):
                        parse_mode="HTML",
                        reply_markup=users_list_kb(rows, 0, 1, source="recent"))
 
-
-# --- Bulk ---
-
 @admin_router.callback_query(lambda c: c.data == "adm_users_bulk")
 async def adm_users_bulk_start(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -2728,7 +2542,6 @@ async def adm_users_bulk_start(callback: types.CallbackQuery, state: FSMContext)
     await state.update_data(selected=[], bulk_page=0)
     await cleanup_chat(callback.from_user.id)
     await _show_bulk_page(callback.message.chat.id, callback.from_user.id, state, 0)
-
 
 async def _show_bulk_page(chat_id, user_id, state, page):
     data = await state.get_data()
@@ -2743,7 +2556,7 @@ async def _show_bulk_page(chat_id, user_id, state, page):
             continue
         mark = "✅" if uid in selected else "⬜️"
         kb.append([InlineKeyboardButton(
-            text=f"{mark} {fn[:35]}",
+            text=f"{mark} {html.escape(fn[:35])}",
             callback_data=f"bulk_toggle:{uid}:{page}")])
 
     nav = []
@@ -2773,7 +2586,6 @@ async def _show_bulk_page(chat_id, user_id, state, page):
     await send_tracked(chat_id, user_id, text, parse_mode="HTML",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
-
 @admin_router.callback_query(BulkSelect.active, lambda c: c.data and c.data.startswith("bulk_toggle:"))
 async def bulk_toggle(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -2790,14 +2602,12 @@ async def bulk_toggle(callback: types.CallbackQuery, state: FSMContext):
     await cleanup_chat(callback.from_user.id)
     await _show_bulk_page(callback.message.chat.id, callback.from_user.id, state, page)
 
-
 @admin_router.callback_query(BulkSelect.active, lambda c: c.data and c.data.startswith("bulk_page:"))
 async def bulk_page(callback: types.CallbackQuery, state: FSMContext):
     page = safe_int(callback.data.split(":")[1])
     await callback.answer()
     await cleanup_chat(callback.from_user.id)
     await _show_bulk_page(callback.message.chat.id, callback.from_user.id, state, page)
-
 
 @admin_router.callback_query(BulkSelect.active, lambda c: c.data and c.data.startswith("bulk_select_page:"))
 async def bulk_select_page(callback: types.CallbackQuery, state: FSMContext):
@@ -2814,7 +2624,6 @@ async def bulk_select_page(callback: types.CallbackQuery, state: FSMContext):
     await cleanup_chat(callback.from_user.id)
     await _show_bulk_page(callback.message.chat.id, callback.from_user.id, state, page)
 
-
 @admin_router.callback_query(BulkSelect.active, lambda c: c.data == "bulk_clear")
 async def bulk_clear(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -2823,7 +2632,6 @@ async def bulk_clear(callback: types.CallbackQuery, state: FSMContext):
     page = data.get("bulk_page", 0)
     await cleanup_chat(callback.from_user.id)
     await _show_bulk_page(callback.message.chat.id, callback.from_user.id, state, page)
-
 
 @admin_router.callback_query(BulkSelect.active, lambda c: c.data == "bulk_actions")
 async def bulk_actions(callback: types.CallbackQuery, state: FSMContext):
@@ -2845,7 +2653,6 @@ async def bulk_actions(callback: types.CallbackQuery, state: FSMContext):
                        parse_mode="HTML",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
-
 @admin_router.callback_query(BulkSelect.active, lambda c: c.data == "bulk_actions_back")
 async def bulk_actions_back(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -2853,7 +2660,6 @@ async def bulk_actions_back(callback: types.CallbackQuery, state: FSMContext):
     page = data.get("bulk_page", 0)
     await cleanup_chat(callback.from_user.id)
     await _show_bulk_page(callback.message.chat.id, callback.from_user.id, state, page)
-
 
 @admin_router.callback_query(BulkSelect.active, lambda c: c.data in ("bulk_do_block", "bulk_do_unblock"))
 async def bulk_do_block(callback: types.CallbackQuery, state: FSMContext):
@@ -2884,7 +2690,6 @@ async def bulk_do_block(callback: types.CallbackQuery, state: FSMContext):
     await _show_bulk_page(callback.message.chat.id, callback.from_user.id, state,
                           data.get("bulk_page", 0))
 
-
 @admin_router.callback_query(BulkSelect.active, lambda c: c.data == "bulk_do_msg")
 async def bulk_do_msg(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -2901,7 +2706,6 @@ async def bulk_do_msg(callback: types.CallbackQuery, state: FSMContext):
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                            [InlineKeyboardButton(text="❌ Отмена", callback_data="bulk_actions")]
                        ]))
-
 
 @admin_router.message(BulkMessage.text)
 async def bulk_msg_do(message: types.Message, state: FSMContext):
@@ -2921,7 +2725,7 @@ async def bulk_msg_do(message: types.Message, state: FSMContext):
     sent, failed = 0, 0
     for uid in selected:
         try:
-            await bot.send_message(uid, f"📢 <b>Сообщение от администратора</b>\n\n{text}",
+            await bot.send_message(uid, f"📢 <b>Сообщение от администратора</b>\n\n{html.escape(text)}",
                                    parse_mode="HTML")
             sent += 1
         except TelegramForbiddenError:
@@ -2936,9 +2740,6 @@ async def bulk_msg_do(message: types.Message, state: FSMContext):
     await send_tracked(message.chat.id, message.from_user.id,
                        f"📬 Рассылка завершена.\n✅ Доставлено: {sent}\n❌ Не доставлено: {failed}",
                        parse_mode="HTML")
-
-
-# --- Карточка пользователя ---
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_user:"))
 async def adm_user_card(callback: types.CallbackQuery, state: FSMContext):
@@ -2962,7 +2763,6 @@ async def adm_user_card(callback: types.CallbackQuery, state: FSMContext):
                        parse_mode="HTML",
                        reply_markup=user_edit_kb(target_id, bool(row[6]), is_pin, source, page))
 
-
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_pin:"))
 async def adm_pin(callback: types.CallbackQuery):
     target_id = safe_int(callback.data.split(":")[1])
@@ -2976,9 +2776,6 @@ async def adm_pin(callback: types.CallbackQuery):
                            await user_card_text(target_id, row, now_pinned),
                            parse_mode="HTML",
                            reply_markup=user_edit_kb(target_id, bool(row[6]), now_pinned))
-
-
-# --- Edit fields ---
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("edit_field:"))
 async def edit_field_start(callback: types.CallbackQuery, state: FSMContext):
@@ -3006,7 +2803,6 @@ async def edit_field_start(callback: types.CallbackQuery, state: FSMContext):
                            [InlineKeyboardButton(text="❌ Отменить", callback_data=f"edit_cancel:{target_id}")]
                        ]))
 
-
 @admin_router.message(EditUser.full_name)
 async def edit_full_name(message: types.Message, state: FSMContext):
     name = (message.text or "").strip()
@@ -3025,11 +2821,10 @@ async def edit_full_name(message: types.Message, state: FSMContext):
     is_pin = await db_is_pinned(message.from_user.id, target_id)
     if row:
         await send_tracked(message.chat.id, message.from_user.id,
-                           f"✅ ФИО обновлено: <b>{name}</b>\n\n" +
+                           f"✅ ФИО обновлено: <b>{html.escape(name)}</b>\n\n" +
                            await user_card_text(target_id, row, is_pin),
                            parse_mode="HTML",
                            reply_markup=user_edit_kb(target_id, bool(row[6]), is_pin))
-
 
 @admin_router.message(EditUser.phone)
 async def edit_phone(message: types.Message, state: FSMContext):
@@ -3049,11 +2844,10 @@ async def edit_phone(message: types.Message, state: FSMContext):
     is_pin = await db_is_pinned(message.from_user.id, target_id)
     if row:
         await send_tracked(message.chat.id, message.from_user.id,
-                           f"✅ Телефон обновлён: <b>{message.text.strip()}</b>\n\n" +
+                           f"✅ Телефон обновлён: <b>{html.escape(message.text.strip())}</b>\n\n" +
                            await user_card_text(target_id, row, is_pin),
                            parse_mode="HTML",
                            reply_markup=user_edit_kb(target_id, bool(row[6]), is_pin))
-
 
 @admin_router.message(EditUser.birth_date)
 async def edit_birth_date(message: types.Message, state: FSMContext):
@@ -3082,7 +2876,6 @@ async def edit_birth_date(message: types.Message, state: FSMContext):
                            parse_mode="HTML",
                            reply_markup=user_edit_kb(target_id, bool(row[6]), is_pin))
 
-
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("edit_cancel:"))
 async def edit_cancel(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer("Отменено")
@@ -3097,7 +2890,6 @@ async def edit_cancel(callback: types.CallbackQuery, state: FSMContext):
                            parse_mode="HTML",
                            reply_markup=user_edit_kb(target_id, bool(row[6]), is_pin))
 
-
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("edit_pos:"))
 async def edit_pos_start(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -3107,7 +2899,6 @@ async def edit_pos_start(callback: types.CallbackQuery, state: FSMContext):
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        "💼 Выбери новую должность:",
                        reply_markup=await positions_edit_kb(target_id))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("editsetpos:"))
 async def edit_pos_set(callback: types.CallbackQuery):
@@ -3130,11 +2921,10 @@ async def edit_pos_set(callback: types.CallbackQuery):
     await cleanup_chat(callback.from_user.id)
     if row:
         await send_tracked(callback.message.chat.id, callback.from_user.id,
-                           f"✅ Должность: <b>{position}</b>\n\n" +
+                           f"✅ Должность: <b>{html.escape(position)}</b>\n\n" +
                            await user_card_text(target_id, row, is_pin),
                            parse_mode="HTML",
                            reply_markup=user_edit_kb(target_id, bool(row[6]), is_pin))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("edit_rest:"))
 async def edit_rest_start(callback: types.CallbackQuery, state: FSMContext):
@@ -3142,7 +2932,6 @@ async def edit_rest_start(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
     target_id = safe_int(callback.data.split(":")[1])
     recent = await db_recent_restaurant_keys(limit=3)
-    # Если нет recent — показываем все
     if recent:
         kb = await restaurants_edit_kb(target_id, recent_only=True)
         title = "📍 Выбери ресторан (сверху — недавние):"
@@ -3151,7 +2940,6 @@ async def edit_rest_start(callback: types.CallbackQuery, state: FSMContext):
         title = "📍 Выбери новый ресторан:"
     await cleanup_chat(callback.from_user.id)
     await send_tracked(callback.message.chat.id, callback.from_user.id, title, reply_markup=kb)
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("edit_rest_all:"))
 async def edit_rest_all(callback: types.CallbackQuery, state: FSMContext):
@@ -3162,7 +2950,6 @@ async def edit_rest_all(callback: types.CallbackQuery, state: FSMContext):
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        "📍 Все рестораны:",
                        reply_markup=await restaurants_edit_kb(target_id))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("editsetrest:"))
 async def edit_rest_set(callback: types.CallbackQuery):
@@ -3180,11 +2967,10 @@ async def edit_rest_set(callback: types.CallbackQuery):
     await cleanup_chat(callback.from_user.id)
     if row:
         await send_tracked(callback.message.chat.id, callback.from_user.id,
-                           f"✅ Ресторан: <b>{rest_name}</b>\n\n" +
+                           f"✅ Ресторан: <b>{html.escape(rest_name)}</b>\n\n" +
                            await user_card_text(target_id, row, is_pin),
                            parse_mode="HTML",
                            reply_markup=user_edit_kb(target_id, bool(row[6]), is_pin))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_msg_user:"))
 async def adm_msg_user(callback: types.CallbackQuery, state: FSMContext):
@@ -3199,9 +2985,6 @@ async def adm_msg_user(callback: types.CallbackQuery, state: FSMContext):
                            [InlineKeyboardButton(text="❌ Отмена", callback_data=f"adm_user:{target_id}:users:0")]
                        ]))
 
-
-# --- Block / Delete ---
-
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_ban_ask:"))
 async def adm_ban_ask(callback: types.CallbackQuery):
     target_id = safe_int(callback.data.split(":")[1])
@@ -3215,7 +2998,7 @@ async def adm_ban_ask(callback: types.CallbackQuery):
     await callback.answer()
     await cleanup_chat(callback.from_user.id)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
-                       f"🚫 Заблокировать <b>{row[0] or 'без имени'}</b> (<code>{target_id}</code>)?\n\n"
+                       f"🚫 Заблокировать <b>{html.escape(row[0] or 'без имени')}</b> (<code>{target_id}</code>)?\n\n"
                        f"Пользователь потеряет доступ к боту и приложению.",
                        parse_mode="HTML",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -3224,7 +3007,6 @@ async def adm_ban_ask(callback: types.CallbackQuery):
                            [InlineKeyboardButton(text="❌ Отмена",
                                                  callback_data=f"adm_user:{target_id}:users:0")],
                        ]))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_ban:"))
 async def adm_ban(callback: types.CallbackQuery):
@@ -3250,7 +3032,6 @@ async def adm_ban(callback: types.CallbackQuery):
                            parse_mode="HTML",
                            reply_markup=user_edit_kb(target_id, True, is_pin))
 
-
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_unban:"))
 async def adm_unban(callback: types.CallbackQuery):
     target_id = safe_int(callback.data.split(":")[1])
@@ -3267,7 +3048,6 @@ async def adm_unban(callback: types.CallbackQuery):
                            await user_card_text(target_id, row, is_pin),
                            parse_mode="HTML",
                            reply_markup=user_edit_kb(target_id, False, is_pin))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_del:"))
 async def adm_del_ask(callback: types.CallbackQuery):
@@ -3287,7 +3067,6 @@ async def adm_del_ask(callback: types.CallbackQuery):
                            [InlineKeyboardButton(text="❌ Отмена", callback_data="adm_users")],
                        ]))
 
-
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_del_yes:"))
 async def adm_del_yes(callback: types.CallbackQuery):
     target_id = safe_int(callback.data.split(":")[1])
@@ -3301,9 +3080,6 @@ async def adm_del_yes(callback: types.CallbackQuery):
     else:
         await callback.answer("Пользователь не найден", show_alert=True)
 
-
-# ---------- Рестораны ----------
-
 @admin_router.callback_query(lambda c: c.data == "adm_rests")
 async def adm_rests(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -3315,7 +3091,6 @@ async def adm_rests(callback: types.CallbackQuery, state: FSMContext):
                        rests_list_text(chunk, page, pages, len(rests)),
                        parse_mode="HTML", reply_markup=rests_list_kb(chunk, page, pages))
 
-
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_rests_p:"))
 async def adm_rests_p(callback: types.CallbackQuery):
     page = safe_int(callback.data.split(":")[1])
@@ -3326,7 +3101,6 @@ async def adm_rests_p(callback: types.CallbackQuery):
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        rests_list_text(chunk, page, pages, len(rests)),
                        parse_mode="HTML", reply_markup=rests_list_kb(chunk, page, pages))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("restadm:"))
 async def rest_card_view(callback: types.CallbackQuery, state: FSMContext):
@@ -3344,7 +3118,6 @@ async def rest_card_view(callback: types.CallbackQuery, state: FSMContext):
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        rest_card_text(r, source), parse_mode="HTML",
                        reply_markup=rest_card_kb(r, source, page))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("restset:"))
 async def rest_set_status(callback: types.CallbackQuery):
@@ -3368,7 +3141,6 @@ async def rest_set_status(callback: types.CallbackQuery):
             return
     await callback.answer("Не удалось изменить статус", show_alert=True)
 
-
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("restedit:"))
 async def rest_edit_start(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -3389,7 +3161,6 @@ async def rest_edit_start(callback: types.CallbackQuery, state: FSMContext):
                                                  callback_data=f"restedit_cancel:{key}")]
                        ]))
 
-
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("restedit_cancel:"))
 async def rest_edit_cancel(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer("Отменено")
@@ -3400,7 +3171,6 @@ async def rest_edit_cancel(callback: types.CallbackQuery, state: FSMContext):
     if r:
         await send_tracked(callback.message.chat.id, callback.from_user.id,
                            rest_card_text(r), parse_mode="HTML", reply_markup=rest_card_kb(r))
-
 
 @admin_router.message(RestEdit.value)
 async def rest_edit_value(message: types.Message, state: FSMContext):
@@ -3441,13 +3211,12 @@ async def rest_edit_value(message: types.Message, state: FSMContext):
     invalidate_rest_cache()
     await db_audit(message.from_user.id, "rest_update", "restaurant", rest_key, f"{rest_field}={value}")
     await send_tracked(message.chat.id, message.from_user.id,
-                       f"✅ {FIELD_LABELS[rest_field]} обновлено: <b>{value if value else '—'}</b>",
+                       f"✅ {FIELD_LABELS[rest_field]} обновлено: <b>{html.escape(value if value else '—')}</b>",
                        parse_mode="HTML")
     r = await db_restaurant(rest_key)
     if r:
         await send_tracked(message.chat.id, message.from_user.id,
                            rest_card_text(r), parse_mode="HTML", reply_markup=rest_card_kb(r))
-
 
 @admin_router.callback_query(lambda c: c.data == "rest_add")
 async def rest_add_start(callback: types.CallbackQuery, state: FSMContext):
@@ -3463,7 +3232,6 @@ async def rest_add_start(callback: types.CallbackQuery, state: FSMContext):
                            [InlineKeyboardButton(text="❌ Отменить", callback_data="adm_rests")]
                        ]))
 
-
 @admin_router.message(RestAdd.name)
 async def rest_add_name(message: types.Message, state: FSMContext):
     await delete_incoming(message); await cleanup_chat(message.from_user.id)
@@ -3474,9 +3242,8 @@ async def rest_add_name(message: types.Message, state: FSMContext):
     await state.update_data(name=name)
     await state.set_state(RestAdd.address)
     await send_tracked(message.chat.id, message.from_user.id,
-                       progress_bar(2, 5) + f"\n\nНазвание: <b>{name}</b> ✅\n\nАдрес:",
+                       progress_bar(2, 5) + f"\n\nНазвание: <b>{html.escape(name)}</b> ✅\n\nАдрес:",
                        parse_mode="HTML")
-
 
 @admin_router.message(RestAdd.address)
 async def rest_add_address(message: types.Message, state: FSMContext):
@@ -3489,10 +3256,9 @@ async def rest_add_address(message: types.Message, state: FSMContext):
     await state.set_state(RestAdd.hours)
     await send_tracked(message.chat.id, message.from_user.id,
                        progress_bar(3, 5) +
-                       f"\n\nАдрес: <b>{addr}</b> ✅\n\nЧасы работы:\n"
+                       f"\n\nАдрес: <b>{html.escape(addr)}</b> ✅\n\nЧасы работы:\n"
                        f"Пример: <code>Пн–чт: 10:00–22:00\nПт–вс: 10:00–23:00</code>",
                        parse_mode="HTML")
-
 
 @admin_router.message(RestAdd.hours)
 async def rest_add_hours(message: types.Message, state: FSMContext):
@@ -3506,7 +3272,6 @@ async def rest_add_hours(message: types.Message, state: FSMContext):
     await state.set_state(RestAdd.phone)
     await send_tracked(message.chat.id, message.from_user.id,
                        progress_bar(4, 5) + "\n\nЧасы записаны ✅\n\nТелефон (или «нет»):")
-
 
 @admin_router.message(RestAdd.phone)
 async def rest_add_phone(message: types.Message, state: FSMContext):
@@ -3524,10 +3289,9 @@ async def rest_add_phone(message: types.Message, state: FSMContext):
     await state.set_state(RestAdd.org)
     await send_tracked(message.chat.id, message.from_user.id,
                        progress_bar(5, 5) +
-                       f"\n\nТелефон: <b>{value or '—'}</b> ✅\n\n"
+                       f"\n\nТелефон: <b>{html.escape(value or '—')}</b> ✅\n\n"
                        f"Ссылка на Яндекс Карты (например <code>vokker/1234567890</code>) или «нет»:",
                        parse_mode="HTML")
-
 
 @admin_router.message(RestAdd.org)
 async def rest_add_org(message: types.Message, state: FSMContext):
@@ -3549,13 +3313,12 @@ async def rest_add_org(message: types.Message, state: FSMContext):
     invalidate_rest_cache()
     await db_audit(message.from_user.id, "rest_add", "restaurant", key, name)
     await send_tracked(message.chat.id, message.from_user.id,
-                       f"✅ Ресторан <b>{name}</b> добавлен (key: <code>{key}</code>)",
+                       f"✅ Ресторан <b>{html.escape(name)}</b> добавлен (key: <code>{key}</code>)",
                        parse_mode="HTML")
     r = await db_restaurant(key)
     if r:
         await send_tracked(message.chat.id, message.from_user.id,
                            rest_card_text(r), parse_mode="HTML", reply_markup=rest_card_kb(r))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("rest_del_ask:"))
 async def rest_del_ask(callback: types.CallbackQuery):
@@ -3567,14 +3330,13 @@ async def rest_del_ask(callback: types.CallbackQuery):
     await callback.answer()
     await cleanup_chat(callback.from_user.id)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
-                       f"🗑 Удалить ресторан <b>{r['name']}</b>?\n\n"
+                       f"🗑 Удалить ресторан <b>{html.escape(r['name'])}</b>?\n\n"
                        f"Если к нему привязаны сотрудники — удалить не получится.",
                        parse_mode="HTML",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                            [InlineKeyboardButton(text="✅ Да", callback_data=f"rest_del_yes:{key}")],
                            [InlineKeyboardButton(text="❌ Отмена", callback_data=f"restadm:{key}")]
                        ]))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("rest_del_yes:"))
 async def rest_del_yes(callback: types.CallbackQuery):
@@ -3596,9 +3358,6 @@ async def rest_del_yes(callback: types.CallbackQuery):
                        f"🗑 Удалено.\n\n" + rests_list_text(chunk, page, pages, len(rests)),
                        parse_mode="HTML", reply_markup=rests_list_kb(chunk, page, pages))
 
-
-# ---------- Должности ----------
-
 @admin_router.callback_query(lambda c: c.data == "adm_positions")
 async def adm_positions(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -3609,20 +3368,19 @@ async def adm_positions(callback: types.CallbackQuery, state: FSMContext):
     archived = [r for r in rows if r[3]]
     lines = ["💼 <b>Должности</b>\n", f"Активных: {len(active)}"]
     for pid, name, sort, arch in active:
-        lines.append(f"• {name}")
+        lines.append(f"• {html.escape(name)}")
     if archived:
         lines.append(f"\n📦 Архив: {len(archived)}")
         for pid, name, sort, arch in archived:
-            lines.append(f"• ~~{name}~~")
+            lines.append(f"• ~~{html.escape(name)}~~")
     kb = [[InlineKeyboardButton(text="➕ Добавить должность", callback_data="pos_add")]]
     for pid, name, sort, arch in active:
-        kb.append([InlineKeyboardButton(text=f"📦 Архивировать «{name[:20]}»",
+        kb.append([InlineKeyboardButton(text=f"📦 Архивировать «{html.escape(name[:20])}»",
                                         callback_data=f"pos_archive:{pid}")])
     kb.append([InlineKeyboardButton(text="🔙 В админ-меню", callback_data="adm_menu")])
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        "\n".join(lines), parse_mode="HTML",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
-
 
 @admin_router.callback_query(lambda c: c.data == "pos_add")
 async def pos_add_start(callback: types.CallbackQuery, state: FSMContext):
@@ -3635,7 +3393,6 @@ async def pos_add_start(callback: types.CallbackQuery, state: FSMContext):
                            [InlineKeyboardButton(text="❌ Отмена", callback_data="adm_positions")]
                        ]))
 
-
 @admin_router.message(PosAdmin.name)
 async def pos_add_do(message: types.Message, state: FSMContext):
     await delete_incoming(message); await cleanup_chat(message.from_user.id)
@@ -3647,11 +3404,10 @@ async def pos_add_do(message: types.Message, state: FSMContext):
     await state.clear()
     if not ok:
         await send_tracked(message.chat.id, message.from_user.id,
-                           f"❌ Должность «{name}» уже существует.")
+                           f"❌ Должность «{html.escape(name)}» уже существует.")
         return
     await db_audit(message.from_user.id, "pos_add", "position", "", name)
-    await send_tracked(message.chat.id, message.from_user.id, f"✅ Должность «{name}» добавлена.")
-
+    await send_tracked(message.chat.id, message.from_user.id, f"✅ Должность «{html.escape(name)}» добавлена.")
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("pos_archive:"))
 async def pos_archive(callback: types.CallbackQuery):
@@ -3665,19 +3421,16 @@ async def pos_archive(callback: types.CallbackQuery):
     active = [r for r in rows if not r[3]]
     lines = ["💼 <b>Должности</b>\n", f"Активных: {len(active)}"]
     for p in active:
-        lines.append(f"• {p[1]}")
+        lines.append(f"• {html.escape(p[1])}")
     kb = [[InlineKeyboardButton(text="➕ Добавить", callback_data="pos_add")]]
     for p in active:
-        kb.append([InlineKeyboardButton(text=f"📦 «{p[1][:20]}»",
+        kb.append([InlineKeyboardButton(text=f"📦 «{html.escape(p[1][:20])}»",
                                         callback_data=f"pos_archive:{p[0]}")])
     kb.append([InlineKeyboardButton(text="🔙 В админ-меню", callback_data="adm_menu")])
     await cleanup_chat(callback.from_user.id)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        "\n".join(lines), parse_mode="HTML",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
-
-
-# ---------- Новости ----------
 
 @admin_router.callback_query(lambda c: c.data == "adm_news")
 async def adm_news(callback: types.CallbackQuery, state: FSMContext):
@@ -3690,7 +3443,6 @@ async def adm_news(callback: types.CallbackQuery, state: FSMContext):
                        news_admin_text(chunk, page, pages, len(rows)),
                        parse_mode="HTML", reply_markup=news_admin_kb(chunk, page, pages))
 
-
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_news_p:"))
 async def adm_news_p(callback: types.CallbackQuery):
     page = safe_int(callback.data.split(":")[1])
@@ -3701,7 +3453,6 @@ async def adm_news_p(callback: types.CallbackQuery):
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        news_admin_text(chunk, page, pages, len(rows)),
                        parse_mode="HTML", reply_markup=news_admin_kb(chunk, page, pages))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("news_view:"))
 async def news_view(callback: types.CallbackQuery):
@@ -3715,9 +3466,9 @@ async def news_view(callback: types.CallbackQuery):
     lvl_label = LEVEL_LABELS.get(lvl, LEVEL_LABELS["normal"])
     date_str = created.strftime("%d.%m.%Y %H:%M") if created else "—"
     status = "✅ Опубликована" if published else f"⏰ Запланирована на {publish_at.strftime('%d.%m.%Y %H:%M') if publish_at else '—'}"
-    text = (f"📰 <b>{title}</b>\n"
+    text = (f"📰 <b>{html.escape(title)}</b>\n"
             f"{lvl_label} · {date_str}\n{status}\n"
-            f"──────────────────────────────\n\n{body}")
+            f"──────────────────────────────\n\n{html.escape(body)}")
     kb_rows = [
         [InlineKeyboardButton(text="✏️ Изменить заголовок",
                               callback_data=f"news_edit_title:{news_id}")],
@@ -3732,7 +3483,6 @@ async def news_view(callback: types.CallbackQuery):
     await send_tracked(callback.message.chat.id, callback.from_user.id, text,
                        parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_rows))
 
-
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("news_edit_title:"))
 async def news_edit_title_start(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -3745,12 +3495,11 @@ async def news_edit_title_start(callback: types.CallbackQuery, state: FSMContext
     await state.update_data(news_id=news_id)
     await cleanup_chat(callback.from_user.id)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
-                       f"✏️ Текущий заголовок: <b>{row[1]}</b>\n\nПришли новый:",
+                       f"✏️ Текущий заголовок: <b>{html.escape(row[1])}</b>\n\nПришли новый:",
                        parse_mode="HTML",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                            [InlineKeyboardButton(text="❌ Отмена", callback_data=f"news_view:{news_id}")]
                        ]))
-
 
 @admin_router.message(NewsEditTitle.text)
 async def news_edit_title_do(message: types.Message, state: FSMContext):
@@ -3766,17 +3515,16 @@ async def news_edit_title_do(message: types.Message, state: FSMContext):
     await db_news_update_title(news_id, title)
     await db_audit(message.from_user.id, "news_edit_title", "news", news_id, title)
     await send_tracked(message.chat.id, message.from_user.id,
-                       f"✅ Заголовок обновлён: <b>{title}</b>", parse_mode="HTML")
+                       f"✅ Заголовок обновлён: <b>{html.escape(title)}</b>", parse_mode="HTML")
     row = await db_get_news_full(news_id)
     if row:
         await send_tracked(message.chat.id, message.from_user.id,
-                           f"📰 <b>{row[1]}</b>\n{LEVEL_LABELS.get(row[4], LEVEL_LABELS['normal'])} · "
+                           f"📰 <b>{html.escape(row[1])}</b>\n{LEVEL_LABELS.get(row[4], LEVEL_LABELS['normal'])} · "
                            + ("✅ Опубликована" if row[6] else "⏰ Запланирована"),
                            parse_mode="HTML",
                            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                                [InlineKeyboardButton(text="⬅️ К новостям", callback_data="adm_news")]
                            ]))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("news_del:"))
 async def news_del(callback: types.CallbackQuery):
@@ -3793,7 +3541,6 @@ async def news_del(callback: types.CallbackQuery):
                        news_admin_text(chunk, page, pages, len(rows)),
                        parse_mode="HTML", reply_markup=news_admin_kb(chunk, page, pages))
 
-
 @admin_router.callback_query(lambda c: c.data == "news_add")
 async def news_add_start(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -3808,7 +3555,6 @@ async def news_add_start(callback: types.CallbackQuery, state: FSMContext):
                            [InlineKeyboardButton(text="❌ Отмена", callback_data="adm_news")]
                        ]))
 
-
 @admin_router.message(NewsAdmin.title)
 async def news_add_title(message: types.Message, state: FSMContext):
     await delete_incoming(message); await cleanup_chat(message.from_user.id)
@@ -3822,9 +3568,8 @@ async def news_add_title(message: types.Message, state: FSMContext):
     await state.update_data(title=title)
     await state.set_state(NewsAdmin.body)
     await send_tracked(message.chat.id, message.from_user.id,
-                       progress_bar(2, 4) + f"\n\nЗаголовок: <b>{title}</b> ✅\n\nТекст новости:",
+                       progress_bar(2, 4) + f"\n\nЗаголовок: <b>{html.escape(title)}</b> ✅\n\nТекст новости:",
                        parse_mode="HTML")
-
 
 @admin_router.message(NewsAdmin.body)
 async def news_add_body(message: types.Message, state: FSMContext):
@@ -3842,7 +3587,6 @@ async def news_add_body(message: types.Message, state: FSMContext):
                        progress_bar(3, 4) + "\n\nТекст записан ✅\n\nПометка:",
                        parse_mode="HTML", reply_markup=news_important_kb())
 
-
 @admin_router.callback_query(NewsAdmin.important, lambda c: c.data and c.data.startswith("news_imp:"))
 async def news_schedule_choice(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -3856,14 +3600,12 @@ async def news_schedule_choice(callback: types.CallbackQuery, state: FSMContext)
                        progress_bar(4, 4) + "\n\nКогда опубликовать?",
                        parse_mode="HTML", reply_markup=news_schedule_kb())
 
-
 @admin_router.callback_query(NewsAdmin.schedule_choice, lambda c: c.data == "news_sched_now")
 async def news_sched_now(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.update_data(publish_at=None, publish_display=None)
     await state.set_state(NewsAdmin.preview)
     await _show_news_preview(callback.message.chat.id, callback.from_user.id, state)
-
 
 @admin_router.callback_query(NewsAdmin.schedule_choice, lambda c: c.data == "news_sched_later")
 async def news_sched_later(callback: types.CallbackQuery, state: FSMContext):
@@ -3880,7 +3622,6 @@ async def news_sched_later(callback: types.CallbackQuery, state: FSMContext):
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                            [InlineKeyboardButton(text="❌ Отмена", callback_data="adm_news")]
                        ]))
-
 
 @admin_router.message(NewsAdmin.schedule_time)
 async def news_sched_time(message: types.Message, state: FSMContext):
@@ -3901,7 +3642,6 @@ async def news_sched_time(message: types.Message, state: FSMContext):
     await state.set_state(NewsAdmin.preview)
     await _show_news_preview(message.chat.id, message.from_user.id, state)
 
-
 async def _show_news_preview(chat_id, user_id, state):
     data = await state.get_data()
     title = data.get("title", "")
@@ -3915,9 +3655,8 @@ async def _show_news_preview(chat_id, user_id, state):
         sched = "\n\n📤 Публикуется сейчас."
     await cleanup_chat(user_id)
     await send_tracked(chat_id, user_id,
-                       f"👀 <b>Превью</b>:\n\n{icon} <b>{title}</b>\n\n{body}{sched}\n\n<i>Опубликовать?</i>",
+                       f"👀 <b>Превью</b>:\n\n{icon} <b>{html.escape(title)}</b>\n\n{html.escape(body)}{sched}\n\n<i>Опубликовать?</i>",
                        parse_mode="HTML", reply_markup=news_preview_kb())
-
 
 @admin_router.callback_query(NewsAdmin.preview, lambda c: c.data == "news_pub")
 async def news_publish(callback: types.CallbackQuery, state: FSMContext):
@@ -3942,14 +3681,13 @@ async def news_publish(callback: types.CallbackQuery, state: FSMContext):
             if publish_at else "✅ Опубликовано!")
     await cleanup_chat(callback.from_user.id)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
-                       f"{head}\n\n{LEVEL_LABELS[level]} — <b>{title}</b>",
+                       f"{head}\n\n{LEVEL_LABELS[level]} — <b>{html.escape(title)}</b>",
                        parse_mode="HTML")
     rows = await db_list_news_admin()
     chunk, page, pages = paginate(rows, 0, PAGE_NEWS)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        news_admin_text(chunk, page, pages, len(rows)),
                        parse_mode="HTML", reply_markup=news_admin_kb(chunk, page, pages))
-
 
 @admin_router.callback_query(NewsAdmin.preview, lambda c: c.data == "news_restart")
 async def news_add_restart(callback: types.CallbackQuery, state: FSMContext):
@@ -3959,7 +3697,6 @@ async def news_add_restart(callback: types.CallbackQuery, state: FSMContext):
     await cleanup_chat(callback.from_user.id)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        "✍️ Заголовок заново:")
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("news_send:"))
 async def news_send_menu(callback: types.CallbackQuery):
@@ -3976,7 +3713,6 @@ async def news_send_menu(callback: types.CallbackQuery):
                            [InlineKeyboardButton(text="🔙 К новостям", callback_data="adm_news")],
                        ]))
 
-
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("news_ask_all:"))
 async def news_ask_all(callback: types.CallbackQuery):
     news_id = safe_int(callback.data.split(":")[1])
@@ -3989,7 +3725,7 @@ async def news_ask_all(callback: types.CallbackQuery):
     await callback.answer()
     await cleanup_chat(callback.from_user.id)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
-                       f"📬 Разослать «<b>{title}</b>» на <b>{n}</b> сотрудников?",
+                       f"📬 Разослать «<b>{html.escape(title)}</b>» на <b>{n}</b> сотрудников?",
                        parse_mode="HTML",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                            [InlineKeyboardButton(text=f"✅ Да ({n})",
@@ -3998,7 +3734,6 @@ async def news_ask_all(callback: types.CallbackQuery):
                                                  callback_data=f"news_test:{news_id}")],
                            [InlineKeyboardButton(text="❌ Отмена", callback_data="adm_news")],
                        ]))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("news_confirm_all:"))
 async def news_confirm_all(callback: types.CallbackQuery):
@@ -4023,8 +3758,7 @@ async def news_confirm_all(callback: types.CallbackQuery):
     spawn(_run())
     await cleanup_chat(callback.from_user.id)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
-                       f"✅ Рассылка «{title}» запущена.")
-
+                       f"✅ Рассылка «{html.escape(title)}» запущена.")
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("news_test:"))
 async def news_test(callback: types.CallbackQuery):
@@ -4037,12 +3771,11 @@ async def news_test(callback: types.CallbackQuery):
     icon = LEVEL_LABELS.get(level, LEVEL_LABELS["normal"])
     try:
         await callback.message.answer(
-            f"{icon} <b>{title}</b>\n\n{body}\n\n<i>(тест)</i>",
+            f"{icon} <b>{html.escape(title)}</b>\n\n{html.escape(body)}\n\n<i>(тест)</i>",
             parse_mode="HTML")
         await callback.answer("Отправлено")
     except Exception as e:
         await callback.answer(f"Ошибка: {e}", show_alert=True)
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("news_send_rest:"))
 async def news_send_rest(callback: types.CallbackQuery):
@@ -4055,7 +3788,6 @@ async def news_send_rest(callback: types.CallbackQuery):
     await cleanup_chat(callback.from_user.id)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        "📍 Выбери ресторан:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("news_ask_rest:"))
 async def news_ask_rest(callback: types.CallbackQuery):
@@ -4074,7 +3806,7 @@ async def news_ask_rest(callback: types.CallbackQuery):
     await callback.answer()
     await cleanup_chat(callback.from_user.id)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
-                       f"📬 Разослать «<b>{title}</b>» сотрудникам «<b>{rest_name}</b>» ({n})?",
+                       f"📬 Разослать «<b>{html.escape(title)}</b>» сотрудникам «<b>{html.escape(rest_name)}</b>» ({n})?",
                        parse_mode="HTML",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                            [InlineKeyboardButton(text=f"✅ Да ({n})",
@@ -4083,7 +3815,6 @@ async def news_ask_rest(callback: types.CallbackQuery):
                                                  callback_data=f"news_test:{news_id}")],
                            [InlineKeyboardButton(text="❌ Отмена", callback_data="adm_news")],
                        ]))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("news_confirm_rest:"))
 async def news_confirm_rest(callback: types.CallbackQuery):
@@ -4113,10 +3844,7 @@ async def news_confirm_rest(callback: types.CallbackQuery):
     spawn(_run())
     await cleanup_chat(callback.from_user.id)
     await send_tracked(callback.message.chat.id, callback.from_user.id,
-                       f"✅ Рассылка для «{rest_name}» запущена.")
-
-
-# ---------- Стандарты ----------
+                       f"✅ Рассылка для «{html.escape(rest_name)}» запущена.")
 
 STD_FIELDS = {
     "title": ("Название", "✏️ Напиши новое название стандарта:"),
@@ -4124,7 +3852,6 @@ STD_FIELDS = {
     "description": ("Описание", "✏️ Напиши новое описание:"),
     "url": ("Ссылка", "✏️ Пришли ссылку (или «нет»):"),
 }
-
 
 @admin_router.callback_query(lambda c: c.data == "adm_std")
 async def adm_std(callback: types.CallbackQuery, state: FSMContext):
@@ -4137,7 +3864,6 @@ async def adm_std(callback: types.CallbackQuery, state: FSMContext):
                        std_admin_text(chunk, page, pages, len(rows)),
                        parse_mode="HTML", reply_markup=std_admin_kb(chunk, page, pages))
 
-
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_std_p:"))
 async def adm_std_p(callback: types.CallbackQuery):
     page = safe_int(callback.data.split(":")[1])
@@ -4148,7 +3874,6 @@ async def adm_std_p(callback: types.CallbackQuery):
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        std_admin_text(chunk, page, pages, len(rows)),
                        parse_mode="HTML", reply_markup=std_admin_kb(chunk, page, pages))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("std_card:"))
 async def std_card_view(callback: types.CallbackQuery, state: FSMContext):
@@ -4162,7 +3887,6 @@ async def std_card_view(callback: types.CallbackQuery, state: FSMContext):
         return
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        std_card_text(rows[0]), parse_mode="HTML", reply_markup=std_card_kb(sid))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("std_edit:"))
 async def std_edit_start(callback: types.CallbackQuery, state: FSMContext):
@@ -4183,7 +3907,6 @@ async def std_edit_start(callback: types.CallbackQuery, state: FSMContext):
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                            [InlineKeyboardButton(text="❌ Отменить", callback_data=f"std_card:{sid}")]
                        ]))
-
 
 @admin_router.message(StdEdit.value)
 async def std_edit_value(message: types.Message, state: FSMContext):
@@ -4215,7 +3938,6 @@ async def std_edit_value(message: types.Message, state: FSMContext):
                            "✅ Обновлено.\n\n" + std_card_text(rows[0]),
                            parse_mode="HTML", reply_markup=std_card_kb(sid))
 
-
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("std_del:"))
 async def std_del(callback: types.CallbackQuery):
     sid = safe_int(callback.data.split(":")[1])
@@ -4228,7 +3950,6 @@ async def std_del(callback: types.CallbackQuery):
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        std_admin_text(chunk, page, pages, len(rows)),
                        parse_mode="HTML", reply_markup=std_admin_kb(chunk, page, pages))
-
 
 @admin_router.callback_query(lambda c: c.data == "std_add")
 async def std_add_start(callback: types.CallbackQuery, state: FSMContext):
@@ -4243,7 +3964,6 @@ async def std_add_start(callback: types.CallbackQuery, state: FSMContext):
                            [InlineKeyboardButton(text="❌ Отмена", callback_data="adm_std")]
                        ]))
 
-
 @admin_router.message(StdAdmin.title)
 async def std_add_title(message: types.Message, state: FSMContext):
     await delete_incoming(message); await cleanup_chat(message.from_user.id)
@@ -4254,9 +3974,8 @@ async def std_add_title(message: types.Message, state: FSMContext):
     await state.update_data(title=title)
     await state.set_state(StdAdmin.category)
     await send_tracked(message.chat.id, message.from_user.id,
-                       progress_bar(2, 3) + f"\n\nНазвание: <b>{title}</b> ✅\n\nКатегория:",
+                       progress_bar(2, 3) + f"\n\nНазвание: <b>{html.escape(title)}</b> ✅\n\nКатегория:",
                        parse_mode="HTML")
-
 
 @admin_router.message(StdAdmin.category)
 async def std_add_category(message: types.Message, state: FSMContext):
@@ -4265,9 +3984,8 @@ async def std_add_category(message: types.Message, state: FSMContext):
     await state.update_data(category=category)
     await state.set_state(StdAdmin.description)
     await send_tracked(message.chat.id, message.from_user.id,
-                       progress_bar(3, 3) + f"\n\nКатегория: <b>{category}</b> ✅\n\nОписание:",
+                       progress_bar(3, 3) + f"\n\nКатегория: <b>{html.escape(category)}</b> ✅\n\nОписание:",
                        parse_mode="HTML")
-
 
 @admin_router.message(StdAdmin.description)
 async def std_add_desc(message: types.Message, state: FSMContext):
@@ -4281,21 +3999,17 @@ async def std_add_desc(message: types.Message, state: FSMContext):
     await db_add_standard(data.get("title", ""), data.get("category", ""), description)
     await db_audit(message.from_user.id, "std_add", "standard", "", data.get("title", ""))
     await send_tracked(message.chat.id, message.from_user.id,
-                       f"✅ Стандарт добавлен: <b>{data.get('title')}</b>", parse_mode="HTML")
+                       f"✅ Стандарт добавлен: <b>{html.escape(data.get('title'))}</b>", parse_mode="HTML")
     rows = await db_list_standards()
     chunk, page, pages = paginate(rows, 0, PAGE_STD)
     await send_tracked(message.chat.id, message.from_user.id,
                        std_admin_text(chunk, page, pages, len(rows)),
                        parse_mode="HTML", reply_markup=std_admin_kb(chunk, page, pages))
 
-
-# ---------- FAQ ----------
-
 FAQ_FIELDS = {
     "question": ("Вопрос", "✏️ Напиши новый текст вопроса:"),
     "answer": ("Ответ", "✏️ Напиши новый текст ответа:"),
 }
-
 
 @admin_router.callback_query(lambda c: c.data == "adm_faq")
 async def adm_faq(callback: types.CallbackQuery, state: FSMContext):
@@ -4308,7 +4022,6 @@ async def adm_faq(callback: types.CallbackQuery, state: FSMContext):
                        faq_admin_text(chunk, page, pages, len(rows)),
                        parse_mode="HTML", reply_markup=faq_admin_kb(chunk, page, pages))
 
-
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_faq_p:"))
 async def adm_faq_p(callback: types.CallbackQuery):
     page = safe_int(callback.data.split(":")[1])
@@ -4319,7 +4032,6 @@ async def adm_faq_p(callback: types.CallbackQuery):
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        faq_admin_text(chunk, page, pages, len(rows)),
                        parse_mode="HTML", reply_markup=faq_admin_kb(chunk, page, pages))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("faq_edit_show:"))
 async def faq_card_view(callback: types.CallbackQuery, state: FSMContext):
@@ -4333,9 +4045,8 @@ async def faq_card_view(callback: types.CallbackQuery, state: FSMContext):
         return
     _, question, answer, _ = rows[0]
     await send_tracked(callback.message.chat.id, callback.from_user.id,
-                       f"❓ <b>{question}</b>\n\n💬 {answer}",
+                       f"❓ <b>{html.escape(question)}</b>\n\n💬 {html.escape(answer)}",
                        parse_mode="HTML", reply_markup=faq_card_kb(fid))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("faq_edit:"))
 async def faq_edit_start(callback: types.CallbackQuery, state: FSMContext):
@@ -4357,7 +4068,6 @@ async def faq_edit_start(callback: types.CallbackQuery, state: FSMContext):
                            [InlineKeyboardButton(text="❌ Отменить", callback_data=f"faq_edit_show:{fid}")]
                        ]))
 
-
 @admin_router.message(FaqEdit.value)
 async def faq_edit_value(message: types.Message, state: FSMContext):
     data = await state.get_data()
@@ -4378,9 +4088,8 @@ async def faq_edit_value(message: types.Message, state: FSMContext):
     if rows:
         _, question, answer, _ = rows[0]
         await send_tracked(message.chat.id, message.from_user.id,
-                           f"✅ Обновлено.\n\n❓ <b>{question}</b>\n\n💬 {answer}",
+                           f"✅ Обновлено.\n\n❓ <b>{html.escape(question)}</b>\n\n💬 {html.escape(answer)}",
                            parse_mode="HTML", reply_markup=faq_card_kb(fid))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("faq_del:"))
 async def faq_del(callback: types.CallbackQuery):
@@ -4395,7 +4104,6 @@ async def faq_del(callback: types.CallbackQuery):
                        faq_admin_text(chunk, page, pages, len(rows)),
                        parse_mode="HTML", reply_markup=faq_admin_kb(chunk, page, pages))
 
-
 @admin_router.callback_query(lambda c: c.data == "faq_add")
 async def faq_add_start(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -4409,7 +4117,6 @@ async def faq_add_start(callback: types.CallbackQuery, state: FSMContext):
                            [InlineKeyboardButton(text="❌ Отмена", callback_data="adm_faq")]
                        ]))
 
-
 @admin_router.message(FaqAdmin.question)
 async def faq_add_question(message: types.Message, state: FSMContext):
     await delete_incoming(message); await cleanup_chat(message.from_user.id)
@@ -4420,9 +4127,8 @@ async def faq_add_question(message: types.Message, state: FSMContext):
     await state.update_data(question=question)
     await state.set_state(FaqAdmin.answer)
     await send_tracked(message.chat.id, message.from_user.id,
-                       progress_bar(2, 2) + f"\n\nВопрос: <b>{question}</b> ✅\n\nОтвет:",
+                       progress_bar(2, 2) + f"\n\nВопрос: <b>{html.escape(question)}</b> ✅\n\nОтвет:",
                        parse_mode="HTML")
-
 
 @admin_router.message(FaqAdmin.answer)
 async def faq_add_answer(message: types.Message, state: FSMContext):
@@ -4442,9 +4148,6 @@ async def faq_add_answer(message: types.Message, state: FSMContext):
                        faq_admin_text(chunk, page, pages, len(rows)),
                        parse_mode="HTML", reply_markup=faq_admin_kb(chunk, page, pages))
 
-
-# ---------- Отчёты, экспорт, аудит ----------
-
 @admin_router.callback_query(lambda c: c.data == "adm_reports")
 async def adm_reports(callback: types.CallbackQuery):
     await callback.answer()
@@ -4457,9 +4160,9 @@ async def adm_reports(callback: types.CallbackQuery):
             positions_count[r[3] or "Не указана"] = positions_count.get(r[3] or "Не указана", 0) + 1
             rn = await restaurant_name_by_key(r[4]) if r[4] else "Не указан"
             restaurants_count[rn] = restaurants_count.get(rn, 0) + 1
-    pos_block = "\n".join(f"• {k}: {v}" for k, v in
+    pos_block = "\n".join(f"• {html.escape(k)}: {v}" for k, v in
                           sorted(positions_count.items(), key=lambda x: -x[1])) or "• нет данных"
-    rest_block = "\n".join(f"• {k}: {v}" for k, v in
+    rest_block = "\n".join(f"• {html.escape(k)}: {v}" for k, v in
                            sorted(restaurants_count.items(), key=lambda x: -x[1])) or "• нет данных"
     text = (f"📊 <b>Отчёт</b> ({stats['date']})\n\n"
             f"👥 Всего: {stats['total']}\n✅ Активных: {stats['active']}\n"
@@ -4475,7 +4178,6 @@ async def adm_reports(callback: types.CallbackQuery):
                                                  callback_data="adm_export_news")],
                            [InlineKeyboardButton(text="🔙 В админ-меню", callback_data="adm_menu")],
                        ]))
-
 
 @admin_router.callback_query(lambda c: c.data == "adm_export_users")
 async def adm_export_users(callback: types.CallbackQuery):
@@ -4496,7 +4198,6 @@ async def adm_export_users(callback: types.CallbackQuery):
     except Exception as e:
         logging.warning(f"export: {e}")
         await send_tracked(callback.message.chat.id, callback.from_user.id, f"❌ {e}")
-
 
 @admin_router.callback_query(lambda c: c.data == "adm_export_news")
 async def adm_export_news(callback: types.CallbackQuery):
@@ -4523,7 +4224,6 @@ async def adm_export_news(callback: types.CallbackQuery):
         logging.warning(f"export news: {e}")
         await send_tracked(callback.message.chat.id, callback.from_user.id, f"❌ {e}")
 
-
 @admin_router.callback_query(lambda c: c.data == "adm_audit")
 async def adm_audit(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -4534,7 +4234,6 @@ async def adm_audit(callback: types.CallbackQuery, state: FSMContext):
     await send_tracked(callback.message.chat.id, callback.from_user.id,
                        audit_text(chunk, page, pages, len(rows)),
                        parse_mode="HTML", reply_markup=audit_kb(page, pages))
-
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_audit_p:"))
 async def adm_audit_p(callback: types.CallbackQuery):
@@ -4547,17 +4246,15 @@ async def adm_audit_p(callback: types.CallbackQuery):
                        audit_text(chunk, page, pages, len(rows)),
                        parse_mode="HTML", reply_markup=audit_kb(page, pages))
 
-
 def audit_text(rows, page, pages, total):
     if not rows:
         return "📜 История пуста."
     lines = [f"📜 <b>Последние действия</b> · стр. {page+1}/{pages}\n"]
     for aid, admin_id, action, tt, ti, details, created in rows:
         date = created.strftime("%d.%m %H:%M") if created else ""
-        d = (details or "")[:60]
-        lines.append(f"<code>{date}</code> · {action} · {tt}:{ti} · {d}")
+        d = html.escape((details or "")[:60])
+        lines.append(f"<code>{date}</code> · {html.escape(action)} · {html.escape(tt)}:{html.escape(ti)} · {d}")
     return "\n".join(lines)
-
 
 def audit_kb(page, pages):
     kb = []
@@ -4572,11 +4269,6 @@ def audit_kb(page, pages):
         kb.append(nav)
     kb.append([InlineKeyboardButton(text="🔙 В админ-меню", callback_data="adm_menu")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
-
-
-# ============================================================
-# ФОНОВЫЕ ПРОЦЕССЫ
-# ============================================================
 
 async def birthday_checker():
     while True:
@@ -4595,7 +4287,7 @@ async def birthday_checker():
                     try:
                         await bot.send_message(
                             user_id,
-                            f"🎂 <b>{name}, с Днём рождения!</b>\n\n"
+                            f"🎂 <b>{html.escape(name)}, с Днём рождения!</b>\n\n"
                             "Команда Wokker поздравляет тебя! Пусть год будет лёгким, "
                             "смены — удачными, а гости — благодарными.\nХорошего праздника! 🥳",
                             parse_mode="HTML")
@@ -4607,7 +4299,6 @@ async def birthday_checker():
         except Exception as e:
             logging.error(f"birthday_checker: {e}")
         await asyncio.sleep(3600)
-
 
 async def holiday_broadcaster():
     while True:
@@ -4622,7 +4313,7 @@ async def holiday_broadcaster():
                     for user_id in await db_list_active_users():
                         try:
                             name = await db_get_first_name(user_id) or "коллега"
-                            await bot.send_message(user_id, f"{title}\n\n{name}, {text}")
+                            await bot.send_message(user_id, f"{title}\n\n{html.escape(name)}, {text}")
                             sent += 1
                         except TelegramForbiddenError:
                             await db_mark_bot_blocked(user_id)
@@ -4634,7 +4325,6 @@ async def holiday_broadcaster():
         except Exception as e:
             logging.error(f"holiday_broadcaster: {e}")
         await asyncio.sleep(3600)
-
 
 async def scheduled_publisher():
     while True:
@@ -4652,7 +4342,7 @@ async def scheduled_publisher():
                         await bot.send_message(
                             ADMIN_ID,
                             f"⏰ Отложенная новость опубликована:\n\n"
-                            f"{LEVEL_LABELS.get(level, LEVEL_LABELS['normal'])} <b>{title}</b>\n"
+                            f"{LEVEL_LABELS.get(level, LEVEL_LABELS['normal'])} <b>{html.escape(title)}</b>\n"
                             + ("📤 Рассылка запущена автоматически." if auto_b else ""))
                     except Exception:
                         pass
@@ -4660,25 +4350,17 @@ async def scheduled_publisher():
             logging.error(f"scheduled_publisher: {e}")
         await asyncio.sleep(60)
 
-
-# ============================================================
-# ВЕБ-СЕРВЕР
-# ============================================================
-
 def json_dumps(data) -> str:
     return json.dumps(data, ensure_ascii=False)
-
 
 def denied_response(status: int):
     if status == 403:
         return web.json_response({"error": "blocked"}, status=403, dumps=json_dumps)
     return web.json_response({"error": "unauthorized"}, status=401, dumps=json_dumps)
 
-
 AVATAR_CACHE = {}
 AVATAR_TTL = 600
 AVATAR_MAX_BYTES = 5 * 1024 * 1024
-
 
 def avatar_cache_get(user_id):
     entry = AVATAR_CACHE.get(user_id)
@@ -4690,10 +4372,8 @@ def avatar_cache_get(user_id):
         return None
     return data, ctype
 
-
 async def handle_favicon(request):
     return web.Response(status=204)
-
 
 async def handle_index(request):
     p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "index.html")
@@ -4702,7 +4382,6 @@ async def handle_index(request):
         resp.headers["Cache-Control"] = "public, max-age=300"
         return resp
     return web.Response(text="frontend/index.html not found", status=404)
-
 
 async def handle_bootstrap(request):
     user_id, err = await get_auth_user(request)
@@ -4751,7 +4430,6 @@ async def handle_bootstrap(request):
         "standards": standards_list, "faq": faq_list,
     }, dumps=json_dumps)
 
-
 async def handle_restaurants(request):
     user_id, err = await get_auth_user(request)
     if err:
@@ -4762,7 +4440,6 @@ async def handle_restaurants(request):
         REST_CACHE["ts"] = now_ts
     return web.json_response(REST_CACHE["data"], dumps=json_dumps)
 
-
 async def handle_greeting(request):
     user_id, err = await get_auth_user(request)
     if err:
@@ -4770,7 +4447,6 @@ async def handle_greeting(request):
     row = await db_get(user_id)
     kind, title, sub = greeting_for_user(row[2] if row else None)
     return web.json_response({"kind": kind, "title": title, "sub": sub}, dumps=json_dumps)
-
 
 async def handle_news(request):
     user_id, err = await get_auth_user(request)
@@ -4782,7 +4458,6 @@ async def handle_news(request):
                  for nid, t, b, imp, lv, d in await db_list_news()]
     return web.json_response(news_list, dumps=json_dumps)
 
-
 async def handle_standards(request):
     user_id, err = await get_auth_user(request)
     if err:
@@ -4791,7 +4466,6 @@ async def handle_standards(request):
             for sid, t, c, d, u in await db_list_standards()]
     return web.json_response(data, dumps=json_dumps)
 
-
 async def handle_faq(request):
     user_id, err = await get_auth_user(request)
     if err:
@@ -4799,7 +4473,6 @@ async def handle_faq(request):
     data = [{"id": fid, "question": q, "answer": a, "category": c}
             for fid, q, a, c in await db_list_faq()]
     return web.json_response(data, dumps=json_dumps)
-
 
 async def handle_profile(request):
     user_id, err = await get_auth_user(request)
@@ -4820,7 +4493,6 @@ async def handle_profile(request):
             "tg_id": user_id,
         },
     }, dumps=json_dumps)
-
 
 async def handle_avatar(request):
     user_id, err = await get_auth_user(request)
@@ -4852,10 +4524,8 @@ async def handle_avatar(request):
         logging.warning(f"avatar {user_id}: {e}")
         return web.Response(status=204)
 
-
 _questions_rate = {}
 _QUESTIONS_COOLDOWN = 60
-
 
 async def handle_questions(request):
     user_id, err = await get_auth_user(request)
@@ -4873,17 +4543,15 @@ async def handle_questions(request):
         return web.json_response({"error": "too_fast"}, status=429, dumps=json_dumps)
     _questions_rate[user_id] = now_ts
 
-    # НОВОЕ: сохраняем в БД
     qid = None
     try:
         qid = await db_question_add(user_id, qtext)
     except Exception as e:
         logging.error(f"question add: {e}")
 
-    # Уведомление админу с кнопками
     if ADMIN_ID:
         row = await db_get(user_id)
-        who = row[0] if row and row[0] else "—"
+        who = html.escape(row[0]) if row and row[0] else "—"
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✍️ Ответить", callback_data=f"question_reply:{qid}"),
              InlineKeyboardButton(text="📋 Профиль", callback_data=f"adm_user:{user_id}:questions:0")],
@@ -4893,21 +4561,29 @@ async def handle_questions(request):
             await bot.send_message(
                 ADMIN_ID,
                 f"❓ <b>Вопрос из приложения</b>\n\n"
-                f"👤 {who} (<code>{user_id}</code>)\n💬 {qtext}",
+                f"👤 {who} (<code>{user_id}</code>)\n💬 {html.escape(qtext)}",
                 parse_mode="HTML", reply_markup=kb)
         except Exception as e:
             logging.warning(f"question to admin: {e}")
     return web.json_response({"ok": True}, dumps=json_dumps)
 
-
 async def handle_health(request):
     return web.Response(text="OK")
 
+@web.middleware
+async def error_middleware(request, handler):
+    try:
+        return await handler(request)
+    except web.HTTPException:
+        raise
+    except Exception as e:
+        logging.exception("Unhandled error in %s %s", request.method, request.path)
+        # Не отдаём детали ошибки наружу
+        return web.json_response({"error": "internal_server_error"}, status=500)
 
 @web.middleware
 async def gzip_middleware(request, handler):
     response = await handler(request)
-    # FileResponse / StreamResponse не имеют .body — пропускаем
     body = getattr(response, "body", None)
     if (body is not None
             and len(body) > 500
@@ -4921,8 +4597,18 @@ async def gzip_middleware(request, handler):
             response.headers["Content-Length"] = str(len(compressed))
     return response
 
+app = web.Application(middlewares=[error_middleware, gzip_middleware])
 
-app = web.Application(middlewares=[gzip_middleware])
+# CORS для защиты от несанкционированных доменов
+cors = aiohttp_cors.setup(app, defaults={
+    MINI_APP_URL: aiohttp_cors.ResourceOptions(
+        allow_credentials=True,
+        expose_headers="*",
+        allow_headers="*",
+        allow_methods=["POST", "GET", "OPTIONS"]
+    )
+})
+
 app.router.add_get("/", handle_index)
 app.router.add_get("/favicon.ico", handle_favicon)
 app.router.add_post("/api/bootstrap", handle_bootstrap)
@@ -4936,10 +4622,9 @@ app.router.add_post("/api/avatar", handle_avatar)
 app.router.add_post("/api/questions", handle_questions)
 app.router.add_get("/api/health", handle_health)
 
-
-# ============================================================
-# ЗАПУСК
-# ============================================================
+# Применяем CORS ко всем маршрутам
+for route in list(app.router.routes()):
+    cors.add(route)
 
 async def main():
     port = int(os.getenv("PORT", 8080))
@@ -4965,7 +4650,6 @@ async def main():
         await bot.session.close()
         if _pool:
             _pool.closeall()
-
 
 if __name__ == "__main__":
     asyncio.run(main())

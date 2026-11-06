@@ -358,7 +358,14 @@
     <div style="font-size: 48px; margin-bottom: 16px;">🔒</div>
     <b style="font-size: 20px; margin-bottom: 8px; display: block;">Вход в систему</b>
     <div class="muted" style="margin-bottom: 20px;">Доступно только зарегистрированным сотрудникам</div>
-    
+
+    <div id="auth-webview-hint" style="display:none; background: #fff8e1; border: 1px solid #ffe082; border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; text-align: left; font-size: 13px; line-height: 1.5; color: #6d4c00;">
+      💡 <b>Совет для постоянного входа:</b><br>
+      Вы открыли приложение внутри Telegram. Чтобы каждый раз не вводить код:
+      тапните <b>⋯</b> вверху → <b>«Открыть в браузере»</b> (Safari / Chrome).<br>
+      Или добавьте на главный экран: <b>Поделиться → На экран Домой</b>.
+    </div>
+
     <div id="auth-step-phone">
       <input type="tel" id="auth-phone" class="q" placeholder="+7 (999) 000-00-00" style="text-align: center; font-size: 18px;">
       <button class="btn" id="btn-auth-phone">Получить код</button>
@@ -472,14 +479,17 @@ function getWebToken() {
     const urlParams = new URLSearchParams(location.search);
     const tokenFromUrl = urlParams.get('web_token');
     if (tokenFromUrl) {
-      localStorage.setItem('wokker_web_token', tokenFromUrl);
+      setWebToken(tokenFromUrl);
       const newUrl = new URL(location.href);
       newUrl.searchParams.delete('web_token');
       history.replaceState(null, '', newUrl.pathname + newUrl.search);
-      WEB_TOKEN = tokenFromUrl;
       return WEB_TOKEN;
     }
     WEB_TOKEN = localStorage.getItem('wokker_web_token') || '';
+    if (!WEB_TOKEN) {
+      const m = document.cookie.match(/(?:^|;\s*)wokker_web_token=([^;]+)/);
+      if (m) WEB_TOKEN = decodeURIComponent(m[1]);
+    }
   } catch (e) {
     WEB_TOKEN = '';
   }
@@ -487,8 +497,35 @@ function getWebToken() {
 }
 
 function setWebToken(token) {
-  WEB_TOKEN = token;
-  try { localStorage.setItem('wokker_web_token', token); } catch(e){}
+  WEB_TOKEN = token || '';
+  try {
+    if (token) localStorage.setItem('wokker_web_token', token);
+    else localStorage.removeItem('wokker_web_token');
+  } catch (e) {}
+  try {
+    if (token) {
+      const secure = location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = 'wokker_web_token=' + encodeURIComponent(token)
+        + '; path=/; max-age=' + (365 * 24 * 60 * 60)
+        + '; SameSite=Lax' + secure;
+    } else {
+      document.cookie = 'wokker_web_token=; path=/; max-age=0';
+    }
+  } catch (e) {}
+}
+
+function isTelegramWebView() {
+  const ua = navigator.userAgent || '';
+  return /Telegram/i.test(ua) || /wv\)/i.test(ua);
+}
+
+function showAuthScreen() {
+  document.getElementById('sec-auth').style.display = 'block';
+  document.getElementById('main-app').style.display = 'none';
+  const hint = document.getElementById('auth-webview-hint');
+  if (hint) {
+    hint.style.display = isTelegramWebView() ? 'block' : 'none';
+  }
 }
 
 function getAuthPayload() {
@@ -750,7 +787,7 @@ function renderProfileFromBoot() {
   const btnLogout = document.getElementById('btn-logout');
   if (btnLogout) {
     btnLogout.addEventListener('click', () => {
-      localStorage.removeItem('wokker_web_token');
+      setWebToken(null);
       location.reload();
     });
   }
@@ -1230,7 +1267,7 @@ async function refreshSection(sec) {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(getAuthPayload())
     });
-    if (resp.status === 401) { localStorage.removeItem('wokker_web_token'); location.reload(); return; }
+    if (resp.status === 401) { setWebToken(null); showAuthScreen(); return; }
     if (resp.status === 403) { renderBlockedEverywhere(); return; }
     if (!resp.ok) return;
     const data = await resp.json();
@@ -1281,9 +1318,8 @@ async function boot() {
     });
     if (resp.status === 403) { renderBlockedEverywhere(); return; }
     if (resp.status === 401) { 
-      localStorage.removeItem('wokker_web_token');
-      document.getElementById('main-app').style.display = 'none';
-      document.getElementById('sec-auth').style.display = 'block';
+      setWebToken(null);
+      showAuthScreen();
       return; 
     }
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -1330,10 +1366,10 @@ function startWhenReady() {
   if (getWebToken()) {
     _booted = true;
     document.getElementById('main-app').style.display = 'block';
+    document.getElementById('sec-auth').style.display = 'none';
     boot();
   } else {
-    document.getElementById('sec-auth').style.display = 'block';
-    document.getElementById('main-app').style.display = 'none';
+    showAuthScreen();
   }
 }
 

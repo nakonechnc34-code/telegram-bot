@@ -6,7 +6,9 @@
 <title>Wokker</title>
 <link rel="preconnect" href="https://telegram.org" crossorigin>
 <link rel="dns-prefetch" href="https://telegram.org">
-<script defer src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://telegram.org/js/telegram-web-app.js"
+        onload="window.TG_SCRIPT_LOADED = true"
+        onerror="window.TG_SCRIPT_LOADED = false"></script>
 
 <style>
   :root {
@@ -53,9 +55,17 @@
     border-radius: 12px; padding: 12px 18px; font-size: 15px; font-weight: 600; margin-top: 10px;
     box-shadow: 0 4px 12px rgba(255, 45, 85, 0.25);
     cursor: pointer; transition: transform 0.15s ease, opacity 0.15s ease;
+    width: 100%;
   }
   .btn:active { transform: scale(0.96); opacity: 0.9; }
   .btn:disabled { opacity: .5; transform: none; box-shadow: none; }
+
+  .q {
+    width: 100%; margin: 6px 0 12px; border: 1.5px solid rgba(128,128,128,0.2);
+    border-radius: 12px; padding: 12px; font-size: 15px; background: var(--card-bg); color: var(--text-color); outline: none;
+    transition: border-color 0.2s ease;
+  }
+  .q:focus { border-color: var(--beige); }
 
   .tabs {
     position: fixed; bottom: calc(12px + env(safe-area-inset-bottom));
@@ -100,13 +110,6 @@
 
   .section { display: none; }
   .section.active { display: block; }
-
-  .q {
-    width: calc(100% - 24px); margin: 6px 12px 12px; border: 1.5px solid rgba(128,128,128,0.2);
-    border-radius: 12px; padding: 12px; font-size: 15px; background: var(--card-bg); color: var(--text-color); outline: none;
-    transition: border-color 0.2s ease;
-  }
-  .q:focus { border-color: var(--beige); }
 
   .chips-container {
     display: flex; gap: 8px; overflow-x: auto;
@@ -351,264 +354,151 @@
   .level-important b::before { content: "🟡 "; }
   .level-normal b::before { content: "🔵 "; }
 
-  /* ===== WELCOME SPLASH ===== */
   .welcome-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
+    position: fixed; inset: 0; z-index: 9999;
     background: linear-gradient(135deg, #ff2d55 0%, #ff6a3d 50%, #ff9558 100%);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    opacity: 0;
-    transition: opacity 0.4s ease;
-    cursor: pointer;
-    -webkit-user-select: none;
-    user-select: none;
-    overflow: hidden;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: #fff; opacity: 0; transition: opacity 0.4s ease;
+    cursor: pointer; -webkit-user-select: none; user-select: none; overflow: hidden;
   }
   .welcome-overlay.show { opacity: 1; }
   .welcome-overlay.hide { opacity: 0; pointer-events: none; }
 
-  .welcome-emoji {
-    font-size: 80px;
-    margin-bottom: 24px;
-    animation: welcomeEmoji 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-    filter: drop-shadow(0 8px 24px rgba(0,0,0,0.25));
-  }
-  @keyframes welcomeEmoji {
-    0%   { transform: scale(0.3) rotate(-25deg); opacity: 0; }
-    60%  { transform: scale(1.15) rotate(10deg); opacity: 1; }
-    100% { transform: scale(1) rotate(0); opacity: 1; }
-  }
+  .welcome-emoji { font-size: 80px; margin-bottom: 24px; animation: welcomeEmoji 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both; filter: drop-shadow(0 8px 24px rgba(0,0,0,0.25)); }
+  @keyframes welcomeEmoji { 0% { transform: scale(0.3) rotate(-25deg); opacity: 0; } 60% { transform: scale(1.15) rotate(10deg); opacity: 1; } 100% { transform: scale(1) rotate(0); opacity: 1; } }
 
-  .welcome-logo {
-    display: flex;
-    gap: 2px;
-    font-size: 44px;
-    font-weight: 900;
-    letter-spacing: 4px;
-    margin-bottom: 12px;
-  }
-  .welcome-logo span {
-    display: inline-block;
-    opacity: 0;
-    transform: translateY(24px);
-    animation: welcomeLetter 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-    text-shadow: 0 4px 16px rgba(0,0,0,0.2);
-  }
+  .welcome-logo { display: flex; gap: 2px; font-size: 44px; font-weight: 900; letter-spacing: 4px; margin-bottom: 12px; }
+  .welcome-logo span { display: inline-block; opacity: 0; transform: translateY(24px); animation: welcomeLetter 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; text-shadow: 0 4px 16px rgba(0,0,0,0.2); }
   .welcome-logo span:nth-child(1) { animation-delay: 0.10s; }
   .welcome-logo span:nth-child(2) { animation-delay: 0.18s; }
   .welcome-logo span:nth-child(3) { animation-delay: 0.26s; }
   .welcome-logo span:nth-child(4) { animation-delay: 0.34s; }
   .welcome-logo span:nth-child(5) { animation-delay: 0.42s; }
   .welcome-logo span:nth-child(6) { animation-delay: 0.50s; }
-  @keyframes welcomeLetter {
-    to { opacity: 1; transform: translateY(0); }
-  }
+  @keyframes welcomeLetter { to { opacity: 1; transform: translateY(0); } }
 
-  .welcome-sub {
-    font-size: 17px;
-    font-weight: 500;
-    letter-spacing: 0.3px;
-    opacity: 0;
-    animation: welcomeFade 0.6s ease 0.9s forwards;
-  }
-  @keyframes welcomeFade {
-    to { opacity: 0.95; }
-  }
+  .welcome-sub { font-size: 17px; font-weight: 500; letter-spacing: 0.3px; opacity: 0; animation: welcomeFade 0.6s ease 0.9s forwards; }
+  @keyframes welcomeFade { to { opacity: 0.95; } }
 
-  .welcome-hint {
-    position: absolute;
-    bottom: calc(48px + env(safe-area-inset-bottom));
-    font-size: 13px;
-    letter-spacing: 0.5px;
-    opacity: 0;
-    animation: welcomeFade 0.6s ease 2s forwards;
-  }
-  .welcome-hint::after {
-    content: '';
-    display: block;
-    width: 100%;
-    height: 2px;
-    margin-top: 8px;
-    background: rgba(255,255,255,0.35);
-    border-radius: 2px;
-    transform-origin: left;
-    animation: welcomeProgress 3.5s linear;
-  }
-  @keyframes welcomeProgress {
-    from { transform: scaleX(0); }
-    to   { transform: scaleX(1); }
-  }
+  .welcome-hint { position: absolute; bottom: calc(48px + env(safe-area-inset-bottom)); font-size: 13px; letter-spacing: 0.5px; opacity: 0; animation: welcomeFade 0.6s ease 2s forwards; }
+  .welcome-hint::after { content: ''; display: block; width: 100%; height: 2px; margin-top: 8px; background: rgba(255,255,255,0.35); border-radius: 2px; transform-origin: left; animation: welcomeProgress 3.5s linear; }
+  @keyframes welcomeProgress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 </style>
 </head>
 <body>
 
-<div class="section" id="sec-profile">
-  <div id="profile-box">
-    <div class="skeleton-card">
-      <div class="skeleton-line"></div>
-      <div class="skeleton-line"></div>
-      <div class="skeleton-line short"></div>
+<!-- ЭКРАН АВТОРИЗАЦИИ -->
+<div class="section" id="sec-auth" style="display: none; padding-top: 40px;">
+  <div class="card" style="text-align: center; padding: 30px 20px;">
+    <div style="font-size: 48px; margin-bottom: 16px;">🔒</div>
+    <b style="font-size: 20px; margin-bottom: 8px; display: block;">Вход в систему</b>
+    <div class="muted" style="margin-bottom: 20px;">Доступно только зарегистрированным сотрудникам</div>
+    
+    <div id="auth-step-phone">
+      <input type="tel" id="auth-phone" class="q" placeholder="+7 (999) 000-00-00" style="text-align: center; font-size: 18px;">
+      <button class="btn" id="btn-auth-phone">Получить код</button>
     </div>
+    
+    <div id="auth-step-code" style="display: none;">
+      <div class="muted" style="margin-bottom: 10px;">Код отправлен в ваш Telegram</div>
+      <input type="text" id="auth-code" class="q" placeholder="000000" maxlength="6" style="text-align: center; font-size: 24px; letter-spacing: 8px;">
+      <button class="btn" id="btn-auth-code">Войти</button>
+      <button class="btn" id="btn-auth-back" style="background: transparent; color: var(--hint-color); box-shadow: none; margin-top: 4px;">Назад</button>
+    </div>
+
+    <div id="auth-error" style="color: #ff3b30; font-size: 13px; margin-top: 12px; display: none;"></div>
   </div>
 </div>
 
-<div class="section" id="sec-restaurants">
-  <div class="rest-tab-header">
-    <div class="title">🍜 Наши рестораны</div>
-    <div class="sub">Выбери точку, чтобы увидеть детали</div>
+<!-- ОСНОВНЫЕ ЭКРАНЫ (изначально скрыты, если нужен вход) -->
+<div id="main-app" style="display: none;">
+  <div class="section" id="sec-profile">
+    <div id="profile-box">
+      <div class="skeleton-card"><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div>
+    </div>
   </div>
 
-  <div class="chips-container" id="rest-filters">
-    <div class="chip active" data-filter="all">Все</div>
-    <div class="chip" data-filter="open">Открыто</div>
-  </div>
-
-  <div class="view-toggle-container">
-    <button class="view-toggle-btn active" id="btn-view-list">📋 Список</button>
-    <button class="view-toggle-btn" id="btn-view-map">🗺 Карта</button>
-  </div>
-
-  <div id="rest-list-wrapper">
-    <input class="q" id="rest-search" placeholder="🔍 Поиск по названию или адресу…">
-    <div id="restaurants-list">
-      <div class="skeleton-card">
-        <div class="skeleton-line"></div>
-        <div class="skeleton-line"></div>
-        <div class="skeleton-line short"></div>
+  <div class="section" id="sec-restaurants">
+    <div class="rest-tab-header">
+      <div class="title">🍜 Наши рестораны</div>
+      <div class="sub">Выбери точку, чтобы увидеть детали</div>
+    </div>
+    <div class="chips-container" id="rest-filters">
+      <div class="chip active" data-filter="all">Все</div>
+      <div class="chip" data-filter="open">Открыто</div>
+    </div>
+    <div class="view-toggle-container">
+      <button class="view-toggle-btn active" id="btn-view-list">📋 Список</button>
+      <button class="view-toggle-btn" id="btn-view-map">🗺 Карта</button>
+    </div>
+    <div id="rest-list-wrapper">
+      <input class="q" id="rest-search" placeholder="🔍 Поиск по названию или адресу…">
+      <div id="restaurants-list">
+        <div class="skeleton-card"><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div>
       </div>
-      <div class="skeleton-card">
-        <div class="skeleton-line"></div>
-        <div class="skeleton-line"></div>
-        <div class="skeleton-line short"></div>
-      </div>
+    </div>
+    <div id="restaurants-map"></div>
+  </div>
+
+  <div class="section active" id="sec-news">
+    <div id="news-list">
+      <div class="skeleton-card"><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div>
     </div>
   </div>
 
-  <div id="restaurants-map"></div>
+  <div class="section" id="sec-standards">
+    <input class="q" id="standard-search" placeholder="🔍 Поиск по стандартам…">
+    <div class="chips-container" id="standards-chips">
+      <div class="chip active" data-cat="all">Все</div>
+      <div class="chip" data-cat="shift_checklist">📋 Смена</div>
+    </div>
+    <div id="standards-list">
+      <div class="skeleton-card"><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div>
+    </div>
+  </div>
+
+  <div class="section" id="sec-faq">
+    <div id="faq-list">
+      <div class="skeleton-card"><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div>
+    </div>
+    <div class="card">
+      <b>Задать свой вопрос</b>
+      <input class="q" id="question-input" maxlength="1000" placeholder="Опиши вопрос — ответ придёт в бот">
+      <button class="btn" id="send-question">Отправить</button>
+    </div>
+  </div>
+
+  <div class="section" id="sec-detail">
+    <div id="detail-box"></div>
+    <button class="btn-back" id="detail-back">← Ко всем ресторанам</button>
+  </div>
+
+  <nav class="tabs">
+    <button data-sec="sec-profile">
+      <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+      Профиль
+    </button>
+    <button data-sec="sec-restaurants">
+      <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span>
+      Рестораны
+    </button>
+    <button data-sec="sec-news" class="active">
+      <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></svg></span>
+      Новости
+      <span class="badge-dot" id="news-badge"></span>
+    </button>
+    <button data-sec="sec-standards">
+      <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>
+      Стандарты
+    </button>
+    <button data-sec="sec-faq">
+      <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+      Вопрос/ответ
+    </button>
+  </nav>
 </div>
-
-<div class="section active" id="sec-news">
-  <div id="news-list">
-    <div class="skeleton-card">
-      <div class="skeleton-line"></div>
-      <div class="skeleton-line"></div>
-      <div class="skeleton-line short"></div>
-    </div>
-    <div class="skeleton-card">
-      <div class="skeleton-line"></div>
-      <div class="skeleton-line"></div>
-      <div class="skeleton-line short"></div>
-    </div>
-  </div>
-</div>
-
-<div class="section" id="sec-standards">
-  <input class="q" id="standard-search" placeholder="🔍 Поиск по стандартам…">
-  <div class="chips-container" id="standards-chips">
-    <div class="chip active" data-cat="all">Все</div>
-    <div class="chip" data-cat="shift_checklist">📋 Смена</div>
-  </div>
-  <div id="standards-list">
-    <div class="skeleton-card">
-      <div class="skeleton-line"></div>
-      <div class="skeleton-line"></div>
-      <div class="skeleton-line short"></div>
-    </div>
-    <div class="skeleton-card">
-      <div class="skeleton-line"></div>
-      <div class="skeleton-line"></div>
-      <div class="skeleton-line short"></div>
-    </div>
-  </div>
-</div>
-
-<div class="section" id="sec-faq">
-  <div id="faq-list">
-    <div class="skeleton-card">
-      <div class="skeleton-line"></div>
-      <div class="skeleton-line"></div>
-      <div class="skeleton-line short"></div>
-    </div>
-    <div class="skeleton-card">
-      <div class="skeleton-line"></div>
-      <div class="skeleton-line"></div>
-      <div class="skeleton-line short"></div>
-    </div>
-  </div>
-  <div class="card">
-    <b>Задать свой вопрос</b>
-    <input class="q" id="question-input" maxlength="1000" placeholder="Опиши вопрос — ответ придёт в бот">
-    <button class="btn" id="send-question">Отправить</button>
-  </div>
-</div>
-
-<div class="section" id="sec-detail">
-  <div id="detail-box"></div>
-  <button class="btn-back" id="detail-back">← Ко всем ресторанам</button>
-</div>
-
-<nav class="tabs">
-  <button data-sec="sec-profile">
-    <span class="tab-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-        <circle cx="12" cy="7" r="4"/>
-      </svg>
-    </span>
-    Профиль
-  </button>
-  <button data-sec="sec-restaurants">
-    <span class="tab-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-        <circle cx="12" cy="10" r="3"/>
-      </svg>
-    </span>
-    Рестораны
-  </button>
-  <button data-sec="sec-news" class="active">
-    <span class="tab-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/>
-        <path d="M18 14h-8"/>
-        <path d="M15 18h-5"/>
-        <path d="M10 6h8v4h-8V6Z"/>
-      </svg>
-    </span>
-    Новости
-    <span class="badge-dot" id="news-badge"></span>
-  </button>
-  <button data-sec="sec-standards">
-    <span class="tab-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
-        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
-      </svg>
-    </span>
-    Стандарты
-  </button>
-  <button data-sec="sec-faq">
-    <span class="tab-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="10"/>
-        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-        <line x1="12" y1="17" x2="12.01" y2="17"/>
-      </svg>
-    </span>
-    Вопрос/ответ
-  </button>
-</nav>
 
 <script>
-// ============================================================
-// SDK загружается с defer — первая отрисовка уже произошла
-// (skeleton в HTML). Здесь только ждём window.Telegram.WebApp.
-// ============================================================
 let tg = null;
 
 function getTg() {
@@ -629,7 +519,41 @@ function initTg() {
 
 tg = initTg();
 
+let WEB_TOKEN = null;
+
+function getWebToken() {
+  if (WEB_TOKEN !== null) return WEB_TOKEN;
+  try {
+    const urlParams = new URLSearchParams(location.search);
+    const tokenFromUrl = urlParams.get('web_token');
+    if (tokenFromUrl) {
+      localStorage.setItem('wokker_web_token', tokenFromUrl);
+      const newUrl = new URL(location.href);
+      newUrl.searchParams.delete('web_token');
+      history.replaceState(null, '', newUrl.pathname + newUrl.search);
+      WEB_TOKEN = tokenFromUrl;
+      return WEB_TOKEN;
+    }
+    WEB_TOKEN = localStorage.getItem('wokker_web_token') || '';
+  } catch (e) {
+    WEB_TOKEN = '';
+  }
+  return WEB_TOKEN;
+}
+
+function setWebToken(token) {
+  WEB_TOKEN = token;
+  try { localStorage.setItem('wokker_web_token', token); } catch(e){}
+}
+
 function getInitData() { return (tg && tg.initData) ? tg.initData : ''; }
+
+function getAuthPayload() {
+  return {
+    initData: getInitData(),
+    webToken: getWebToken()
+  };
+}
 
 function haptic(style) {
   if (tg && tg.HapticFeedback && typeof tg.HapticFeedback.impactOccurred === 'function') {
@@ -713,7 +637,6 @@ function bootChanged(oldB, newB) {
   return false;
 }
 
-// ============ WELCOME SPLASH ============
 function hasSeenWelcome() {
   try {
     const u = tgUserInfo();
@@ -826,21 +749,6 @@ function renderBlockedEverywhere() {
   document.getElementById('faq-list').innerHTML = blockedHtml();
 }
 
-function renderAuthErrorEverywhere() {
-  const msg = '<div class="card">⚠️ Не удалось получить данные от Telegram.<br>' +
-    'Закрой приложение и открой заново из бота.</div>';
-  ['profile-box', 'news-list', 'restaurants-list', 'standards-list', 'faq-list'].forEach(id => {
-    document.getElementById(id).innerHTML = msg;
-  });
-}
-
-function renderNetErrorEverywhere() {
-  const msg = '<div class="card">Ошибка сети. Проверь соединение и открой приложение заново.</div>';
-  ['profile-box', 'news-list', 'restaurants-list', 'standards-list', 'faq-list'].forEach(id => {
-    document.getElementById(id).innerHTML = msg;
-  });
-}
-
 function tgUserInfo() {
   try {
     if (!tg || !tg.initDataUnsafe) return null;
@@ -915,7 +823,7 @@ async function loadAvatarFromApi() {
       const resp = await fetch('/api/avatar', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ initData: getInitData() })
+        body: JSON.stringify(getAuthPayload())
       });
       if (resp.ok) {
         const blob = await resp.blob();
@@ -976,7 +884,8 @@ function renderProfileFromBoot() {
     '<span class="val">' + esc(p.birth_date || '—') + '</span></div>' +
     '</div>' +
     '<div class="profile-footer">💡 Изменить данные можно только через администратора. ' +
-    '<button id="btn-report-error">Сообщить об ошибке</button></div>' +
+    '<button id="btn-report-error">Сообщить об ошибке</button> ' +
+    '<button id="btn-logout" style="color:#ff3b30;margin-left:10px;">Выйти</button></div>' +
     '</div>';
 
   const el = document.querySelector('#profile-box .avatar');
@@ -1005,13 +914,21 @@ function renderProfileFromBoot() {
       const r = await fetch('/api/questions', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ initData: getInitData(), question: 'Ошибка в данных профиля: прошу проверить и скорректировать.' })
+        body: JSON.stringify({ ...getAuthPayload(), question: 'Ошибка в данных профиля: прошу проверить и скорректировать.' })
       });
       if (r.ok) showAlert('Сообщение отправлено администратору.');
       else showAlert('Не удалось отправить сообщение.');
     } catch (e) { showAlert('Ошибка сети'); }
     finally { btnReport.disabled = false; }
   });
+
+  const btnLogout = document.getElementById('btn-logout');
+  if (btnLogout) {
+    btnLogout.addEventListener('click', () => {
+      localStorage.removeItem('wokker_web_token');
+      location.reload();
+    });
+  }
 }
 
 function prepareRestaurants(list) {
@@ -1471,7 +1388,7 @@ document.getElementById('send-question').addEventListener('click', async functio
   try {
     const resp = await fetch('/api/questions', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ initData: getInitData(), question: text })
+      body: JSON.stringify({ ...getAuthPayload(), question: text })
     });
     if (resp.ok) { input.value = ''; showAlert('Вопрос отправлен! Ответ увидишь в боте.'); }
     else if (resp.status === 429) { showAlert('Слишком часто. Подожди минуту и попробуй снова.'); }
@@ -1494,7 +1411,7 @@ async function refreshSection(sec) {
   try {
     const resp = await fetch(url, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ initData: getInitData() })
+      body: JSON.stringify(getAuthPayload())
     });
     if (resp.status === 401) { renderAuthErrorEverywhere(); return; }
     if (resp.status === 403) { renderBlockedEverywhere(); return; }
@@ -1543,7 +1460,6 @@ async function boot() {
     renderedFromCache = true;
   }
 
-  // Аватар грузим параллельно — не блокирует bootstrap
   const avatarPromise = (async () => {
     if (cachedAvatarUrl) return;
     const u = tgUserInfo();
@@ -1554,10 +1470,15 @@ async function boot() {
   try {
     const resp = await fetch('/api/bootstrap', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ initData: getInitData() })
+      body: JSON.stringify(getAuthPayload())
     });
     if (resp.status === 403) { renderBlockedEverywhere(); return; }
-    if (resp.status === 401) { renderAuthErrorEverywhere(); return; }
+    if (resp.status === 401) { 
+      // Если 401, значит токен невалиден. Показываем экран входа.
+      document.getElementById('main-app').style.display = 'none';
+      document.getElementById('sec-auth').style.display = 'block';
+      return; 
+    }
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
 
     const fresh = await resp.json();
@@ -1592,24 +1513,30 @@ async function boot() {
 }
 
 // ============================================================
-// Ждём, пока SDK загрузится и Telegram передаст initData.
-// Skeleton уже отрисован в HTML, поэтому пользователь видит
-// загрузку мгновенно — не ждёт ни CDN, ни сеть.
+// ЛОГИКА ВХОДА
 // ============================================================
 let _booted = false;
 
 function startWhenReady() {
   if (_booted) return;
 
+  if (getWebToken()) {
+    _booted = true;
+    document.getElementById('main-app').style.display = 'block';
+    boot();
+    return;
+  }
+
   if (!tg) tg = initTg();
   if (getInitData()) {
     _booted = true;
+    document.getElementById('main-app').style.display = 'block';
     boot();
     return;
   }
 
   const start = Date.now();
-  const TIMEOUT_MS = 5000;
+  const TIMEOUT_MS = 3000;
 
   const tryLoop = () => {
     if (_booted) return;
@@ -1617,25 +1544,114 @@ function startWhenReady() {
 
     if (getInitData()) {
       _booted = true;
+      document.getElementById('main-app').style.display = 'block';
       boot();
       return;
     }
 
     if (Date.now() - start > TIMEOUT_MS) {
-      // Истёк таймаут. Показываем ошибку только если SDK загрузился, но initData пуст,
-      // либо SDK так и не пришёл (пользователь открыл не из Telegram).
-      if (!tg) {
-        renderAuthErrorEverywhere();
-      } else if (!tg.initData) {
-        renderAuthErrorEverywhere();
-      }
+      // Не смогли получить данные из Telegram и нет веб-токена.
+      // Показываем форму входа.
+      document.getElementById('sec-auth').style.display = 'block';
+      document.getElementById('main-app').style.display = 'none';
       return;
     }
     setTimeout(tryLoop, 100);
   };
-
   tryLoop();
 }
+
+// Обработчики кнопок авторизации
+document.getElementById('btn-auth-phone').addEventListener('click', async () => {
+  const phoneInput = document.getElementById('auth-phone');
+  const phone = phoneInput.value.trim();
+  const errDiv = document.getElementById('auth-error');
+  const btn = document.getElementById('btn-auth-phone');
+  
+  if (!phone) {
+    errDiv.textContent = 'Введите номер телефона';
+    errDiv.style.display = 'block';
+    return;
+  }
+  
+  errDiv.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Отправка...';
+  
+  try {
+    const resp = await fetch('/api/auth/request-code', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ phone })
+    });
+    const data = await resp.json();
+    
+    if (resp.ok) {
+      document.getElementById('auth-step-phone').style.display = 'none';
+      document.getElementById('auth-step-code').style.display = 'block';
+    } else {
+      if (data.error === 'not_found') errDiv.textContent = 'Сотрудник с таким номером не найден.';
+      else if (data.error === 'too_fast') errDiv.textContent = 'Слишком часто. Подождите минуту.';
+      else if (data.error === 'bot_blocked') errDiv.textContent = 'Бот заблокирован. Разблокируйте его в Telegram.';
+      else errDiv.textContent = 'Ошибка при отправке кода.';
+      errDiv.style.display = 'block';
+    }
+  } catch (e) {
+    errDiv.textContent = 'Ошибка сети.';
+    errDiv.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Получить код';
+  }
+});
+
+document.getElementById('btn-auth-code').addEventListener('click', async () => {
+  const phone = document.getElementById('auth-phone').value.trim();
+  const code = document.getElementById('auth-code').value.trim();
+  const errDiv = document.getElementById('auth-error');
+  const btn = document.getElementById('btn-auth-code');
+  
+  if (!code || code.length !== 6) {
+    errDiv.textContent = 'Введите 6-значный код';
+    errDiv.style.display = 'block';
+    return;
+  }
+  
+  errDiv.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Проверка...';
+  
+  try {
+    const resp = await fetch('/api/auth/verify-code', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ phone, code })
+    });
+    const data = await resp.json();
+    
+    if (resp.ok && data.token) {
+      setWebToken(data.token);
+      document.getElementById('sec-auth').style.display = 'none';
+      document.getElementById('main-app').style.display = 'block';
+      startWhenReady(); // запускаем boot()
+    } else {
+      errDiv.textContent = 'Неверный код или истекло время.';
+      errDiv.style.display = 'block';
+    }
+  } catch (e) {
+    errDiv.textContent = 'Ошибка сети.';
+    errDiv.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Войти';
+  }
+});
+
+document.getElementById('btn-auth-back').addEventListener('click', () => {
+  document.getElementById('auth-step-phone').style.display = 'block';
+  document.getElementById('auth-step-code').style.display = 'none';
+  document.getElementById('auth-error').style.display = 'none';
+});
 
 startWhenReady();
 </script>

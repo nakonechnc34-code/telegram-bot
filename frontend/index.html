@@ -565,9 +565,6 @@
 </nav>
 
 <script>
-// 🔑 Ключ для Yandex Tiles API
-const YANDEX_API_KEY = 'f35e1fb6-2431-4c95-98c8-4b99f54d97c1';
-
 const tg = window.Telegram ? window.Telegram.WebApp : null;
 if (tg) {
   tg.ready();
@@ -1070,31 +1067,11 @@ function initInteractiveMap(restaurants) {
   if (!leafletMap) {
     leafletMap = L.map(mapContainer, { zoomControl: false }).setView([55.7558, 37.6173], 10);
 
-    // ✅ Слой Яндекса с ключом и правильной проекцией
-    const yandexLayer = L.tileLayer(
-      `https://tiles.api-maps.yandex.ru/v1/tiles/?x={x}&y={y}&z={z}&l=map&lang=ru_RU&projection=web_mercator&scale=2&apikey=${YANDEX_API_KEY}`,
-      { maxZoom: 20, attribution: '© Яндекс' }
-    );
-
-    // 🛡️ Резервный слой OpenStreetMap
-    const osmLayer = L.tileLayer(
-      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-      { maxZoom: 19, attribution: '© OpenStreetMap' }
-    );
-
-    let yandexLoaded = false;
-    yandexLayer.on('tileload', () => { yandexLoaded = true; });
-
-    // Если через 3 секунды Яндекс не отдал тайлы — переключаемся на OSM
-    setTimeout(() => {
-      if (!yandexLoaded) {
-        console.warn('Yandex Tiles API не ответил — переключаюсь на OpenStreetMap');
-        leafletMap.removeLayer(yandexLayer);
-        osmLayer.addTo(leafletMap);
-      }
-    }, 3000);
-
-    yandexLayer.addTo(leafletMap);
+    // 🗺️ Используем OpenStreetMap — стабильно и без ключей
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(leafletMap);
 
     L.control.zoom({ position: 'bottomright' }).addTo(leafletMap);
 

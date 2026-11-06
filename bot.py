@@ -274,7 +274,6 @@ with get_conn() as conn:
                     "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
                     (r["key"], r["name"], r["address"], r["hours"], r["lat"], r["lon"], r["org"], r["phone"], sort))
 
-        # Миграция телефонов: обновляем только пустые phone (не трогаем ручные правки из админки)
         PHONE_MIGRATION = {
             "mega_belaya_dacha": "+7 (915) 479-09-41",
             "belyaevo":          "+7 (985) 857-06-69",
@@ -1399,6 +1398,14 @@ REGISTER_ONLY = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="✍️ Зарегистрироваться", callback_data="register")],
 ])
 
+# Специальная кнопка для welcome-экрана после регистрации
+WELCOME_MENU = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(
+        text="🎉 Открыть приложение",
+        web_app=WebAppInfo(url=f"{MINI_APP_URL}?welcome=1")
+    )],
+])
+
 def phone_kb():
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="📱 Поделиться номером", request_contact=True)]],
@@ -2045,7 +2052,7 @@ async def process_restaurant_pick(callback: types.CallbackQuery, state: FSMConte
                        f"👤 ФИО: {html.escape(full_name)}\n📞 {html.escape(phone)}\n🎂 {html.escape(birth_date)}\n"
                        f"💼 {html.escape(position)}\n📍 {html.escape(restaurant['name'])}\n\n"
                        "Открой приложение:",
-                       parse_mode="HTML", reply_markup=FULL_MENU)
+                       parse_mode="HTML", reply_markup=WELCOME_MENU)
     if ADMIN_ID:
         uname = f"@{html.escape(callback.from_user.username)}" if callback.from_user.username else "нет"
         kb = InlineKeyboardMarkup(inline_keyboard=[

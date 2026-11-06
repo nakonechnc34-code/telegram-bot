@@ -260,7 +260,6 @@ with get_conn() as conn:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_news_created ON news (created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_news_publish ON news (published, publish_at)")
 
-        # Заполнение тестовыми данными при первом запуске
         cur.execute("SELECT COUNT(*) FROM news")
         if cur.fetchone()[0] == 0:
             cur.execute("INSERT INTO news (title, body, important, level) VALUES (%s, %s, %s, %s)",
@@ -349,7 +348,6 @@ def _sync_db_restaurant(key):
     return None
 
 def _sync_db_restaurant_update(key, field, value):
-    # Строгая проверка поля для предотвращения SQL-инъекций
     sqls = {
         "name": "UPDATE restaurants SET name = %s WHERE key = %s",
         "address": "UPDATE restaurants SET address = %s WHERE key = %s",
@@ -435,7 +433,6 @@ def _sync_db_save_profile(user_id, full_name, phone, birth_date, position, resta
                  full_name, phone, birth_date, position, restaurant))
 
 def _sync_db_update_user(user_id, field, value):
-    # Строгая проверка поля для предотвращения SQL-инъекций
     sqls = {
         "full_name": "UPDATE users SET full_name = %s WHERE user_id = %s",
         "phone": "UPDATE users SET phone = %s WHERE user_id = %s",
@@ -1164,6 +1161,7 @@ async def build_restaurants_payload():
         status, status_text = restaurant_status_for(r)
         out.append({"key": r["key"], "name": r["name"], "address": r["address"],
                     "hours": r["hours"], "org": r["org"], "phone": r.get("phone") or "",
+                    "lat": r.get("lat"), "lon": r.get("lon"),
                     "sort": r.get("sort") if r.get("sort") is not None else 100,
                     "status": status, "status_text": status_text})
     return out
@@ -1200,7 +1198,6 @@ class AdminOnlyMiddleware(BaseMiddleware):
             return
         return await handler(event, data)
 
-# Антифлуд: не более 1 сообщения в секунду от пользователя
 class AntiFloodMiddleware(BaseMiddleware):
     def __init__(self):
         self.cache = {}
@@ -4419,7 +4416,8 @@ async def handle_bootstrap(request):
         status, status_text = restaurant_status_for(rd)
         restaurants_list.append({
             "key": rkey, "name": rname, "address": raddr, "hours": rhours,
-            "org": rorg, "phone": rphone or "",
+            "org": rorg, "phone": rphone or "", 
+            "lat": rlat, "lon": rlon,
             "sort": rsort if rsort is not None else 100,
             "status": status, "status_text": status_text,
         })
@@ -4578,7 +4576,6 @@ async def error_middleware(request, handler):
         raise
     except Exception as e:
         logging.exception("Unhandled error in %s %s", request.method, request.path)
-        # Не отдаём детали ошибки наружу
         return web.json_response({"error": "internal_server_error"}, status=500)
 
 @web.middleware
@@ -4599,7 +4596,6 @@ async def gzip_middleware(request, handler):
 
 app = web.Application(middlewares=[error_middleware, gzip_middleware])
 
-# CORS для защиты от несанкционированных доменов
 cors = aiohttp_cors.setup(app, defaults={
     MINI_APP_URL: aiohttp_cors.ResourceOptions(
         allow_credentials=True,
@@ -4622,7 +4618,6 @@ app.router.add_post("/api/avatar", handle_avatar)
 app.router.add_post("/api/questions", handle_questions)
 app.router.add_get("/api/health", handle_health)
 
-# Применяем CORS ко всем маршрутам
 for route in list(app.router.routes()):
     cors.add(route)
 

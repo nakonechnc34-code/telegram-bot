@@ -4,8 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Wokker</title>
-<link rel="preconnect" href="https://api.telegram.org" crossorigin>
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://telegram.org" crossorigin>
+<link rel="dns-prefetch" href="https://telegram.org">
+<script defer src="https://telegram.org/js/telegram-web-app.js"></script>
 
 <style>
   :root {
@@ -447,7 +448,13 @@
 <body>
 
 <div class="section" id="sec-profile">
-  <div id="profile-box"></div>
+  <div id="profile-box">
+    <div class="skeleton-card">
+      <div class="skeleton-line"></div>
+      <div class="skeleton-line"></div>
+      <div class="skeleton-line short"></div>
+    </div>
+  </div>
 </div>
 
 <div class="section" id="sec-restaurants">
@@ -468,14 +475,36 @@
 
   <div id="rest-list-wrapper">
     <input class="q" id="rest-search" placeholder="🔍 Поиск по названию или адресу…">
-    <div id="restaurants-list"></div>
+    <div id="restaurants-list">
+      <div class="skeleton-card">
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line short"></div>
+      </div>
+      <div class="skeleton-card">
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line short"></div>
+      </div>
+    </div>
   </div>
 
   <div id="restaurants-map"></div>
 </div>
 
 <div class="section active" id="sec-news">
-  <div id="news-list"></div>
+  <div id="news-list">
+    <div class="skeleton-card">
+      <div class="skeleton-line"></div>
+      <div class="skeleton-line"></div>
+      <div class="skeleton-line short"></div>
+    </div>
+    <div class="skeleton-card">
+      <div class="skeleton-line"></div>
+      <div class="skeleton-line"></div>
+      <div class="skeleton-line short"></div>
+    </div>
+  </div>
 </div>
 
 <div class="section" id="sec-standards">
@@ -484,11 +513,33 @@
     <div class="chip active" data-cat="all">Все</div>
     <div class="chip" data-cat="shift_checklist">📋 Смена</div>
   </div>
-  <div id="standards-list"></div>
+  <div id="standards-list">
+    <div class="skeleton-card">
+      <div class="skeleton-line"></div>
+      <div class="skeleton-line"></div>
+      <div class="skeleton-line short"></div>
+    </div>
+    <div class="skeleton-card">
+      <div class="skeleton-line"></div>
+      <div class="skeleton-line"></div>
+      <div class="skeleton-line short"></div>
+    </div>
+  </div>
 </div>
 
 <div class="section" id="sec-faq">
-  <div id="faq-list"></div>
+  <div id="faq-list">
+    <div class="skeleton-card">
+      <div class="skeleton-line"></div>
+      <div class="skeleton-line"></div>
+      <div class="skeleton-line short"></div>
+    </div>
+    <div class="skeleton-card">
+      <div class="skeleton-line"></div>
+      <div class="skeleton-line"></div>
+      <div class="skeleton-line short"></div>
+    </div>
+  </div>
   <div class="card">
     <b>Задать свой вопрос</b>
     <input class="q" id="question-input" maxlength="1000" placeholder="Опиши вопрос — ответ придёт в бот">
@@ -554,21 +605,35 @@
 </nav>
 
 <script>
-const tg = window.Telegram ? window.Telegram.WebApp : null;
-if (tg) {
-  tg.ready();
-  tg.expand();
-  try {
-    if (tg.setHeaderColor) tg.setHeaderColor('secondary_bg_color');
-    if (tg.setBackgroundColor) tg.setBackgroundColor('bg_color');
-  } catch(e) {}
+// ============================================================
+// SDK загружается с defer — первая отрисовка уже произошла
+// (skeleton в HTML). Здесь только ждём window.Telegram.WebApp.
+// ============================================================
+let tg = null;
+
+function getTg() {
+  return (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
 }
+
+function initTg() {
+  const t = getTg();
+  if (!t) return null;
+  try {
+    if (typeof t.ready === 'function') t.ready();
+    if (typeof t.expand === 'function') t.expand();
+    if (typeof t.setHeaderColor === 'function') t.setHeaderColor('secondary_bg_color');
+    if (typeof t.setBackgroundColor === 'function') t.setBackgroundColor('bg_color');
+  } catch (e) {}
+  return t;
+}
+
+tg = initTg();
 
 function getInitData() { return (tg && tg.initData) ? tg.initData : ''; }
 
-function haptic(style = 'light') {
+function haptic(style) {
   if (tg && tg.HapticFeedback && typeof tg.HapticFeedback.impactOccurred === 'function') {
-    try { tg.HapticFeedback.impactOccurred(style); } catch (e) {}
+    try { tg.HapticFeedback.impactOccurred(style || 'light'); } catch (e) {}
   }
 }
 
@@ -594,9 +659,6 @@ function debounce(fn, ms) {
   };
 }
 
-// ============================================================
-// КЭШ: v3 + TTL 5 минут (было v2 + 30 минут)
-// ============================================================
 const BOOT_CACHE_KEY = 'wokker_boot_cache_v3';
 const BOOT_CACHE_TTL = 5 * 60 * 1000;
 
@@ -623,7 +685,6 @@ function writeBootCache(data) {
   } catch (e) {}
 }
 
-// Сравнение — теперь поштучно по ресторанам, включая координаты
 function bootChanged(oldB, newB) {
   if (!oldB) return true;
   if (JSON.stringify(oldB.profile) !== JSON.stringify(newB.profile)) return true;
@@ -632,7 +693,6 @@ function bootChanged(oldB, newB) {
   if (JSON.stringify(oldB.standards) !== JSON.stringify(newB.standards)) return true;
   if (JSON.stringify(oldB.faq) !== JSON.stringify(newB.faq)) return true;
 
-  // Рестораны: поштучно по key + координатам + статусу + основным полям
   const or = oldB.restaurants || [];
   const nr = newB.restaurants || [];
   if (or.length !== nr.length) return true;
@@ -677,19 +737,18 @@ function showWelcomeSplash() {
   const splash = document.createElement('div');
   splash.id = 'welcome-splash';
   splash.className = 'welcome-overlay';
-  splash.innerHTML = `
-    <div class="welcome-emoji">🍜</div>
-    <div class="welcome-logo">
-      <span>W</span><span>O</span><span>K</span><span>K</span><span>E</span><span>R</span>
-    </div>
-    <div class="welcome-sub">Добро пожаловать!</div>
-    <div class="welcome-hint">Нажми, чтобы продолжить</div>
-  `;
+  splash.innerHTML =
+    '<div class="welcome-emoji">🍜</div>' +
+    '<div class="welcome-logo">' +
+      '<span>W</span><span>O</span><span>K</span><span>K</span><span>E</span><span>R</span>' +
+    '</div>' +
+    '<div class="welcome-sub">Добро пожаловать!</div>' +
+    '<div class="welcome-hint">Нажми, чтобы продолжить</div>';
   document.body.appendChild(splash);
   document.body.style.overflow = 'hidden';
   requestAnimationFrame(() => splash.classList.add('show'));
 
-  try { tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred('medium'); } catch(e) {}
+  try { if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium'); } catch(e) {}
 
   markWelcomeSeen();
   try {
@@ -704,7 +763,7 @@ function showWelcomeSplash() {
     splash.classList.add('hide');
     document.body.style.overflow = '';
     setTimeout(() => splash.remove(), 500);
-    try { tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred('light'); } catch(e) {}
+    try { if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light'); } catch(e) {}
   };
 
   setTimeout(dismiss, 3500);
@@ -753,20 +812,6 @@ document.querySelectorAll('.tabs button').forEach(btn => {
 const esc = s => (s || '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-function skeletonHtml() {
-  return '<div class="skeleton-card">' +
-    '<div class="skeleton-line"></div>' +
-    '<div class="skeleton-line"></div>' +
-    '<div class="skeleton-line short"></div>' +
-    '</div>';
-}
-
-document.getElementById('news-list').innerHTML = skeletonHtml() + skeletonHtml();
-document.getElementById('profile-box').innerHTML = skeletonHtml();
-document.getElementById('restaurants-list').innerHTML = skeletonHtml() + skeletonHtml();
-document.getElementById('standards-list').innerHTML = skeletonHtml() + skeletonHtml();
-document.getElementById('faq-list').innerHTML = skeletonHtml() + skeletonHtml();
-
 function blockedHtml() {
   return '<div class="blocked-screen"><div class="big">🚫</div>' +
     '<div class="title">Доступ ограничен</div>' +
@@ -782,7 +827,8 @@ function renderBlockedEverywhere() {
 }
 
 function renderAuthErrorEverywhere() {
-  const msg = '<div class="card">⚠️ Ошибка авторизации Telegram. Закрой приложение и открой заново из бота.</div>';
+  const msg = '<div class="card">⚠️ Не удалось получить данные от Telegram.<br>' +
+    'Закрой приложение и открой заново из бота.</div>';
   ['profile-box', 'news-list', 'restaurants-list', 'standards-list', 'faq-list'].forEach(id => {
     document.getElementById(id).innerHTML = msg;
   });
@@ -937,7 +983,7 @@ function renderProfileFromBoot() {
   if (el) {
     if (cachedAvatarUrl) {
       applyAvatarToEl(el);
-    } else if (!tgUserInfo()?.photo_url) {
+    } else if (!tgUserInfo() || !tgUserInfo().photo_url) {
       loadAvatarFromApi().then(() => {
         const el2 = document.querySelector('#profile-box .avatar');
         if (el2 && cachedAvatarUrl) {
@@ -1443,7 +1489,6 @@ async function refreshSection(sec) {
   const url = map[sec];
   if (!url) return;
   const now = Date.now();
-  // 15 секунд вместо 30 — быстрее подтягиваем свежие координаты
   if (now - (_refreshCache[sec] || 0) < 15000) return;
   _refreshCache[sec] = now;
   try {
@@ -1462,7 +1507,6 @@ async function refreshSection(sec) {
       if (document.getElementById('btn-view-map').classList.contains('active') && window.L) {
         initInteractiveMap(getFilteredRestaurants(BOOT.restaurants, document.getElementById('rest-search').value));
       }
-      // обновляем и в localStorage, чтобы следующий запуск не показал старое
       try { writeBootCache(Object.assign({}, BOOT)); } catch(e) {}
     }
     else if (sec === 'sec-standards') { BOOT.standards = data; renderStandardsFromBoot(); }
@@ -1499,6 +1543,7 @@ async function boot() {
     renderedFromCache = true;
   }
 
+  // Аватар грузим параллельно — не блокирует bootstrap
   const avatarPromise = (async () => {
     if (cachedAvatarUrl) return;
     const u = tgUserInfo();
@@ -1535,25 +1580,61 @@ async function boot() {
     console.warn('bootstrap failed, using cache:', e);
   }
 
-  avatarPromise?.then(() => {
-    const el = document.querySelector('#profile-box .avatar');
-    if (el && cachedAvatarUrl) {
-      el.style.backgroundImage = "url('" + cachedAvatarUrl + "')";
-      el.textContent = '';
-    }
-  });
+  if (avatarPromise) {
+    avatarPromise.then(() => {
+      const el = document.querySelector('#profile-box .avatar');
+      if (el && cachedAvatarUrl) {
+        el.style.backgroundImage = "url('" + cachedAvatarUrl + "')";
+        el.textContent = '';
+      }
+    });
+  }
 }
 
+// ============================================================
+// Ждём, пока SDK загрузится и Telegram передаст initData.
+// Skeleton уже отрисован в HTML, поэтому пользователь видит
+// загрузку мгновенно — не ждёт ни CDN, ни сеть.
+// ============================================================
+let _booted = false;
+
 function startWhenReady() {
-  if (getInitData()) { boot(); return; }
-  let waited = 0;
-  const timer = setInterval(() => {
-    waited += 100;
-    if (getInitData() || waited >= 300) {
-      clearInterval(timer);
+  if (_booted) return;
+
+  if (!tg) tg = initTg();
+  if (getInitData()) {
+    _booted = true;
+    boot();
+    return;
+  }
+
+  const start = Date.now();
+  const TIMEOUT_MS = 5000;
+
+  const tryLoop = () => {
+    if (_booted) return;
+    if (!tg) tg = initTg();
+
+    if (getInitData()) {
+      _booted = true;
       boot();
+      return;
     }
-  }, 100);
+
+    if (Date.now() - start > TIMEOUT_MS) {
+      // Истёк таймаут. Показываем ошибку только если SDK загрузился, но initData пуст,
+      // либо SDK так и не пришёл (пользователь открыл не из Telegram).
+      if (!tg) {
+        renderAuthErrorEverywhere();
+      } else if (!tg.initData) {
+        renderAuthErrorEverywhere();
+      }
+      return;
+    }
+    setTimeout(tryLoop, 100);
+  };
+
+  tryLoop();
 }
 
 startWhenReady();

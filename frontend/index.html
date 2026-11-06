@@ -6,6 +6,16 @@
 <title>Wokker</title>
 <link rel="preconnect" href="https://api.telegram.org" crossorigin>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+<!-- Leaflet CSS & JS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- MarkerCluster CSS & JS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+<script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+
 <style>
   :root {
     --bg: var(--tg-theme-bg-color, #f2f2f7);
@@ -224,63 +234,89 @@
     display: none; z-index: 1;
   }
 
-  .leaflet-wokker-marker {
+  /* Кастомные маркеры */
+  .custom-map-marker {
     background: #ff2d55; color: #fff; border: 2px solid #fff; border-radius: 50%;
-    width: 34px !important; height: 34px !important;
-    margin-left: -17px !important; margin-top: -17px !important;
+    width: 32px !important; height: 32px !important;
     display: flex; align-items: center; justify-content: center;
-    font-size: 16px; box-shadow: 0 4px 12px rgba(255, 45, 85, 0.4);
+    font-size: 16px; box-shadow: 0 4px 12px rgba(255,45,85,0.4);
   }
-  .leaflet-wokker-marker.is-my { background: #c3a578; box-shadow: 0 4px 12px rgba(195, 165, 120, 0.6); }
+  .custom-map-marker.open { background: #34c759; box-shadow: 0 4px 12px rgba(52,199,89,0.4); }
+  .custom-map-marker.closed { background: #ff3b30; box-shadow: 0 4px 12px rgba(255,59,48,0.4); }
 
-  .rest-card { background: var(--card-bg); border-radius: 18px; margin: 8px 12px 12px;
-    padding: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.04); border: 1px solid rgba(128,128,128,0.08); cursor: pointer; 
-    transition: transform 0.15s ease; position: relative; }
+  /* Карточка ресторана в новом дизайне */
+  .rest-card {
+    background: var(--card-bg);
+    border-radius: 18px;
+    margin: 0 12px 12px;
+    padding: 16px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+    border: 1px solid rgba(128,128,128,0.08);
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
   .rest-card:active { transform: scale(0.98); }
-  .rest-card.is-my-rest { border: 2px solid var(--beige); }
-  .my-rest-tag { position: absolute; top: 12px; right: 16px; font-size: 11px; background: var(--beige-soft); color: var(--beige-dark); padding: 2px 8px; border-radius: 8px; font-weight: 600; }
 
-  .rest-head { display: flex; align-items: center; gap: 14px; }
-  .rest-logo { width: 48px; height: 48px; border-radius: 14px; flex-shrink: 0;
+  .rest-card-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 12px;
+  }
+
+  .rest-logo {
+    width: 52px; height: 52px;
+    border-radius: 16px;
     background: linear-gradient(135deg, var(--beige-soft), #f1e6d2);
     border: 1px solid var(--beige-border);
-    display: flex; align-items: center; justify-content: center; font-size: 22px; }
-  .rest-head-main { flex: 1; min-width: 0; }
-  .rest-name { font-size: 16px; font-weight: 700; line-height: 1.25; color: var(--text-color); }
-  .rest-status { display: inline-block; margin-top: 5px; padding: 3px 10px;
-    border-radius: 12px; font-size: 11px; font-weight: 700; }
-  .rest-status.open { background: #e8f5ec; color: #2e7d43; }
-  .rest-status.closed { background: #fbeae4; color: #b04a2e; }
-  
-  .detail-status { display: inline-block; margin-top: 12px; padding: 6px 16px;
-    border-radius: 20px; font-size: 13px; font-weight: 700; }
-  .detail-status.open { background: #e8f5ec; color: #2e7d43; }
-  .detail-status.closed { background: #fbeae4; color: #b04a2e; }
-  
-  .rest-meta { margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(128,128,128,0.15);
-    font-size: 13px; color: var(--hint-color); line-height: 1.5; }
-  .rest-hours { color: var(--hint-color); font-size: 12px; margin-top: 4px; }
-  
-  /* FIX: телефон в карточке списка */
-  .rest-phone {
-    color: var(--hint-color);
-    font-size: 12px;
-    margin-top: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; flex-shrink: 0;
   }
-  .rest-phone a {
-    color: var(--beige-dark);
-    font-weight: 600;
-    text-decoration: none;
-  }
-  .rest-phone a:active { opacity: 0.7; }
 
-  .rest-actions { display: flex; gap: 8px; margin-top: 12px; }
-  .rest-actions a { flex: 1; display: block; text-decoration: none; }
-  .btn-map { display: block; width: 100%; background: transparent; color: var(--beige-dark);
-    border: 2px solid var(--map-border); border-radius: 12px; padding: 10px 8px;
-    font-size: 14px; font-weight: 600; text-align: center; text-decoration: none; 
-    transition: background 0.2s ease, color 0.2s ease; }
-  .btn-map:active { background: var(--map-border); color: #fff; }
+  .rest-info { flex: 1; min-width: 0; }
+  .rest-name { font-size: 17px; font-weight: 700; color: var(--text-color); margin-bottom: 4px; }
+  .rest-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px; font-weight: 700;
+  }
+  .rest-badge.open { background: #e8f5ec; color: #2e7d43; }
+  .rest-badge.closed { background: #fbeae4; color: #b04a2e; }
+
+  .rest-address-row {
+    display: flex; align-items: flex-start; gap: 8px;
+    font-size: 13px; color: var(--hint-color); margin-bottom: 8px; line-height: 1.4;
+  }
+  .rest-address-row .icon { flex-shrink: 0; }
+
+  .rest-actions {
+    display: flex; gap: 8px; margin-top: 12px;
+  }
+  .rest-actions a, .rest-actions button {
+    flex: 1;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 10px 8px;
+    border-radius: 12px;
+    font-size: 13px; font-weight: 600;
+    text-decoration: none;
+    border: 1.5px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .btn-call {
+    background: rgba(52, 199, 89, 0.1);
+    color: #2e7d43;
+    border-color: rgba(52, 199, 89, 0.2);
+  }
+  .btn-call:active { background: rgba(52, 199, 89, 0.2); }
+
+  .btn-route {
+    background: transparent;
+    color: var(--beige-dark);
+    border-color: var(--beige);
+  }
+  .btn-route:active { background: var(--beige-soft); }
 
   .checklist-card { background: var(--card-bg); border-radius: 16px; margin: 0 12px 12px; padding: 16px; border: 1px solid rgba(128,128,128,0.08); box-shadow: 0 4px 16px rgba(0,0,0,0.03); }
   .check-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(128,128,128,0.08); cursor: pointer; }
@@ -331,18 +367,24 @@
 
 <div class="section" id="sec-restaurants">
   <div class="rest-tab-header">
-    <div class="title">🍜 Рестораны Wokker</div>
-    <div class="sub">Адреса, часы работы и маршруты всех точек</div>
-    <div id="rest-count" style="display:none"></div>
+    <div class="title">🍜 Наши рестораны</div>
+    <div class="sub">Выбери точку, чтобы увидеть детали</div>
   </div>
 
+  <!-- Фильтры -->
+  <div class="chips-container" id="rest-filters">
+    <div class="chip active" data-filter="all">Все</div>
+    <div class="chip" data-filter="open">Открыто</div>
+  </div>
+
+  <!-- Переключатель Список / Карта -->
   <div class="view-toggle-container">
     <button class="view-toggle-btn active" id="btn-view-list">📋 Список</button>
     <button class="view-toggle-btn" id="btn-view-map">🗺 Карта</button>
   </div>
 
   <div id="rest-list-wrapper">
-    <input class="q" id="rest-search" placeholder="🔍 Поиск ресторана или адреса…">
+    <input class="q" id="rest-search" placeholder="🔍 Поиск по названию или адресу…">
     <div id="restaurants-list"></div>
   </div>
 
@@ -501,29 +543,12 @@ function bootChanged(oldB, newB) {
   return false;
 }
 
-let _leafletPromise = null;
-function loadLeaflet() {
-  if (window.L) return Promise.resolve();
-  if (_leafletPromise) return _leafletPromise;
-  _leafletPromise = new Promise((resolve, reject) => {
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-    document.head.appendChild(link);
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Leaflet load failed'));
-    document.head.appendChild(script);
-  }).finally(() => { _leafletPromise = null; });
-  return _leafletPromise;
-}
-
 let cachedAvatarUrl = null;
 let BOOT = null;
 let currentStandardCat = 'all';
+let currentRestFilter = 'all';
 let leafletMap = null;
-let leafletMarkers = [];
+let leafletMarkers = null;
 
 const sectionLoaders = {
   'sec-profile': () => { if (BOOT) renderProfileFromBoot(); },
@@ -783,15 +808,20 @@ function statusBadge(r, cls) {
     esc(r.status_text || '') + '</span>';
 }
 
-function renderRestaurantsList(list, query) {
-  const box = document.getElementById('restaurants-list');
-  const countEl = document.getElementById('rest-count');
-  const myRestName = (BOOT && BOOT.profile) ? BOOT.profile.restaurant : '';
-
+function getFilteredRestaurants(list, query) {
   const q = (query || '').trim().toLowerCase();
-  const filtered = q ? list.filter(r => r._search.indexOf(q) !== -1) : list.slice();
+  let filtered = list;
 
-  filtered.sort((a, b) => {
+  if (q) {
+    filtered = filtered.filter(r => r._search.indexOf(q) !== -1);
+  }
+
+  if (currentRestFilter === 'open') {
+    filtered = filtered.filter(r => r.status === 'open');
+  }
+
+  return filtered.slice().sort((a, b) => {
+    const myRestName = (BOOT && BOOT.profile) ? BOOT.profile.restaurant : '';
     const aIsMy = myRestName && a.name.toLowerCase().includes(myRestName.toLowerCase());
     const bIsMy = myRestName && b.name.toLowerCase().includes(myRestName.toLowerCase());
     if (aIsMy && !bIsMy) return -1;
@@ -801,83 +831,175 @@ function renderRestaurantsList(list, query) {
     if (!aOpen && bOpen) return 1;
     return a.name.localeCompare(b.name);
   });
+}
 
-  const totalCount = filtered.length;
-  const openCount = filtered.filter(r => r.status === 'open').length;
-
-  countEl.style.display = 'inline-block';
-  countEl.textContent = q
-    ? 'Найдено: ' + totalCount + ' · открыто сейчас: ' + openCount
-    : 'Открыто сейчас: ' + openCount + ' · Всего точек: ' + totalCount;
+function renderRestaurantsList(list, query) {
+  const box = document.getElementById('restaurants-list');
+  const filtered = getFilteredRestaurants(list, query);
 
   if (!filtered.length) {
-    countEl.style.display = 'none';
     box.innerHTML = '<div class="no-results">Ничего не нашлось 🔍<br>Попробуйте другое название или улицу</div>';
     return;
   }
 
   box.innerHTML = filtered.map(r => {
+    const myRestName = (BOOT && BOOT.profile) ? BOOT.profile.restaurant : '';
     const isMy = myRestName && r.name.toLowerCase().includes(myRestName.toLowerCase());
-    return '<div class="rest-card ' + (r.status !== 'open' ? 'rest-card-closed' : '') + (isMy ? ' is-my-rest' : '') + '" data-key="' + esc(r.key) + '">' +
+
+    return '<div class="rest-card" data-key="' + esc(r.key) + '">' +
       (isMy ? '<div class="my-rest-tag">⭐ Ваш ресторан</div>' : '') +
-      '<div class="rest-head"><div class="rest-logo">🍜</div>' +
-      '<div class="rest-head-main"><div class="rest-name">' + esc(r.name) + '</div>' +
-      statusBadge(r, 'rest-status') + '</div></div>' +
-      '<div class="rest-meta"><div class="addr">📍 ' + esc(r.address) + '</div>' +
-      (r.phone ? '<div class="rest-phone">📞 <a href="tel:' + esc(r.phone.replace(/[^\d+]/g, '')) + '" onclick="event.stopPropagation()">' + esc(r.phone) + '</a></div>' : '') +
-      '<div class="rest-hours">🕒 ' + esc(r.hours).replace(/\n/g, ' · ') + '</div></div>' +
-      '<div class="rest-actions"><a href="' + mapUrlFor(r) + '" target="_blank" onclick="event.stopPropagation()">' +
-      '<span class="btn-map">🗺 На Яндекс Картах</span></a></div></div>';
+      '<div class="rest-card-header">' +
+      '<div class="rest-logo">🍜</div>' +
+      '<div class="rest-info">' +
+      '<div class="rest-name">' + esc(r.name) + '</div>' +
+      '<span class="rest-badge ' + (r.status === 'open' ? 'open' : 'closed') + '">' +
+      (r.status === 'open' ? 'Открыто' : 'Закрыто') + '</span>' +
+      '</div>' +
+      '</div>' +
+      '<div class="rest-address-row">' +
+      '<span class="icon">📍</span> ' + esc(r.address) +
+      '</div>' +
+      (r.phone ? '<div class="rest-address-row"><span class="icon">📞</span> ' + esc(r.phone) + '</div>' : '') +
+      '<div class="rest-actions">' +
+      (r.phone ? '<a href="tel:' + esc(r.phone.replace(/[^\d+]/g, '')) + '" class="btn-call" onclick="event.stopPropagation()">📞 Позвонить</a>' : '') +
+      '<a href="' + mapUrlFor(r) + '" target="_blank" class="btn-route" onclick="event.stopPropagation()">🗺 Маршрут</a>' +
+      '</div>' +
+      '</div>';
   }).join('');
 }
 
-function initInteractiveMap() {
+/* ====== ЛЕНИВАЯ ЗАГРУЗКА LEAFLET ====== */
+let _leafletPromise = null;
+function loadLeaflet() {
+  if (window.L && window.L.markerClusterGroup) return Promise.resolve();
+  if (_leafletPromise) return _leafletPromise;
+
+  _leafletPromise = new Promise((resolve, reject) => {
+    // CSS Leaflet
+    if (!document.querySelector('link[href*="leaflet.css"]')) {
+      const l1 = document.createElement('link');
+      l1.rel = 'stylesheet';
+      l1.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(l1);
+    }
+    // CSS MarkerCluster
+    if (!document.querySelector('link[href*="MarkerCluster.css"]')) {
+      const l2 = document.createElement('link');
+      l2.rel = 'stylesheet';
+      l2.href = 'https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css';
+      document.head.appendChild(l2);
+      const l3 = document.createElement('link');
+      l3.rel = 'stylesheet';
+      l3.href = 'https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css';
+      document.head.appendChild(l3);
+    }
+
+    // JS Leaflet
+    const loadScript = (src, cb) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = cb;
+      s.onerror = () => reject(new Error('Не удалось загрузить ' + src));
+      document.head.appendChild(s);
+    };
+
+    if (!window.L) {
+      loadScript('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', () => {
+        loadScript('https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js', resolve);
+      });
+    } else {
+      loadScript('https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js', resolve);
+    }
+  }).finally(() => { _leafletPromise = null; });
+
+  return _leafletPromise;
+}
+
+/* ====== ИНИЦИАЛИЗАЦИЯ КАРТЫ ====== */
+function initInteractiveMap(restaurants) {
   const mapContainer = document.getElementById('restaurants-map');
-  if (!BOOT || !BOOT.restaurants || !window.L) return;
-  mapContainer.innerHTML = '';
+  if (!window.L || !window.L.markerClusterGroup) return;
 
   if (!leafletMap) {
     leafletMap = L.map(mapContainer, { zoomControl: false }).setView([55.7558, 37.6173], 10);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19, attribution: '© OpenStreetMap'
+
+    // Тайлы Яндекса
+    L.tileLayer('https://core-renderer-tiles.maps.yandex.net/tiles?l=map&v=3.2008.0&x={x}&y={y}&z={z}&scale=1&lang=ru_RU', {
+      maxZoom: 19,
+      attribution: '© Яндекс'
     }).addTo(leafletMap);
+
     L.control.zoom({ position: 'bottomright' }).addTo(leafletMap);
+
+    // Кластеризация
+    leafletMarkers = L.markerClusterGroup({
+      maxClusterRadius: 40,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+    }).addTo(leafletMap);
   }
 
-  leafletMarkers.forEach(m => leafletMap.removeLayer(m));
-  leafletMarkers = [];
+  leafletMarkers.clearLayers();
 
   const bounds = L.latLngBounds();
-  const myRestName = (BOOT && BOOT.profile) ? BOOT.profile.restaurant : '';
-  let validMarkersCount = 0;
+  let addedCount = 0;
 
-  BOOT.restaurants.forEach(r => {
-    const lat = r.lat || 55.75, lng = r.lon || 37.61;
-    if (r.lat && r.lon) validMarkersCount++;
-    const isMy = myRestName && r.name.toLowerCase().includes(myRestName.toLowerCase());
+  restaurants.forEach(r => {
+    if (!r.lat || !r.lon) return; // пропускаем без координат
+
+    const isOpen = r.status === 'open';
     const icon = L.divIcon({
-      className: 'leaflet-wokker-marker ' + (isMy ? 'is-my' : ''),
-      html: isMy ? '⭐' : '🍜', iconSize: [34, 34]
+      className: 'custom-map-marker ' + (isOpen ? 'open' : 'closed'),
+      html: isOpen ? '🟢' : '🔴',
+      iconSize: [32, 32],
+      iconAnchor: [16, 16]
     });
-    const popupHtml = '<div style="text-align:center;padding:4px;">' +
-      '<b style="font-size:15px;">' + esc(r.name) + '</b><br>' +
-      '<span style="font-size:12px;color:#666;">📍 ' + esc(r.address) + '</span><br>' +
-      (r.phone ? '<span style="font-size:12px;color:#666;">📞 <a href="tel:' + esc(r.phone.replace(/[^\d+]/g, '')) + '" style="color:#666;text-decoration:none;">' + esc(r.phone) + '</a></span><br>' : '') +
-      '<a href="' + mapUrlFor(r) + '" target="_blank" style="display:inline-block;margin-top:8px;padding:6px 12px;background:#ff2d55;color:#fff;text-decoration:none;border-radius:10px;font-weight:600;font-size:12px;">🗺 Построить маршрут</a></div>';
-    const marker = L.marker([lat, lng], { icon: icon }).bindPopup(popupHtml).addTo(leafletMap);
-    leafletMarkers.push(marker);
-    bounds.extend([lat, lng]);
+
+    const marker = L.marker([r.lat, r.lon], { icon }).bindPopup(`
+      <div style="text-align:center; padding:4px; min-width:180px">
+        <b style="font-size:15px">${esc(r.name)}</b><br>
+        <span style="font-size:12px;color:#666">${esc(r.address)}</span><br>
+        <span style="font-size:12px;color:${isOpen ? '#2e7d43' : '#b04a2e'}; font-weight:600">
+          ${isOpen ? 'Открыто' : 'Закрыто'}
+        </span><br>
+        ${r.phone ? `<a href="tel:${esc(r.phone.replace(/[^\\d+]/g,''))}" style="display:inline-block; margin-top:8px; padding:6px 12px; background:#34c759; color:#fff; text-decoration:none; border-radius:10px; font-size:12px; font-weight:600">📞 Позвонить</a>` : ''}
+        <a href="${mapUrlFor(r)}" target="_blank" style="display:inline-block; margin-top:4px; padding:6px 12px; background:#ff2d55; color:#fff; text-decoration:none; border-radius:10px; font-size:12px; font-weight:600">🗺 Маршрут</a>
+      </div>
+    `);
+
+    leafletMarkers.addLayer(marker);
+    bounds.extend([r.lat, r.lon]);
+    addedCount++;
   });
 
-  if (validMarkersCount > 0) leafletMap.fitBounds(bounds, { padding: [30, 30] });
-  setTimeout(() => { leafletMap.invalidateSize(); }, 200);
+  if (addedCount > 0 && bounds.isValid()) {
+    leafletMap.fitBounds(bounds, { padding: [30, 30] });
+  }
+  setTimeout(() => { if (leafletMap) leafletMap.invalidateSize(); }, 200);
 }
 
 function renderRestaurants() {
   if (!BOOT) return;
-  renderRestaurantsList(BOOT.restaurants, document.getElementById('rest-search').value);
+  const query = document.getElementById('rest-search').value;
+  renderRestaurantsList(BOOT.restaurants, query);
+  // Если открыта карта — обновляем маркеры
+  if (document.getElementById('btn-view-map').classList.contains('active') && window.L) {
+    initInteractiveMap(getFilteredRestaurants(BOOT.restaurants, query));
+  }
 }
 
+/* ====== ФИЛЬТРЫ ====== */
+document.querySelectorAll('#rest-filters .chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    haptic('light');
+    document.querySelectorAll('#rest-filters .chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    currentRestFilter = chip.dataset.filter;
+    renderRestaurants();
+  });
+});
+
+/* ====== ПЕРЕКЛЮЧЕНИЕ СПИСОК / КАРТА ====== */
 document.getElementById('btn-view-list').addEventListener('click', function() {
   haptic('light');
   document.getElementById('btn-view-map').classList.remove('active');
@@ -897,15 +1019,17 @@ document.getElementById('btn-view-map').addEventListener('click', async function
 
   try {
     await loadLeaflet();
-    initInteractiveMap();
+    mapContainer.innerHTML = '';
+    initInteractiveMap(getFilteredRestaurants(BOOT.restaurants, document.getElementById('rest-search').value));
   } catch (e) {
+    console.error(e);
     mapContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--hint-color);">Не удалось загрузить карту. Проверьте соединение.</div>';
   }
 });
 
-document.getElementById('rest-search').addEventListener('input', e => {
+document.getElementById('rest-search').addEventListener('input', () => {
   if (!BOOT) return;
-  renderRestaurantsList(BOOT.restaurants, e.target.value);
+  renderRestaurants();
 });
 
 document.getElementById('restaurants-list').addEventListener('click', function(e) {
@@ -1144,7 +1268,9 @@ async function refreshSection(sec) {
     else if (sec === 'sec-restaurants') {
       BOOT.restaurants = prepareRestaurants(data);
       renderRestaurants();
-      if (document.getElementById('btn-view-map').classList.contains('active') && window.L) initInteractiveMap();
+      if (document.getElementById('btn-view-map').classList.contains('active') && window.L) {
+        initInteractiveMap(getFilteredRestaurants(BOOT.restaurants, document.getElementById('rest-search').value));
+      }
     }
     else if (sec === 'sec-standards') { BOOT.standards = data; renderStandardsFromBoot(); }
     else if (sec === 'sec-faq') { BOOT.faq = data; renderFaqFromBoot(); }

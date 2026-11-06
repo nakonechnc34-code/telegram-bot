@@ -209,7 +209,6 @@
   .info-row .lbl { color: var(--hint-color); flex: 1; font-size: 14px; }
   .info-row .val { font-weight: 600; text-align: right; max-width: 62%; overflow-wrap: break-word; font-size: 14px; }
   
-  /* Исправленный цвет и видимость названия ресторана в карточке */
   .info-row .val .badge-rest {
     color: #ffffff !important;
     text-shadow: 0 1px 2px rgba(0,0,0,0.15);
@@ -251,6 +250,18 @@
     border-radius: 12px; font-size: 11px; font-weight: 700; }
   .rest-status.open { background: #e8f5ec; color: #2e7d43; }
   .rest-status.closed { background: #fbeae4; color: #b04a2e; }
+  
+  /* FIX: Добавлены стили для детальной карточки */
+  .detail-status { 
+    display: inline-block; 
+    margin-top: 12px; 
+    padding: 6px 16px;
+    border-radius: 20px; 
+    font-size: 13px; 
+    font-weight: 700; 
+  }
+  .detail-status.open { background: #e8f5ec; color: #2e7d43; }
+  .detail-status.closed { background: #fbeae4; color: #b04a2e; }
   
   .rest-meta { margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(128,128,128,0.15);
     font-size: 13px; color: var(--hint-color); line-height: 1.5; }
@@ -330,7 +341,7 @@
   <input class="q" id="standard-search" placeholder="🔍 Поиск по стандартам…">
   <div class="chips-container" id="standards-chips">
     <div class="chip active" data-cat="all">Все</div>
-    <div class="chip" data-cat="checklists">📋 Чек-листы</div>
+    <div class="chip" data-cat="shift_checklist">📋 Смена</div>
   </div>
   <div id="standards-list"></div>
 </div>
@@ -611,8 +622,9 @@ function renderProfileFromBoot() {
       '<div class="gb-sub">' + esc(greet.sub) + '</div></div>'
     : '';
 
+  // FIX: Очищаем телефон от скобок и пробелов для href
   const phoneHtml = p.phone
-    ? '<a href="tel:' + esc(p.phone) + '" style="color:var(--text-color);text-decoration:none">' + esc(p.phone) + '</a>'
+    ? '<a href="tel:' + esc(p.phone.replace(/[^\d+]/g, '')) + '" style="color:var(--text-color);text-decoration:none">' + esc(p.phone) + '</a>'
     : '—';
 
   box.innerHTML =
@@ -835,11 +847,20 @@ window.addEventListener('popstate', () => {
   }
 });
 
+// FIX: Обернули localStorage в try/catch
+function getLastReadNews() {
+  try { return localStorage.getItem('wokker_last_read_news'); } catch (e) { return null; }
+}
+
+function setLastReadNews(val) {
+  try { localStorage.setItem('wokker_last_read_news', String(val)); } catch (e) {}
+}
+
 function checkNewsBadge() {
   const list = BOOT ? BOOT.news || [] : [];
   if (!list.length) return;
   const latestId = list[0].id || list[0].date;
-  const lastRead = localStorage.getItem('wokker_last_read_news');
+  const lastRead = getLastReadNews();
   const badge = document.getElementById('news-badge');
   if (lastRead !== String(latestId)) {
     badge.classList.add('show');
@@ -852,7 +873,7 @@ function markNewsAsRead() {
   const list = BOOT ? BOOT.news || [] : [];
   if (!list.length) return;
   const latestId = list[0].id || list[0].date;
-  localStorage.setItem('wokker_last_read_news', String(latestId));
+  setLastReadNews(latestId);
   document.getElementById('news-badge').classList.remove('show');
 }
 
@@ -873,12 +894,15 @@ function renderNewsFromBoot() {
   }).join('');
 }
 
+// FIX: Переименовали 'checklists' в 'shift_checklist', чтобы не пересекаться с БД
 function renderStandardsChips(standards) {
   const container = document.getElementById('standards-chips');
-  const cats = ['all', 'checklists', ...new Set(standards.map(s => s.category).filter(Boolean))];
+  const cats = ['all', 'shift_checklist', ...new Set(standards.map(s => s.category).filter(Boolean))];
   
   container.innerHTML = cats.map(cat => {
-    let label = cat === 'all' ? 'Все' : (cat === 'checklists' ? '📋 Чек-листы' : cat);
+    let label = cat === 'all' ? 'Все' 
+              : cat === 'shift_checklist' ? '📋 Смена' 
+              : cat;
     const active = currentStandardCat === cat ? ' active' : '';
     return '<div class="chip' + active + '" data-cat="' + esc(cat) + '">' + esc(label) + '</div>';
   }).join('');
@@ -887,6 +911,8 @@ function renderStandardsChips(standards) {
     chip.addEventListener('click', () => {
       haptic('light');
       currentStandardCat = chip.dataset.cat;
+      // FIX: сбрасываем поиск при смене категории
+      document.getElementById('standard-search').value = '';
       renderStandardsChips(standards);
       renderStandardsFromBoot();
     });
@@ -902,7 +928,8 @@ function renderStandardsFromBoot() {
 
   let htmlContent = '';
 
-  const showChecklists = currentStandardCat === 'checklists' || currentStandardCat === 'all';
+  // FIX: используем shift_checklist вместо checklists
+  const showChecklists = currentStandardCat === 'shift_checklist' || currentStandardCat === 'all';
   const checklistMatchesQuery = !query || 'чек-лист открытия смены проверка чистоты рабочей зоны'.includes(query);
 
   if (showChecklists && checklistMatchesQuery) {
@@ -968,7 +995,12 @@ function initShiftChecklist() {
       const id = item.dataset.id;
       saved[id] = !saved[id];
       try { localStorage.setItem(todayKey, JSON.stringify(saved)); } catch(e){}
-      initShiftChecklist();
+      
+      // FIX: Обновляем только конкретный DOM-элемент вместо перерисовки всего списка
+      const checked = saved[id];
+      item.classList.toggle('checked', !!checked);
+      const box = item.querySelector('.check-box');
+      if (box) box.textContent = checked ? '✓' : '';
     });
   });
 }
@@ -1053,7 +1085,12 @@ async function refreshSection(sec) {
     if (!resp.ok) return;
     const data = await resp.json();
 
-    if (sec === 'sec-news') { BOOT.news = data; renderNewsFromBoot(); checkNewsBadge(); }
+    if (sec === 'sec-news') { 
+      BOOT.news = data; 
+      renderNewsFromBoot(); 
+      markNewsAsRead(); // FIX: помечаем прочитанным
+      checkNewsBadge(); 
+    }
     else if (sec === 'sec-restaurants') { BOOT.restaurants = prepareRestaurants(data); renderRestaurants(); }
     else if (sec === 'sec-standards') { BOOT.standards = data; renderStandardsFromBoot(); }
     else if (sec === 'sec-faq') { BOOT.faq = data; renderFaqFromBoot(); }
@@ -1092,6 +1129,7 @@ async function boot() {
 
   renderProfileFromBoot();
   renderNewsFromBoot();
+  markNewsAsRead(); // FIX: Новости прочитаны при загрузке, т.к. вкладка открыта по умолчанию
   checkNewsBadge();
   renderRestaurants();
   renderStandardsFromBoot();

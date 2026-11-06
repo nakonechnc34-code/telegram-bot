@@ -5053,9 +5053,12 @@ async def gzip_middleware(request, handler):
             and response.content_type in _GZIP_TYPES):
         compressed = gzip.compress(body, compresslevel=6)
         if len(compressed) < len(body):
+            # Меняем тело и удаляем старый Content-Length, 
+            # чтобы aiohttp сам корректно пересчитал размер
             response.body = compressed
             response.headers["Content-Encoding"] = "gzip"
-            response.headers["Content-Length"] = str(len(compressed))
+            if "Content-Length" in response.headers:
+                del response.headers["Content-Length"]
             response.headers["Vary"] = "Accept-Encoding"
     return response
 

@@ -125,22 +125,23 @@ def spawn(coro, name=None):
 
 
 # ============= SEED =============
+# Координаты уточнены по Яндекс.Картам (вход в ТРЦ / фуд-корт).
 RESTAURANTS_SEED = [
-    {"key": "mega_belaya_dacha", "name": "Мега Белая Дача", "address": "Московская область, Котельники, 1-й Покровский проезд, 5, ТРЦ Мега, этаж 1", "hours": "Пн–чт: 10:00–22:00\nПт–вс: 10:00–23:00", "lat": 55.6578, "lon": 37.8891, "org": "vokker/128833821207", "phone": "+7 (915) 479-09-41"},
-    {"key": "belyaevo", "name": "Беляево", "address": "Москва, ул. Миклухо-Маклая, 32А, ТЦ «Капитолий», этаж 2", "hours": "Пн–вс: 10:00–22:00", "lat": 55.6470, "lon": 37.5420, "org": "vokker/13122472923", "phone": "+7 (985) 857-06-69"},
-    {"key": "vernadka", "name": "Вернадка", "address": "Москва, проспект Вернадского, 6, ТЦ «Капитолий Вернадского», этаж 3", "hours": "Пн–вс: 10:00–22:00", "lat": 55.6840, "lon": 37.4980, "org": "vokker/91626648547", "phone": ""},
-    {"key": "erevan_plaza", "name": "Ереван Плаза", "address": "Москва, ул. Большая Тульская, д. 13, ТРЦ «Ереван Плаза», этаж 3", "hours": "Пн–вс: 10:00–22:00", "lat": 55.7030, "lon": 37.6210, "org": "vokker/102264079721", "phone": "+7 (906) 094-61-46"},
-    {"key": "kuzminki_mall", "name": "Кузьминки Молл", "address": "Москва, ул. Зеленодольская, д. 42, ТРЦ «Кузьминки Молл», этаж 3", "hours": "Пн–вс: 10:00–22:00", "lat": 55.6980, "lon": 37.7750, "org": "vokker/24262320480", "phone": "+7 (968) 537-09-94"},
-    {"key": "mega_teplyy_stan", "name": "Мега Тёплый стан", "address": "Москва, Калужское шоссе, 21-й километр, с1, ТЦ «Мега Тёплый Стан»", "hours": "Пн–вс: 10:00–22:00", "lat": 55.5790, "lon": 37.4870, "org": "vokker/1485953945", "phone": "+7 (985) 857-05-88"},
-    {"key": "mega_himki", "name": "Мега Химки", "address": "Московская обл., г. Химки, микрорайон ИКЕА, к1, ТЦ «Мега Химки», этаж 1", "hours": "Пн–чт, вс: 10:00–23:00\nПт–сб: 10:00–24:00", "lat": 55.8970, "lon": 37.4120, "org": "vokker/132066311330", "phone": "+7 (985) 857-08-22"},
-    {"key": "metropolis", "name": "Метрополис", "address": "Москва, Ленинградское ш., д. 16А, стр. 4, ТРЦ «Метрополис», этаж 3", "hours": "Пн–вс: 10:00–23:00", "lat": 55.8120, "lon": 37.5060, "org": "vokker/1298559872", "phone": "+7 (985) 857-07-14"},
-    {"key": "moskva_city", "name": "Москва-Сити", "address": "Москва, 1-й Красногвардейский пр., д. 22, стр. 1 (Neva Towers), этаж 2, фуд-корт", "hours": "Пн–вс: 10:00–22:00", "lat": 55.7490, "lon": 37.5380, "org": "vokker/25826174821", "phone": "+7 (915) 479-91-70"},
-    {"key": "okeaniya", "name": "Океания", "address": "Москва, Кутузовский пр., д. 57, ТРЦ «Океания», этаж 3", "hours": "Пн–чт, вс: 10:00–22:00\nПт–сб: 10:00–23:00", "lat": 55.7330, "lon": 37.4950, "org": "vokker/9739651477", "phone": "+7 (915) 478-64-01"},
-    {"key": "polkovaya", "name": "Полковая", "address": "Москва, ул. Полковая, д. 3, стр. 5, БЦ «Шереметьевский», этаж 1", "hours": "Пн–вс: 10:00–22:00", "lat": 55.8010, "lon": 37.5920, "org": "vokker/84984433800", "phone": "+7 (915) 270-25-57"},
-    {"key": "cdm", "name": "ЦДМ", "address": "Москва, Театральный пр., д. 5, стр. 1, «ЦДМ на Лубянке», этаж 6", "hours": "Пн–чт, вс: 10:00–22:00\nПт–сб: 10:00–23:00", "lat": 55.7580, "lon": 37.6230, "org": "vokker/31463245515", "phone": "+7 (968) 537-09-89"},
-    {"key": "tsvetnoy", "name": "Цветной", "address": "Москва, Цветной бульвар, д. 15, стр. 1, ТРЦ «Цветной», этаж 5", "hours": "Пн–сб: 10:00–22:00\nВс: 11:00–22:00", "lat": 55.7670, "lon": 37.6180, "org": "vokker/110848206544", "phone": "+7 (985) 193-38-44"},
-    {"key": "shchelkovskaya", "name": "Щёлковская", "address": "Москва, Щёлковское шоссе, 75, ТРЦ «Щёлковский», этаж 5", "hours": "Пн–чт, вс: 10:00–22:00\nПт–сб: 10:00–23:00", "lat": 55.8050, "lon": 37.7920, "org": "vokker/25844145312", "phone": "+7 (999) 665-26-54"},
-    {"key": "shuka", "name": "Щука", "address": "Москва, ул. Щукинская, д. 42, ТРК «Щука», этаж 4", "hours": "Пн–вс: 10:00–22:00", "lat": 55.8020, "lon": 37.4650, "org": "vokker/1357579873", "phone": "+7 (985) 857-08-40"},
+    {"key": "mega_belaya_dacha", "name": "Мега Белая Дача", "address": "Московская область, Котельники, 1-й Покровский проезд, 5, ТРЦ Мега, этаж 1", "hours": "Пн–чт: 10:00–22:00\nПт–вс: 10:00–23:00", "lat": 55.6584, "lon": 37.8895, "org": "vokker/128833821207", "phone": "+7 (915) 479-09-41"},
+    {"key": "belyaevo", "name": "Беляево", "address": "Москва, ул. Миклухо-Маклая, 32А, ТЦ «Капитолий», этаж 2", "hours": "Пн–вс: 10:00–22:00", "lat": 55.6437, "lon": 37.5302, "org": "vokker/13122472923", "phone": "+7 (985) 857-06-69"},
+    {"key": "vernadka", "name": "Вернадка", "address": "Москва, проспект Вернадского, 6, ТЦ «Капитолий Вернадского», этаж 3", "hours": "Пн–вс: 10:00–22:00", "lat": 55.6845, "lon": 37.4948, "org": "vokker/91626648547", "phone": ""},
+    {"key": "erevan_plaza", "name": "Ереван Плаза", "address": "Москва, ул. Большая Тульская, д. 13, ТРЦ «Ереван Плаза», этаж 3", "hours": "Пн–вс: 10:00–22:00", "lat": 55.7023, "lon": 37.6220, "org": "vokker/102264079721", "phone": "+7 (906) 094-61-46"},
+    {"key": "kuzminki_mall", "name": "Кузьминки Молл", "address": "Москва, ул. Зеленодольская, д. 42, ТРЦ «Кузьминки Молл», этаж 3", "hours": "Пн–вс: 10:00–22:00", "lat": 55.6989, "lon": 37.7772, "org": "vokker/24262320480", "phone": "+7 (968) 537-09-94"},
+    {"key": "mega_teplyy_stan", "name": "Мега Тёплый стан", "address": "Москва, Калужское шоссе, 21-й километр, с1, ТЦ «Мега Тёплый Стан»", "hours": "Пн–вс: 10:00–22:00", "lat": 55.5795, "lon": 37.4865, "org": "vokker/1485953945", "phone": "+7 (985) 857-05-88"},
+    {"key": "mega_himki", "name": "Мега Химки", "address": "Московская обл., г. Химки, микрорайон ИКЕА, к1, ТЦ «Мега Химки», этаж 1", "hours": "Пн–чт, вс: 10:00–23:00\nПт–сб: 10:00–24:00", "lat": 55.8948, "lon": 37.3973, "org": "vokker/132066311330", "phone": "+7 (985) 857-08-22"},
+    {"key": "metropolis", "name": "Метрополис", "address": "Москва, Ленинградское ш., д. 16А, стр. 4, ТРЦ «Метрополис», этаж 3", "hours": "Пн–вс: 10:00–23:00", "lat": 55.8214, "lon": 37.4977, "org": "vokker/1298559872", "phone": "+7 (985) 857-07-14"},
+    {"key": "moskva_city", "name": "Москва-Сити", "address": "Москва, 1-й Красногвардейский пр., д. 22, стр. 1 (Neva Towers), этаж 2, фуд-корт", "hours": "Пн–вс: 10:00–22:00", "lat": 55.7497, "lon": 37.5392, "org": "vokker/25826174821", "phone": "+7 (915) 479-91-70"},
+    {"key": "okeaniya", "name": "Океания", "address": "Москва, Кутузовский пр., д. 57, ТРЦ «Океания», этаж 3", "hours": "Пн–чт, вс: 10:00–22:00\nПт–сб: 10:00–23:00", "lat": 55.7401, "lon": 37.4940, "org": "vokker/9739651477", "phone": "+7 (915) 478-64-01"},
+    {"key": "polkovaya", "name": "Полковая", "address": "Москва, ул. Полковая, д. 3, стр. 5, БЦ «Шереметьевский», этаж 1", "hours": "Пн–вс: 10:00–22:00", "lat": 55.8046, "lon": 37.5917, "org": "vokker/84984433800", "phone": "+7 (915) 270-25-57"},
+    {"key": "cdm", "name": "ЦДМ", "address": "Москва, Театральный пр., д. 5, стр. 1, «ЦДМ на Лубянке», этаж 6", "hours": "Пн–чт, вс: 10:00–22:00\nПт–сб: 10:00–23:00", "lat": 55.7597, "lon": 37.6243, "org": "vokker/31463245515", "phone": "+7 (968) 537-09-89"},
+    {"key": "tsvetnoy", "name": "Цветной", "address": "Москва, Цветной бульвар, д. 15, стр. 1, ТРЦ «Цветной», этаж 5", "hours": "Пн–сб: 10:00–22:00\nВс: 11:00–22:00", "lat": 55.7694, "lon": 37.6183, "org": "vokker/110848206544", "phone": "+7 (985) 193-38-44"},
+    {"key": "shchelkovskaya", "name": "Щёлковская", "address": "Москва, Щёлковское шоссе, 75, ТРЦ «Щёлковский», этаж 5", "hours": "Пн–чт, вс: 10:00–22:00\nПт–сб: 10:00–23:00", "lat": 55.8101, "lon": 37.7923, "org": "vokker/25844145312", "phone": "+7 (999) 665-26-54"},
+    {"key": "shuka", "name": "Щука", "address": "Москва, ул. Щукинская, д. 42, ТРК «Щука», этаж 4", "hours": "Пн–вс: 10:00–22:00", "lat": 55.8007, "lon": 37.4649, "org": "vokker/1357579873", "phone": "+7 (985) 857-08-40"},
     {"key": "office", "name": "ОФИС", "address": "Центральный офис (уточните адрес у HR)", "hours": "Пн–пт: 09:00–18:00", "lat": None, "lon": None, "org": "", "phone": ""},
 ]
 
@@ -335,6 +336,38 @@ with get_conn() as conn:
             for i, name in enumerate(POSITIONS_SEED):
                 cur.execute("INSERT INTO positions (name, sort) VALUES (%s, %s)", (name, i))
 
+        # --- ОДНОРАЗОВАЯ МИГРАЦИЯ КООРДИНАТ (v1) ---
+        # Выполняется ровно один раз. Если позже поправите координаты
+        # через админку — миграция больше не перезапишет.
+        cur.execute("SELECT 1 FROM admin_audit WHERE action = 'migration:coords_v1' LIMIT 1")
+        if cur.fetchone() is None:
+            COORDS_MIGRATION_V1 = {
+                "mega_belaya_dacha": (55.6584, 37.8895),
+                "belyaevo":          (55.6437, 37.5302),
+                "vernadka":          (55.6845, 37.4948),
+                "erevan_plaza":      (55.7023, 37.6220),
+                "kuzminki_mall":     (55.6989, 37.7772),
+                "mega_teplyy_stan":  (55.5795, 37.4865),
+                "mega_himki":        (55.8948, 37.3973),
+                "metropolis":        (55.8214, 37.4977),
+                "moskva_city":       (55.7497, 37.5392),
+                "okeaniya":          (55.7401, 37.4940),
+                "polkovaya":         (55.8046, 37.5917),
+                "cdm":               (55.7597, 37.6243),
+                "tsvetnoy":          (55.7694, 37.6183),
+                "shchelkovskaya":    (55.8101, 37.7923),
+                "shuka":             (55.8007, 37.4649),
+            }
+            for key, (lat, lon) in COORDS_MIGRATION_V1.items():
+                cur.execute(
+                    "UPDATE restaurants SET lat = %s, lon = %s WHERE key = %s",
+                    (lat, lon, key))
+            cur.execute(
+                "INSERT INTO admin_audit (admin_id, action, target_type, details) "
+                "VALUES (0, 'migration:coords_v1', 'system', %s)",
+                (f"updated {len(COORDS_MIGRATION_V1)} restaurants",))
+            print(f"✅ Миграция координат v1 применена ({len(COORDS_MIGRATION_V1)} точек)")
+
 print("База данных подключена, таблицы готовы.")
 
 # ============= ПРАЗДНИКИ =============
@@ -377,7 +410,7 @@ def greeting_for_user(birth_date: str, now=None):
 
 
 # ============= СИНХРОННЫЕ DB =============
-RESTAURANT_DB_FIELDS = ("name", "address", "phone", "hours", "org")
+RESTAURANT_DB_FIELDS = ("name", "address", "phone", "hours", "org", "coords")
 
 
 def _sync_db_restaurants_all():
@@ -414,6 +447,14 @@ def _sync_db_restaurant_update(key, field, value):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, (value, key))
+            return cur.rowcount > 0
+
+
+def _sync_db_restaurant_set_coords(key, lat, lon):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE restaurants SET lat = %s, lon = %s WHERE key = %s",
+                        (lat, lon, key))
             return cur.rowcount > 0
 
 
@@ -580,7 +621,6 @@ def _sync_db_mark_seen(user_id):
 
 
 def _sync_db_birthday_candidates(md):
-    """Все активные пользователи с ДР сегодня (по строке DD.MM)."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""SELECT user_id, full_name, first_name
@@ -1011,6 +1051,7 @@ async def db_restaurants_all(): return await _run(_sync_db_restaurants_all)
 async def db_restaurants_for_app(): return await _run(_sync_db_restaurants_for_app)
 async def db_restaurant(key): return await _run(_sync_db_restaurant, key)
 async def db_restaurant_update(key, f, v): return await _run(_sync_db_restaurant_update, key, f, v)
+async def db_restaurant_set_coords(key, lat, lon): return await _run(_sync_db_restaurant_set_coords, key, lat, lon)
 async def db_restaurant_set_status(key, fs): return await _run(_sync_db_restaurant_set_status, key, fs)
 async def db_restaurant_add(*a): return await _run(_sync_db_restaurant_add, *a)
 async def db_restaurant_delete(key): return await _run(_sync_db_restaurant_delete, key)
@@ -1150,7 +1191,6 @@ def parse_hours(hours_text: str):
             chunk = chunk.strip().lower()
             if not chunk:
                 continue
-            # дни в порядке появления: "Пн ср", "Пн-ср", "Пн–ср", "Пн,ср"
             day_tokens = re.findall(r"(пн|вт|ср|чт|пт|сб|вс)", chunk)
             if len(day_tokens) >= 2:
                 d1 = DAY_MAP.get(day_tokens[0])
@@ -1350,7 +1390,6 @@ def unlock_broadcast(key):
 
 
 def cb_chat_id(callback: types.CallbackQuery) -> int:
-    """chat_id из callback.message если он есть и не InaccessibleMessage, иначе from_user.id."""
     msg = getattr(callback, "message", None)
     if msg is not None and not isinstance(msg, InaccessibleMessage):
         try:
@@ -1385,8 +1424,6 @@ class AdminOnlyMiddleware(BaseMiddleware):
 
 
 class AntiFloodMiddleware(BaseMiddleware):
-    """Троттлинг сообщений: 1 сообщение в секунду, TTL-чистка."""
-
     def __init__(self):
         self.cache = {}
         self._last_cleanup = 0.0
@@ -1407,8 +1444,6 @@ class AntiFloodMiddleware(BaseMiddleware):
 
 
 class CallbackFloodMiddleware(BaseMiddleware):
-    """Троттлинг callback'ов: не чаще 500мс на пользователя."""
-
     def __init__(self):
         self.cache = {}
         self._last_cleanup = 0.0
@@ -1553,7 +1588,6 @@ def _check_auth_date(pairs_dict):
         return False
     try:
         delta = time.time() - int(s)
-        # допускаем 30с расхождения часов, но не больше суток
         return -30 <= delta <= 86400
     except (ValueError, TypeError):
         return False
@@ -1910,8 +1944,11 @@ async def broadcast_news(title, body, level, restaurant_key=None):
             pass
 
 
-FIELD_LABELS = {"name": "Название", "address": "Адрес", "phone": "Телефон",
-                "hours": "Часы работы", "org": "Ссылка на Яндекс Картах"}
+FIELD_LABELS = {
+    "name": "Название", "address": "Адрес", "phone": "Телефон",
+    "hours": "Часы работы", "org": "Ссылка на Яндекс Картах",
+    "coords": "Координаты",
+}
 
 FIELD_PROMPTS = {
     "name": "✏️ Напиши новое название точки (например: Мега Химки)",
@@ -1919,6 +1956,12 @@ FIELD_PROMPTS = {
     "phone": "📞 Напиши новый телефон в формате +79001234567 (или «нет», чтобы скрыть)",
     "hours": "🕒 Напиши часы работы в формате:\nПн–чт: 10:00–22:00\nПт–вс: 10:00–23:00",
     "org": "🗺 Напиши путь карточки Яндекс Карт (например: vokker/1234567890)\nили «нет», чтобы искать по адресу",
+    "coords": (
+        "📍 Пришли координаты в формате <code>широта, долгота</code>\n"
+        "Пример: <code>55.7580, 37.6230</code>\n\n"
+        "Где взять: открой Яндекс.Карты → найди ресторан → "
+        "правый клик по нужной точке → «Что здесь?» → скопируй координаты."
+    ),
 }
 
 
@@ -1933,12 +1976,19 @@ def rest_status_label(r: dict) -> str:
 
 def rest_card_text(r: dict, source="rests") -> str:
     phone = r.get("phone") or "—"
+    lat = r.get("lat")
+    lon = r.get("lon")
+    if lat is not None and lon is not None:
+        coords = f"{lat:.5f}, {lon:.5f}"
+    else:
+        coords = "не заданы"
     header = breadcrumbs(source, f"🏪 {html.escape(r['name'])}")
     return (f"{header}\n──────────────────────────────\n"
             f"{'🟢' if restaurant_status_for(r)[0] == 'open' else '🔴'} Статус: {rest_status_label(r)}\n"
             f"📍 Адрес: {html.escape(r.get('address') or '—')}\n📞 Телефон: {html.escape(phone)}\n"
             f"🕒 Часы: {html.escape((r.get('hours') or '—').replace(chr(10), ' / '))}\n"
             f"🗺 Яндекс Карты: {html.escape(r.get('org') or 'по адресу')}\n"
+            f"📌 Координаты: <code>{coords}</code>\n"
             f"🔑 Key: <code>{r['key']}</code>")
 
 
@@ -1955,7 +2005,8 @@ def rest_card_kb(r: dict, source="rests", page=0) -> InlineKeyboardMarkup:
          InlineKeyboardButton(text="✏️ Адрес", callback_data=f"restedit:{r['key']}:address")],
         [InlineKeyboardButton(text="✏️ Телефон", callback_data=f"restedit:{r['key']}:phone"),
          InlineKeyboardButton(text="✏️ Часы", callback_data=f"restedit:{r['key']}:hours")],
-        [InlineKeyboardButton(text="✏️ Яндекс Карты", callback_data=f"restedit:{r['key']}:org")],
+        [InlineKeyboardButton(text="✏️ Яндекс Карты", callback_data=f"restedit:{r['key']}:org"),
+         InlineKeyboardButton(text="🗺 Координаты", callback_data=f"restedit:{r['key']}:coords")],
         [status_btn],
     ]
     if r["key"] != "office":
@@ -3583,6 +3634,8 @@ async def rest_edit_value(message: types.Message, state: FSMContext):
         return
     value = (message.text or "").strip()
     err = None
+    coords_tuple = None
+
     if rest_field == "name":
         if len(value) < 2:
             err = "Название слишком короткое:"
@@ -3602,17 +3655,44 @@ async def rest_edit_value(message: types.Message, state: FSMContext):
     elif rest_field == "org":
         if value.lower() in ("нет", "-", "—", ""):
             value = ""
+    elif rest_field == "coords":
+        try:
+            parts = value.replace(";", ",").replace("  ", " ").split(",")
+            if len(parts) != 2:
+                raise ValueError
+            lat = float(parts[0].strip())
+            lon = float(parts[1].strip())
+            if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lon <= 180.0):
+                raise ValueError
+            if lat == 0 and lon == 0:
+                raise ValueError
+            coords_tuple = (round(lat, 6), round(lon, 6))
+        except (ValueError, IndexError):
+            err = ("Не похоже на координаты.\n"
+                   "Формат: <code>55.7580, 37.6230</code>")
+
     if err:
         await delete_incoming(message); await cleanup_chat(message.from_user.id)
         await send_tracked(message.chat.id, message.from_user.id, err)
         return
+
     await delete_incoming(message); await cleanup_chat(message.from_user.id)
     await state.clear()
-    await db_restaurant_update(rest_key, rest_field, value)
+
+    if rest_field == "coords":
+        await db_restaurant_set_coords(rest_key, coords_tuple[0], coords_tuple[1])
+        await db_audit(message.from_user.id, "rest_update", "restaurant", rest_key,
+                       f"coords={coords_tuple[0]},{coords_tuple[1]}")
+        shown = f"{coords_tuple[0]:.6f}, {coords_tuple[1]:.6f}"
+    else:
+        await db_restaurant_update(rest_key, rest_field, value)
+        await db_audit(message.from_user.id, "rest_update", "restaurant", rest_key,
+                       f"{rest_field}={value}")
+        shown = value if value else "—"
+
     invalidate_rest_cache()
-    await db_audit(message.from_user.id, "rest_update", "restaurant", rest_key, f"{rest_field}={value}")
     await send_tracked(message.chat.id, message.from_user.id,
-                       f"✅ {FIELD_LABELS[rest_field]} обновлено: <b>{html.escape(value if value else '—')}</b>",
+                       f"✅ {FIELD_LABELS[rest_field]} обновлено: <b>{html.escape(shown)}</b>",
                        parse_mode="HTML")
     r = await db_restaurant(rest_key)
     if r:
@@ -3726,6 +3806,10 @@ async def rest_add_org(message: types.Message, state: FSMContext):
     if r:
         await send_tracked(message.chat.id, message.from_user.id,
                            rest_card_text(r), parse_mode="HTML", reply_markup=rest_card_kb(r))
+        await send_tracked(message.chat.id, message.from_user.id,
+                           "💡 Совет: сразу задай координаты — "
+                           "нажми «🗺 Координаты» в карточке.",
+                           parse_mode="HTML")
 
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("rest_del_ask:"))
@@ -4889,6 +4973,7 @@ async def handle_bootstrap(request):
             "phone": phone, "birth_date": birth_date,
             "position": position or "—",
             "restaurant": rest_map.get(restaurant, restaurant) if restaurant else "—",
+            "restaurant_key": restaurant or "",
         }
     now = _moscow_now()
     kind, title, sub = greeting_for_user(user_row[2] if user_row else None, now)
@@ -4988,6 +5073,7 @@ async def handle_profile(request):
             "phone": phone, "birth_date": birth_date,
             "position": position or "—",
             "restaurant": names.get(restaurant, restaurant) if restaurant else "—",
+            "restaurant_key": restaurant or "",
             "tg_id": user_id,
         },
     }, dumps=json_dumps)
@@ -5008,7 +5094,6 @@ async def handle_avatar(request):
         file = await bot.get_file(photos.photos[0][-1].file_id)
         if file.file_size and file.file_size > AVATAR_MAX_BYTES:
             return web.Response(status=204)
-        # bot.download сам сходит в Telegram, не собираем URL с токеном вручную
         data = await bot.download(file)
         if not data or len(data) > AVATAR_MAX_BYTES:
             return web.Response(status=204)
@@ -5022,7 +5107,6 @@ async def handle_avatar(request):
         logging.warning(f"avatar {user_id}: bad request {type(e).__name__}")
         return web.Response(status=204)
     except Exception as e:
-        # только тип исключения, без traceback с URL
         logging.warning(f"avatar {user_id}: {type(e).__name__}")
         return web.Response(status=204)
 
@@ -5090,7 +5174,6 @@ async def error_middleware(request, handler):
     except web.HTTPException:
         raise
     except Exception as e:
-        # не логируем traceback — чтобы не засветить URL с токеном
         logging.error("Unhandled error in %s %s: %s: %s",
                       request.method, request.path, type(e).__name__, str(e)[:200])
         return web.json_response({"error": "internal_server_error"}, status=500)

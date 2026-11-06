@@ -43,37 +43,24 @@
     z-index: 100;
   }
   .tabs button {
-    flex: 1;
-    border: 0;
-    background: none;
-    padding: 7px 2px 6px;
-    font-size: 10px;
-    color: #9a938a;
-    border-radius: 18px;
+    flex: 1; border: 0; background: none; padding: 7px 2px 6px;
+    font-size: 10px; color: #9a938a; border-radius: 18px;
     transition: color .2s ease, background .25s ease, transform .2s ease;
     -webkit-tap-highlight-color: transparent;
   }
   .tabs button:active { transform: scale(.94); }
   .tabs button.active {
-    color: #b2946a;
-    font-weight: 700;
+    color: #b2946a; font-weight: 700;
     background: linear-gradient(135deg, var(--beige-soft), #fdf8ef);
     box-shadow: inset 0 0 0 1px rgba(195, 165, 120, .25);
   }
   .tabs .tab-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 22px;
-    margin-bottom: 3px;
+    display: flex; align-items: center; justify-content: center;
+    height: 22px; margin-bottom: 3px;
     transition: transform .25s cubic-bezier(.34, 1.56, .64, 1);
   }
   .tabs button.active .tab-icon { transform: translateY(-2px) scale(1.12); }
-  .tabs .tab-icon svg {
-    width: 22px;
-    height: 22px;
-    display: block;
-  }
+  .tabs .tab-icon svg { width: 22px; height: 22px; display: block; }
 
   .section { display: none; }
   .section.active { display: block; }
@@ -162,7 +149,7 @@
     border-radius: 12px; font-size: 12px; color: #7c6b52; font-weight: 600; }
 
   .rest-card { background: #fff; border-radius: 16px; margin: 8px 12px 12px;
-    padding: 14px; box-shadow: 0 2px 10px rgba(0,0,0,.05); border: 1px solid #f0ebe2; cursor: pointer; }
+    padding: 14px; box-shadow: 0 2px 10px rgba(0,0,0,.05); border: 1px solid #f0ebe2; }
   .rest-card.rest-card-closed { opacity: 0.92; box-shadow: 0 2px 6px rgba(0,0,0,.03); }
   .rest-head { display: flex; align-items: center; gap: 12px; }
   .rest-logo { width: 46px; height: 46px; border-radius: 14px; flex-shrink: 0;
@@ -330,7 +317,7 @@ function getInitData() {
 
 function showAlert(msg) {
   if (tg && typeof tg.showAlert === 'function') {
-    try { tg.showAlert(msg); return; } catch (e) { /* fallback */ }
+    try { tg.showAlert(msg); return; } catch (e) {}
   }
   alert(msg);
 }
@@ -452,50 +439,48 @@ function displayNameOf(p) {
   return firstNameFromProfile(p);
 }
 
-async function fetchAvatarFromApi(el) {
-  try {
-    const resp = await fetch('/api/avatar', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ initData: getInitData() })
-    });
-    if (resp.ok) {
-      const blob = await resp.blob();
-      if (blob.size > 0) {
-        if (cachedAvatarUrl) URL.revokeObjectURL(cachedAvatarUrl);
-        cachedAvatarUrl = URL.createObjectURL(blob);
-        el.style.backgroundImage = "url('" + cachedAvatarUrl + "')";
-        el.textContent = '';
-      }
-    }
-  } catch (e) { /* остаётся буква */ }
-}
-
-async function fillAvatar() {
-  const el = document.querySelector('#profile-box .avatar');
+/* Применяет avatar (из кэша / photo_url / API) к элементу */
+function applyAvatarToEl(el) {
   if (!el) return;
-
   if (cachedAvatarUrl) {
     el.style.backgroundImage = "url('" + cachedAvatarUrl + "')";
     el.textContent = '';
     return;
   }
-
   const u = tgUserInfo();
-  const photoUrl = u && u.photo_url;
-
-  if (photoUrl) {
+  if (u && u.photo_url) {
     const probe = new Image();
     probe.onload = () => {
-      el.style.backgroundImage = "url('" + photoUrl.replace(/'/g, '%27') + "')";
+      el.style.backgroundImage = "url('" + u.photo_url.replace(/'/g, '%27') + "')";
       el.textContent = '';
     };
-    probe.onerror = () => { fetchAvatarFromApi(el); };
-    probe.src = photoUrl;
-    return;
+    probe.onerror = () => { loadAvatarFromApi().then(() => applyAvatarToEl(el)); };
+    probe.src = u.photo_url;
   }
+}
 
-  await fetchAvatarFromApi(el);
+let _avatarPromise = null;
+
+async function loadAvatarFromApi() {
+  if (cachedAvatarUrl) return;
+  if (_avatarPromise) return _avatarPromise;
+  _avatarPromise = (async () => {
+    try {
+      const resp = await fetch('/api/avatar', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ initData: getInitData() })
+      });
+      if (resp.ok) {
+        const blob = await resp.blob();
+        if (blob.size > 0) {
+          if (cachedAvatarUrl) URL.revokeObjectURL(cachedAvatarUrl);
+          cachedAvatarUrl = URL.createObjectURL(blob);
+        }
+      }
+    } catch (e) {}
+  })().finally(() => { _avatarPromise = null; });
+  return _avatarPromise;
 }
 
 function renderProfileFromBoot() {
@@ -548,7 +533,11 @@ function renderProfileFromBoot() {
     '<button id="btn-report-error">Сообщить об ошибке</button></div>' +
     '</div>';
 
-  setTimeout(fillAvatar, 250);
+  /* Аватар — 0мс задержка. Если boot() уже подгрузил — применится сразу. */
+  setTimeout(() => {
+    const el = document.querySelector('#profile-box .avatar');
+    if (el) applyAvatarToEl(el);
+  }, 0);
 
   const btnReport = document.getElementById('btn-report-error');
   btnReport.addEventListener('click', async () => {
@@ -632,7 +621,7 @@ function renderRestaurantsList(list, query) {
   }
 
   box.innerHTML = filtered.map(r => {
-    return '<div class="rest-card ' + (r.status !== 'open' ? 'rest-card-closed' : '') + '" data-key="' + esc(r.key) + '">' +
+    return '<div class="rest-card ' + (r.status !== 'open' ? 'rest-card-closed' : '') + '">' +
       '<div class="rest-head">' +
       '<div class="rest-logo">🍜</div>' +
       '<div class="rest-head-main">' +
@@ -645,7 +634,7 @@ function renderRestaurantsList(list, query) {
       '<div class="rest-hours">🕒 ' + esc(r.hours).replace(/\n/g, ' · ') + '</div>' +
       '</div>' +
       '<div class="rest-actions">' +
-      '<a href="' + mapUrlFor(r) + '" target="_blank" onclick="event.stopPropagation()"><span class="btn-map">🗺 На Яндекс Картах</span></a>' +
+      '<a href="' + mapUrlFor(r) + '" target="_blank"><span class="btn-map">🗺 На Яндекс Картах</span></a>' +
       '</div>' +
       '</div>';
   }).join('');
@@ -659,14 +648,6 @@ function renderRestaurants() {
 document.getElementById('rest-search').addEventListener('input', e => {
   if (!BOOT) return;
   renderRestaurantsList(BOOT.restaurants, e.target.value);
-});
-
-// Делегирование клика для открытия карточки ресторана
-document.getElementById('restaurants-list').addEventListener('click', function(e) {
-  const card = e.target.closest('.rest-card');
-  if (card && card.dataset.key) {
-    showDetail(card.dataset.key, true);
-  }
 });
 
 function renderDetail(r) {
@@ -685,15 +666,6 @@ function renderDetail(r) {
     '</div>';
 }
 
-function handleBackClick() {
-  exitDetailView();
-  goToRestaurantsTab();
-  if (tg && tg.BackButton) {
-    tg.BackButton.hide();
-    tg.BackButton.offClick(handleBackClick);
-  }
-}
-
 function showDetail(key, pushHistory) {
   const section = document.getElementById('sec-detail');
   const box = document.getElementById('detail-box');
@@ -709,24 +681,15 @@ function showDetail(key, pushHistory) {
   section.classList.add('active');
   window.scrollTo(0, 0);
 
-  if (tg && tg.BackButton) {
-    tg.BackButton.show();
-    tg.BackButton.onClick(handleBackClick);
-  }
-
   if (pushHistory) {
     try {
       history.pushState({rest: key}, '', '?rest=' + encodeURIComponent(key));
-    } catch (e) { /* некоторые WebView не поддерживают */ }
+    } catch (e) {}
   }
 }
 
 function exitDetailView() {
   document.querySelector('.tabs').style.display = 'flex';
-  if (tg && tg.BackButton) {
-    tg.BackButton.hide();
-    tg.BackButton.offClick(handleBackClick);
-  }
 }
 
 function goToRestaurantsTab() {
@@ -739,7 +702,8 @@ function goToRestaurantsTab() {
 
 document.getElementById('detail-back').addEventListener('click', () => {
   try { history.replaceState(null, '', location.pathname); } catch (e) {}
-  handleBackClick();
+  exitDetailView();
+  goToRestaurantsTab();
 });
 
 window.addEventListener('popstate', () => {
@@ -837,6 +801,8 @@ document.getElementById('send-question').addEventListener('click', async functio
   }
 });
 
+/* FIX: не дёргаем сервер чаще раза в 30 сек на вкладку */
+const _refreshCache = {};
 async function refreshSection(sec) {
   const map = {
     'sec-news': '/api/news',
@@ -846,6 +812,12 @@ async function refreshSection(sec) {
   };
   const url = map[sec];
   if (!url) return;
+
+  const now = Date.now();
+  const last = _refreshCache[sec] || 0;
+  if (now - last < 30000) return;
+  _refreshCache[sec] = now;
+
   try {
     const resp = await fetch(url, {
       method: 'POST',
@@ -870,7 +842,7 @@ async function refreshSection(sec) {
       BOOT.faq = data;
       renderFaqFromBoot();
     }
-  } catch (e) { /* остаёмся на кэшированных данных */ }
+  } catch (e) { /* оставляем кэш */ }
 }
 
 document.querySelectorAll('.tabs button').forEach(btn => {
@@ -879,8 +851,19 @@ document.querySelectorAll('.tabs button').forEach(btn => {
   });
 });
 
+/* FIX: bootstrap и avatar параллельно, рендер не ждёт аватар */
 async function boot() {
   const restKey = new URLSearchParams(location.search).get('rest');
+
+  // Аватар параллельно — не блокирует рендер.
+  // Если photo_url есть в Telegram — API не нужен (сэкономим запрос).
+  const avatarPromise = (async () => {
+    if (cachedAvatarUrl) return;
+    const u = tgUserInfo();
+    if (u && u.photo_url) return; // используем напрямую
+    await loadAvatarFromApi();
+  })();
+
   try {
     const resp = await fetch('/api/bootstrap', {
       method: 'POST',
@@ -898,23 +881,32 @@ async function boot() {
     return;
   }
 
+  // Рендер — мгновенно, без ожидания аватара
   renderProfileFromBoot();
   renderNewsFromBoot();
   renderRestaurants();
   renderStandardsFromBoot();
   renderFaqFromBoot();
 
-  if (restKey) {
-    showDetail(restKey, false);
-  }
+  if (restKey) showDetail(restKey, false);
+
+  // Аватар подставится, как только придёт
+  avatarPromise.then(() => {
+    const el = document.querySelector('#profile-box .avatar');
+    if (el && cachedAvatarUrl) {
+      el.style.backgroundImage = "url('" + cachedAvatarUrl + "')";
+      el.textContent = '';
+    }
+  });
 }
 
+/* FIX: ждём initData не 1.5 сек, а 300мс — этого достаточно */
 function startWhenReady() {
   if (getInitData()) { boot(); return; }
   let waited = 0;
   const timer = setInterval(() => {
     waited += 100;
-    if (getInitData() || waited >= 1500) {
+    if (getInitData() || waited >= 300) {
       clearInterval(timer);
       boot();
     }

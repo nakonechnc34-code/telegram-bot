@@ -10,6 +10,7 @@ import hmac
 import hashlib
 import re
 import time
+import secrets
 import aiohttp
 from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
@@ -125,7 +126,6 @@ def spawn(coro, name=None):
 
 
 # ============= SEED =============
-# Координаты уточнены по Яндекс.Картам (вход в ТРЦ / фуд-корт).
 RESTAURANTS_SEED = [
     {"key": "mega_belaya_dacha", "name": "Мега Белая Дача", "address": "Московская область, Котельники, 1-й Покровский проезд, 5, ТРЦ Мега, этаж 1", "hours": "Пн–чт: 10:00–22:00\nПт–вс: 10:00–23:00", "lat": 55.6584, "lon": 37.8895, "org": "vokker/128833821207", "phone": "+7 (915) 479-09-41"},
     {"key": "belyaevo", "name": "Беляево", "address": "Москва, ул. Миклухо-Маклая, 32А, ТЦ «Капитолий», этаж 2", "hours": "Пн–вс: 10:00–22:00", "lat": 55.6437, "lon": 37.5302, "org": "vokker/13122472923", "phone": "+7 (985) 857-06-69"},
@@ -278,6 +278,23 @@ with get_conn() as conn:
                 PRIMARY KEY (admin_id, user_id)
             )
         """)
+        
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS web_sessions (
+                token TEXT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                last_used_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS web_auth_codes (
+                user_id BIGINT PRIMARY KEY,
+                code TEXT NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
 
         cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_created ON admin_audit (created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_users_blocked ON users (is_blocked)")
@@ -336,9 +353,6 @@ with get_conn() as conn:
             for i, name in enumerate(POSITIONS_SEED):
                 cur.execute("INSERT INTO positions (name, sort) VALUES (%s, %s)", (name, i))
 
-        # --- ОДНОРАЗОВАЯ МИГРАЦИЯ КООРДИНАТ (v1) ---
-        # Выполняется ровно один раз. Если позже поправите координаты
-        # через админку — миграция больше не перезапишет.
         cur.execute("SELECT 1 FROM admin_audit WHERE action = 'migration:coords_v1' LIMIT 1")
         if cur.fetchone() is None:
             COORDS_MIGRATION_V1 = {
@@ -1046,6 +1060,73 @@ def _sync_db_recent_restaurant_keys(limit=3):
             return [r[0] for r in cur.fetchall() if r[0]]
 
 
+def _sync_db_web_session_create(user_id):
+    token = secrets.token_urlsafe(32)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO web_sessions (token, user_id) VALUES (%s, %s)", (token, user_id))
+    return token
+
+def _sync_db_web_session_get_user(token):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT user_id FROM web_sessions WHERE token = %s", (token,))
+            row = cur.fetchone()
+            if row:
+                cur.execute("UPDATE web_sessions SET last_used_at = NOW() WHERE token = %s", (token,))
+                return row[0]
+    return None
+
+def _sync_db_request_web_code(phone_raw):
+    digits = re.sub(r'\D', '', phone_raw)
+    if len(digits) < 10:
+        return None
+    if len(digits) == 11 and digits.startswith('8'):
+        digits = '7' + digits[1:]
+    
+    last10 = digits[-10:]
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT user_id FROM users 
+                WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', ''), '(', ''), ')', '') LIKE %s
+                AND full_name IS NOT NULL
+                AND is_blocked = FALSE
+            """, ('%' + last10,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            
+            user_id = row[0]
+            code = f"{secrets.randbelow(900000) + 100000}"
+            
+            cur.execute("DELETE FROM web_auth_codes WHERE user_id = %s", (user_id,))
+            cur.execute("INSERT INTO web_auth_codes (user_id, code) VALUES (%s, %s)", (user_id, code))
+            return user_id, code
+
+def _sync_db_verify_web_code(phone_raw, code):
+    digits = re.sub(r'\D', '', phone_raw)
+    if len(digits) == 11 and digits.startswith('8'):
+        digits = '7' + digits[1:]
+    last10 = digits[-10:]
+    
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT u.user_id FROM users u
+                JOIN web_auth_codes c ON c.user_id = u.user_id
+                WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(u.phone, '+', ''), ' ', ''), '-', ''), '(', ''), ')', '') LIKE %s
+                AND c.code = %s
+                AND c.created_at > NOW() - INTERVAL '10 minutes'
+            """, ('%' + last10, code))
+            row = cur.fetchone()
+            if not row:
+                return None
+            user_id = row[0]
+            cur.execute("DELETE FROM web_auth_codes WHERE user_id = %s", (user_id,))
+            return user_id
+
+
 # ============= АСИНХРОННЫЕ ОБЁРТКИ =============
 async def db_restaurants_all(): return await _run(_sync_db_restaurants_all)
 async def db_restaurants_for_app(): return await _run(_sync_db_restaurants_for_app)
@@ -1098,6 +1179,10 @@ async def db_mark_holiday_broadcast(k, y): return await _run(_sync_db_mark_holid
 async def db_positions_list(inc=False): return await _run(_sync_db_positions_list, inc)
 async def db_position_add(name): return await _run(_sync_db_position_add, name)
 async def db_position_archive(pid): return await _run(_sync_db_position_archive, pid)
+async def db_web_session_create(user_id): return await _run(_sync_db_web_session_create, user_id)
+async def db_web_session_get_user(token): return await _run(_sync_db_web_session_get_user, token)
+async def db_request_web_code(phone): return await _run(_sync_db_request_web_code, phone)
+async def db_verify_web_code(phone, code): return await _run(_sync_db_verify_web_code, phone, code)
 
 
 async def db_audit(admin_id, action, tt="", ti="", details=""):
@@ -1638,18 +1723,33 @@ async def get_auth_user(request):
         payload = await request.json()
     except Exception:
         return None, 401
-    user = validate_init_data(payload.get("initData", ""))
-    if not user or not user.get("id"):
+
+    init_data = payload.get("initData", "")
+    web_token = payload.get("webToken", "")
+
+    user_id = None
+
+    if init_data:
+        user = validate_init_data(init_data)
+        if user and user.get("id"):
+            user_id = int(user["id"])
+            
+    elif web_token:
+        user_id = await db_web_session_get_user(web_token)
+
+    if not user_id:
         return None, 401
-    user_id = int(user["id"])
+
     if await db_is_blocked(user_id):
         return None, 403
+
     return user_id, None
 
 
 # ============= КЛАВИАТУРЫ =============
 FULL_MENU = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="📱 Открыть приложение Wokker", web_app=WebAppInfo(url=MINI_APP_URL))],
+    [InlineKeyboardButton(text="🌐 Вход на сайт", callback_data="web_login")],
 ])
 
 REGISTER_ONLY = InlineKeyboardMarkup(inline_keyboard=[
@@ -2208,6 +2308,38 @@ async def cmd_profile(message: types.Message):
     else:
         await send_tracked(message.chat.id, message.from_user.id,
                            "Ты не зарегистрирован. Напиши /start.")
+
+
+@user_router.message(Command("web"))
+async def cmd_web(message: types.Message):
+    await delete_incoming(message)
+    await cleanup_chat(message.from_user.id)
+    
+    # Для простоты отправляем ссылку на наш сайт
+    url = MINI_APP_URL
+    await send_tracked(
+        message.chat.id, message.from_user.id,
+        f"🌐 <b>Веб-версия приложения</b>\n\n"
+        f"Перейди по ссылке и введи свой номер телефона, указанный при регистрации:\n\n"
+        f"{url}",
+        parse_mode="HTML",
+        disable_web_page_preview=True
+    )
+
+
+@user_router.callback_query(lambda c: c.data == "web_login")
+async def cb_web_login(callback: types.CallbackQuery):
+    await callback.answer()
+    await cleanup_chat(callback.from_user.id)
+    url = MINI_APP_URL
+    await send_tracked(
+        cb_chat_id(callback), callback.from_user.id,
+        f"🌐 <b>Веб-версия приложения</b>\n\n"
+        f"Перейди по ссылке и введи свой номер телефона, указанный при регистрации:\n\n"
+        f"{url}",
+        parse_mode="HTML",
+        disable_web_page_preview=True
+    )
 
 
 @user_router.callback_query(lambda c: c.data == "register")
@@ -2811,7 +2943,6 @@ async def question_reply_do(message: types.Message, state: FSMContext):
     q_uid = data.get("q_user_id")
     await state.clear()
 
-    # --- ветка "личное сообщение из карточки" (qid отсутствует)
     if qid is None:
         sent = False
         try:
@@ -2834,7 +2965,6 @@ async def question_reply_do(message: types.Message, state: FSMContext):
                                reply_markup=user_edit_kb(q_uid, bool(row[6]), is_pin))
         return
 
-    # --- обычный ответ на вопрос
     await db_question_reply(qid, text, message.from_user.id)
     await db_audit(message.from_user.id, "question_reply", "question", qid, text[:80])
     sent = False
@@ -4948,13 +5078,41 @@ async def handle_favicon(request):
     return web.Response(status=204)
 
 
+_INDEX_CACHE = {"data": None, "mtime": 0.0}
+
+
 async def handle_index(request):
     p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "index.html")
-    if os.path.exists(p):
-        resp = web.FileResponse(p)
-        resp.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=86400"
-        return resp
-    return web.Response(text="frontend/index.html not found", status=404)
+    if not os.path.exists(p):
+        return web.Response(text="frontend/index.html not found", status=404)
+    try:
+        mtime = os.stat(p).st_mtime
+    except OSError:
+        return web.Response(text="frontend/index.html not found", status=404)
+
+    if _INDEX_CACHE["data"] is None or _INDEX_CACHE["mtime"] != mtime:
+        try:
+            with open(p, "rb") as f:
+                _INDEX_CACHE["data"] = f.read()
+            _INDEX_CACHE["mtime"] = mtime
+        except OSError:
+            return web.Response(text="frontend/index.html not found", status=404)
+
+    etag = f'W/"{int(mtime * 1000)}"'
+    cache_headers = {
+        "ETag": etag,
+        "Cache-Control": "public, max-age=300, stale-while-revalidate=3600",
+        "Vary": "Accept-Encoding",
+    }
+    if request.headers.get("If-None-Match") == etag:
+        return web.Response(status=304, headers=cache_headers)
+
+    return web.Response(
+        body=_INDEX_CACHE["data"],
+        content_type="text/html",
+        charset="utf-8",
+        headers=cache_headers,
+    )
 
 
 async def handle_bootstrap(request):
@@ -5163,6 +5321,67 @@ async def handle_questions(request):
     return web.json_response({"ok": True}, dumps=json_dumps)
 
 
+_auth_rate = {}
+_auth_last_cleanup = [0.0]
+
+async def handle_auth_request(request):
+    try:
+        payload = await request.json()
+        phone = payload.get("phone", "").strip()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    
+    if not phone:
+        return web.json_response({"error": "phone_required"}, status=400, dumps=json_dumps)
+
+    now_ts = time.time()
+    if now_ts - _auth_last_cleanup[0] > 300:
+        _auth_last_cleanup[0] = now_ts
+        cutoff = now_ts - 300
+        for k in [k for k, v in _auth_rate.items() if v < cutoff]:
+            del _auth_rate[k]
+            
+    digits = re.sub(r'\D', '', phone)
+    if now_ts - _auth_rate.get(digits, 0) < 60:
+        return web.json_response({"error": "too_fast"}, status=429, dumps=json_dumps)
+    _auth_rate[digits] = now_ts
+
+    res = await db_request_web_code(phone)
+    if not res:
+        return web.json_response({"error": "not_found"}, status=404, dumps=json_dumps)
+    
+    user_id, code = res
+    try:
+        await bot.send_message(
+            user_id,
+            f"🔐 <b>Код для входа на сайт:</b>\n\n<code>{code}</code>\n\n<i>Никому не сообщайте. Код действует 10 минут.</i>",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logging.warning(f"auth bot send failed: {e}")
+        return web.json_response({"error": "bot_blocked"}, status=400, dumps=json_dumps)
+    
+    return web.json_response({"ok": True}, dumps=json_dumps)
+
+async def handle_auth_verify(request):
+    try:
+        payload = await request.json()
+        phone = payload.get("phone", "").strip()
+        code = payload.get("code", "").strip()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+        
+    if not phone or not code:
+        return web.json_response({"error": "credentials_required"}, status=400, dumps=json_dumps)
+
+    user_id = await db_verify_web_code(phone, code)
+    if not user_id:
+        return web.json_response({"error": "invalid_code"}, status=401, dumps=json_dumps)
+        
+    token = await db_web_session_create(user_id)
+    return web.json_response({"ok": True, "token": token}, dumps=json_dumps)
+
+
 async def handle_health(request):
     return web.Response(text="OK")
 
@@ -5179,6 +5398,10 @@ async def error_middleware(request, handler):
         return web.json_response({"error": "internal_server_error"}, status=500)
 
 
+_GZIP_TYPES = ("application/json", "text/plain", "text/html", "text/css",
+               "application/javascript", "application/xml", "image/svg+xml")
+
+
 @web.middleware
 async def gzip_middleware(request, handler):
     response = await handler(request)
@@ -5187,12 +5410,13 @@ async def gzip_middleware(request, handler):
             and len(body) > 500
             and "gzip" in request.headers.get("Accept-Encoding", "")
             and not response.headers.get("Content-Encoding")
-            and response.content_type in ("application/json", "text/plain")):
+            and response.content_type in _GZIP_TYPES):
         compressed = gzip.compress(body, compresslevel=6)
         if len(compressed) < len(body):
             response.body = compressed
             response.headers["Content-Encoding"] = "gzip"
             response.headers["Content-Length"] = str(len(compressed))
+            response.headers["Vary"] = "Accept-Encoding"
     return response
 
 
@@ -5200,6 +5424,8 @@ app = web.Application(middlewares=[error_middleware, gzip_middleware])
 
 app.router.add_get("/", handle_index)
 app.router.add_get("/favicon.ico", handle_favicon)
+app.router.add_post("/api/auth/request-code", handle_auth_request)
+app.router.add_post("/api/auth/verify-code", handle_auth_verify)
 app.router.add_post("/api/bootstrap", handle_bootstrap)
 app.router.add_post("/api/restaurants", handle_restaurants)
 app.router.add_post("/api/greeting", handle_greeting)

@@ -7,11 +7,8 @@
 <link rel="preconnect" href="https://api.telegram.org" crossorigin>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-<!-- Leaflet CSS & JS -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-<!-- MarkerCluster CSS & JS -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
 <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
@@ -66,17 +63,13 @@
   .btn:disabled { opacity: .5; transform: none; box-shadow: none; }
 
   .tabs {
-    position: fixed;
-    bottom: calc(12px + env(safe-area-inset-bottom));
-    left: 12px;
-    right: 12px;
-    display: flex;
+    position: fixed; bottom: calc(12px + env(safe-area-inset-bottom));
+    left: 12px; right: 12px; display: flex;
     background: var(--card-bg);
     backdrop-filter: blur(20px) saturate(1.8);
     -webkit-backdrop-filter: blur(20px) saturate(1.8);
     border: 1px solid rgba(128, 128, 128, 0.15);
-    border-radius: 26px;
-    padding: 6px;
+    border-radius: 26px; padding: 6px;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
     z-index: 100;
   }
@@ -234,7 +227,6 @@
     display: none; z-index: 1;
   }
 
-  /* Кастомные маркеры */
   .custom-map-marker {
     background: #ff2d55; color: #fff; border: 2px solid #fff; border-radius: 50%;
     width: 32px !important; height: 32px !important;
@@ -244,7 +236,6 @@
   .custom-map-marker.open { background: #34c759; box-shadow: 0 4px 12px rgba(52,199,89,0.4); }
   .custom-map-marker.closed { background: #ff3b30; box-shadow: 0 4px 12px rgba(255,59,48,0.4); }
 
-  /* Карточка ресторана в новом дизайне */
   .rest-card {
     background: var(--card-bg);
     border-radius: 18px;
@@ -254,6 +245,7 @@
     border: 1px solid rgba(128,128,128,0.08);
     cursor: pointer;
     transition: transform 0.15s ease, box-shadow 0.15s ease;
+    position: relative;
   }
   .rest-card:active { transform: scale(0.98); }
 
@@ -318,6 +310,12 @@
   }
   .btn-route:active { background: var(--beige-soft); }
 
+  .my-rest-tag {
+    position: absolute; top: 12px; right: 16px;
+    font-size: 11px; background: var(--beige-soft); color: var(--beige-dark);
+    padding: 2px 8px; border-radius: 8px; font-weight: 600;
+  }
+
   .checklist-card { background: var(--card-bg); border-radius: 16px; margin: 0 12px 12px; padding: 16px; border: 1px solid rgba(128,128,128,0.08); box-shadow: 0 4px 16px rgba(0,0,0,0.03); }
   .check-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(128,128,128,0.08); cursor: pointer; }
   .check-item:last-child { border-bottom: 0; }
@@ -342,6 +340,11 @@
   .detail-card .row:last-child { border-bottom: 0; }
   .detail-card .row .lbl { color: var(--hint-color); font-size: 13px; margin-bottom: 3px; }
   
+  .detail-status { display: inline-block; margin-top: 12px; padding: 6px 16px;
+    border-radius: 20px; font-size: 13px; font-weight: 700; }
+  .detail-status.open { background: #e8f5ec; color: #2e7d43; }
+  .detail-status.closed { background: #fbeae4; color: #b04a2e; }
+  
   .btn-back { display: block; margin: 0 12px 16px; padding: 12px 16px;
     background: var(--card-bg); color: var(--beige-dark); border: 1.5px solid var(--beige);
     border-radius: 14px; font-size: 15px; font-weight: 600; text-align: center;
@@ -357,6 +360,99 @@
   .level-urgent b::before { content: "🔴 "; }
   .level-important b::before { content: "🟡 "; }
   .level-normal b::before { content: "🔵 "; }
+
+  /* ===== WELCOME SPLASH ===== */
+  .welcome-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: linear-gradient(135deg, #ff2d55 0%, #ff6a3d 50%, #ff9558 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+    overflow: hidden;
+  }
+  .welcome-overlay.show { opacity: 1; }
+  .welcome-overlay.hide { opacity: 0; pointer-events: none; }
+
+  .welcome-emoji {
+    font-size: 80px;
+    margin-bottom: 24px;
+    animation: welcomeEmoji 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    filter: drop-shadow(0 8px 24px rgba(0,0,0,0.25));
+  }
+  @keyframes welcomeEmoji {
+    0%   { transform: scale(0.3) rotate(-25deg); opacity: 0; }
+    60%  { transform: scale(1.15) rotate(10deg); opacity: 1; }
+    100% { transform: scale(1) rotate(0); opacity: 1; }
+  }
+
+  .welcome-logo {
+    display: flex;
+    gap: 2px;
+    font-size: 44px;
+    font-weight: 900;
+    letter-spacing: 4px;
+    margin-bottom: 12px;
+  }
+  .welcome-logo span {
+    display: inline-block;
+    opacity: 0;
+    transform: translateY(24px);
+    animation: welcomeLetter 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    text-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  }
+  .welcome-logo span:nth-child(1) { animation-delay: 0.10s; }
+  .welcome-logo span:nth-child(2) { animation-delay: 0.18s; }
+  .welcome-logo span:nth-child(3) { animation-delay: 0.26s; }
+  .welcome-logo span:nth-child(4) { animation-delay: 0.34s; }
+  .welcome-logo span:nth-child(5) { animation-delay: 0.42s; }
+  .welcome-logo span:nth-child(6) { animation-delay: 0.50s; }
+  @keyframes welcomeLetter {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .welcome-sub {
+    font-size: 17px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    opacity: 0;
+    animation: welcomeFade 0.6s ease 0.9s forwards;
+  }
+  @keyframes welcomeFade {
+    to { opacity: 0.95; }
+  }
+
+  .welcome-hint {
+    position: absolute;
+    bottom: calc(48px + env(safe-area-inset-bottom));
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    opacity: 0;
+    animation: welcomeFade 0.6s ease 2s forwards;
+  }
+  .welcome-hint::after {
+    content: '';
+    display: block;
+    width: 100%;
+    height: 2px;
+    margin-top: 8px;
+    background: rgba(255,255,255,0.35);
+    border-radius: 2px;
+    transform-origin: left;
+    animation: welcomeProgress 3.5s linear;
+  }
+  @keyframes welcomeProgress {
+    from { transform: scaleX(0); }
+    to   { transform: scaleX(1); }
+  }
 </style>
 </head>
 <body>
@@ -371,13 +467,11 @@
     <div class="sub">Выбери точку, чтобы увидеть детали</div>
   </div>
 
-  <!-- Фильтры -->
   <div class="chips-container" id="rest-filters">
     <div class="chip active" data-filter="all">Все</div>
     <div class="chip" data-filter="open">Открыто</div>
   </div>
 
-  <!-- Переключатель Список / Карта -->
   <div class="view-toggle-container">
     <button class="view-toggle-btn active" id="btn-view-list">📋 Список</button>
     <button class="view-toggle-btn" id="btn-view-map">🗺 Карта</button>
@@ -469,7 +563,6 @@
     Вопрос/ответ
   </button>
 </nav>
-
 <script>
 const tg = window.Telegram ? window.Telegram.WebApp : null;
 if (tg) {
@@ -541,6 +634,61 @@ function bootChanged(oldB, newB) {
   const og = oldB.greeting || {}, ng = newB.greeting || {};
   if (og.kind !== ng.kind || og.title !== ng.title) return true;
   return false;
+}
+
+// ============ WELCOME SPLASH ============
+function hasSeenWelcome() {
+  try {
+    const u = tgUserInfo();
+    if (!u || !u.id) return false;
+    return localStorage.getItem('wokker_welcome_' + u.id) === '1';
+  } catch (e) { return false; }
+}
+
+function markWelcomeSeen() {
+  try {
+    const u = tgUserInfo();
+    if (!u || !u.id) return;
+    localStorage.setItem('wokker_welcome_' + u.id, '1');
+  } catch (e) {}
+}
+
+function showWelcomeSplash() {
+  if (document.getElementById('welcome-splash')) return;
+  if (hasSeenWelcome()) return;
+
+  const splash = document.createElement('div');
+  splash.id = 'welcome-splash';
+  splash.className = 'welcome-overlay';
+  splash.innerHTML = `
+    <div class="welcome-emoji">🍜</div>
+    <div class="welcome-logo">
+      <span>W</span><span>O</span><span>K</span><span>K</span><span>E</span><span>R</span>
+    </div>
+    <div class="welcome-sub">Добро пожаловать!</div>
+    <div class="welcome-hint">Нажми, чтобы продолжить</div>
+  `;
+  document.body.appendChild(splash);
+  document.body.style.overflow = 'hidden';
+  requestAnimationFrame(() => splash.classList.add('show'));
+
+  try { tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred('medium'); } catch(e) {}
+
+  markWelcomeSeen();
+  try { history.replaceState(null, '', location.pathname); } catch(e) {}
+
+  const dismiss = () => {
+    if (!splash.classList.contains('show')) return;
+    splash.classList.remove('show');
+    splash.classList.add('hide');
+    document.body.style.overflow = '';
+    setTimeout(() => splash.remove(), 500);
+    try { tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred('light'); } catch(e) {}
+  };
+
+  setTimeout(dismiss, 3500);
+  splash.addEventListener('click', dismiss, { once: true });
+  splash.addEventListener('touchstart', dismiss, { once: true, passive: true });
 }
 
 let cachedAvatarUrl = null;
@@ -868,21 +1016,18 @@ function renderRestaurantsList(list, query) {
   }).join('');
 }
 
-/* ====== ЛЕНИВАЯ ЗАГРУЗКА LEAFLET ====== */
 let _leafletPromise = null;
 function loadLeaflet() {
   if (window.L && window.L.markerClusterGroup) return Promise.resolve();
   if (_leafletPromise) return _leafletPromise;
 
   _leafletPromise = new Promise((resolve, reject) => {
-    // CSS Leaflet
     if (!document.querySelector('link[href*="leaflet.css"]')) {
       const l1 = document.createElement('link');
       l1.rel = 'stylesheet';
       l1.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
       document.head.appendChild(l1);
     }
-    // CSS MarkerCluster
     if (!document.querySelector('link[href*="MarkerCluster.css"]')) {
       const l2 = document.createElement('link');
       l2.rel = 'stylesheet';
@@ -894,7 +1039,6 @@ function loadLeaflet() {
       document.head.appendChild(l3);
     }
 
-    // JS Leaflet
     const loadScript = (src, cb) => {
       const s = document.createElement('script');
       s.src = src;
@@ -915,7 +1059,6 @@ function loadLeaflet() {
   return _leafletPromise;
 }
 
-/* ====== ИНИЦИАЛИЗАЦИЯ КАРТЫ ====== */
 function initInteractiveMap(restaurants) {
   const mapContainer = document.getElementById('restaurants-map');
   if (!window.L || !window.L.markerClusterGroup) return;
@@ -923,7 +1066,6 @@ function initInteractiveMap(restaurants) {
   if (!leafletMap) {
     leafletMap = L.map(mapContainer, { zoomControl: false }).setView([55.7558, 37.6173], 10);
 
-    // Тайлы Яндекса
     L.tileLayer('https://core-renderer-tiles.maps.yandex.net/tiles?l=map&v=3.2008.0&x={x}&y={y}&z={z}&scale=1&lang=ru_RU', {
       maxZoom: 19,
       attribution: '© Яндекс'
@@ -931,7 +1073,6 @@ function initInteractiveMap(restaurants) {
 
     L.control.zoom({ position: 'bottomright' }).addTo(leafletMap);
 
-    // Кластеризация
     leafletMarkers = L.markerClusterGroup({
       maxClusterRadius: 40,
       spiderfyOnMaxZoom: true,
@@ -945,7 +1086,7 @@ function initInteractiveMap(restaurants) {
   let addedCount = 0;
 
   restaurants.forEach(r => {
-    if (!r.lat || !r.lon) return; // пропускаем без координат
+    if (!r.lat || !r.lon) return;
 
     const isOpen = r.status === 'open';
     const icon = L.divIcon({
@@ -982,13 +1123,11 @@ function renderRestaurants() {
   if (!BOOT) return;
   const query = document.getElementById('rest-search').value;
   renderRestaurantsList(BOOT.restaurants, query);
-  // Если открыта карта — обновляем маркеры
   if (document.getElementById('btn-view-map').classList.contains('active') && window.L) {
     initInteractiveMap(getFilteredRestaurants(BOOT.restaurants, query));
   }
 }
 
-/* ====== ФИЛЬТРЫ ====== */
 document.querySelectorAll('#rest-filters .chip').forEach(chip => {
   chip.addEventListener('click', () => {
     haptic('light');
@@ -999,7 +1138,6 @@ document.querySelectorAll('#rest-filters .chip').forEach(chip => {
   });
 });
 
-/* ====== ПЕРЕКЛЮЧЕНИЕ СПИСОК / КАРТА ====== */
 document.getElementById('btn-view-list').addEventListener('click', function() {
   haptic('light');
   document.getElementById('btn-view-map').classList.remove('active');
@@ -1294,7 +1432,13 @@ function renderAllSections() {
 }
 
 async function boot() {
-  const restKey = new URLSearchParams(location.search).get('rest');
+  const params = new URLSearchParams(location.search);
+  const restKey = params.get('rest');
+  const hasWelcomeParam = params.get('welcome') === '1';
+
+  if (hasWelcomeParam) {
+    showWelcomeSplash();
+  }
 
   const cached = readBootCache();
   let renderedFromCache = false;

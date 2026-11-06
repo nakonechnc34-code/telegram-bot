@@ -4,12 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Wokker</title>
+<link rel="preconnect" href="https://api.telegram.org" crossorigin>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-
-<!-- Leaflet CSS & JS (с defer для ускорения загрузки) -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 <style>
   :root {
     --bg: var(--tg-theme-bg-color, #f2f2f7);
@@ -59,7 +55,6 @@
   .btn:active { transform: scale(0.96); opacity: 0.9; }
   .btn:disabled { opacity: .5; transform: none; box-shadow: none; }
 
-  /* Навигационная панель (Dock) */
   .tabs {
     position: fixed;
     bottom: calc(12px + env(safe-area-inset-bottom));
@@ -98,20 +93,15 @@
   .tabs .tab-icon svg { width: 22px; height: 22px; display: block; stroke: var(--hint-color); transition: stroke 0.2s; }
 
   .badge-dot {
-    position: absolute;
-    top: 6px;
-    right: 28%;
-    width: 8px;
-    height: 8px;
-    background: var(--blue);
-    border-radius: 50%;
-    border: 1.5px solid var(--card-bg);
+    position: absolute; top: 6px; right: 28%;
+    width: 8px; height: 8px; background: var(--blue);
+    border-radius: 50%; border: 1.5px solid var(--card-bg);
     display: none;
   }
   .badge-dot.show { display: block; }
 
-  .section { display: none; opacity: 0; transform: translateY(6px); transition: opacity 0.25s ease, transform 0.25s ease; }
-  .section.active { display: block; opacity: 1; transform: translateY(0); }
+  .section { display: none; }
+  .section.active { display: block; }
 
   .q { 
     width: calc(100% - 24px); margin: 6px 12px 12px; border: 1.5px solid rgba(128,128,128,0.2);
@@ -121,31 +111,17 @@
   .q:focus { border-color: var(--beige); }
 
   .chips-container {
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    padding: 0 12px 12px;
-    scrollbar-width: none;
+    display: flex; gap: 8px; overflow-x: auto;
+    padding: 0 12px 12px; scrollbar-width: none;
   }
   .chips-container::-webkit-scrollbar { display: none; }
   .chip {
-    padding: 6px 14px;
-    background: var(--card-bg);
-    border: 1px solid rgba(128,128,128,0.2);
-    border-radius: 20px;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-color);
-    white-space: nowrap;
-    cursor: pointer;
-    transition: all 0.2s ease;
+    padding: 6px 14px; background: var(--card-bg);
+    border: 1px solid rgba(128,128,128,0.2); border-radius: 20px;
+    font-size: 13px; font-weight: 500; color: var(--text-color);
+    white-space: nowrap; cursor: pointer; transition: all 0.2s ease;
   }
-  .chip.active {
-    background: var(--beige);
-    color: #fff;
-    border-color: var(--beige);
-    font-weight: 600;
-  }
+  .chip.active { background: var(--beige); color: #fff; border-color: var(--beige); font-weight: 600; }
 
   details { background: var(--card-bg); border-radius: 16px; margin: 0 12px 10px; padding: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.03); border: 1px solid rgba(128,128,128,0.08); }
   summary { font-weight: 600; cursor: pointer; color: var(--text-color); }
@@ -155,14 +131,10 @@
   .skeleton-line {
     height: 14px; border-radius: 7px; margin-bottom: 12px;
     background: linear-gradient(90deg, rgba(128,128,128,0.1) 25%, rgba(128,128,128,0.2) 50%, rgba(128,128,128,0.1) 75%);
-    background-size: 200% 100%;
-    animation: shimmer 1.2s infinite linear;
+    background-size: 200% 100%; animation: shimmer 1.2s infinite linear;
   }
   .skeleton-line.short { width: 45%; margin-bottom: 0; }
-  @keyframes shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
-  }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
   .greeting { margin: 16px 12px 8px; padding: 0 4px; }
   .greeting .g-title { font-size: 24px; font-weight: 800; color: var(--text-color); line-height: 1.2; letter-spacing: -0.5px; }
@@ -237,61 +209,29 @@
     background: #fff; border: 1px solid var(--beige-border);
     border-radius: 12px; font-size: 12px; color: #7c6b52; font-weight: 600; }
 
-  .view-toggle-container {
-    display: flex;
-    margin: 0 12px 10px;
-    background: rgba(128,128,128,0.12);
-    border-radius: 14px;
-    padding: 3px;
-  }
+  .view-toggle-container { display: flex; margin: 0 12px 10px;
+    background: rgba(128,128,128,0.12); border-radius: 14px; padding: 3px; }
   .view-toggle-btn {
-    flex: 1;
-    border: 0;
-    background: transparent;
-    padding: 8px 0;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--hint-color);
-    border-radius: 11px;
-    cursor: pointer;
-    transition: all 0.2s ease;
+    flex: 1; border: 0; background: transparent; padding: 8px 0;
+    font-size: 13px; font-weight: 600; color: var(--hint-color);
+    border-radius: 11px; cursor: pointer; transition: all 0.2s ease;
   }
-  .view-toggle-btn.active {
-    background: var(--card-bg);
-    color: var(--text-color);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-  }
+  .view-toggle-btn.active { background: var(--card-bg); color: var(--text-color); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
 
   #restaurants-map {
-    height: 62vh;
-    margin: 0 12px 12px;
-    border-radius: 20px;
-    overflow: hidden;
-    border: 1px solid rgba(128,128,128,0.15);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-    display: none;
-    z-index: 1;
+    height: 62vh; margin: 0 12px 12px; border-radius: 20px; overflow: hidden;
+    border: 1px solid rgba(128,128,128,0.15); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+    display: none; z-index: 1;
   }
 
   .leaflet-wokker-marker {
-    background: #ff2d55;
-    color: #fff;
-    border: 2px solid #fff;
-    border-radius: 50%;
-    width: 34px !important;
-    height: 34px !important;
-    margin-left: -17px !important;
-    margin-top: -17px !important;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 16px;
-    box-shadow: 0 4px 12px rgba(255, 45, 85, 0.4);
+    background: #ff2d55; color: #fff; border: 2px solid #fff; border-radius: 50%;
+    width: 34px !important; height: 34px !important;
+    margin-left: -17px !important; margin-top: -17px !important;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; box-shadow: 0 4px 12px rgba(255, 45, 85, 0.4);
   }
-  .leaflet-wokker-marker.is-my {
-    background: #c3a578;
-    box-shadow: 0 4px 12px rgba(195, 165, 120, 0.6);
-  }
+  .leaflet-wokker-marker.is-my { background: #c3a578; box-shadow: 0 4px 12px rgba(195, 165, 120, 0.6); }
 
   .rest-card { background: var(--card-bg); border-radius: 18px; margin: 8px 12px 12px;
     padding: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.04); border: 1px solid rgba(128,128,128,0.08); cursor: pointer; 
@@ -312,20 +252,27 @@
   .rest-status.open { background: #e8f5ec; color: #2e7d43; }
   .rest-status.closed { background: #fbeae4; color: #b04a2e; }
   
-  .detail-status { 
-    display: inline-block; 
-    margin-top: 12px; 
-    padding: 6px 16px;
-    border-radius: 20px; 
-    font-size: 13px; 
-    font-weight: 700; 
-  }
+  .detail-status { display: inline-block; margin-top: 12px; padding: 6px 16px;
+    border-radius: 20px; font-size: 13px; font-weight: 700; }
   .detail-status.open { background: #e8f5ec; color: #2e7d43; }
   .detail-status.closed { background: #fbeae4; color: #b04a2e; }
   
   .rest-meta { margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(128,128,128,0.15);
     font-size: 13px; color: var(--hint-color); line-height: 1.5; }
   .rest-hours { color: var(--hint-color); font-size: 12px; margin-top: 4px; }
+  
+  /* FIX: телефон в карточке списка */
+  .rest-phone {
+    color: var(--hint-color);
+    font-size: 12px;
+    margin-top: 4px;
+  }
+  .rest-phone a {
+    color: var(--beige-dark);
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .rest-phone a:active { opacity: 0.7; }
 
   .rest-actions { display: flex; gap: 8px; margin-top: 12px; }
   .rest-actions a { flex: 1; display: block; text-decoration: none; }
@@ -492,9 +439,7 @@ if (tg) {
   } catch(e) {}
 }
 
-function getInitData() {
-  return (tg && tg.initData) ? tg.initData : '';
-}
+function getInitData() { return (tg && tg.initData) ? tg.initData : ''; }
 
 function haptic(style = 'light') {
   if (tg && tg.HapticFeedback && typeof tg.HapticFeedback.impactOccurred === 'function') {
@@ -516,6 +461,64 @@ const safeUrl = url => {
   return '#';
 };
 
+const BOOT_CACHE_KEY = 'wokker_boot_cache_v2';
+const BOOT_CACHE_TTL = 30 * 60 * 1000;
+
+function readBootCache() {
+  try {
+    const u = tgUserInfo();
+    if (!u || !u.id) return null;
+    const raw = localStorage.getItem(BOOT_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed.ts || Date.now() - parsed.ts > BOOT_CACHE_TTL) return null;
+    if (String(parsed.userId) !== String(u.id)) return null;
+    return parsed.data || null;
+  } catch (e) { return null; }
+}
+
+function writeBootCache(data) {
+  try {
+    const u = tgUserInfo();
+    if (!u || !u.id) return;
+    localStorage.setItem(BOOT_CACHE_KEY, JSON.stringify({
+      data, ts: Date.now(), userId: u.id
+    }));
+  } catch (e) {}
+}
+
+function bootChanged(oldB, newB) {
+  if (!oldB) return true;
+  if (JSON.stringify(oldB.profile) !== JSON.stringify(newB.profile)) return true;
+  const o = oldB.news || [], n = newB.news || [];
+  if (o.length !== n.length) return true;
+  if (o[0] && n[0] && o[0].id !== n[0].id) return true;
+  if ((oldB.restaurants || []).length !== (newB.restaurants || []).length) return true;
+  if ((oldB.standards || []).length !== (newB.standards || []).length) return true;
+  if ((oldB.faq || []).length !== (newB.faq || []).length) return true;
+  const og = oldB.greeting || {}, ng = newB.greeting || {};
+  if (og.kind !== ng.kind || og.title !== ng.title) return true;
+  return false;
+}
+
+let _leafletPromise = null;
+function loadLeaflet() {
+  if (window.L) return Promise.resolve();
+  if (_leafletPromise) return _leafletPromise;
+  _leafletPromise = new Promise((resolve, reject) => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(link);
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Leaflet load failed'));
+    document.head.appendChild(script);
+  }).finally(() => { _leafletPromise = null; });
+  return _leafletPromise;
+}
+
 let cachedAvatarUrl = null;
 let BOOT = null;
 let currentStandardCat = 'all';
@@ -524,14 +527,13 @@ let leafletMarkers = [];
 
 const sectionLoaders = {
   'sec-profile': () => { if (BOOT) renderProfileFromBoot(); },
-  'sec-restaurants': () => { 
+  'sec-restaurants': () => {
     if (BOOT) {
-      renderRestaurants(); 
-      // Если открыт режим карты — пересчитываем размеры
+      renderRestaurants();
       if (document.getElementById('btn-view-map').classList.contains('active') && leafletMap) {
         setTimeout(() => leafletMap.invalidateSize(), 100);
       }
-    } 
+    }
   },
   'sec-news': () => { if (BOOT) { renderNewsFromBoot(); markNewsAsRead(); } },
   'sec-standards': () => { if (BOOT) renderStandardsFromBoot(); },
@@ -570,11 +572,9 @@ document.getElementById('standards-list').innerHTML = skeletonHtml() + skeletonH
 document.getElementById('faq-list').innerHTML = skeletonHtml() + skeletonHtml();
 
 function blockedHtml() {
-  return '<div class="blocked-screen">' +
-    '<div class="big">🚫</div>' +
+  return '<div class="blocked-screen"><div class="big">🚫</div>' +
     '<div class="title">Доступ ограничен</div>' +
-    '<div class="text">Администратор ограничил доступ к приложению.<br>Обратитесь к управляющему.</div>' +
-    '</div>';
+    '<div class="text">Администратор ограничил доступ к приложению.<br>Обратитесь к управляющему.</div></div>';
 }
 
 function renderBlockedEverywhere() {
@@ -587,20 +587,16 @@ function renderBlockedEverywhere() {
 
 function renderAuthErrorEverywhere() {
   const msg = '<div class="card">⚠️ Ошибка авторизации Telegram. Закрой приложение и открой заново из бота.</div>';
-  document.getElementById('profile-box').innerHTML = msg;
-  document.getElementById('news-list').innerHTML = msg;
-  document.getElementById('restaurants-list').innerHTML = msg;
-  document.getElementById('standards-list').innerHTML = msg;
-  document.getElementById('faq-list').innerHTML = msg;
+  ['profile-box', 'news-list', 'restaurants-list', 'standards-list', 'faq-list'].forEach(id => {
+    document.getElementById(id).innerHTML = msg;
+  });
 }
 
 function renderNetErrorEverywhere() {
   const msg = '<div class="card">Ошибка сети. Проверь соединение и открой приложение заново.</div>';
-  document.getElementById('profile-box').innerHTML = msg;
-  document.getElementById('news-list').innerHTML = msg;
-  document.getElementById('restaurants-list').innerHTML = msg;
-  document.getElementById('standards-list').innerHTML = msg;
-  document.getElementById('faq-list').innerHTML = msg;
+  ['profile-box', 'news-list', 'restaurants-list', 'standards-list', 'faq-list'].forEach(id => {
+    document.getElementById(id).innerHTML = msg;
+  });
 }
 
 function tgUserInfo() {
@@ -610,9 +606,7 @@ function tgUserInfo() {
   } catch (e) { return null; }
 }
 
-function avatarHtml(initial) {
-  return '<div class="avatar">' + esc(initial) + '</div>';
-}
+function avatarHtml(initial) { return '<div class="avatar">' + esc(initial) + '</div>'; }
 
 function initialFor(name) {
   const n = (name || '').trim();
@@ -715,9 +709,7 @@ function renderProfileFromBoot() {
   box.innerHTML =
     '<div class="greeting">' +
     '<div class="g-title">' + esc(g.hello) + (name ? ', ' + esc(name) : '') + ' 👋</div>' +
-    '<div class="g-sub">' + esc(g.sub) + '</div>' +
-    '</div>' +
-    greetHtml +
+    '<div class="g-sub">' + esc(g.sub) + '</div></div>' + greetHtml +
     '<div class="profile-card">' +
     '<div class="profile-header">' +
     '<div class="avatar-ring">' + avatarHtml(initialFor(p.full_name)) + '</div>' +
@@ -726,34 +718,33 @@ function renderProfileFromBoot() {
     '<span class="badge">✅ Активен</span>' +
     '</div>' +
     '<div class="info-list">' +
-    
-    '<div class="info-row">' +
-    '<div class="ico-box rest">📍</div>' +
-    '<span class="lbl">Ресторан</span>' +
-    '<span class="val"><span class="badge-rest ' + restBadge + '">' + esc(p.restaurant) + '</span></span>' +
-    '</div>' +
-
-    '<div class="info-row">' +
-    '<div class="ico-box phone">📞</div>' +
-    '<span class="lbl">Телефон</span>' +
-    '<span class="val">' + phoneHtml + '</span>' +
-    '</div>' +
-
-    '<div class="info-row">' +
-    '<div class="ico-box birth">🎂</div>' +
-    '<span class="lbl">Дата рождения</span>' +
-    '<span class="val">' + esc(p.birth_date || '—') + '</span>' +
-    '</div>' +
-
+    '<div class="info-row"><div class="ico-box rest">📍</div><span class="lbl">Ресторан</span>' +
+    '<span class="val"><span class="badge-rest ' + restBadge + '">' + esc(p.restaurant) + '</span></span></div>' +
+    '<div class="info-row"><div class="ico-box phone">📞</div><span class="lbl">Телефон</span>' +
+    '<span class="val">' + phoneHtml + '</span></div>' +
+    '<div class="info-row"><div class="ico-box birth">🎂</div><span class="lbl">Дата рождения</span>' +
+    '<span class="val">' + esc(p.birth_date || '—') + '</span></div>' +
     '</div>' +
     '<div class="profile-footer">💡 Изменить данные можно только через администратора. ' +
     '<button id="btn-report-error">Сообщить об ошибке</button></div>' +
     '</div>';
 
-  setTimeout(() => {
-    const el = document.querySelector('#profile-box .avatar');
-    if (el) applyAvatarToEl(el);
-  }, 0);
+  const el = document.querySelector('#profile-box .avatar');
+  if (el) {
+    if (cachedAvatarUrl) {
+      applyAvatarToEl(el);
+    } else if (!tgUserInfo()?.photo_url) {
+      loadAvatarFromApi().then(() => {
+        const el2 = document.querySelector('#profile-box .avatar');
+        if (el2 && cachedAvatarUrl) {
+          el2.style.backgroundImage = "url('" + cachedAvatarUrl + "')";
+          el2.textContent = '';
+        }
+      });
+    } else {
+      applyAvatarToEl(el);
+    }
+  }
 
   const btnReport = document.getElementById('btn-report-error');
   btnReport.addEventListener('click', async () => {
@@ -798,18 +789,14 @@ function renderRestaurantsList(list, query) {
   const myRestName = (BOOT && BOOT.profile) ? BOOT.profile.restaurant : '';
 
   const q = (query || '').trim().toLowerCase();
-  const filtered = q
-    ? list.filter(r => r._search.indexOf(q) !== -1)
-    : list.slice();
+  const filtered = q ? list.filter(r => r._search.indexOf(q) !== -1) : list.slice();
 
   filtered.sort((a, b) => {
     const aIsMy = myRestName && a.name.toLowerCase().includes(myRestName.toLowerCase());
     const bIsMy = myRestName && b.name.toLowerCase().includes(myRestName.toLowerCase());
     if (aIsMy && !bIsMy) return -1;
     if (!aIsMy && bIsMy) return 1;
-
-    const aOpen = a.status === 'open';
-    const bOpen = b.status === 'open';
+    const aOpen = a.status === 'open', bOpen = b.status === 'open';
     if (aOpen && !bOpen) return -1;
     if (!aOpen && bOpen) return 1;
     return a.name.localeCompare(b.name);
@@ -833,41 +820,26 @@ function renderRestaurantsList(list, query) {
     const isMy = myRestName && r.name.toLowerCase().includes(myRestName.toLowerCase());
     return '<div class="rest-card ' + (r.status !== 'open' ? 'rest-card-closed' : '') + (isMy ? ' is-my-rest' : '') + '" data-key="' + esc(r.key) + '">' +
       (isMy ? '<div class="my-rest-tag">⭐ Ваш ресторан</div>' : '') +
-      '<div class="rest-head">' +
-      '<div class="rest-logo">🍜</div>' +
-      '<div class="rest-head-main">' +
-      '<div class="rest-name">' + esc(r.name) + '</div>' +
-      statusBadge(r, 'rest-status') +
-      '</div>' +
-      '</div>' +
-      '<div class="rest-meta">' +
-      '<div class="addr">📍 ' + esc(r.address) + '</div>' +
-      '<div class="rest-hours">🕒 ' + esc(r.hours).replace(/\n/g, ' · ') + '</div>' +
-      '</div>' +
-      '<div class="rest-actions">' +
-      '<a href="' + mapUrlFor(r) + '" target="_blank" onclick="event.stopPropagation()"><span class="btn-map">🗺 На Яндекс Картах</span></a>' +
-      '</div>' +
-      '</div>';
+      '<div class="rest-head"><div class="rest-logo">🍜</div>' +
+      '<div class="rest-head-main"><div class="rest-name">' + esc(r.name) + '</div>' +
+      statusBadge(r, 'rest-status') + '</div></div>' +
+      '<div class="rest-meta"><div class="addr">📍 ' + esc(r.address) + '</div>' +
+      (r.phone ? '<div class="rest-phone">📞 <a href="tel:' + esc(r.phone.replace(/[^\d+]/g, '')) + '" onclick="event.stopPropagation()">' + esc(r.phone) + '</a></div>' : '') +
+      '<div class="rest-hours">🕒 ' + esc(r.hours).replace(/\n/g, ' · ') + '</div></div>' +
+      '<div class="rest-actions"><a href="' + mapUrlFor(r) + '" target="_blank" onclick="event.stopPropagation()">' +
+      '<span class="btn-map">🗺 На Яндекс Картах</span></a></div></div>';
   }).join('');
 }
 
-/* Инициализация и рендеринг Leaflet-карты */
 function initInteractiveMap() {
   const mapContainer = document.getElementById('restaurants-map');
-  if (!BOOT || !BOOT.restaurants) return;
-
-  if (!window.L) {
-    mapContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--hint-color);">Загрузка карты...</div>';
-    setTimeout(initInteractiveMap, 500);
-    return;
-  }
+  if (!BOOT || !BOOT.restaurants || !window.L) return;
   mapContainer.innerHTML = '';
 
   if (!leafletMap) {
     leafletMap = L.map(mapContainer, { zoomControl: false }).setView([55.7558, 37.6173], 10);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap'
+      maxZoom: 19, attribution: '© OpenStreetMap'
     }).addTo(leafletMap);
     L.control.zoom({ position: 'bottomright' }).addTo(leafletMap);
   }
@@ -880,41 +852,25 @@ function initInteractiveMap() {
   let validMarkersCount = 0;
 
   BOOT.restaurants.forEach(r => {
-    const lat = r.lat || 55.75;
-    const lng = r.lon || 37.61;
-    
+    const lat = r.lat || 55.75, lng = r.lon || 37.61;
     if (r.lat && r.lon) validMarkersCount++;
-    
     const isMy = myRestName && r.name.toLowerCase().includes(myRestName.toLowerCase());
-
     const icon = L.divIcon({
       className: 'leaflet-wokker-marker ' + (isMy ? 'is-my' : ''),
-      html: isMy ? '⭐' : '🍜',
-      iconSize: [34, 34]
+      html: isMy ? '⭐' : '🍜', iconSize: [34, 34]
     });
-
-    const popupHtml = 
-      '<div style="text-align:center; padding:4px;">' +
+    const popupHtml = '<div style="text-align:center;padding:4px;">' +
       '<b style="font-size:15px;">' + esc(r.name) + '</b><br>' +
-      '<span style="font-size:12px; color:#666;">📍 ' + esc(r.address) + '</span><br>' +
-      '<a href="' + mapUrlFor(r) + '" target="_blank" style="display:inline-block; margin-top:8px; padding:6px 12px; background:#ff2d55; color:#fff; text-decoration:none; border-radius:10px; font-weight:600; font-size:12px;">🗺 Построить маршрут</a>' +
-      '</div>';
-
-    const marker = L.marker([lat, lng], { icon: icon })
-      .bindPopup(popupHtml)
-      .addTo(leafletMap);
-
+      '<span style="font-size:12px;color:#666;">📍 ' + esc(r.address) + '</span><br>' +
+      (r.phone ? '<span style="font-size:12px;color:#666;">📞 <a href="tel:' + esc(r.phone.replace(/[^\d+]/g, '')) + '" style="color:#666;text-decoration:none;">' + esc(r.phone) + '</a></span><br>' : '') +
+      '<a href="' + mapUrlFor(r) + '" target="_blank" style="display:inline-block;margin-top:8px;padding:6px 12px;background:#ff2d55;color:#fff;text-decoration:none;border-radius:10px;font-weight:600;font-size:12px;">🗺 Построить маршрут</a></div>';
+    const marker = L.marker([lat, lng], { icon: icon }).bindPopup(popupHtml).addTo(leafletMap);
     leafletMarkers.push(marker);
     bounds.extend([lat, lng]);
   });
 
-  if (validMarkersCount > 0) {
-    leafletMap.fitBounds(bounds, { padding: [30, 30] });
-  }
-
-  setTimeout(() => {
-    leafletMap.invalidateSize();
-  }, 200);
+  if (validMarkersCount > 0) leafletMap.fitBounds(bounds, { padding: [30, 30] });
+  setTimeout(() => { leafletMap.invalidateSize(); }, 200);
 }
 
 function renderRestaurants() {
@@ -930,14 +886,21 @@ document.getElementById('btn-view-list').addEventListener('click', function() {
   document.getElementById('rest-list-wrapper').style.display = 'block';
 });
 
-document.getElementById('btn-view-map').addEventListener('click', function() {
+document.getElementById('btn-view-map').addEventListener('click', async function() {
   haptic('light');
   document.getElementById('btn-view-list').classList.remove('active');
   this.classList.add('active');
   document.getElementById('rest-list-wrapper').style.display = 'none';
   const mapContainer = document.getElementById('restaurants-map');
   mapContainer.style.display = 'block';
-  initInteractiveMap();
+  mapContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--hint-color);">Загрузка карты...</div>';
+
+  try {
+    await loadLeaflet();
+    initInteractiveMap();
+  } catch (e) {
+    mapContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--hint-color);">Не удалось загрузить карту. Проверьте соединение.</div>';
+  }
 });
 
 document.getElementById('rest-search').addEventListener('input', e => {
@@ -955,18 +918,16 @@ document.getElementById('restaurants-list').addEventListener('click', function(e
 
 function renderDetail(r) {
   document.getElementById('detail-box').innerHTML =
-    '<div class="detail-hero">' +
-    '<div class="emoji">🍜</div>' +
+    '<div class="detail-hero"><div class="emoji">🍜</div>' +
     '<div class="name">' + esc(r.name) + '</div>' +
-    statusBadge(r, 'detail-status') +
-    '</div>' +
+    statusBadge(r, 'detail-status') + '</div>' +
     '<div class="detail-card">' +
     '<div class="row"><div class="lbl">Адрес</div>📍 ' + esc(r.address) + '</div>' +
+    (r.phone ? '<div class="row"><div class="lbl">Телефон</div>📞 <a href="tel:' + esc(r.phone.replace(/[^\d+]/g, '')) + '" style="color:var(--beige-dark);font-weight:600;text-decoration:none;">' + esc(r.phone) + '</a></div>' : '') +
     '<div class="row"><div class="lbl">Часы работы</div>🕒 ' + esc(r.hours).replace(/\n/g, '<br>') + '</div>' +
     '<div class="detail-actions" style="margin-top:12px">' +
     '<a href="' + mapUrlFor(r) + '" target="_blank" style="text-decoration:none"><span class="btn-map">🗺 На Яндекс Картах</span></a>' +
-    '</div>' +
-    '</div>';
+    '</div></div>';
 }
 
 function showDetail(key, pushHistory) {
@@ -974,24 +935,18 @@ function showDetail(key, pushHistory) {
   const box = document.getElementById('detail-box');
   const list = BOOT ? BOOT.restaurants : [];
   const r = list.find(x => x.key === key);
-  if (!r) {
-    box.innerHTML = '<div class="card">Ресторан не найден 🤷</div>';
-  } else {
-    renderDetail(r);
-  }
+  if (!r) box.innerHTML = '<div class="card">Ресторан не найден 🤷</div>';
+  else renderDetail(r);
   document.querySelector('.tabs').style.display = 'none';
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   section.classList.add('active');
   window.scrollTo(0, 0);
-
   if (pushHistory) {
     try { history.pushState({rest: key}, '', '?rest=' + encodeURIComponent(key)); } catch (e) {}
   }
 }
 
-function exitDetailView() {
-  document.querySelector('.tabs').style.display = 'flex';
-}
+function exitDetailView() { document.querySelector('.tabs').style.display = 'flex'; }
 
 function goToRestaurantsTab() {
   document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
@@ -1016,13 +971,8 @@ window.addEventListener('popstate', () => {
   }
 });
 
-function getLastReadNews() {
-  try { return localStorage.getItem('wokker_last_read_news'); } catch (e) { return null; }
-}
-
-function setLastReadNews(val) {
-  try { localStorage.setItem('wokker_last_read_news', String(val)); } catch (e) {}
-}
+function getLastReadNews() { try { return localStorage.getItem('wokker_last_read_news'); } catch (e) { return null; } }
+function setLastReadNews(v) { try { localStorage.setItem('wokker_last_read_news', String(v)); } catch (e) {} }
 
 function checkNewsBadge() {
   const list = BOOT ? BOOT.news || [] : [];
@@ -1030,11 +980,8 @@ function checkNewsBadge() {
   const latestId = list[0].id || list[0].date;
   const lastRead = getLastReadNews();
   const badge = document.getElementById('news-badge');
-  if (lastRead !== String(latestId)) {
-    badge.classList.add('show');
-  } else {
-    badge.classList.remove('show');
-  }
+  if (lastRead !== String(latestId)) badge.classList.add('show');
+  else badge.classList.remove('show');
 }
 
 function markNewsAsRead() {
@@ -1054,26 +1001,19 @@ function renderNewsFromBoot() {
   }
   box.innerHTML = list.map(n => {
     const lvl = ['urgent', 'important'].includes(n.level) ? n.level : 'normal';
-    return '<div class="card level-' + lvl + '">' +
-      '<b>' + esc(n.title) + '</b>' +
+    return '<div class="card level-' + lvl + '"><b>' + esc(n.title) + '</b>' +
       '<div>' + esc(n.text) + '</div>' +
-      '<div class="news-date">' + esc(n.date) + '</div>' +
-      '</div>';
+      '<div class="news-date">' + esc(n.date) + '</div></div>';
   }).join('');
 }
 
 function renderStandardsChips(standards) {
   const container = document.getElementById('standards-chips');
   const cats = ['all', 'shift_checklist', ...new Set(standards.map(s => s.category).filter(Boolean))];
-  
   container.innerHTML = cats.map(cat => {
-    let label = cat === 'all' ? 'Все' 
-              : cat === 'shift_checklist' ? '📋 Смена' 
-              : cat;
-    const active = currentStandardCat === cat ? ' active' : '';
-    return '<div class="chip' + active + '" data-cat="' + esc(cat) + '">' + esc(label) + '</div>';
+    const label = cat === 'all' ? 'Все' : cat === 'shift_checklist' ? '📋 Смена' : cat;
+    return '<div class="chip' + (currentStandardCat === cat ? ' active' : '') + '" data-cat="' + esc(cat) + '">' + esc(label) + '</div>';
   }).join('');
-
   container.querySelectorAll('.chip').forEach(chip => {
     chip.addEventListener('click', () => {
       haptic('light');
@@ -1089,78 +1029,56 @@ function renderStandardsFromBoot() {
   const box = document.getElementById('standards-list');
   const list = BOOT.standards || [];
   renderStandardsChips(list);
-
   const query = (document.getElementById('standard-search').value || '').trim().toLowerCase();
-
   let htmlContent = '';
-
   const showChecklists = currentStandardCat === 'shift_checklist' || currentStandardCat === 'all';
   const checklistMatchesQuery = !query || 'чек-лист открытия смены проверка чистоты рабочей зоны'.includes(query);
-
   if (showChecklists && checklistMatchesQuery) {
-    htmlContent += '<div class="checklist-card">' +
-      '<b style="margin-bottom: 12px;">📋 Чек-лист открытия смены</b>' +
-      '<div id="shift-checklist"></div>' +
-      '</div>';
+    htmlContent += '<div class="checklist-card"><b style="margin-bottom:12px;">📋 Чек-лист открытия смены</b><div id="shift-checklist"></div></div>';
   }
-
   const filtered = list.filter(s => {
     const matchCat = currentStandardCat === 'all' || s.category === currentStandardCat;
     const matchQuery = !query || (s.title + ' ' + s.description + ' ' + s.category).toLowerCase().indexOf(query) !== -1;
     return matchCat && matchQuery;
   });
-
   htmlContent += filtered.map(s =>
-    '<div class="card">' +
-    '<b>' + esc(s.title) + '</b>' +
-    '<div class="muted">' + esc(s.category) + '</div>' +
+    '<div class="card"><b>' + esc(s.title) + '</b><div class="muted">' + esc(s.category) + '</div>' +
     '<div style="margin-top:6px">' + esc(s.description) + '</div>' +
     (s.url ? '<a href="' + safeUrl(s.url) + '" target="_blank"><button class="btn">Открыть документ</button></a>' : '') +
     '</div>'
   ).join('');
-
   if (!htmlContent.trim()) {
     box.innerHTML = '<div class="card">Ничего не найдено по вашему запросу 📚</div>';
     return;
   }
-
   box.innerHTML = htmlContent;
-
-  if (document.getElementById('shift-checklist')) {
-    initShiftChecklist();
-  }
+  if (document.getElementById('shift-checklist')) initShiftChecklist();
 }
 
 function initShiftChecklist() {
   const container = document.getElementById('shift-checklist');
   if (!container) return;
-  
   const tasks = [
     { id: 't1', text: 'Проверить чистоту рабочей зоны и форму' },
     { id: 't2', text: 'Убедиться в корректности цен и меню' },
     { id: 't3', text: 'Проверить наличие необходимых упаковок и сырья' },
     { id: 't4', text: 'Синхронизироваться с командой на смене' }
   ];
-
   const todayKey = 'wokker_checklist_' + new Date().toISOString().slice(0, 10);
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem(todayKey) || '{}'); } catch(e){}
-
   container.innerHTML = tasks.map(t => {
     const isDone = !!saved[t.id];
     return '<div class="check-item ' + (isDone ? 'checked' : '') + '" data-id="' + t.id + '">' +
       '<div class="check-box">' + (isDone ? '✓' : '') + '</div>' +
-      '<div class="check-text">' + esc(t.text) + '</div>' +
-      '</div>';
+      '<div class="check-text">' + esc(t.text) + '</div></div>';
   }).join('');
-
   container.querySelectorAll('.check-item').forEach(item => {
     item.addEventListener('click', () => {
       haptic('light');
       const id = item.dataset.id;
       saved[id] = !saved[id];
       try { localStorage.setItem(todayKey, JSON.stringify(saved)); } catch(e){}
-      
       const checked = saved[id];
       item.classList.toggle('checked', !!checked);
       const box = item.querySelector('.check-box');
@@ -1176,15 +1094,9 @@ document.getElementById('standard-search').addEventListener('input', () => {
 function renderFaqFromBoot() {
   const box = document.getElementById('faq-list');
   const list = BOOT.faq || [];
-  if (!list.length) {
-    box.innerHTML = '<div class="card">Пока вопросов нет ❓</div>';
-    return;
-  }
+  if (!list.length) { box.innerHTML = '<div class="card">Пока вопросов нет ❓</div>'; return; }
   box.innerHTML = list.map(f =>
-    '<details>' +
-    '<summary>' + esc(f.question) + '</summary>' +
-    '<p>' + esc(f.answer) + '</p>' +
-    '</details>'
+    '<details><summary>' + esc(f.question) + '</summary><p>' + esc(f.answer) + '</p></details>'
   ).join('');
 }
 
@@ -1193,75 +1105,46 @@ document.getElementById('send-question').addEventListener('click', async functio
   const input = document.getElementById('question-input');
   const text = input.value.trim();
   if (!text) return;
-
-  if (text.length > 1000) {
-    showAlert('Слишком длинный вопрос (максимум 1000 символов).');
-    return;
-  }
-
+  if (text.length > 1000) { showAlert('Слишком длинный вопрос (максимум 1000 символов).'); return; }
   if (this.disabled) return;
   this.disabled = true;
-
   try {
     const resp = await fetch('/api/questions', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ initData: getInitData(), question: text })
     });
-    if (resp.ok) {
-      input.value = '';
-      showAlert('Вопрос отправлен! Ответ увидишь в боте.');
-    } else if (resp.status === 429) {
-      showAlert('Слишком часто. Подожди минуту и попробуй снова.');
-    } else {
-      showAlert('Не удалось отправить вопрос. Попробуй позже.');
-    }
-  } catch (e) {
-    showAlert('Ошибка сети');
-  } finally {
-    this.disabled = false;
-  }
+    if (resp.ok) { input.value = ''; showAlert('Вопрос отправлен! Ответ увидишь в боте.'); }
+    else if (resp.status === 429) { showAlert('Слишком часто. Подожди минуту и попробуй снова.'); }
+    else { showAlert('Не удалось отправить вопрос. Попробуй позже.'); }
+  } catch (e) { showAlert('Ошибка сети'); }
+  finally { this.disabled = false; }
 });
 
 const _refreshCache = {};
 async function refreshSection(sec) {
   const map = {
-    'sec-news': '/api/news',
-    'sec-restaurants': '/api/restaurants',
-    'sec-standards': '/api/standards',
-    'sec-faq': '/api/faq',
+    'sec-news': '/api/news', 'sec-restaurants': '/api/restaurants',
+    'sec-standards': '/api/standards', 'sec-faq': '/api/faq',
   };
   const url = map[sec];
   if (!url) return;
-
   const now = Date.now();
   if (now - (_refreshCache[sec] || 0) < 30000) return;
   _refreshCache[sec] = now;
-
   try {
     const resp = await fetch(url, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ initData: getInitData() })
     });
     if (resp.status === 401) { renderAuthErrorEverywhere(); return; }
     if (resp.status === 403) { renderBlockedEverywhere(); return; }
     if (!resp.ok) return;
     const data = await resp.json();
-
-    if (sec === 'sec-news') { 
-      BOOT.news = data; 
-      renderNewsFromBoot(); 
-      markNewsAsRead();
-      checkNewsBadge(); 
-    }
-    else if (sec === 'sec-restaurants') { 
-      BOOT.restaurants = prepareRestaurants(data); 
-      renderRestaurants(); 
-      // Если открыта карта — обновляем маркеры
-      if (document.getElementById('btn-view-map').classList.contains('active')) {
-        initInteractiveMap();
-      }
+    if (sec === 'sec-news') { BOOT.news = data; renderNewsFromBoot(); markNewsAsRead(); checkNewsBadge(); }
+    else if (sec === 'sec-restaurants') {
+      BOOT.restaurants = prepareRestaurants(data);
+      renderRestaurants();
+      if (document.getElementById('btn-view-map').classList.contains('active') && window.L) initInteractiveMap();
     }
     else if (sec === 'sec-standards') { BOOT.standards = data; renderStandardsFromBoot(); }
     else if (sec === 'sec-faq') { BOOT.faq = data; renderFaqFromBoot(); }
@@ -1274,8 +1157,29 @@ document.querySelectorAll('.tabs button').forEach(btn => {
   });
 });
 
+function renderAllSections() {
+  renderProfileFromBoot();
+  renderNewsFromBoot();
+  markNewsAsRead();
+  checkNewsBadge();
+  renderRestaurants();
+  renderStandardsFromBoot();
+  renderFaqFromBoot();
+}
+
 async function boot() {
   const restKey = new URLSearchParams(location.search).get('rest');
+
+  const cached = readBootCache();
+  let renderedFromCache = false;
+  if (cached) {
+    BOOT = cached;
+    if (BOOT.restaurants) BOOT.restaurants = prepareRestaurants(BOOT.restaurants);
+    renderAllSections();
+    if (restKey) showDetail(restKey, false);
+    renderedFromCache = true;
+  }
+
   const avatarPromise = (async () => {
     if (cachedAvatarUrl) return;
     const u = tgUserInfo();
@@ -1285,28 +1189,32 @@ async function boot() {
 
   try {
     const resp = await fetch('/api/bootstrap', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ initData: getInitData() })
     });
     if (resp.status === 403) { renderBlockedEverywhere(); return; }
     if (resp.status === 401) { renderAuthErrorEverywhere(); return; }
-    BOOT = await resp.json();
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+
+    const fresh = await resp.json();
+    const old = BOOT;
+    BOOT = fresh;
     if (BOOT.restaurants) BOOT.restaurants = prepareRestaurants(BOOT.restaurants);
+    writeBootCache(fresh);
+
+    if (!renderedFromCache) {
+      renderAllSections();
+      if (restKey) showDetail(restKey, false);
+    } else if (bootChanged(old, fresh)) {
+      requestAnimationFrame(() => { renderAllSections(); });
+    }
   } catch (e) {
-    renderNetErrorEverywhere();
-    return;
+    if (!renderedFromCache) {
+      renderNetErrorEverywhere();
+      return;
+    }
+    console.warn('bootstrap failed, using cache:', e);
   }
-
-  renderProfileFromBoot();
-  renderNewsFromBoot();
-  markNewsAsRead();
-  checkNewsBadge();
-  renderRestaurants();
-  renderStandardsFromBoot();
-  renderFaqFromBoot();
-
-  if (restKey) showDetail(restKey, false);
 
   avatarPromise.then(() => {
     const el = document.querySelector('#profile-box .avatar');

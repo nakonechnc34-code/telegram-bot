@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Wokker · Сотрудник</title>
-<!-- ИКОНКА САЙТА (ЗЕЛЕНАЯ) -->
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23DEFF8F'/%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%23000' stroke-width='8'/%3E%3Cpath d='M25 50 A 25 25 0 0 0 75 50' fill='none' stroke='%23000' stroke-width='12' stroke-linecap='round'/%3E%3Cpath d='M38 25 C45 15 35 10 40 5 C42 15 50 20 45 30 C42 35 35 35 32 30 C38 28 38 25 38 25 Z' fill='%23000'/%3E%3Cpath d='M62 25 C69 15 59 10 64 5 C66 15 74 20 69 30 C66 35 59 35 56 30 C62 28 62 25 62 25 Z' fill='%23000'/%3E%3C/svg%3E">
 
 <style>
@@ -94,7 +93,6 @@
   .card { background: var(--card-bg); border-radius: var(--radius);
     margin: 0 16px 16px; padding: 20px; box-shadow: var(--shadow); }
 
-  /* PROFILE */
   .profile-wrapper { margin: 24px 16px 16px; }
   .profile-card { background: var(--card-bg); border-radius: 28px;
     box-shadow: var(--shadow); overflow: hidden; position: relative; }
@@ -147,7 +145,6 @@
   .action-btn.danger { color: var(--accent); }
   .action-btn.admin { background: linear-gradient(135deg, #AF52DE 0%, #8E44AD 100%); color: #fff; }
 
-  /* ===== MEDBOOK в профиле ===== */
   .medbook-card {
     background: var(--card-bg); border-radius: 24px; padding: 20px;
     margin-bottom: 12px; box-shadow: var(--shadow);
@@ -203,7 +200,6 @@
   .mbi-status.expiring { background: var(--amber-soft); color: #C77700; }
   .mbi-status.expired, .mbi-status.missing, .mbi-status.invalid_date { background: var(--accent-soft); color: var(--accent); }
 
-  /* ===== TEAM ===== */
   .team-territory-title {
     margin: 24px 16px 12px; padding: 12px 16px;
     background: linear-gradient(135deg, #F4E5FB 0%, #E8D5F0 100%);
@@ -515,6 +511,7 @@ function showToast(text, type) {
   _toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
 }
 
+// FIX: разделены 401 (логаут) и 403 (нет прав — остаёмся), кроме error:"fired" — тоже логаут
 async function api(path, body) {
   const payload = { webToken: getToken() };
   if (body && typeof body === 'object') Object.assign(payload, body);
@@ -523,10 +520,20 @@ async function api(path, body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (res.status === 401 || res.status === 403) {
+  if (res.status === 401) {
     clearToken();
     showLogin();
     throw new Error('unauthorized');
+  }
+  if (res.status === 403) {
+    let j = {};
+    try { j = await res.json(); } catch (e) {}
+    if (j.error === 'fired') {
+      clearToken();
+      showLogin();
+      throw new Error('fired');
+    }
+    throw new Error(j.error || 'forbidden');
   }
   if (!res.ok) {
     let msg = 'error';
@@ -611,7 +618,7 @@ async function loadAndRender() {
     renderStandardsFromBoot();
     renderFaqFromBoot();
   } catch (e) {
-    if (e.message !== 'unauthorized') showToast('Ошибка загрузки', 'error');
+    if (e.message !== 'unauthorized' && e.message !== 'fired') showToast('Ошибка загрузки', 'error');
   }
 }
 
@@ -906,7 +913,8 @@ function renderRestaurantsList(list, query) {
   const q = (query || '').trim().toLowerCase();
   const myKey = (BOOT && BOOT.profile && BOOT.profile.restaurant_key) || '';
   let filtered = list.filter(r => ((r.name || '') + ' ' + (r.address || '')).toLowerCase().indexOf(q) !== -1);
-  if (currentRestFilter === 'open') filtered = filtered.filter(r => r.force_status === 'open');
+  // FIX: ресторан открыт, если force_status !== 'closed'
+  if (currentRestFilter === 'open') filtered = filtered.filter(r => r.force_status !== 'closed');
   if (currentRestFilter === 'my') filtered = filtered.filter(r => r.key === myKey);
   filtered.sort((a, b) => {
     const aIsMy = a.key === myKey;
@@ -922,7 +930,8 @@ function renderRestaurantsList(list, query) {
       ? 'https://yandex.ru/maps/org/' + encodeURIComponent(r.org)
       : 'https://yandex.ru/maps/?text=' + encodeURIComponent(r.address || '');
     const phoneClean = (r.phone || '').replace(/[^\d+]/g, '');
-    const isOpen = r.force_status === 'open';
+    // FIX: открыт, если не 'closed'
+    const isOpen = r.force_status !== 'closed';
     return `
       <div class="rest-card" data-key="${esc(r.key)}">
         ${isMy ? '<div class="my-rest-tag">Мой ресторан</div>' : ''}
@@ -993,7 +1002,8 @@ function initInteractiveMap(restaurants) {
   const placemarks = restaurants.filter(r => r.lat && r.lon).map(r => new ymaps.Placemark(
     [r.lat, r.lon],
     { hintContent: r.name, balloonContent: r.name },
-    { preset: r.force_status === 'open' ? 'islands#greenIcon' : 'islands#redIcon' }
+    // FIX: открыт, если не 'closed'
+    { preset: r.force_status !== 'closed' ? 'islands#greenIcon' : 'islands#redIcon' }
   ));
   yandexClusterer.add(placemarks);
   if (placemarks.length > 0) {
@@ -1034,7 +1044,8 @@ function showDetail(key) {
       ? 'https://yandex.ru/maps/org/' + encodeURIComponent(r.org)
       : 'https://yandex.ru/maps/?text=' + encodeURIComponent(r.address || '');
     const phoneClean = (r.phone || '').replace(/[^\d+]/g, '');
-    const isOpen = r.force_status === 'open';
+    // FIX: открыт, если не 'closed'
+    const isOpen = r.force_status !== 'closed';
     box.innerHTML = `
       <div class="detail-hero">
         <div class="emoji">🍜</div>
@@ -1182,7 +1193,7 @@ $('send-question').addEventListener('click', async function() {
     input.value = '';
     showToast('✅ Вопрос отправлен');
   } catch (e) {
-    if (e.message !== 'unauthorized') showToast('Не удалось отправить', 'error');
+    if (e.message !== 'unauthorized' && e.message !== 'fired') showToast('Не удалось отправить', 'error');
   } finally {
     btn.disabled = false;
     btn.textContent = oldLabel;

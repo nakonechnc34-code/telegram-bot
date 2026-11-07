@@ -659,16 +659,11 @@ const esc = s => (s || '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 function renderBlockedEverywhere() {
-  // Очищаем токен, чтобы полностью разлогинить
   setWebToken(null);
-  // Очищаем кэш
   try { localStorage.removeItem(BOOT_CACHE_KEY); } catch(e) {}
   
-  // Скрываем приложение и экран входа
   document.getElementById('main-app').style.display = 'none';
   document.getElementById('sec-auth').style.display = 'none';
-  
-  // Показываем полноэкранный блок
   document.getElementById('sec-blocked').style.display = 'flex';
 }
 
@@ -884,7 +879,7 @@ function renderRestaurantsList(list, query) {
       '<div class="rest-address-row">' +
       '<span class="icon">📍</span> ' + esc(r.address) +
       '</div>' +
-      (r.phone ? '<div class="rest-address-row"><span class="icon">📞</span> ' + esc(r.phone) + '</div>' : '') +
+      // ❌ Строка с номером телефона удалена
       '<div class="rest-actions">' +
       (r.phone ? '<a href="tel:' + esc(r.phone.replace(/[^\d+]/g, '')) + '" class="btn-call" onclick="event.stopPropagation()">📞 Позвонить</a>' : '') +
       '<a href="' + routeUrl + '" target="_blank" rel="noopener noreferrer" class="btn-route" onclick="event.stopPropagation()">🗺 Маршрут</a>' +

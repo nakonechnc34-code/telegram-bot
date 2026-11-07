@@ -10,7 +10,8 @@ import hashlib
 import logging
 import asyncio
 import random
-from datetime import datetime, timedelta, timezone
+import traceback
+from datetime import datetime, timedelta, timezone, date
 from contextlib import contextmanager
 
 from aiohttp import web
@@ -24,6 +25,23 @@ except Exception:
     MOSCOW_TZ = None
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+# ============= JSON SERIALIZER (фикс datetime) =============
+def _json_default(obj):
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+def _json_dumps(data):
+    return json.dumps(data, ensure_ascii=False, default=_json_default)
+
+# Глобальный monkey-patch: все web.json_response автоматически используют наш dumps
+_orig_json_response = web.json_response
+def _safe_json_response(data=None, *args, **kwargs):
+    kwargs.setdefault("dumps", _json_dumps)
+    return _orig_json_response(data, *args, **kwargs)
+web.json_response = _safe_json_response
+# =========================================================
 
 DB_URL = os.getenv("DATABASE_URL")
 if not DB_URL:
@@ -206,6 +224,17 @@ def get_conn():
 async def _run(fn, *args):
     return await asyncio.to_thread(fn, *args)
 
+def _run_migration(sql, label):
+    """Выполняет миграцию в отдельной транзакции, чтобы не откатывать все остальные при ошибке."""
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+        return True
+    except Exception as e:
+        print(f"⚠️ Миграция '{label}': {type(e).__name__}: {str(e)[:100]}")
+        return False
+
 # ============= SEED =============
 RESTAURANTS_SEED = [
     {"key": "belyaevo", "name": "Беляево", "address": "Москва, ул. Миклухо-Маклая, 32А, ТЦ «Капитолий», этаж 2", "hours": "Пн–вс: 10:00–22:00", "lat": 55.6437, "lon": 37.5302, "org": "vokker/13122472923", "phone": "+7 (985) 857-06-69"},
@@ -256,195 +285,184 @@ VACCINES_SEED = [
 # ============= ИНИЦИАЛИЗАЦИЯ БД =============
 init_pool()
 
+# Основная таблица — одна транзакция
+_run_migration("""
+    CREATE TABLE IF NOT EXISTS users (
+        user_id BIGSERIAL PRIMARY KEY,
+        login TEXT,
+        password_hash TEXT,
+        full_name TEXT,
+        phone TEXT,
+        birth_date TEXT,
+        position TEXT,
+        restaurant_key TEXT,
+        is_admin BOOLEAN DEFAULT FALSE,
+        is_super_admin BOOLEAN DEFAULT FALSE,
+        permissions JSONB DEFAULT '{}',
+        is_fired BOOLEAN DEFAULT FALSE,
+        fired_at TIMESTAMPTZ,
+        fired_by TEXT,
+        is_certified BOOLEAN DEFAULT FALSE,
+        medbook JSONB DEFAULT '{"doctors":{},"tests":{},"vaccines":{}}',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        last_seen_at TIMESTAMPTZ
+    )
+""", "CREATE users")
+
+# Все ALTER-миграции — каждая отдельно
+for _col, _sql in [
+    ("login", "ALTER TABLE users ADD COLUMN IF NOT EXISTS login TEXT"),
+    ("password_hash", "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT"),
+    ("is_admin", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE"),
+    ("is_super_admin", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN DEFAULT FALSE"),
+    ("permissions", "ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT '{}'"),
+    ("is_fired", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_fired BOOLEAN DEFAULT FALSE"),
+    ("fired_at", "ALTER TABLE users ADD COLUMN IF NOT EXISTS fired_at TIMESTAMPTZ"),
+    ("fired_by", "ALTER TABLE users ADD COLUMN IF NOT EXISTS fired_by TEXT"),
+    ("is_certified", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_certified BOOLEAN DEFAULT FALSE"),
+    ("medbook", "ALTER TABLE users ADD COLUMN IF NOT EXISTS medbook JSONB DEFAULT '{\"doctors\":{},\"tests\":{},\"vaccines\":{}}'"),
+    ("last_seen_at", "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ"),
+    ("restaurant_key", "ALTER TABLE users ADD COLUMN IF NOT EXISTS restaurant_key TEXT"),
+    ("restaurant", "ALTER TABLE users ADD COLUMN IF NOT EXISTS restaurant TEXT"),
+]:
+    _run_migration(_sql, f"ADD {_col}")
+
+_run_migration("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_login ON users (LOWER(login)) WHERE login IS NOT NULL", "idx login")
+
+# Фикс NULL в boolean-колонках
+_run_migration("UPDATE users SET is_fired = FALSE WHERE is_fired IS NULL", "NULL is_fired")
+_run_migration("UPDATE users SET is_admin = FALSE WHERE is_admin IS NULL", "NULL is_admin")
+_run_migration("UPDATE users SET is_super_admin = FALSE WHERE is_super_admin IS NULL", "NULL is_super_admin")
+_run_migration("UPDATE users SET is_certified = FALSE WHERE is_certified IS NULL", "NULL is_certified")
+
+# Гарантируем автоинкремент user_id
+_run_migration("""
+    DO $$
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'S' AND relname = 'users_user_id_seq') THEN
+            CREATE SEQUENCE users_user_id_seq;
+        END IF;
+        PERFORM setval(
+            'users_user_id_seq',
+            GREATEST((SELECT COALESCE(MAX(user_id), 0) FROM users), 1),
+            (SELECT COUNT(*) FROM users) > 0
+        );
+        ALTER TABLE users ALTER COLUMN user_id SET DEFAULT nextval('users_user_id_seq');
+        ALTER SEQUENCE users_user_id_seq OWNED BY users.user_id;
+    END $$;
+""", "user_id sequence")
+
+# Остальные таблицы
+_run_migration("""
+    CREATE TABLE IF NOT EXISTS restaurants (
+        key TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        address TEXT,
+        hours TEXT,
+        lat REAL,
+        lon REAL,
+        org TEXT,
+        phone TEXT DEFAULT '',
+        force_status TEXT,
+        sort INT DEFAULT 100,
+        territory_manager_id BIGINT
+    )
+""", "CREATE restaurants")
+
+for _sql in [
+    "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS force_status TEXT",
+    "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS sort INT DEFAULT 100",
+    "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS territory_manager_id BIGINT",
+]:
+    _run_migration(_sql, "restaurants alter")
+
+_run_migration("""
+    CREATE TABLE IF NOT EXISTS medbook_doctors (
+        id SERIAL PRIMARY KEY, name TEXT NOT NULL,
+        required BOOLEAN DEFAULT FALSE, validity_months INT DEFAULT 12, sort INT DEFAULT 100
+    )
+""", "CREATE medbook_doctors")
+
+_run_migration("""
+    CREATE TABLE IF NOT EXISTS medbook_tests (
+        id SERIAL PRIMARY KEY, name TEXT NOT NULL,
+        required BOOLEAN DEFAULT FALSE, validity_months INT DEFAULT 12, sort INT DEFAULT 100
+    )
+""", "CREATE medbook_tests")
+
+_run_migration("""
+    CREATE TABLE IF NOT EXISTS medbook_vaccines (
+        id SERIAL PRIMARY KEY, name TEXT NOT NULL,
+        required BOOLEAN DEFAULT FALSE, validity_months INT DEFAULT 12, sort INT DEFAULT 100
+    )
+""", "CREATE medbook_vaccines")
+
+_run_migration("""
+    CREATE TABLE IF NOT EXISTS news (
+        id SERIAL PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL,
+        level TEXT DEFAULT 'normal', status TEXT DEFAULT 'published',
+        publish_at TIMESTAMPTZ, proposed_by TEXT, approved_by TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+""", "CREATE news")
+
+for _sql in [
+    "ALTER TABLE news ADD COLUMN IF NOT EXISTS level TEXT DEFAULT 'normal'",
+    "ALTER TABLE news ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'published'",
+    "ALTER TABLE news ADD COLUMN IF NOT EXISTS publish_at TIMESTAMPTZ",
+    "ALTER TABLE news ADD COLUMN IF NOT EXISTS proposed_by TEXT",
+    "ALTER TABLE news ADD COLUMN IF NOT EXISTS approved_by TEXT",
+]:
+    _run_migration(_sql, "news alter")
+
+_run_migration("""
+    CREATE TABLE IF NOT EXISTS standards (
+        id SERIAL PRIMARY KEY, title TEXT NOT NULL,
+        category TEXT DEFAULT '', description TEXT DEFAULT '', url TEXT DEFAULT ''
+    )
+""", "CREATE standards")
+
+_run_migration("""
+    CREATE TABLE IF NOT EXISTS faq (
+        id SERIAL PRIMARY KEY, question TEXT NOT NULL,
+        answer TEXT NOT NULL, category TEXT DEFAULT ''
+    )
+""", "CREATE faq")
+
+_run_migration("""
+    CREATE TABLE IF NOT EXISTS positions (
+        id SERIAL PRIMARY KEY, name TEXT NOT NULL UNIQUE,
+        sort INT DEFAULT 100, is_archived BOOLEAN DEFAULT FALSE
+    )
+""", "CREATE positions")
+
+_run_migration("""
+    CREATE TABLE IF NOT EXISTS admin_audit (
+        id SERIAL PRIMARY KEY, admin_id BIGINT, action TEXT,
+        target_type TEXT, target_id TEXT, details TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+""", "CREATE audit")
+
+_run_migration("""
+    CREATE TABLE IF NOT EXISTS questions (
+        id SERIAL PRIMARY KEY, user_id BIGINT NOT NULL, text TEXT NOT NULL,
+        replied BOOLEAN DEFAULT FALSE, reply_text TEXT,
+        replied_at TIMESTAMPTZ, replied_by BIGINT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+""", "CREATE questions")
+
+_run_migration("""
+    CREATE TABLE IF NOT EXISTS web_sessions (
+        token TEXT PRIMARY KEY, user_id BIGINT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(), last_used_at TIMESTAMPTZ DEFAULT NOW()
+    )
+""", "CREATE sessions")
+
+# Seеды (в одной транзакции)
 with get_conn() as conn:
     with conn.cursor() as cur:
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                user_id BIGSERIAL PRIMARY KEY,
-                login TEXT,
-                password_hash TEXT,
-                full_name TEXT,
-                phone TEXT,
-                birth_date TEXT,
-                position TEXT,
-                restaurant_key TEXT,
-                is_admin BOOLEAN DEFAULT FALSE,
-                is_super_admin BOOLEAN DEFAULT FALSE,
-                permissions JSONB DEFAULT '{}',
-                is_fired BOOLEAN DEFAULT FALSE,
-                fired_at TIMESTAMPTZ,
-                fired_by TEXT,
-                is_certified BOOLEAN DEFAULT FALSE,
-                medbook JSONB DEFAULT '{"doctors":{},"tests":{},"vaccines":{}}',
-                created_at TIMESTAMPTZ DEFAULT NOW(),
-                last_seen_at TIMESTAMPTZ
-            )
-        """)
-        # Миграции для старой схемы
-        for col, ddl in [
-            ("login", "ALTER TABLE users ADD COLUMN IF NOT EXISTS login TEXT"),
-            ("password_hash", "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT"),
-            ("is_admin", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE"),
-            ("is_super_admin", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN DEFAULT FALSE"),
-            ("permissions", "ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT '{}'"),
-            ("is_fired", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_fired BOOLEAN DEFAULT FALSE"),
-            ("fired_at", "ALTER TABLE users ADD COLUMN IF NOT EXISTS fired_at TIMESTAMPTZ"),
-            ("fired_by", "ALTER TABLE users ADD COLUMN IF NOT EXISTS fired_by TEXT"),
-            ("is_certified", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_certified BOOLEAN DEFAULT FALSE"),
-            ("medbook", "ALTER TABLE users ADD COLUMN IF NOT EXISTS medbook JSONB DEFAULT '{\"doctors\":{},\"tests\":{},\"vaccines\":{}}'"),
-            ("last_seen_at", "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ"),
-            ("restaurant_key", "ALTER TABLE users ADD COLUMN IF NOT EXISTS restaurant_key TEXT"),
-        ]:
-            cur.execute(ddl)
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_login ON users (LOWER(login)) WHERE login IS NOT NULL")
-
-        # === ФИКС: NULL в boolean-колонках не находится через WHERE x = FALSE ===
-        cur.execute("UPDATE users SET is_fired = FALSE WHERE is_fired IS NULL")
-        cur.execute("UPDATE users SET is_admin = FALSE WHERE is_admin IS NULL")
-        cur.execute("UPDATE users SET is_super_admin = FALSE WHERE is_super_admin IS NULL")
-        cur.execute("UPDATE users SET is_certified = FALSE WHERE is_certified IS NULL")
-
-        # === МИГРАЦИЯ: гарантируем, что user_id имеет автоинкремент (BIGSERIAL) ===
-        cur.execute("""
-            DO $$
-            BEGIN
-                IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'S' AND relname = 'users_user_id_seq') THEN
-                    CREATE SEQUENCE users_user_id_seq;
-                END IF;
-                PERFORM setval(
-                    'users_user_id_seq',
-                    GREATEST((SELECT COALESCE(MAX(user_id), 0) FROM users), 1),
-                    (SELECT COUNT(*) FROM users) > 0
-                );
-                ALTER TABLE users ALTER COLUMN user_id SET DEFAULT nextval('users_user_id_seq');
-                ALTER SEQUENCE users_user_id_seq OWNED BY users.user_id;
-            END $$;
-        """)
-
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS restaurants (
-                key TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                address TEXT,
-                hours TEXT,
-                lat REAL,
-                lon REAL,
-                org TEXT,
-                phone TEXT DEFAULT '',
-                force_status TEXT,
-                sort INT DEFAULT 100,
-                territory_manager_id BIGINT
-            )
-        """)
-        cur.execute("ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS force_status TEXT")
-        cur.execute("ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS sort INT DEFAULT 100")
-        cur.execute("ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS territory_manager_id BIGINT")
-
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS medbook_doctors (
-                id SERIAL PRIMARY KEY,
-                name TEXT NOT NULL,
-                required BOOLEAN DEFAULT FALSE,
-                validity_months INT DEFAULT 12,
-                sort INT DEFAULT 100
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS medbook_tests (
-                id SERIAL PRIMARY KEY,
-                name TEXT NOT NULL,
-                required BOOLEAN DEFAULT FALSE,
-                validity_months INT DEFAULT 12,
-                sort INT DEFAULT 100
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS medbook_vaccines (
-                id SERIAL PRIMARY KEY,
-                name TEXT NOT NULL,
-                required BOOLEAN DEFAULT FALSE,
-                validity_months INT DEFAULT 12,
-                sort INT DEFAULT 100
-            )
-        """)
-
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS news (
-                id SERIAL PRIMARY KEY,
-                title TEXT NOT NULL,
-                body TEXT NOT NULL,
-                level TEXT DEFAULT 'normal',
-                status TEXT DEFAULT 'published',
-                publish_at TIMESTAMPTZ,
-                proposed_by TEXT,
-                approved_by TEXT,
-                created_at TIMESTAMPTZ DEFAULT NOW()
-            )
-        """)
-        cur.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS level TEXT DEFAULT 'normal'")
-        cur.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'published'")
-        cur.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS publish_at TIMESTAMPTZ")
-        cur.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS proposed_by TEXT")
-        cur.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS approved_by TEXT")
-
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS standards (
-                id SERIAL PRIMARY KEY,
-                title TEXT NOT NULL,
-                category TEXT DEFAULT '',
-                description TEXT DEFAULT '',
-                url TEXT DEFAULT ''
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS faq (
-                id SERIAL PRIMARY KEY,
-                question TEXT NOT NULL,
-                answer TEXT NOT NULL,
-                category TEXT DEFAULT ''
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS positions (
-                id SERIAL PRIMARY KEY,
-                name TEXT NOT NULL UNIQUE,
-                sort INT DEFAULT 100,
-                is_archived BOOLEAN DEFAULT FALSE
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS admin_audit (
-                id SERIAL PRIMARY KEY,
-                admin_id BIGINT,
-                action TEXT,
-                target_type TEXT,
-                target_id TEXT,
-                details TEXT,
-                created_at TIMESTAMPTZ DEFAULT NOW()
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS questions (
-                id SERIAL PRIMARY KEY,
-                user_id BIGINT NOT NULL,
-                text TEXT NOT NULL,
-                replied BOOLEAN DEFAULT FALSE,
-                reply_text TEXT,
-                replied_at TIMESTAMPTZ,
-                replied_by BIGINT,
-                created_at TIMESTAMPTZ DEFAULT NOW()
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS web_sessions (
-                token TEXT PRIMARY KEY,
-                user_id BIGINT NOT NULL,
-                created_at TIMESTAMPTZ DEFAULT NOW(),
-                last_used_at TIMESTAMPTZ DEFAULT NOW()
-            )
-        """)
-
-        # Seеды
         cur.execute("SELECT COUNT(*) FROM restaurants")
         if cur.fetchone()[0] == 0:
             for i, r in enumerate(RESTAURANTS_SEED):
@@ -493,7 +511,7 @@ with get_conn() as conn:
             cur.execute("INSERT INTO news (title, body, level, status) VALUES (%s,%s,%s,%s)",
                         ("Обновление меню", "Появились новые позиции в меню.", "normal", "published"))
 
-        # ===== Создание / повышение первичного супер-админа =====
+        # Создание / повышение супер-админа
         cur.execute("SELECT COUNT(*) FROM users WHERE is_super_admin = TRUE")
         if cur.fetchone()[0] == 0:
             pw = hash_password(ADMIN_PASSWORD)
@@ -585,11 +603,6 @@ def _sync_user_has_perm(user, perm):
             perms = {}
     return bool(perms.get(perm))
 
-def _sync_compute_user_status(user, doctors, tests, vaccines):
-    if user.get("is_admin"):
-        return "—"
-    return compute_medbook_status(user.get("medbook") or {}, doctors, tests, vaccines)
-
 # ============= AUTH =============
 async def get_auth_user(request):
     try:
@@ -614,7 +627,6 @@ def denied(status):
         return web.json_response({"error": "forbidden"}, status=403)
     return web.json_response({"error": "unauthorized"}, status=401)
 
-# ============= АДМИНСКИЕ ХЕЛПЕРЫ =============
 def require_perm(user, perm):
     if not _sync_user_has_perm(user, perm):
         return web.json_response({"error": "forbidden"}, status=403)
@@ -653,7 +665,6 @@ async def handle_auth_login(request):
     return web.json_response({"ok": True, "token": token, "is_admin": True})
 
 async def handle_auth_login_staff(request):
-    """Логин для сотрудников (без обязательного is_admin)"""
     try:
         data = await request.json()
     except Exception:
@@ -684,7 +695,7 @@ async def handle_auth_logout(request):
         await _run(_sync_delete_session, token)
     return web.json_response({"ok": True})
 
-# ============= API: ADMIN ME / DASHBOARD =============
+# ============= API: ME / DASHBOARD =============
 async def handle_admin_me(request):
     user, err = await get_admin_user(request)
     if err:
@@ -737,12 +748,18 @@ async def handle_admin_dashboard(request):
     stats = await _run(_sync_dashboard_stats)
     return web.json_response({"stats": stats})
 
-# ============= API: USERS =============
+# ============= USERS =============
 def _sync_list_users(search="", fired=False):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             base = """
-                SELECT u.*, r.name AS restaurant_name
+                SELECT u.user_id, u.login, u.full_name, u.phone, u.birth_date, u.position,
+                       u.restaurant_key, r.name AS restaurant_name,
+                       COALESCE(u.is_admin, FALSE) AS is_admin,
+                       COALESCE(u.is_super_admin, FALSE) AS is_super_admin,
+                       COALESCE(u.is_fired, FALSE) AS is_fired,
+                       COALESCE(u.is_certified, FALSE) AS is_certified,
+                       u.medbook, u.created_at, u.last_seen_at, u.fired_at, u.fired_by
                 FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key
                 WHERE COALESCE(u.is_fired, FALSE) = %s AND u.login IS NOT NULL
             """
@@ -773,11 +790,10 @@ async def handle_admin_users(request):
     for u in users:
         u["medbook_status"] = compute_medbook_status(u.get("medbook") or {}, doctors, tests, vaccines) if not u["is_admin"] else "—"
         u.pop("password_hash", None)
-        if isinstance(u.get("medbook"), dict):
-            pass
-        else:
+        mb = u.get("medbook")
+        if isinstance(mb, str):
             try:
-                u["medbook"] = json.loads(u.get("medbook") or "{}")
+                u["medbook"] = json.loads(mb or "{}")
             except Exception:
                 u["medbook"] = {}
     return web.json_response({"users": users})
@@ -831,11 +847,27 @@ def _sync_get_user_by_id(user_id):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
-                SELECT u.*, r.name AS restaurant_name
+                SELECT u.user_id, u.login, u.full_name, u.phone, u.birth_date, u.position,
+                       u.restaurant_key, r.name AS restaurant_name,
+                       COALESCE(u.is_admin, FALSE) AS is_admin,
+                       COALESCE(u.is_super_admin, FALSE) AS is_super_admin,
+                       COALESCE(u.is_fired, FALSE) AS is_fired,
+                       COALESCE(u.is_certified, FALSE) AS is_certified,
+                       u.medbook, u.created_at, u.last_seen_at, u.fired_at, u.fired_by,
+                       u.permissions
                 FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key
                 WHERE u.user_id = %s
             """, (user_id,))
-            return cur.fetchone()
+            row = cur.fetchone()
+            if row:
+                d = dict(row)
+                if isinstance(d.get("medbook"), str):
+                    try:
+                        d["medbook"] = json.loads(d["medbook"] or "{}")
+                    except Exception:
+                        d["medbook"] = {}
+                return d
+            return None
 
 async def handle_admin_user_get(request):
     admin, err = await get_admin_user(request)
@@ -849,7 +881,6 @@ async def handle_admin_user_get(request):
     user = await _run(_sync_get_user_by_id, uid)
     if not user:
         return web.json_response({"error": "not_found"}, status=404)
-    user.pop("password_hash", None)
     return web.json_response({"user": user})
 
 def _sync_update_user(uid, updates):
@@ -897,7 +928,6 @@ async def handle_admin_user_update(request):
 
     await _run(_sync_update_user, uid, updates)
     updated = await _run(_sync_get_user_by_id, uid)
-    updated.pop("password_hash", None)
     return web.json_response({"ok": True, "user": updated})
 
 async def handle_admin_user_fire(request):
@@ -975,14 +1005,17 @@ async def handle_admin_user_delete(request):
             cur.execute("DELETE FROM users WHERE user_id = %s", (uid,))
     return web.json_response({"ok": True})
 
-# ============= API: ADMINS / PERMISSIONS =============
+# ============= ADMINS / PERMISSIONS =============
 def _sync_list_admins():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT * FROM users WHERE COALESCE(is_admin, FALSE) = TRUE AND COALESCE(is_fired, FALSE) = FALSE ORDER BY user_id")
+            cur.execute("""SELECT user_id, login, full_name, position, permissions,
+                                  COALESCE(is_admin, FALSE) AS is_admin,
+                                  COALESCE(is_super_admin, FALSE) AS is_super_admin
+                           FROM users
+                           WHERE COALESCE(is_admin, FALSE) = TRUE AND COALESCE(is_fired, FALSE) = FALSE
+                           ORDER BY user_id""")
             admins = [dict(r) for r in cur.fetchall()]
-    for a in admins:
-        a.pop("password_hash", None)
     return admins
 
 async def handle_admin_admins(request):
@@ -1019,7 +1052,7 @@ async def handle_admin_set_permissions(request):
             cur.execute("UPDATE users SET permissions = %s WHERE user_id = %s", (Json(cleaned), uid))
     return web.json_response({"ok": True})
 
-# ============= API: RESTAURANTS =============
+# ============= RESTAURANTS =============
 def _sync_restaurants():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1100,7 +1133,7 @@ async def handle_admin_restaurant_status(request):
             cur.execute("UPDATE restaurants SET force_status = %s WHERE key = %s", (st, key))
     return web.json_response({"ok": True})
 
-# ============= API: MEDBOOKS =============
+# ============= MEDBOOKS =============
 def _sync_medbooks_full():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1155,16 +1188,10 @@ async def handle_admin_medbook_get(request):
     if not user:
         return web.json_response({"error": "not_found"}, status=404)
     doctors, tests, vaccines = await _run(_sync_get_medbook_refs)
-    mb = user.get("medbook") or {}
-    if isinstance(mb, str):
-        try:
-            mb = json.loads(mb)
-        except Exception:
-            mb = {}
     return web.json_response({
         "user": {"user_id": user["user_id"], "full_name": user.get("full_name"),
                  "position": user.get("position"), "restaurant_name": user.get("restaurant_name") or ""},
-        "medbook": mb,
+        "medbook": user.get("medbook") or {},
         "doctors": doctors, "tests": tests, "vaccines": vaccines,
     })
 
@@ -1260,7 +1287,7 @@ async def handle_admin_medbook_ref_delete(request):
             cur.execute(f"DELETE FROM {table} WHERE id = %s", (rid,))
     return web.json_response({"ok": True})
 
-# ============= API: NEWS =============
+# ============= NEWS =============
 def _sync_news_list():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1387,7 +1414,7 @@ async def handle_admin_news_reject(request):
             cur.execute("DELETE FROM news WHERE id = %s AND status = 'pending'", (nid,))
     return web.json_response({"ok": True})
 
-# ============= API: STANDARDS =============
+# ============= STANDARDS =============
 def _sync_standards():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1454,7 +1481,7 @@ async def handle_admin_standard_delete(request):
             cur.execute("DELETE FROM standards WHERE id = %s", (int(body.get("id") or 0),))
     return web.json_response({"ok": True})
 
-# ============= API: FAQ / POSITIONS / QUESTIONS =============
+# ============= FAQ / POSITIONS / QUESTIONS =============
 def _sync_faq_list():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1589,7 +1616,7 @@ async def handle_admin_question_reply(request):
                            replied_by = %s WHERE id = %s""", (text, admin["user_id"], qid))
     return web.json_response({"ok": True})
 
-# ============= API: AUDIT / REPORTS / PASSWORD =============
+# ============= AUDIT / REPORTS / PASSWORD =============
 def _sync_audit():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1638,12 +1665,13 @@ async def handle_admin_debug_users(request):
         return web.json_response({"error": "forbidden"}, status=403)
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("""SELECT user_id, login, full_name, is_admin, is_super_admin, is_fired, position
+            cur.execute("""SELECT user_id, login, full_name,
+                                  is_admin, is_super_admin, is_fired, position
                            FROM users ORDER BY user_id""")
             rows = [dict(r) for r in cur.fetchall()]
     return web.json_response({"count": len(rows), "users": rows})
 
-# ============= API: BOOTSTRAP (для сотрудника) =============
+# ============= BOOTSTRAP =============
 def _sync_bootstrap(user_id):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1692,7 +1720,7 @@ async def handle_bootstrap(request):
         "restaurants": rest_rows,
     })
 
-# ============= API: QUESTIONS (для сотрудника) =============
+# ============= QUESTIONS (staff) =============
 async def handle_questions_staff(request):
     user, err = await get_auth_user(request)
     if err:
@@ -1753,8 +1781,10 @@ async def error_middleware(request, handler):
     except web.HTTPException:
         raise
     except Exception as e:
-        logging.error("Unhandled %s %s: %s: %s", request.method, request.path, type(e).__name__, str(e)[:200])
-        return web.json_response({"error": "internal"}, status=500)
+        logging.error("Unhandled %s %s: %s\n%s",
+                      request.method, request.path, type(e).__name__,
+                      traceback.format_exc())
+        return web.json_response({"error": "internal", "detail": str(e)[:200]}, status=500)
 
 _GZIP_TYPES = ("application/json", "text/plain", "text/html", "text/css",
                "application/javascript")
@@ -1785,20 +1815,15 @@ app.router.add_get("/admin/", handle_admin_page)
 app.router.add_get("/favicon.ico", handle_favicon)
 app.router.add_get("/api/health", handle_health)
 
-# AUTH
 app.router.add_post("/api/auth/login", handle_auth_login_staff)
 app.router.add_post("/api/auth/logout", handle_auth_logout)
-
-# STAFF API
 app.router.add_post("/api/bootstrap", handle_bootstrap)
 app.router.add_post("/api/questions", handle_questions_staff)
 
-# ADMIN AUTH
 app.router.add_post("/api/admin/login", handle_auth_login)
 app.router.add_post("/api/admin/me", handle_admin_me)
 app.router.add_post("/api/admin/dashboard", handle_admin_dashboard)
 
-# USERS
 app.router.add_post("/api/admin/users", handle_admin_users)
 app.router.add_post("/api/admin/user/get", handle_admin_user_get)
 app.router.add_post("/api/admin/user/create", handle_admin_user_create)
@@ -1807,20 +1832,15 @@ app.router.add_post("/api/admin/user/delete", handle_admin_user_delete)
 app.router.add_post("/api/admin/user/fire", handle_admin_user_fire)
 app.router.add_post("/api/admin/user/restore", handle_admin_user_restore)
 
-# ADMINS / PERMISSIONS
 app.router.add_post("/api/admin/admins", handle_admin_admins)
 app.router.add_post("/api/admin/set-permissions", handle_admin_set_permissions)
-
-# DEBUG
 app.router.add_post("/api/admin/debug/users", handle_admin_debug_users)
 
-# RESTAURANTS
 app.router.add_post("/api/admin/restaurants", handle_admin_restaurants)
 app.router.add_post("/api/admin/restaurant/update", handle_admin_restaurant_update)
 app.router.add_post("/api/admin/restaurant/tu", handle_admin_restaurant_tu)
 app.router.add_post("/api/admin/restaurant/status", handle_admin_restaurant_status)
 
-# MEDBOOKS
 app.router.add_post("/api/admin/medbooks", handle_admin_medbooks)
 app.router.add_post("/api/admin/medbook/get", handle_admin_medbook_get)
 app.router.add_post("/api/admin/medbook/save", handle_admin_medbook_save)
@@ -1828,7 +1848,6 @@ app.router.add_post("/api/admin/medbook/reference/add", handle_admin_medbook_ref
 app.router.add_post("/api/admin/medbook/reference/update", handle_admin_medbook_ref_update)
 app.router.add_post("/api/admin/medbook/reference/delete", handle_admin_medbook_ref_delete)
 
-# NEWS
 app.router.add_post("/api/admin/news", handle_admin_news_list)
 app.router.add_post("/api/admin/news/add", handle_admin_news_add)
 app.router.add_post("/api/admin/news/update", handle_admin_news_update)
@@ -1836,13 +1855,11 @@ app.router.add_post("/api/admin/news/delete", handle_admin_news_delete)
 app.router.add_post("/api/admin/news/approve", handle_admin_news_approve)
 app.router.add_post("/api/admin/news/reject", handle_admin_news_reject)
 
-# STANDARDS
 app.router.add_post("/api/admin/standards", handle_admin_standards)
 app.router.add_post("/api/admin/standard/add", handle_admin_standard_add)
 app.router.add_post("/api/admin/standard/update", handle_admin_standard_update)
 app.router.add_post("/api/admin/standard/delete", handle_admin_standard_delete)
 
-# FAQ / POSITIONS / QUESTIONS
 app.router.add_post("/api/admin/faq", handle_admin_faq)
 app.router.add_post("/api/admin/faq/add", handle_admin_faq_add)
 app.router.add_post("/api/admin/faq/update", handle_admin_faq_update)
@@ -1853,7 +1870,6 @@ app.router.add_post("/api/admin/position/archive", handle_admin_position_archive
 app.router.add_post("/api/admin/questions", handle_admin_questions)
 app.router.add_post("/api/admin/question/reply", handle_admin_question_reply)
 
-# AUDIT / REPORTS / PASSWORD
 app.router.add_post("/api/admin/audit", handle_admin_audit)
 app.router.add_post("/api/admin/reports", handle_admin_reports)
 app.router.add_post("/api/admin/change-password", handle_admin_change_password)

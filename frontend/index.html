@@ -29,7 +29,7 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background: var(--bg);
     color: var(--text-color);
-    padding-bottom: 80px; /* Уменьшили нижний отступ, так как панель стала тоньше */
+    padding-bottom: 80px;
     transition: background 0.25s ease, color 0.25s ease;
   }
 
@@ -65,25 +65,25 @@
   /* ОБНОВЛЕННАЯ ПАНЕЛЬ НАВИГАЦИИ */
   .tabs {
     position: fixed; 
-    bottom: calc(6px + env(safe-area-inset-bottom)); /* Опустили ниже */
+    bottom: calc(6px + env(safe-area-inset-bottom));
     left: 10px; right: 10px; display: flex;
     background: var(--card-bg);
     backdrop-filter: blur(20px) saturate(1.8);
     -webkit-backdrop-filter: blur(20px) saturate(1.8);
     border: 1px solid rgba(128, 128, 128, 0.15);
-    border-radius: 22px; /* Сделали скругление чуть меньше */
-    padding: 4px; /* Уменьшили внутренние отступы */
+    border-radius: 22px;
+    padding: 4px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
     z-index: 100;
   }
 
   .tabs button {
     flex: 1; border: 0; background: none; 
-    padding: 6px 2px 4px; /* Сделали кнопку ниже */
+    padding: 6px 2px 4px;
     font-size: 10px; font-weight: 500; color: var(--hint-color); border-radius: 18px;
     transition: color .2s ease, background .25s ease, transform .2s ease;
     position: relative;
-    white-space: nowrap; /* Запрещаем перенос текста на новую строку */
+    white-space: nowrap;
   }
   .tabs button:active { transform: scale(0.92); }
   .tabs button.active {
@@ -93,8 +93,8 @@
   }
   .tabs .tab-icon {
     display: flex; align-items: center; justify-content: center;
-    height: 20px; /* Уменьшили высоту иконки */
-    margin-bottom: 2px; /* Уменьшили отступ под иконкой */
+    height: 20px;
+    margin-bottom: 2px;
     transition: transform .25s cubic-bezier(.34, 1.56, .64, 1);
   }
   .tabs button.active .tab-icon { transform: translateY(-2px) scale(1.12); }
@@ -341,10 +341,68 @@
   .blocked-screen .title { font-size: 20px; font-weight: 700; margin-bottom: 8px; color: var(--text-color); }
   .blocked-screen .text { color: var(--hint-color); font-size: 14px; line-height: 1.5; }
 
-  .news-date { color: var(--hint-color); font-size: 12px; margin-top: 6px; }
-  .level-urgent b::before { content: "🔴 "; }
-  .level-important b::before { content: "🟡 "; }
-  .level-normal b::before { content: "🔵 "; }
+  /* ===== НОВЫЙ ДИЗАЙН НОВОСТЕЙ ===== */
+  .news-item {
+    background: var(--card-bg);
+    border-radius: 16px;
+    margin: 0 12px 12px;
+    padding: 16px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+    border: 1px solid rgba(128, 128, 128, 0.08);
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s ease;
+  }
+  .news-item:active { transform: scale(0.99); }
+
+  /* Цветная полоска слева для срочных/важных */
+  .news-item::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 4px;
+    background: transparent;
+  }
+  .news-item.level-urgent::before { background: #ff3b30; }
+  .news-item.level-important::before { background: #ff9500; }
+
+  .news-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .news-date {
+    font-size: 12px;
+    color: var(--hint-color);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .news-badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .news-badge.urgent { background: #ffe5e5; color: #ff3b30; }
+  .news-badge.important { background: #fff2e0; color: #ff9500; }
+  
+  .news-title {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text-color);
+    margin-bottom: 8px;
+    line-height: 1.3;
+  }
+  .news-body {
+    font-size: 14px;
+    color: #3a3a3c;
+    line-height: 1.5;
+    white-space: pre-wrap; /* Сохраняет абзацы */
+  }
 </style>
 </head>
 <body>
@@ -474,7 +532,7 @@
     </button>
     <button data-sec="sec-faq">
       <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
-      Вопросы <!-- Здесь мы сократили текст -->
+      Вопросы
     </button>
   </nav>
 </div>
@@ -1096,18 +1154,39 @@ function markNewsAsRead() {
   document.getElementById('news-badge').classList.remove('show');
 }
 
+// ===== НОВЫЙ РЕНДЕР НОВОСТЕЙ =====
 function renderNewsFromBoot() {
   const box = document.getElementById('news-list');
   const list = BOOT.news || [];
+  
   if (!list.length) {
-    box.innerHTML = '<div class="card">Пока новостей нет 📰</div>';
+    box.innerHTML = `
+      <div class="card" style="text-align:center; color:var(--hint-color); padding: 50px 20px; border: none; background: transparent; box-shadow: none;">
+        <div style="font-size: 48px; margin-bottom: 12px; opacity: 0.5;">📰</div>
+        <b style="font-size: 16px; color: var(--text-color);">Пока тихо</b>
+        <div style="margin-top: 4px;">Здесь будут появляться новости компании</div>
+      </div>
+    `;
     return;
   }
+
   box.innerHTML = list.map(n => {
     const lvl = ['urgent', 'important'].includes(n.level) ? n.level : 'normal';
-    return '<div class="card level-' + lvl + '"><b>' + esc(n.title) + '</b>' +
-      '<div>' + esc(n.text) + '</div>' +
-      '<div class="news-date">' + esc(n.date) + '</div></div>';
+    
+    let badgeHtml = '';
+    if (lvl === 'urgent') badgeHtml = '<span class="news-badge urgent">🔴 Срочно</span>';
+    else if (lvl === 'important') badgeHtml = '<span class="news-badge important">🟡 Важно</span>';
+
+    return `
+      <div class="news-item level-${lvl}">
+        <div class="news-meta">
+          <div class="news-date">🕒 ${esc(n.date)}</div>
+          ${badgeHtml}
+        </div>
+        <div class="news-title">${esc(n.title)}</div>
+        <div class="news-body">${esc(n.text)}</div>
+      </div>
+    `;
   }).join('');
 }
 

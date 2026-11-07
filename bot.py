@@ -1,32 +1,24 @@
 import os
-import io
-import csv
+import re
 import json
 import gzip
-import re
-import time
-import secrets
-import hashlib
 import logging
 import asyncio
 import random
+import secrets
+import hashlib
+import calendar
 import traceback
-from datetime import datetime, timedelta, timezone, date
+from datetime import datetime, date
 from contextlib import contextmanager
 
 from aiohttp import web
 from psycopg2.pool import SimpleConnectionPool
 from psycopg2.extras import RealDictCursor, Json
 
-try:
-    from zoneinfo import ZoneInfo
-    MOSCOW_TZ = ZoneInfo("Europe/Moscow")
-except Exception:
-    MOSCOW_TZ = None
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-# ============= JSON SERIALIZER (фикс datetime) =============
+# ============= JSON SERIALIZER =============
 def _json_default(obj):
     if isinstance(obj, (datetime, date)):
         return obj.isoformat()
@@ -47,10 +39,21 @@ if not DB_URL:
     raise ValueError("DATABASE_URL is not set")
 
 ADMIN_LOGIN = os.getenv("ADMIN_LOGIN", "adm01").strip().lower()
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "Wokker2026")
+ADMIN_PASSWORD_ENV = os.getenv("ADMIN_PASSWORD")
+ADMIN_PASSWORD = ADMIN_PASSWORD_ENV or "Wokker2026"
+if not ADMIN_PASSWORD_ENV:
+    logging.warning("⚠️ ADMIN_PASSWORD не задан — используется дефолт. Обязательно смените в проде!")
+
 APP_URL = os.getenv("MINI_APP_URL", "").rstrip("/")
 
 LOGIN_RE = re.compile(r"^[a-z]{3}\d{2}$")
+SESSION_TTL_DAYS = 30
+
+def _int(v, default=0):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
 
 # ============= ПРАВА =============
 PERMISSIONS_LIST = [
@@ -62,12 +65,16 @@ PERMISSIONS_LIST = [
     {"key": "medbook_tests_manage", "label": "Анализы: добавление и сроки"},
     {"key": "medbook_vaccines_manage", "label": "Прививки: добавление и сроки"},
     {"key": "restaurant_tu", "label": "Менять ТУ у ресторанов"},
+    {"key": "restaurant_edit", "label": "Редактировать рестораны"},
     {"key": "standards_edit", "label": "Менять стандарты"},
     {"key": "checklist_create", "label": "Создавать чек-листы"},
     {"key": "checklist_edit", "label": "Редактировать чек-листы"},
     {"key": "news_write", "label": "Писать новости"},
     {"key": "news_edit", "label": "Редактировать новости"},
     {"key": "news_suggest", "label": "Предлагать новости"},
+    {"key": "faq_edit", "label": "Редактировать FAQ"},
+    {"key": "positions_edit", "label": "Управлять должностями"},
+    {"key": "questions_reply", "label": "Отвечать на вопросы"},
 ]
 PERM_KEYS = [p["key"] for p in PERMISSIONS_LIST]
 REF_TYPE_PERM = {
@@ -146,7 +153,8 @@ def parse_date_ddmmYYYY(s):
 def add_months(dt, months):
     y = dt.year + (dt.month - 1 + months) // 12
     m = (dt.month - 1 + months) % 12 + 1
-    return dt.replace(year=y, month=m)
+    day = min(dt.day, calendar.monthrange(y, m)[1])
+    return dt.replace(year=y, month=m, day=day)
 
 def entry_status(date_str, validity_months):
     if not date_str:
@@ -162,13 +170,11 @@ def entry_status(date_str, validity_months):
         return "expiring"
     return "ok"
 
-def compute_medbook_status(medbook, doctors, tests, vaccines):
+def _mb_items(medbook, doctors, tests, vaccines):
     mb = medbook or {}
     if isinstance(mb, str):
-        try:
-            mb = json.loads(mb)
-        except Exception:
-            mb = {}
+        try: mb = json.loads(mb)
+        except Exception: mb = {}
     items = []
     for d in doctors:
         items.append((mb.get("doctors", {}).get(str(d["id"])), d["validity_months"]))
@@ -176,8 +182,11 @@ def compute_medbook_status(medbook, doctors, tests, vaccines):
         items.append((mb.get("tests", {}).get(str(t["id"])), t["validity_months"]))
     for v in vaccines:
         items.append((mb.get("vaccines", {}).get(str(v["id"])), v["validity_months"]))
+    return items
+
+def compute_medbook_status(medbook, doctors, tests, vaccines):
     has_expiring = False
-    for date_str, validity in items:
+    for date_str, validity in _mb_items(medbook, doctors, tests, vaccines):
         s = entry_status(date_str, validity)
         if s in ("missing", "invalid_date", "expired"):
             return "invalid"
@@ -186,19 +195,7 @@ def compute_medbook_status(medbook, doctors, tests, vaccines):
     return "expiring" if has_expiring else "ok"
 
 def medbook_missing_count(medbook, doctors, tests, vaccines):
-    mb = medbook or {}
-    if isinstance(mb, str):
-        try:
-            mb = json.loads(mb)
-        except Exception:
-            mb = {}
-    items = []
-    for d in doctors:
-        items.append((mb.get("doctors", {}).get(str(d["id"])), d["validity_months"]))
-    for t in tests:
-        items.append((mb.get("tests", {}).get(str(t["id"])), t["validity_months"]))
-    for v in vaccines:
-        items.append((mb.get("vaccines", {}).get(str(v["id"])), v["validity_months"]))
+    items = _mb_items(medbook, doctors, tests, vaccines)
     missing = sum(1 for date_str, v in items if entry_status(date_str, v) in ("missing", "invalid_date", "expired"))
     return missing, len(items)
 
@@ -230,7 +227,7 @@ def _run_migration(sql, label):
                 cur.execute(sql)
         return True
     except Exception as e:
-        print(f"⚠️ Миграция '{label}': {type(e).__name__}: {str(e)[:100]}")
+        logging.error(f"Миграция '{label}': {type(e).__name__}: {str(e)[:150]}")
         return False
 
 # ============= SEED =============
@@ -356,14 +353,14 @@ _run_migration("""
         lon REAL,
         org TEXT,
         phone TEXT DEFAULT '',
-        force_status TEXT,
+        force_status TEXT DEFAULT 'open',
         sort INT DEFAULT 100,
         territory_manager_id BIGINT
     )
 """, "CREATE restaurants")
 
 for _sql in [
-    "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS force_status TEXT",
+    "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS force_status TEXT DEFAULT 'open'",
     "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS sort INT DEFAULT 100",
     "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS territory_manager_id BIGINT",
 ]:
@@ -459,10 +456,11 @@ with get_conn() as conn:
         if cur.fetchone()[0] == 0:
             for i, r in enumerate(RESTAURANTS_SEED):
                 sort = 999 if r["key"] == "office" else i
+                status = "closed" if r["key"] == "office" else "open"
                 cur.execute(
-                    "INSERT INTO restaurants (key, name, address, hours, lat, lon, org, phone, sort) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                    (r["key"], r["name"], r["address"], r["hours"], r["lat"], r["lon"], r["org"], r["phone"], sort)
+                    "INSERT INTO restaurants (key, name, address, hours, lat, lon, org, phone, sort, force_status) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (r["key"], r["name"], r["address"], r["hours"], r["lat"], r["lon"], r["org"], r["phone"], sort, status)
                 )
 
         cur.execute("SELECT COUNT(*) FROM standards")
@@ -542,12 +540,20 @@ def _sync_get_user(user_id):
 def _sync_get_session_user(token):
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT user_id FROM web_sessions WHERE token = %s", (token,))
+            cur.execute("SELECT user_id, last_used_at FROM web_sessions WHERE token = %s", (token,))
             row = cur.fetchone()
-            if row:
-                cur.execute("UPDATE web_sessions SET last_used_at = NOW() WHERE token = %s", (token,))
-                return row[0]
-    return None
+            if not row:
+                return None
+            uid, last_used = row
+            if last_used is not None:
+                from datetime import timezone as _tz
+                now = datetime.now(_tz.utc)
+                lu = last_used if last_used.tzinfo else last_used.replace(tzinfo=_tz.utc)
+                if (now - lu).days > SESSION_TTL_DAYS:
+                    cur.execute("DELETE FROM web_sessions WHERE token = %s", (token,))
+                    return None
+            cur.execute("UPDATE web_sessions SET last_used_at = NOW() WHERE token = %s", (token,))
+            return uid
 
 def _sync_create_session(user_id):
     token = secrets.token_urlsafe(32)
@@ -582,16 +588,14 @@ def _sync_get_all_logins():
 def _sync_user_has_perm(user, perm):
     if not user:
         return False
-    if user["is_super_admin"]:
+    if user.get("is_super_admin"):
         return True
-    if user["position"] == "HR":
+    if (user.get("position") or "").strip().upper() == "HR":
         return True
     perms = user.get("permissions") or {}
     if isinstance(perms, str):
-        try:
-            perms = json.loads(perms)
-        except Exception:
-            perms = {}
+        try: perms = json.loads(perms)
+        except Exception: perms = {}
     return bool(perms.get(perm))
 
 # ============= AUTH =============
@@ -610,10 +614,12 @@ async def get_auth_user(request):
     if not user:
         return None, 401
     if user.get("is_fired"):
-        return None, 403
+        return None, "fired"
     return user, None
 
 def denied(status):
+    if status == "fired":
+        return web.json_response({"error": "fired"}, status=403)
     if status == 403:
         return web.json_response({"error": "forbidden"}, status=403)
     return web.json_response({"error": "unauthorized"}, status=401)
@@ -630,6 +636,16 @@ async def get_admin_user(request):
     if not user.get("is_admin"):
         return None, 403
     return user, None
+
+async def _enrich_user_with_medbook_status(user):
+    if not user:
+        return user
+    if user.get("is_admin"):
+        user["medbook_status"] = "—"
+        return user
+    doctors, tests, vaccines = await _run(_sync_get_medbook_refs)
+    user["medbook_status"] = compute_medbook_status(user.get("medbook") or {}, doctors, tests, vaccines)
+    return user
 
 # ============= API: AUTH =============
 async def handle_auth_login(request):
@@ -699,7 +715,7 @@ async def handle_admin_me(request):
             "full_name": user.get("full_name") or "",
             "position": user.get("position") or "",
             "is_super_admin": bool(user.get("is_super_admin")),
-            "is_hr": user.get("position") == "HR",
+            "is_hr": (user.get("position") or "").strip().upper() == "HR",
             "permissions": user.get("permissions") or {},
         }
     })
@@ -780,17 +796,14 @@ async def handle_admin_users(request):
     doctors, tests, vaccines = await _run(_sync_get_medbook_refs)
     for u in users:
         u["medbook_status"] = compute_medbook_status(u.get("medbook") or {}, doctors, tests, vaccines) if not u["is_admin"] else "—"
-        u.pop("password_hash", None)
         mb = u.get("medbook")
         if isinstance(mb, str):
-            try:
-                u["medbook"] = json.loads(mb or "{}")
-            except Exception:
-                u["medbook"] = {}
+            try: u["medbook"] = json.loads(mb or "{}")
+            except Exception: u["medbook"] = {}
     return web.json_response({"users": users})
 
 def _sync_create_user(body, existing_logins):
-    login = body.get("login") or ""
+    login = (body.get("login") or "").strip().lower()
     full_name = body.get("full_name") or ""
     password = body.get("password") or ""
 
@@ -853,10 +866,8 @@ def _sync_get_user_by_id(user_id):
             if row:
                 d = dict(row)
                 if isinstance(d.get("medbook"), str):
-                    try:
-                        d["medbook"] = json.loads(d["medbook"] or "{}")
-                    except Exception:
-                        d["medbook"] = {}
+                    try: d["medbook"] = json.loads(d["medbook"] or "{}")
+                    except Exception: d["medbook"] = {}
                 return d
             return None
 
@@ -868,10 +879,13 @@ async def handle_admin_user_get(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
-    uid = int(body.get("user_id") or 0)
+    uid = _int(body.get("user_id"))
+    if uid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
     user = await _run(_sync_get_user_by_id, uid)
     if not user:
         return web.json_response({"error": "not_found"}, status=404)
+    await _enrich_user_with_medbook_status(user)
     return web.json_response({"user": user})
 
 def _sync_update_user(uid, updates):
@@ -902,7 +916,9 @@ async def handle_admin_user_update(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
-    uid = int(body.get("user_id") or 0)
+    uid = _int(body.get("user_id"))
+    if uid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
     updates = body.get("updates") or {}
 
     target = await _run(_sync_get_user_by_id, uid)
@@ -919,6 +935,8 @@ async def handle_admin_user_update(request):
 
     await _run(_sync_update_user, uid, updates)
     updated = await _run(_sync_get_user_by_id, uid)
+    if updated:
+        await _enrich_user_with_medbook_status(updated)
     return web.json_response({"ok": True, "user": updated})
 
 async def handle_admin_user_fire(request):
@@ -932,7 +950,9 @@ async def handle_admin_user_fire(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
-    uid = int(body.get("user_id") or 0)
+    uid = _int(body.get("user_id"))
+    if uid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
 
     target = await _run(_sync_get_user_by_id, uid)
     if not target:
@@ -965,7 +985,9 @@ async def handle_admin_user_restore(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
-    uid = int(body.get("user_id") or 0)
+    uid = _int(body.get("user_id"))
+    if uid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET is_fired = FALSE, fired_at = NULL, fired_by = NULL WHERE user_id = %s", (uid,))
@@ -978,22 +1000,29 @@ async def handle_admin_user_delete(request):
     admin, err = await get_admin_user(request)
     if err:
         return denied(err)
-    perm_err = require_perm(admin, "users_edit")
+    perm_err = require_perm(admin, "users_fire")
     if perm_err:
         return perm_err
     try:
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
-    uid = int(body.get("user_id") or 0)
+    uid = _int(body.get("user_id"))
+    if uid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
     target = await _run(_sync_get_user_by_id, uid)
     if not target:
         return web.json_response({"error": "not_found"}, status=404)
     if target.get("is_super_admin"):
         return web.json_response({"error": "cannot_delete_super"}, status=403)
+    if uid == admin["user_id"]:
+        return web.json_response({"error": "cannot_delete_self"}, status=403)
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM users WHERE user_id = %s", (uid,))
+            cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) "
+                        "VALUES (%s,%s,%s,%s,%s)",
+                        (admin["user_id"], "user_delete", "user", str(uid), f"login={target.get('login')}"))
     return web.json_response({"ok": True})
 
 # ============= ADMINS / PERMISSIONS =============
@@ -1006,8 +1035,7 @@ def _sync_list_admins():
                            FROM users
                            WHERE COALESCE(is_admin, FALSE) = TRUE AND COALESCE(is_fired, FALSE) = FALSE
                            ORDER BY user_id""")
-            admins = [dict(r) for r in cur.fetchall()]
-    return admins
+            return [dict(r) for r in cur.fetchall()]
 
 async def handle_admin_admins(request):
     admin, err = await get_admin_user(request)
@@ -1015,8 +1043,7 @@ async def handle_admin_admins(request):
         return denied(err)
     if not admin["is_super_admin"]:
         return web.json_response({"error": "forbidden"}, status=403)
-    admins = await _run(_sync_list_admins)
-    return web.json_response({"admins": admins})
+    return web.json_response({"admins": await _run(_sync_list_admins)})
 
 async def handle_admin_set_permissions(request):
     admin, err = await get_admin_user(request)
@@ -1028,7 +1055,9 @@ async def handle_admin_set_permissions(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
-    uid = int(body.get("user_id") or 0)
+    uid = _int(body.get("user_id"))
+    if uid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
     perms = body.get("permissions") or {}
     target = await _run(_sync_get_user_by_id, uid)
     if not target:
@@ -1041,6 +1070,9 @@ async def handle_admin_set_permissions(request):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET permissions = %s WHERE user_id = %s", (Json(cleaned), uid))
+            cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) "
+                        "VALUES (%s,%s,%s,%s,%s)",
+                        (admin["user_id"], "set_permissions", "user", str(uid), ",".join(cleaned.keys())))
     return web.json_response({"ok": True})
 
 # ============= RESTAURANTS =============
@@ -1058,7 +1090,8 @@ def _sync_tu_candidates():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""SELECT user_id, full_name FROM users
-                           WHERE COALESCE(is_fired, FALSE) = FALSE AND LOWER(COALESCE(position,'')) LIKE '%%территориальный%%'
+                           WHERE COALESCE(is_fired, FALSE) = FALSE
+                             AND LOWER(COALESCE(position,'')) LIKE '%%территориальный%%'
                            ORDER BY full_name""")
             return [dict(r) for r in cur.fetchall()]
 
@@ -1074,6 +1107,9 @@ async def handle_admin_restaurant_update(request):
     admin, err = await get_admin_user(request)
     if err:
         return denied(err)
+    perm_err = require_perm(admin, "restaurant_edit")
+    if perm_err:
+        return perm_err
     try:
         body = await request.json()
     except Exception:
@@ -1101,7 +1137,9 @@ async def handle_admin_restaurant_tu(request):
         return web.json_response({"error": "invalid_json"}, status=400)
     key = body.get("key") or ""
     tu = body.get("territory_manager_id")
-    tu = int(tu) if tu else None
+    tu = _int(tu) if tu else None
+    if tu is not None and tu <= 0:
+        tu = None
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE restaurants SET territory_manager_id = %s WHERE key = %s", (tu, key))
@@ -1111,6 +1149,9 @@ async def handle_admin_restaurant_status(request):
     admin, err = await get_admin_user(request)
     if err:
         return denied(err)
+    perm_err = require_perm(admin, "restaurant_edit")
+    if perm_err:
+        return perm_err
     try:
         body = await request.json()
     except Exception:
@@ -1118,7 +1159,7 @@ async def handle_admin_restaurant_status(request):
     key = body.get("key") or ""
     st = body.get("status")
     if st == "auto":
-        st = None
+        st = "open"
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE restaurants SET force_status = %s WHERE key = %s", (st, key))
@@ -1126,14 +1167,9 @@ async def handle_admin_restaurant_status(request):
 
 # ============= MEDBOOKS =============
 def _sync_medbooks_full():
+    doctors, tests, vaccines = _sync_get_medbook_refs()
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT * FROM medbook_doctors ORDER BY sort, id")
-            doctors = [dict(r) for r in cur.fetchall()]
-            cur.execute("SELECT * FROM medbook_tests ORDER BY sort, id")
-            tests = [dict(r) for r in cur.fetchall()]
-            cur.execute("SELECT * FROM medbook_vaccines ORDER BY sort, id")
-            vaccines = [dict(r) for r in cur.fetchall()]
             cur.execute("""
                 SELECT u.user_id, u.full_name, u.position, u.medbook, r.name AS restaurant_name
                 FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key
@@ -1146,10 +1182,8 @@ def _sync_medbooks_full():
     for u in users:
         mb = u.get("medbook") or {}
         if isinstance(mb, str):
-            try:
-                mb = json.loads(mb)
-            except Exception:
-                mb = {}
+            try: mb = json.loads(mb)
+            except Exception: mb = {}
         u["medbook"] = mb
         u["medbook_status"] = compute_medbook_status(mb, doctors, tests, vaccines)
         missing, total = medbook_missing_count(mb, doctors, tests, vaccines)
@@ -1174,7 +1208,9 @@ async def handle_admin_medbook_get(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
-    uid = int(body.get("user_id") or 0)
+    uid = _int(body.get("user_id"))
+    if uid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
     user = await _run(_sync_get_user_by_id, uid)
     if not user:
         return web.json_response({"error": "not_found"}, status=404)
@@ -1197,7 +1233,9 @@ async def handle_admin_medbook_save(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
-    uid = int(body.get("user_id") or 0)
+    uid = _int(body.get("user_id"))
+    if uid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
     mb = body.get("medbook") or {"doctors": {}, "tests": {}, "vaccines": {}}
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -1219,7 +1257,9 @@ async def handle_admin_medbook_ref_add(request):
     if perm_err:
         return perm_err
     name = (body.get("name") or "").strip()
-    months = max(1, min(120, int(body.get("validity_months") or 12)))
+    if not name:
+        return web.json_response({"error": "invalid"}, status=400)
+    months = max(1, min(120, _int(body.get("validity_months"), 12)))
     required = bool(body.get("required"))
     table = {"doctor": "medbook_doctors", "test": "medbook_tests", "vaccine": "medbook_vaccines"}[rtype]
     with get_conn() as conn:
@@ -1239,7 +1279,7 @@ async def handle_admin_medbook_ref_update(request):
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
     rtype = body.get("type")
-    rid = int(body.get("id") or 0)
+    rid = _int(body.get("id"))
     if rtype not in REF_TYPE_PERM or not rid:
         return web.json_response({"error": "invalid"}, status=400)
     perm_err = require_perm(admin, REF_TYPE_PERM[rtype])
@@ -1251,7 +1291,7 @@ async def handle_admin_medbook_ref_update(request):
             if "name" in body:
                 cur.execute(f"UPDATE {table} SET name = %s WHERE id = %s", (body["name"], rid))
             if "validity_months" in body:
-                v = max(1, min(120, int(body["validity_months"] or 12)))
+                v = max(1, min(120, _int(body["validity_months"], 12)))
                 cur.execute(f"UPDATE {table} SET validity_months = %s WHERE id = %s", (v, rid))
             if "required" in body:
                 cur.execute(f"UPDATE {table} SET required = %s WHERE id = %s", (bool(body["required"]), rid))
@@ -1266,7 +1306,7 @@ async def handle_admin_medbook_ref_delete(request):
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
     rtype = body.get("type")
-    rid = int(body.get("id") or 0)
+    rid = _int(body.get("id"))
     if rtype not in REF_TYPE_PERM or not rid:
         return web.json_response({"error": "invalid"}, status=400)
     perm_err = require_perm(admin, REF_TYPE_PERM[rtype])
@@ -1289,13 +1329,19 @@ async def handle_admin_news_list(request):
     admin, err = await get_admin_user(request)
     if err:
         return denied(err)
-    news = await _run(_sync_news_list)
-    return web.json_response({"news": news})
+    return web.json_response({"news": await _run(_sync_news_list)})
+
+def _check_can_publish(admin):
+    return admin["is_super_admin"] or (admin.get("position") or "").strip().upper() == "HR"
 
 async def handle_admin_news_add(request):
     admin, err = await get_admin_user(request)
     if err:
         return denied(err)
+    can_publish = _check_can_publish(admin)
+    can_suggest = _sync_user_has_perm(admin, "news_suggest") or _sync_user_has_perm(admin, "news_write")
+    if not (can_publish or can_suggest):
+        return web.json_response({"error": "forbidden"}, status=403)
     try:
         body = await request.json()
     except Exception:
@@ -1307,10 +1353,6 @@ async def handle_admin_news_add(request):
     level = body.get("level") or "normal"
     intent = body.get("intent") or "suggest"
     publish_at = body.get("publish_at")
-
-    is_super = admin["is_super_admin"]
-    is_hr = admin["position"] == "HR"
-    can_publish = is_super or is_hr
 
     if not can_publish:
         status = "pending"
@@ -1344,11 +1386,13 @@ async def handle_admin_news_update(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
-    nid = int(body.get("id") or 0)
+    nid = _int(body.get("id"))
+    if nid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
     title = body.get("title")
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            if title:
+    if title:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
                 cur.execute("UPDATE news SET title = %s WHERE id = %s", (title.strip(), nid))
     return web.json_response({"ok": True})
 
@@ -1363,14 +1407,13 @@ async def handle_admin_news_delete(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
-    nid = int(body.get("id") or 0)
+    nid = _int(body.get("id"))
+    if nid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM news WHERE id = %s", (nid,))
     return web.json_response({"ok": True})
-
-def _check_can_publish(admin):
-    return admin["is_super_admin"] or admin["position"] == "HR"
 
 async def handle_admin_news_approve(request):
     admin, err = await get_admin_user(request)
@@ -1382,7 +1425,9 @@ async def handle_admin_news_approve(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
-    nid = int(body.get("id") or 0)
+    nid = _int(body.get("id"))
+    if nid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE news SET status = 'published', approved_by = %s WHERE id = %s",
@@ -1399,7 +1444,9 @@ async def handle_admin_news_reject(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
-    nid = int(body.get("id") or 0)
+    nid = _int(body.get("id"))
+    if nid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM news WHERE id = %s AND status = 'pending'", (nid,))
@@ -1450,10 +1497,12 @@ async def handle_admin_standard_update(request):
     field = body.get("field")
     if field not in ("title", "category", "description", "url"):
         return web.json_response({"error": "invalid"}, status=400)
+    sid = _int(body.get("id"))
+    if sid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(f"UPDATE standards SET {field} = %s WHERE id = %s",
-                        (body.get("value") or "", int(body.get("id") or 0)))
+            cur.execute(f"UPDATE standards SET {field} = %s WHERE id = %s", (body.get("value") or "", sid))
     return web.json_response({"ok": True})
 
 async def handle_admin_standard_delete(request):
@@ -1467,9 +1516,12 @@ async def handle_admin_standard_delete(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
+    sid = _int(body.get("id"))
+    if sid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM standards WHERE id = %s", (int(body.get("id") or 0),))
+            cur.execute("DELETE FROM standards WHERE id = %s", (sid,))
     return web.json_response({"ok": True})
 
 # ============= FAQ / POSITIONS / QUESTIONS =============
@@ -1489,6 +1541,9 @@ async def handle_admin_faq_add(request):
     admin, err = await get_admin_user(request)
     if err:
         return denied(err)
+    perm_err = require_perm(admin, "faq_edit")
+    if perm_err:
+        return perm_err
     try:
         body = await request.json()
     except Exception:
@@ -1503,6 +1558,9 @@ async def handle_admin_faq_update(request):
     admin, err = await get_admin_user(request)
     if err:
         return denied(err)
+    perm_err = require_perm(admin, "faq_edit")
+    if perm_err:
+        return perm_err
     try:
         body = await request.json()
     except Exception:
@@ -1510,23 +1568,31 @@ async def handle_admin_faq_update(request):
     field = body.get("field")
     if field not in ("question", "answer"):
         return web.json_response({"error": "invalid"}, status=400)
+    fid = _int(body.get("id"))
+    if fid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(f"UPDATE faq SET {field} = %s WHERE id = %s",
-                        (body.get("value") or "", int(body.get("id") or 0)))
+            cur.execute(f"UPDATE faq SET {field} = %s WHERE id = %s", (body.get("value") or "", fid))
     return web.json_response({"ok": True})
 
 async def handle_admin_faq_delete(request):
     admin, err = await get_admin_user(request)
     if err:
         return denied(err)
+    perm_err = require_perm(admin, "faq_edit")
+    if perm_err:
+        return perm_err
     try:
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
+    fid = _int(body.get("id"))
+    if fid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM faq WHERE id = %s", (int(body.get("id") or 0),))
+            cur.execute("DELETE FROM faq WHERE id = %s", (fid,))
     return web.json_response({"ok": True})
 
 def _sync_positions():
@@ -1545,6 +1611,9 @@ async def handle_admin_position_add(request):
     admin, err = await get_admin_user(request)
     if err:
         return denied(err)
+    perm_err = require_perm(admin, "positions_edit")
+    if perm_err:
+        return perm_err
     try:
         body = await request.json()
     except Exception:
@@ -1559,20 +1628,26 @@ async def handle_admin_position_add(request):
             try:
                 cur.execute("INSERT INTO positions (name, sort) VALUES (%s,%s)", (name, sort))
             except Exception:
-                return web.json_response({"ok": False})
+                return web.json_response({"ok": False, "error": "duplicate"}, status=200)
     return web.json_response({"ok": True})
 
 async def handle_admin_position_archive(request):
     admin, err = await get_admin_user(request)
     if err:
         return denied(err)
+    perm_err = require_perm(admin, "positions_edit")
+    if perm_err:
+        return perm_err
     try:
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
+    pid = _int(body.get("id"))
+    if pid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("UPDATE positions SET is_archived = TRUE WHERE id = %s", (int(body.get("id") or 0),))
+            cur.execute("UPDATE positions SET is_archived = TRUE WHERE id = %s", (pid,))
     return web.json_response({"ok": True})
 
 def _sync_questions():
@@ -1595,11 +1670,16 @@ async def handle_admin_question_reply(request):
     admin, err = await get_admin_user(request)
     if err:
         return denied(err)
+    perm_err = require_perm(admin, "questions_reply")
+    if perm_err:
+        return perm_err
     try:
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
-    qid = int(body.get("id") or 0)
+    qid = _int(body.get("id"))
+    if qid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
     text = (body.get("text") or "").strip()
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -1639,12 +1719,15 @@ async def handle_admin_change_password(request):
     new = body.get("new_password") or ""
     if not verify_password(old, admin.get("password_hash") or ""):
         return web.json_response({"error": "wrong_password"}, status=401)
-    if len(new) < 6:
-        return web.json_response({"error": "invalid"}, status=400)
+    if len(new) < 8:
+        return web.json_response({"error": "password_too_short"}, status=400)
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET password_hash = %s WHERE user_id = %s",
                         (hash_password(new), admin["user_id"]))
+            cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) "
+                        "VALUES (%s,%s,%s,%s,%s)",
+                        (admin["user_id"], "change_password", "user", str(admin["user_id"]), ""))
     return web.json_response({"ok": True})
 
 # ============= ДИАГНОСТИКА =============
@@ -1662,7 +1745,7 @@ async def handle_admin_debug_users(request):
             rows = [dict(r) for r in cur.fetchall()]
     return web.json_response({"count": len(rows), "users": rows})
 
-# ============= BOOTSTRAP (с командой и медкнижкой) =============
+# ============= BOOTSTRAP =============
 def _sync_bootstrap(user_id):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1679,7 +1762,6 @@ def _sync_bootstrap(user_id):
             cur.execute("SELECT * FROM restaurants WHERE key != 'office' ORDER BY sort, name")
             rest_rows = [dict(r) for r in cur.fetchall()]
 
-            # Медкнижка: справочники
             cur.execute("SELECT * FROM medbook_doctors ORDER BY sort, id")
             doctors = [dict(r) for r in cur.fetchall()]
             cur.execute("SELECT * FROM medbook_tests ORDER BY sort, id")
@@ -1687,7 +1769,6 @@ def _sync_bootstrap(user_id):
             cur.execute("SELECT * FROM medbook_vaccines ORDER BY sort, id")
             vaccines = [dict(r) for r in cur.fetchall()]
 
-            # Роль и видимость команды
             pos_lower = (user.get("position") or "").lower()
             is_hr = pos_lower.strip() == "hr"
             is_tu = "территориальный" in pos_lower
@@ -1720,7 +1801,7 @@ def _sync_bootstrap(user_id):
                     cur.execute("SELECT key FROM restaurants WHERE territory_manager_id = %s", (user_id,))
                     my_rests = {r[0] for r in cur.fetchall()}
                     team_rows = [s for s in all_staff if s.get("restaurant_key") in my_rests]
-                else:  # HR — все
+                else:
                     team_rows = all_staff
 
     user.pop("password_hash", None)
@@ -1753,13 +1834,10 @@ async def handle_bootstrap(request):
         "is_admin": bool(u.get("is_admin")),
     }
 
-    # ===== Медкнижка =====
     mb = u.get("medbook") or {}
     if isinstance(mb, str):
-        try:
-            mb = json.loads(mb)
-        except Exception:
-            mb = {}
+        try: mb = json.loads(mb)
+        except Exception: mb = {}
 
     def build_section(items, source):
         out = []
@@ -1788,15 +1866,12 @@ async def handle_bootstrap(request):
         "vaccines": build_section(vaccines, "vaccines"),
     }
 
-    # ===== Команда =====
     team_list = []
     for t in team_rows:
         tmb = t.get("medbook") or {}
         if isinstance(tmb, str):
-            try:
-                tmb = json.loads(tmb)
-            except Exception:
-                tmb = {}
+            try: tmb = json.loads(tmb)
+            except Exception: tmb = {}
         team_list.append({
             "user_id": t["user_id"],
             "full_name": t["full_name"] or "",

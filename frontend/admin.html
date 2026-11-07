@@ -4,26 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Wokker · Админ</title>
-
 <style>
   :root {
-    --bg: #F5F5F7;
-    --card-bg: #FFFFFF;
-    --text-main: #1C1C1E;
-    --text-muted: #8E8E93;
-    --accent: #FF3B30;
-    --accent-soft: #FFEBEA;
-    --green: #34C759;
-    --green-soft: #E8F8EB;
-    --amber: #FF9500;
-    --amber-soft: #FFF4E0;
-    --blue: #007AFF;
-    --blue-soft: #E5F0FF;
-    --border: rgba(0,0,0,0.08);
-    --sidebar: #1C1C1E;
-    --sidebar-hover: #2C2C2E;
-    --shadow: 0 4px 16px rgba(0,0,0,0.06);
-    --shadow-lg: 0 24px 64px rgba(0,0,0,0.14);
+    --bg: #F5F5F7; --card-bg: #FFFFFF; --text-main: #1C1C1E;
+    --text-muted: #8E8E93; --accent: #FF3B30; --accent-soft: #FFEBEA;
+    --green: #34C759; --green-soft: #E8F8EB;
+    --amber: #FF9500; --amber-soft: #FFF4E0;
+    --blue: #007AFF; --blue-soft: #E5F0FF;
+    --border: rgba(0,0,0,0.08); --sidebar: #1C1C1E; --sidebar-hover: #2C2C2E;
+    --shadow: 0 4px 16px rgba(0,0,0,0.06); --shadow-lg: 0 24px 64px rgba(0,0,0,0.14);
   }
   * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
   body {
@@ -34,7 +23,6 @@
   button, input, select, textarea { font-family: inherit; font-size: inherit; }
   button { cursor: pointer; }
 
-  /* ===== LOGIN ===== */
   #login-screen {
     position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
     background: linear-gradient(135deg, #1C1C1E 0%, #2C2C2E 100%); z-index: 2000;
@@ -56,15 +44,13 @@
   .login-input:focus { border-color: var(--accent); background: #fff; }
   .login-btn {
     width: 100%; background: var(--accent); color: #fff; border: 0; border-radius: 12px;
-    padding: 14px; font-size: 15px; font-weight: 700; margin-top: 8px; transition: opacity 0.2s;
+    padding: 14px; font-size: 15px; font-weight: 700; margin-top: 8px;
   }
   .login-btn:hover { opacity: 0.92; }
   .login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .login-hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; margin-bottom: 8px; }
   .login-error { color: var(--accent); font-size: 13px; min-height: 18px; margin-top: 10px; font-weight: 600; }
-  .login-back { background: none; border: none; color: var(--text-muted); font-size: 13px;
-    font-weight: 600; padding: 12px 0; width: 100%; margin-top: 4px; }
 
-  /* ===== LAYOUT ===== */
   #app { display: none; min-height: 100vh; }
   .layout { display: flex; min-height: 100vh; }
   .sidebar {
@@ -75,36 +61,32 @@
     display: flex; align-items: center; gap: 12px; padding: 10px 12px 24px; font-weight: 800;
     font-size: 17px; letter-spacing: -0.3px;
   }
-  .sidebar-logo .badge {
-    background: var(--accent); color: #fff; font-size: 10px; padding: 3px 7px;
-    border-radius: 6px; font-weight: 800; text-transform: uppercase;
-  }
+  .sidebar-logo .badge { background: var(--accent); color: #fff; font-size: 10px; padding: 3px 7px;
+    border-radius: 6px; font-weight: 800; text-transform: uppercase; }
   .sidebar nav { display: flex; flex-direction: column; gap: 2px; flex: 1; overflow-y: auto; }
   .nav-item {
     background: none; border: 0; color: rgba(255,255,255,0.7); text-align: left;
     padding: 10px 14px; border-radius: 10px; font-size: 14px; font-weight: 500;
-    display: flex; align-items: center; gap: 10px; transition: all 0.15s;
-    white-space: nowrap;
+    display: flex; align-items: center; gap: 10px; white-space: nowrap;
   }
   .nav-item:hover { background: var(--sidebar-hover); color: #fff; }
   .nav-item.active { background: var(--accent); color: #fff; font-weight: 600; }
   .nav-item .ico { width: 18px; display: inline-block; text-align: center; }
-  .nav-item .count {
-    margin-left: auto; background: rgba(255,255,255,0.15); padding: 2px 8px;
-    border-radius: 20px; font-size: 11px; font-weight: 700;
-  }
-  .nav-item.active .count { background: rgba(255,255,255,0.25); }
+  .nav-item .count { margin-left: auto; background: rgba(255,255,255,0.15); padding: 2px 8px;
+    border-radius: 20px; font-size: 11px; font-weight: 700; }
   .sidebar-footer {
     padding: 14px; border-top: 1px solid rgba(255,255,255,0.1); margin-top: 12px;
     font-size: 12px; color: rgba(255,255,255,0.6);
   }
   .sidebar-footer .who { color: #fff; font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+  .sidebar-footer .login-line { font-family: monospace; color: rgba(255,255,255,0.8); margin-bottom: 10px; }
   .sidebar-footer button {
     background: rgba(255,255,255,0.1); border: 0; color: #fff;
     padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 600;
-    width: 100%; margin-top: 10px; transition: background 0.15s;
+    width: 100%; margin-top: 6px;
   }
-  .sidebar-footer button:hover { background: rgba(255,59,48,0.6); }
+  .sidebar-footer button:hover { background: rgba(255,255,255,0.2); }
+  .sidebar-footer button.danger:hover { background: rgba(255,59,48,0.7); }
 
   .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .topbar {
@@ -116,17 +98,11 @@
   .topbar .actions { display: flex; gap: 8px; align-items: center; }
   .content { padding: 24px 32px; flex: 1; }
 
-  /* ===== BUTTONS ===== */
-  .btn {
-    border: 0; border-radius: 10px; padding: 10px 18px; font-size: 13px; font-weight: 600;
-    transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px;
-    background: #F2F2F7; color: var(--text-main);
-  }
+  .btn { border: 0; border-radius: 10px; padding: 10px 18px; font-size: 13px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 6px; background: #F2F2F7; color: var(--text-main); }
   .btn:hover { background: #E5E5EA; }
   .btn.primary { background: var(--accent); color: #fff; }
   .btn.primary:hover { background: #E6342A; }
-  .btn.green { background: var(--green); color: #fff; }
-  .btn.green:hover { background: #2DB34E; }
   .btn.ghost { background: transparent; border: 1px solid var(--border); }
   .btn.ghost:hover { background: #F8F9FA; }
   .btn.small { padding: 6px 12px; font-size: 12px; }
@@ -134,211 +110,146 @@
   .btn.danger:hover { background: #FFD9D6; }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  /* ===== TABLES ===== */
-  .table-card {
-    background: var(--card-bg); border-radius: 14px; box-shadow: var(--shadow);
-    overflow: hidden;
-  }
+  .table-card { background: var(--card-bg); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
   .table-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; }
   th, td { padding: 14px 18px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; }
-  th {
-    background: #F8F9FA; font-weight: 700; font-size: 11px;
-    text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;
-    white-space: nowrap;
-  }
+  th { background: #F8F9FA; font-weight: 700; font-size: 11%;
+    text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; white-space: nowrap; }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #FAFAFA; }
   .row-clickable { cursor: pointer; }
-  .tag {
-    display: inline-block; padding: 3px 8px; border-radius: 6px;
-    font-size: 11px; font-weight: 700; white-space: nowrap;
-  }
+
+  .tag { display: inline-block; padding: 3px 8px; border-radius: 6px;
+    font-size: 11px; font-weight: 700; white-space: nowrap; }
   .tag.green { background: var(--green-soft); color: #1B7A36; }
   .tag.red { background: var(--accent-soft); color: var(--accent); }
   .tag.gray { background: #F2F2F7; color: var(--text-muted); }
   .tag.amber { background: var(--amber-soft); color: #C77700; }
   .tag.blue { background: var(--blue-soft); color: #0055CC; }
   .tag-stack { display: flex; gap: 4px; flex-wrap: wrap; }
+  .login-cell { font-family: monospace; font-weight: 700; font-size: 12px;
+    background: #F2F2F7; padding: 2px 6px; border-radius: 4px; }
 
   .actions-cell { display: flex; gap: 6px; justify-content: flex-end; }
   .icon-btn {
     background: #F2F2F7; border: 0; border-radius: 8px; width: 30px; height: 30px;
     display: inline-flex; align-items: center; justify-content: center; font-size: 14px;
-    transition: background 0.15s;
   }
   .icon-btn:hover { background: #E5E5EA; }
   .icon-btn.danger { background: var(--accent-soft); color: var(--accent); }
   .icon-btn.danger:hover { background: #FFD9D6; }
 
-  /* ===== SEARCH BAR ===== */
-  .search-bar {
-    display: flex; gap: 12px; margin-bottom: 16px; align-items: center;
-  }
+  .search-bar { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; }
   .search-bar input {
     flex: 1; max-width: 360px; border: 1px solid var(--border); border-radius: 10px;
     padding: 10px 14px; font-size: 14px; outline: none; background: #fff;
-    transition: border-color 0.15s;
   }
   .search-bar input:focus { border-color: var(--accent); }
 
-  /* ===== DASHBOARD ===== */
   .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
-  .stat-card {
-    background: var(--card-bg); border-radius: 14px; padding: 20px; box-shadow: var(--shadow);
-  }
-  .stat-card .label { font-size: 12px; color: var(--text-muted); font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-card { background: var(--card-bg); border-radius: 14px; padding: 20px; box-shadow: var(--shadow); }
+  .stat-card .label { font-size: 12px; color: var(--text-muted); font-weight: 600; margin-bottom: 8px;
+    text-transform: uppercase; letter-spacing: 0.5px; }
   .stat-card .value { font-size: 28px; font-weight: 800; letter-spacing: -1px; }
   .stat-card .hint { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
   .stat-card.accent .value { color: var(--accent); }
   .stat-card.green .value { color: var(--green); }
   .stat-card.amber .value { color: var(--amber); }
 
-  .chart-card {
-    background: var(--card-bg); border-radius: 14px; padding: 24px; box-shadow: var(--shadow);
-    margin-bottom: 16px;
-  }
-  .chart-card h3 { font-size: 14px; font-weight: 700; margin-bottom: 20px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; }
+  .chart-card { background: var(--card-bg); border-radius: 14px; padding: 24px; box-shadow: var(--shadow); margin-bottom: 16px; }
+  .chart-card h3 { font-size: 14px; font-weight: 700; margin-bottom: 20px;
+    text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; }
   .bar-chart { display: flex; align-items: flex-end; gap: 12px; height: 120px; }
   .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
-  .bar { width: 100%; background: var(--accent); border-radius: 6px 6px 0 0; min-height: 4px; transition: height 0.3s; position: relative; }
-  .bar:hover { opacity: 0.8; }
+  .bar { width: 100%; background: var(--accent); border-radius: 6px 6px 0 0; min-height: 4px; }
   .bar-label { font-size: 11px; color: var(--text-muted); font-weight: 600; }
   .bar-value { font-size: 12px; font-weight: 700; }
 
-  .attention-list { display: flex; flex-direction: column; gap: 10px; }
-  .attention-item {
-    background: var(--card-bg); border-radius: 12px; padding: 16px 18px;
-    display: flex; justify-content: space-between; align-items: center;
-    box-shadow: var(--shadow); border-left: 4px solid var(--accent);
-  }
-  .attention-item.amber { border-left-color: var(--amber); }
-  .attention-item.green { border-left-color: var(--green); }
-
-  /* ===== EMPTY ===== */
-  .empty {
-    text-align: center; padding: 60px 20px; color: var(--text-muted);
-    background: var(--card-bg); border-radius: 14px; box-shadow: var(--shadow);
-  }
+  .empty { text-align: center; padding: 60px 20px; color: var(--text-muted);
+    background: var(--card-bg); border-radius: 14px; box-shadow: var(--shadow); }
   .empty .emoji { font-size: 48px; margin-bottom: 12px; display: block; }
 
-  /* ===== MODAL ===== */
   .modal-overlay {
     position: fixed; inset: 0; background: rgba(0,0,0,0.5);
     display: none; align-items: center; justify-content: center; z-index: 1000;
     padding: 20px; backdrop-filter: blur(4px);
   }
   .modal-overlay.show { display: flex; }
-  .modal {
-    background: #fff; border-radius: 16px; width: 100%; max-width: 620px;
-    max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lg);
-  }
-  .modal-header {
-    padding: 20px 24px; border-bottom: 1px solid var(--border);
+  .modal { background: #fff; border-radius: 16px; width: 100%; max-width: 620px;
+    max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lg); }
+  .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border);
     display: flex; justify-content: space-between; align-items: center;
-    position: sticky; top: 0; background: #fff; z-index: 1;
-  }
+    position: sticky; top: 0; background: #fff; z-index: 1; }
   .modal-header h3 { font-size: 18px; font-weight: 800; letter-spacing: -0.3px; }
-  .modal-close {
-    background: #F2F2F7; border: 0; width: 32px; height: 32px; border-radius: 8px;
-    font-size: 18px; display: flex; align-items: center; justify-content: center;
-  }
+  .modal-close { background: #F2F2F7; border: 0; width: 32px; height: 32px; border-radius: 8px;
+    font-size: 18px; display: flex; align-items: center; justify-content: center; }
   .modal-body { padding: 24px; }
-  .modal-footer {
-    padding: 16px 24px; border-top: 1px solid var(--border);
-    display: flex; justify-content: flex-end; gap: 8px; position: sticky; bottom: 0;
-    background: #fff;
-  }
+  .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border);
+    display: flex; justify-content: flex-end; gap: 8px; position: sticky; bottom: 0; background: #fff; }
   .form-group { margin-bottom: 16px; }
-  .form-group label {
-    display: block; font-size: 12px; font-weight: 700; color: var(--text-muted);
-    margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;
-  }
+  .form-group label { display: block; font-size: 12px; font-weight: 700; color: var(--text-muted);
+    margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
   .form-input, .form-select, .form-textarea {
     width: 100%; border: 1px solid var(--border); border-radius: 10px;
-    padding: 11px 14px; font-size: 14px; outline: none; background: #fff;
-    transition: border-color 0.15s; color: var(--text-main);
+    padding: 11px 14px; font-size: 14px; outline: none; background: #fff; color: var(--text-main);
   }
   .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--accent); }
   .form-textarea { resize: vertical; min-height: 100px; font-family: inherit; }
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .form-hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+  .form-hint.error { color: var(--accent); font-weight: 600; }
   .checkbox-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; }
   .checkbox-row input { width: 18px; height: 18px; accent-color: var(--accent); }
-  .checkbox-row label { font-size: 14px; font-weight: 500; cursor: pointer; text-transform: none; letter-spacing: 0; color: var(--text-main); margin: 0; }
+  .checkbox-row label { font-size: 14px; font-weight: 500; cursor: pointer;
+    text-transform: none; letter-spacing: 0; color: var(--text-main); margin: 0; }
 
-  /* ===== TOAST ===== */
-  .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 3000; display: flex; flex-direction: column; gap: 10px; }
-  .toast {
-    background: rgba(28, 28, 30, 0.96); color: #fff; padding: 14px 20px;
+  .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 3000;
+    display: flex; flex-direction: column; gap: 10px; }
+  .toast { background: rgba(28, 28, 30, 0.96); color: #fff; padding: 14px 20px;
     border-radius: 12px; font-size: 13px; font-weight: 600; max-width: 380px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.2); animation: slideIn 0.25s ease;
-    display: flex; align-items: center; gap: 10px;
-  }
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2); animation: slideIn 0.25s ease; }
   .toast.error { background: rgba(255, 59, 48, 0.96); }
   .toast.success { background: rgba(52, 199, 89, 0.96); }
-  @keyframes slideIn {
-    from { transform: translateX(120%); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
-  }
+  @keyframes slideIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
-  /* ===== LOADING ===== */
-  .loader {
-    display: inline-block; width: 16px; height: 16px;
-    border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff;
-    border-radius: 50%; animation: spin 0.6s linear infinite;
-  }
-  .loader.dark { border-color: rgba(0,0,0,0.15); border-top-color: var(--text-main); }
-  @keyframes spin { to { transform: rotate(360deg); } }
   .page-loading { text-align: center; padding: 60px; color: var(--text-muted); }
-  .page-loading .loader.dark { width: 32px; height: 32px; border-width: 3px; margin-bottom: 12px; }
+  .loader { display: inline-block; width: 16px; height: 16px;
+    border: 2px solid rgba(0,0,0,0.15); border-top-color: var(--text-main);
+    border-radius: 50%; animation: spin 0.6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* ===== DETAIL PANEL ===== */
-  .detail-row { display: grid; grid-template-columns: 140px 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
-  .detail-row:last-child { border-bottom: none; }
-  .detail-row .k { font-weight: 700; color: var(--text-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; }
-  .detail-row .v { font-size: 14px; }
-
-  /* ===== TABS (внутри страницы) ===== */
   .subtabs { display: flex; gap: 6px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
-  .subtab {
-    background: none; border: 0; padding: 10px 16px; font-size: 13px; font-weight: 600;
-    color: var(--text-muted); border-bottom: 2px solid transparent; transition: all 0.15s;
-  }
+  .subtab { background: none; border: 0; padding: 10px 16px; font-size: 13px; font-weight: 600;
+    color: var(--text-muted); border-bottom: 2px solid transparent; }
   .subtab.active { color: var(--accent); border-bottom-color: var(--accent); }
   .subtab:hover { color: var(--text-main); }
 </style>
 </head>
 <body>
 
-<!-- ===== LOGIN ===== -->
 <div id="login-screen">
   <div class="login-card">
     <div class="login-logo">🛠</div>
     <h1>Wokker Admin</h1>
-    <div class="sub">Панель управления</div>
-    <div id="login-step-phone">
-      <input class="login-input" id="login-phone" type="tel" placeholder="+7 (900) 000-00-00" autocomplete="tel">
-      <button class="login-btn" id="login-phone-btn">Получить код</button>
-    </div>
-    <div id="login-step-code" style="display:none;">
-      <div class="sub" style="margin-bottom:16px;">Код отправлен в Telegram-бот.</div>
-      <input class="login-input" id="login-code" type="text" inputmode="numeric" maxlength="6" placeholder="— — — — — —" autocomplete="one-time-code">
-      <button class="login-btn" id="login-code-btn">Войти</button>
-      <button class="login-back" id="login-back-btn">← Другой номер</button>
-    </div>
+    <div class="sub">Вход в панель управления</div>
+    <input class="login-input" id="login-login" type="text" placeholder="Логин (напр. adm01)"
+           autocomplete="username" maxlength="5" style="text-transform: lowercase;">
+    <input class="login-input" id="login-password" type="password" placeholder="Пароль"
+           autocomplete="current-password">
+    <div class="login-hint">Логин: 3 латинские буквы + 2 цифры (например, adm01)</div>
+    <button class="login-btn" id="login-btn">Войти</button>
     <div class="login-error" id="login-error"></div>
   </div>
 </div>
 
-<!-- ===== APP ===== -->
 <div id="app">
   <div class="layout">
     <aside class="sidebar">
       <div class="sidebar-logo">🍜 Wokker <span class="badge">Admin</span></div>
       <nav id="nav">
         <button class="nav-item" data-sec="dashboard"><span class="ico">📊</span> Дашборд</button>
-        <button class="nav-item" data-sec="users"><span class="ico">👥</span> Пользователи</button>
+        <button class="nav-item" data-sec="users"><span class="ico">👥</span> Сотрудники</button>
         <button class="nav-item" data-sec="restaurants"><span class="ico">🏪</span> Рестораны</button>
         <button class="nav-item" data-sec="news"><span class="ico">📰</span> Новости</button>
         <button class="nav-item" data-sec="standards"><span class="ico">📚</span> Стандарты</button>
@@ -350,8 +261,9 @@
       </nav>
       <div class="sidebar-footer">
         <div class="who" id="admin-name">—</div>
-        <div>Администратор</div>
-        <button id="logout-btn">Выйти</button>
+        <div class="login-line" id="admin-login">—</div>
+        <button id="change-password-btn">🔐 Сменить пароль</button>
+        <button id="logout-btn" class="danger">🚪 Выйти</button>
       </div>
     </aside>
 
@@ -367,7 +279,6 @@
 
 <div class="toast-container" id="toasts"></div>
 
-<!-- ===== MODAL ===== -->
 <div class="modal-overlay" id="modal-overlay">
   <div class="modal">
     <div class="modal-header">
@@ -382,9 +293,9 @@
 <script>
 /* ================== CONFIG ================== */
 const TOKEN_KEY = 'wokker_admin_token';
+const LOGIN_RE = /^[a-z]{3}\d{2}$/;
 let ME = null;
 
-/* ================== UTILS ================== */
 const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $ = id => document.getElementById(id);
 
@@ -437,84 +348,67 @@ function fmtDate(iso, withTime) {
 function showLogin() {
   $('app').style.display = 'none';
   $('login-screen').style.display = 'flex';
-  $('login-step-phone').style.display = 'block';
-  $('login-step-code').style.display = 'none';
   $('login-error').textContent = '';
-  $('login-code').value = '';
+  $('login-login').value = '';
+  $('login-password').value = '';
 }
 function showApp() {
   $('login-screen').style.display = 'none';
   $('app').style.display = 'block';
 }
-function normalizePhone(raw) {
-  const d = (raw || '').replace(/\D/g, '');
-  if (!d) return '';
-  if (d.length === 11 && d.startsWith('8')) return '+7' + d.slice(1);
-  if (d.length === 11 && d.startsWith('7')) return '+' + d;
-  if (d.length === 10) return '+7' + d;
-  return raw.trim();
-}
 
-let _loginPhone = '';
-$('login-phone-btn').addEventListener('click', async () => {
-  const phone = normalizePhone($('login-phone').value);
+$('login-login').addEventListener('input', e => {
+  e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5);
+});
+
+async function doLogin() {
+  const login = $('login-login').value.trim().toLowerCase();
+  const password = $('login-password').value;
   const errEl = $('login-error');
   errEl.textContent = '';
-  if (!phone || phone.replace(/\D/g, '').length < 10) {
-    errEl.textContent = 'Введите корректный номер';
+  if (!LOGIN_RE.test(login)) {
+    errEl.textContent = 'Логин: 3 латинские буквы + 2 цифры';
     return;
   }
-  const btn = $('login-phone-btn');
-  btn.disabled = true; btn.textContent = 'Отправляем…';
-  try {
-    const res = await fetch('/api/auth/request-code', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone }),
-    });
-    if (res.status === 404) { errEl.textContent = 'Номер не найден'; return; }
-    if (res.status === 429) { errEl.textContent = 'Подождите минуту'; return; }
-    if (!res.ok) { errEl.textContent = 'Ошибка сервера'; return; }
-    _loginPhone = phone;
-    $('login-step-phone').style.display = 'none';
-    $('login-step-code').style.display = 'block';
-    $('login-code').focus();
-  } catch (e) { errEl.textContent = 'Сеть недоступна'; }
-  finally { btn.disabled = false; btn.textContent = 'Получить код'; }
-});
-
-$('login-code-btn').addEventListener('click', async () => {
-  const code = ($('login-code').value || '').trim();
-  const errEl = $('login-error');
-  errEl.textContent = '';
-  if (!/^\d{4,6}$/.test(code)) { errEl.textContent = 'Введите код из 6 цифр'; return; }
-  const btn = $('login-code-btn');
+  if (!password) {
+    errEl.textContent = 'Введите пароль';
+    return;
+  }
+  const btn = $('login-btn');
   btn.disabled = true; btn.textContent = 'Проверяем…';
   try {
-    const res = await fetch('/api/auth/verify-code', {
+    const res = await fetch('/api/auth/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: _loginPhone, code }),
+      body: JSON.stringify({ login, password }),
     });
-    if (res.status === 401) { errEl.textContent = 'Неверный код'; return; }
-    if (!res.ok) { errEl.textContent = 'Ошибка'; return; }
+    if (res.status === 429) { errEl.textContent = 'Слишком много попыток. Подождите минуту.'; return; }
+    if (res.status === 401) { errEl.textContent = 'Неверный логин или пароль'; return; }
+    if (res.status === 403) { errEl.textContent = 'Аккаунт заблокирован'; return; }
+    if (!res.ok) { errEl.textContent = 'Ошибка сервера'; return; }
     const data = await res.json();
-    if (!data.token) { errEl.textContent = 'Ошибка'; return; }
+    if (!data.is_admin) {
+      errEl.textContent = 'Этот аккаунт не является администратором';
+      return;
+    }
     setToken(data.token);
     await checkAdminAndLoad();
-  } catch (e) { errEl.textContent = 'Сеть недоступна'; }
-  finally { btn.disabled = false; btn.textContent = 'Войти'; }
-});
+  } catch (e) {
+    errEl.textContent = 'Сеть недоступна';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Войти';
+  }
+}
 
-$('login-back-btn').addEventListener('click', () => {
-  $('login-step-phone').style.display = 'block';
-  $('login-step-code').style.display = 'none';
-  $('login-error').textContent = '';
-});
+$('login-btn').addEventListener('click', doLogin);
+$('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+$('login-login').addEventListener('keydown', e => { if (e.key === 'Enter') $('login-password').focus(); });
 
 async function checkAdminAndLoad() {
   try {
     const res = await api('/api/admin/me', {});
     ME = res.profile;
     $('admin-name').textContent = ME.full_name || '—';
+    $('admin-login').textContent = '@' + (ME.login || '—');
     showApp();
     navigate('dashboard');
     refreshQuestionCount();
@@ -529,12 +423,56 @@ async function checkAdminAndLoad() {
   }
 }
 
-$('logout-btn').addEventListener('click', () => {
-  if (!confirm('Выйти?')) return;
+$('logout-btn').addEventListener('click', async () => {
+  if (!confirm('Выйти из аккаунта?')) return;
+  try { await api('/api/auth/logout', {}); } catch (e) {}
   clearToken();
   ME = null;
   showLogin();
 });
+
+$('change-password-btn').addEventListener('click', openChangePasswordModal);
+
+/* ================== CHANGE PASSWORD ================== */
+function openChangePasswordModal() {
+  openModal('🔐 Сменить пароль', `
+    <div class="form-group">
+      <label>Текущий пароль</label>
+      <input class="form-input" id="cp-old" type="password" autocomplete="current-password">
+    </div>
+    <div class="form-group">
+      <label>Новый пароль</label>
+      <input class="form-input" id="cp-new" type="password" autocomplete="new-password">
+      <div class="form-hint">Минимум 6 символов</div>
+    </div>
+    <div class="form-group">
+      <label>Повторите новый пароль</label>
+      <input class="form-input" id="cp-new2" type="password" autocomplete="new-password">
+    </div>
+    <div class="form-hint error" id="cp-error"></div>
+  `, `
+    <button class="btn ghost" onclick="closeModal()">Отмена</button>
+    <button class="btn primary" id="cp-save">Сохранить</button>
+  `);
+  $('cp-save').addEventListener('click', async () => {
+    const oldPass = $('cp-old').value;
+    const newPass = $('cp-new').value;
+    const newPass2 = $('cp-new2').value;
+    const errEl = $('cp-error');
+    errEl.textContent = '';
+    if (!oldPass) { errEl.textContent = 'Введите текущий пароль'; return; }
+    if (!newPass || newPass.length < 6) { errEl.textContent = 'Новый пароль минимум 6 символов'; return; }
+    if (newPass !== newPass2) { errEl.textContent = 'Пароли не совпадают'; return; }
+    try {
+      await api('/api/admin/change-password', { old_password: oldPass, new_password: newPass });
+      toast('Пароль изменён', 'success');
+      closeModal();
+    } catch (e) {
+      if (e.message === 'wrong_password') errEl.textContent = 'Текущий пароль неверный';
+      else errEl.textContent = 'Не удалось изменить пароль';
+    }
+  });
+}
 
 /* ================== MODAL ================== */
 function openModal(title, bodyHtml, footerHtml) {
@@ -549,28 +487,14 @@ $('modal-overlay').addEventListener('click', e => { if (e.target === $('modal-ov
 
 /* ================== NAV ================== */
 const SECTION_TITLES = {
-  dashboard: 'Дашборд',
-  users: 'Пользователи',
-  restaurants: 'Рестораны',
-  news: 'Новости',
-  standards: 'Стандарты',
-  faq: 'FAQ',
-  positions: 'Должности',
-  questions: 'Вопросы',
-  reports: 'Отчёты',
-  audit: 'История действий',
+  dashboard: 'Дашборд', users: 'Сотрудники', restaurants: 'Рестораны',
+  news: 'Новости', standards: 'Стандарты', faq: 'FAQ', positions: 'Должности',
+  questions: 'Вопросы', reports: 'Отчёты', audit: 'История действий',
 };
 const SECTION_LOADERS = {
-  dashboard: loadDashboard,
-  users: loadUsers,
-  restaurants: loadRestaurants,
-  news: loadNews,
-  standards: loadStandards,
-  faq: loadFaq,
-  positions: loadPositions,
-  questions: loadQuestions,
-  reports: loadReports,
-  audit: loadAudit,
+  dashboard: loadDashboard, users: loadUsers, restaurants: loadRestaurants,
+  news: loadNews, standards: loadStandards, faq: loadFaq, positions: loadPositions,
+  questions: loadQuestions, reports: loadReports, audit: loadAudit,
 };
 
 document.querySelectorAll('.nav-item').forEach(btn => {
@@ -581,7 +505,7 @@ function navigate(sec) {
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.sec === sec));
   $('page-title').textContent = SECTION_TITLES[sec] || '—';
   $('page-actions').innerHTML = '';
-  $('page-content').innerHTML = '<div class="page-loading"><div class="loader dark"></div><div>Загрузка…</div></div>';
+  $('page-content').innerHTML = '<div class="page-loading"><div class="loader"></div><div style="margin-top:12px;">Загрузка…</div></div>';
   const loader = SECTION_LOADERS[sec];
   if (loader) loader();
 }
@@ -613,81 +537,73 @@ async function loadDashboard() {
       </div>
     `).join('');
 
-    const attention = [];
-    if (stats.questions_open > 0) attention.push({ text: `❓ ${stats.questions_open} вопросов без ответа`, type: 'accent' });
-    if (stats.unfinished > 0) attention.push({ text: `🆕 ${stats.unfinished} незавершённых регистраций`, type: 'amber' });
-    if (stats.inactive > 0) attention.push({ text: `💤 ${stats.inactive} не заходили 7+ дней`, type: 'amber' });
-    if (stats.news_scheduled > 0) attention.push({ text: `⏰ ${stats.news_scheduled} отложенных новостей`, type: 'blue' });
-
-    const attentionHtml = attention.length
-      ? attention.map(a => `<div class="attention-item ${a.type === 'accent' ? '' : a.type}">${a.text}</div>`).join('')
-      : '<div class="attention-item green">✅ Всё в порядке — ничего не требует внимания</div>';
-
     $('page-content').innerHTML = `
       <div class="stats-grid">
         <div class="stat-card accent">
           <div class="label">Сегодня</div>
           <div class="value">+${stats.new_today}</div>
-          <div class="hint">новых регистраций</div>
+          <div class="hint">новых сотрудников</div>
         </div>
         <div class="stat-card green">
-          <div class="label">Всего активных</div>
+          <div class="label">Активных</div>
           <div class="value">${report.active}</div>
           <div class="hint">из ${report.total}</div>
         </div>
         <div class="stat-card">
           <div class="label">Новых за 7 дней</div>
           <div class="value">${report.new7}</div>
-          <div class="hint">всего</div>
         </div>
         <div class="stat-card amber">
           <div class="label">Не заходили 7+</div>
           <div class="value">${report.inactive7}</div>
-          <div class="hint">надо разбудить</div>
         </div>
       </div>
-
       <div class="chart-card">
-        <h3>Регистрации за 7 дней</h3>
+        <h3>Новые сотрудники за 7 дней</h3>
         <div class="bar-chart">${barsHtml}</div>
       </div>
-
-      <div class="chart-card">
-        <h3>Требует внимания</h3>
-        <div class="attention-list">${attentionHtml}</div>
-      </div>
+      ${stats.questions_open > 0 ? `
+        <div class="chart-card">
+          <h3>Требует внимания</h3>
+          <div style="padding:12px;background:#FFF4E0;border-radius:10px;color:#C77700;font-weight:600;">
+            ❓ ${stats.questions_open} вопросов без ответа →
+            <a href="#" onclick="navigate('questions');return false;" style="color:inherit;text-decoration:underline;">открыть</a>
+          </div>
+        </div>
+      ` : ''}
     `;
   } catch (e) {
-    $('page-content').innerHTML = '<div class="empty">Не удалось загрузить дашборд</div>';
+    $('page-content').innerHTML = '<div class="empty"><span class="emoji">⚠️</span>Не удалось загрузить дашборд</div>';
   }
 }
 
 /* ================== USERS ================== */
-let _usersCache = [];
-
 async function loadUsers(search) {
-  $('page-actions').innerHTML = '<button class="btn ghost small" id="users-export">📤 Экспорт CSV</button>';
+  $('page-actions').innerHTML = `
+    <button class="btn ghost small" id="users-export">📤 Экспорт CSV</button>
+    <button class="btn primary small" id="users-create">+ Создать сотрудника</button>
+  `;
   $('users-export').addEventListener('click', exportUsers);
+  $('users-create').addEventListener('click', openUserCreate);
   try {
     const data = await api('/api/admin/users', { search: search || '' });
-    _usersCache = data.users || [];
+    const users = data.users || [];
     const searchBar = `
       <div class="search-bar">
-        <input id="users-search" placeholder="Поиск по имени, телефону или ID…" value="${esc(search||'')}">
+        <input id="users-search" placeholder="Поиск по логину, ФИО, телефону, ID…" value="${esc(search||'')}">
       </div>
     `;
-    const rows = _usersCache.map(u => {
+    const rows = users.map(u => {
       const tags = [];
-      if (u.is_blocked) tags.push('<span class="tag red">🚫 Заблок</span>');
+      if (u.is_admin) tags.push('<span class="tag blue">👑 Админ</span>');
+      if (u.is_blocked) tags.push('<span class="tag red">🚫 Блок</span>');
       if (u.is_certified) tags.push('<span class="tag green">📜 Сертификат</span>');
       else tags.push('<span class="tag gray">📜 Нет</span>');
       if (u.is_medbook_valid) tags.push('<span class="tag green">🩺 Медкнижка</span>');
       else tags.push('<span class="tag red">🩺 Просрочена</span>');
-      if (!u.welcomed) tags.push('<span class="tag amber">🆕 Не закончил</span>');
-
       return `
         <tr class="row-clickable" data-uid="${u.user_id}">
-          <td><code style="font-size:11px;">${u.user_id}</code></td>
+          <td>${u.login ? `<span class="login-cell">${esc(u.login)}</span>` : '<span class="tag gray">нет</span>'}</td>
           <td><b>${esc(u.full_name || '—')}</b></td>
           <td>${esc(u.phone || '—')}</td>
           <td>${esc(u.position || '—')}</td>
@@ -696,7 +612,6 @@ async function loadUsers(search) {
           <td style="font-size:12px;color:var(--text-muted);">${fmtDate(u.last_seen_at, false)}</td>
           <td class="actions-cell">
             <button class="icon-btn" data-edit="${u.user_id}" title="Редактировать">✏️</button>
-            <button class="icon-btn" data-msg="${u.user_id}" title="Написать">💬</button>
             <button class="icon-btn danger" data-del="${u.user_id}" title="Удалить">🗑</button>
           </td>
         </tr>
@@ -708,12 +623,10 @@ async function loadUsers(search) {
         <div class="table-wrap">
           <table>
             <thead>
-              <tr>
-                <th>ID</th><th>ФИО</th><th>Телефон</th><th>Должность</th>
-                <th>Ресторан</th><th>Статусы</th><th>Был(а)</th><th></th>
-              </tr>
+              <tr><th>Логин</th><th>ФИО</th><th>Телефон</th><th>Должность</th>
+                  <th>Ресторан</th><th>Статусы</th><th>Был(а)</th><th></th></tr>
             </thead>
-            <tbody>${rows || '<tr><td colspan="8"><div class="empty">Пользователей нет</div></td></tr>'}</tbody>
+            <tbody>${rows || '<tr><td colspan="8"><div class="empty">Нет сотрудников</div></td></tr>'}</tbody>
           </table>
         </div>
       </div>
@@ -725,14 +638,9 @@ async function loadUsers(search) {
       clearTimeout(timer);
       timer = setTimeout(() => loadUsers(searchInput.value.trim()), 400);
     });
-
     document.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', e => {
       e.stopPropagation();
       openUserEditor(parseInt(b.dataset.edit));
-    }));
-    document.querySelectorAll('[data-msg]').forEach(b => b.addEventListener('click', e => {
-      e.stopPropagation();
-      openUserMessage(parseInt(b.dataset.msg));
     }));
     document.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', e => {
       e.stopPropagation();
@@ -744,72 +652,176 @@ async function loadUsers(search) {
   }
 }
 
+function openUserCreate() {
+  openModal('Создать сотрудника', `
+    <div class="form-group">
+      <label>Логин</label>
+      <input class="form-input" id="nc-login" placeholder="abc12" maxlength="5"
+             style="text-transform: lowercase; font-family: monospace;">
+      <div class="form-hint" id="nc-login-hint">3 латинские буквы + 2 цифры (например, adm01)</div>
+    </div>
+    <div class="form-group">
+      <label>Пароль</label>
+      <input class="form-input" id="nc-password" placeholder="Минимум 6 символов">
+      <div class="form-hint">Сотрудник сможет сменить пароль после входа</div>
+    </div>
+    <div class="form-group">
+      <label>ФИО</label>
+      <input class="form-input" id="nc-name" placeholder="Иванов Иван Иванович">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Телефон</label>
+        <input class="form-input" id="nc-phone" placeholder="+7 (900) 000-00-00">
+      </div>
+      <div class="form-group">
+        <label>Дата рождения</label>
+        <input class="form-input" id="nc-birth" placeholder="ДД.ММ.ГГГГ">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Должность</label>
+        <input class="form-input" id="nc-position" placeholder="Повар холодного цеха">
+      </div>
+      <div class="form-group">
+        <label>Ресторан (key)</label>
+        <input class="form-input" id="nc-restaurant" placeholder="belyaevo">
+        <div class="form-hint"><a href="#" onclick="navigate('restaurants');closeModal();return false;">Посмотреть все key →</a></div>
+      </div>
+    </div>
+    <div class="form-group">
+      <div class="checkbox-row"><input type="checkbox" id="nc-cert"><label for="nc-cert">Сертификация пройдена</label></div>
+      <div class="checkbox-row"><input type="checkbox" id="nc-medbook"><label for="nc-medbook">Мед. книжка действительна</label></div>
+      <div class="checkbox-row"><input type="checkbox" id="nc-admin"><label for="nc-admin">Права администратора</label></div>
+    </div>
+    <div class="form-hint error" id="nc-error"></div>
+  `, `
+    <button class="btn ghost" onclick="closeModal()">Отмена</button>
+    <button class="btn primary" id="nc-save">Создать</button>
+  `);
+  $('nc-login').addEventListener('input', e => {
+    e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5);
+  });
+  $('nc-save').addEventListener('click', async () => {
+    const errEl = $('nc-error');
+    errEl.textContent = '';
+    const body = {
+      login: $('nc-login').value.trim().toLowerCase(),
+      password: $('nc-password').value,
+      full_name: $('nc-name').value.trim(),
+      phone: $('nc-phone').value.trim(),
+      birth_date: $('nc-birth').value.trim(),
+      position: $('nc-position').value.trim(),
+      restaurant: $('nc-restaurant').value.trim(),
+      is_certified: $('nc-cert').checked,
+      is_medbook_valid: $('nc-medbook').checked,
+      is_admin: $('nc-admin').checked,
+    };
+    if (!LOGIN_RE.test(body.login)) { errEl.textContent = 'Логин: 3 буквы + 2 цифры'; return; }
+    if (!body.password || body.password.length < 6) { errEl.textContent = 'Пароль минимум 6 символов'; return; }
+    if (!body.full_name) { errEl.textContent = 'Введите ФИО'; return; }
+    try {
+      await api('/api/admin/user/create', body);
+      toast('Сотрудник создан', 'success');
+      closeModal();
+      loadUsers();
+    } catch (e) {
+      const errMap = {
+        invalid_login: 'Логин: 3 латинские буквы + 2 цифры',
+        invalid_password: 'Пароль минимум 6 символов',
+        invalid_full_name: 'Некорректное ФИО',
+        invalid_birth_date: 'Дата в формате ДД.ММ.ГГГГ',
+        login_taken: 'Этот логин уже занят',
+      };
+      errEl.textContent = errMap[e.message] || 'Ошибка создания';
+    }
+  });
+}
+
 async function openUserEditor(uid) {
   try {
     const data = await api('/api/admin/user/get', { user_id: uid });
     const u = data.user;
-    openModal('Редактирование пользователя', `
-      <div class="form-group"><label>ID</label><div style="padding:10px 0;"><code>${u.user_id}</code></div></div>
-      <div class="form-group"><label>ФИО</label><input class="form-input" id="f-full_name" value="${esc(u.full_name)}"></div>
-      <div class="form-row">
-        <div class="form-group"><label>Телефон</label><input class="form-input" id="f-phone" value="${esc(u.phone)}"></div>
-        <div class="form-group"><label>Дата рождения</label><input class="form-input" id="f-birth_date" value="${esc(u.birth_date)}" placeholder="ДД.ММ.ГГГГ"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Должность</label><input class="form-input" id="f-position" value="${esc(u.position)}"></div>
-        <div class="form-group"><label>Ресторан (key)</label><input class="form-input" id="f-restaurant" value="${esc(u.restaurant_key)}" placeholder="например belyaevo"></div>
+    openModal('Редактирование сотрудника', `
+      <div class="form-group">
+        <label>Логин</label>
+        <input class="form-input" id="eu-login" value="${esc(u.login)}" maxlength="5"
+               style="text-transform: lowercase; font-family: monospace;">
+        <div class="form-hint" id="eu-login-hint">3 латинские буквы + 2 цифры</div>
       </div>
       <div class="form-group">
-        <div class="checkbox-row"><input type="checkbox" id="f-is_certified" ${u.is_certified ? 'checked' : ''}><label for="f-is_certified">Сертификация пройдена</label></div>
-        <div class="checkbox-row"><input type="checkbox" id="f-is_medbook_valid" ${u.is_medbook_valid ? 'checked' : ''}><label for="f-is_medbook_valid">Мед. книжка действительна</label></div>
-        <div class="checkbox-row"><input type="checkbox" id="f-is_blocked" ${u.is_blocked ? 'checked' : ''}><label for="f-is_blocked">Заблокирован</label></div>
+        <label>Новый пароль</label>
+        <input class="form-input" id="eu-password" placeholder="Оставьте пустым, чтобы не менять">
+        <div class="form-hint">Минимум 6 символов</div>
       </div>
+      <div class="form-group">
+        <label>ФИО</label>
+        <input class="form-input" id="eu-name" value="${esc(u.full_name)}">
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Телефон</label><input class="form-input" id="eu-phone" value="${esc(u.phone)}"></div>
+        <div class="form-group"><label>Дата рождения</label><input class="form-input" id="eu-birth" value="${esc(u.birth_date)}" placeholder="ДД.ММ.ГГГГ"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Должность</label><input class="form-input" id="eu-position" value="${esc(u.position)}"></div>
+        <div class="form-group"><label>Ресторан (key)</label><input class="form-input" id="eu-restaurant" value="${esc(u.restaurant_key)}"></div>
+      </div>
+      <div class="form-group">
+        <div class="checkbox-row"><input type="checkbox" id="eu-cert" ${u.is_certified ? 'checked' : ''}><label for="eu-cert">Сертификация пройдена</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="eu-medbook" ${u.is_medbook_valid ? 'checked' : ''}><label for="eu-medbook">Мед. книжка действительна</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="eu-blocked" ${u.is_blocked ? 'checked' : ''}><label for="eu-blocked">Заблокирован</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="eu-admin" ${u.is_admin ? 'checked' : ''}><label for="eu-admin">Права администратора</label></div>
+      </div>
+      <div class="form-hint error" id="eu-error"></div>
     `, `
       <button class="btn ghost" onclick="closeModal()">Отмена</button>
-      <button class="btn primary" id="save-user-btn">Сохранить</button>
+      <button class="btn primary" id="eu-save">Сохранить</button>
     `);
-
-    $('save-user-btn').addEventListener('click', async () => {
-      const updates = {
-        full_name: $('f-full_name').value.trim(),
-        phone: $('f-phone').value.trim(),
-        birth_date: $('f-birth_date').value.trim(),
-        position: $('f-position').value.trim(),
-        restaurant: $('f-restaurant').value.trim(),
-        is_certified: $('f-is_certified').checked,
-        is_medbook_valid: $('f-is_medbook_valid').checked,
-        is_blocked: $('f-is_blocked').checked,
-      };
+    $('eu-login').addEventListener('input', e => {
+      e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5);
+    });
+    $('eu-save').addEventListener('click', async () => {
+      const errEl = $('eu-error');
+      errEl.textContent = '';
+      const updates = {};
+      const newLogin = $('eu-login').value.trim().toLowerCase();
+      if (newLogin && newLogin !== u.login) {
+        if (!LOGIN_RE.test(newLogin)) { errEl.textContent = 'Логин: 3 буквы + 2 цифры'; return; }
+        updates.login = newLogin;
+      }
+      const newPassword = $('eu-password').value;
+      if (newPassword) {
+        if (newPassword.length < 6) { errEl.textContent = 'Пароль минимум 6 символов'; return; }
+        updates.password = newPassword;
+      }
+      updates.full_name = $('eu-name').value.trim();
+      updates.phone = $('eu-phone').value.trim();
+      updates.birth_date = $('eu-birth').value.trim();
+      updates.position = $('eu-position').value.trim();
+      updates.restaurant = $('eu-restaurant').value.trim();
+      updates.is_certified = $('eu-cert').checked;
+      updates.is_medbook_valid = $('eu-medbook').checked;
+      updates.is_blocked = $('eu-blocked').checked;
+      updates.is_admin = $('eu-admin').checked;
       try {
-        await api('/api/admin/user/update', { user_id: uid, updates });
+        const res = await api('/api/admin/user/update', { user_id: uid, updates });
+        if (res.errors && Object.keys(res.errors).length) {
+          errEl.textContent = 'Некоторые поля не сохранены: ' + Object.keys(res.errors).join(', ');
+          return;
+        }
         toast('Сохранено', 'success');
         closeModal();
         loadUsers();
-      } catch (e) { toast('Ошибка сохранения', 'error'); }
+      } catch (e) {
+        errEl.textContent = 'Ошибка сохранения';
+      }
     });
   } catch (e) { toast('Не удалось загрузить', 'error'); }
 }
 
-function openUserMessage(uid) {
-  openModal('Написать пользователю', `
-    <div class="form-group"><label>Сообщение</label><textarea class="form-textarea" id="msg-text" placeholder="Текст сообщения…"></textarea></div>
-  `, `
-    <button class="btn ghost" onclick="closeModal()">Отмена</button>
-    <button class="btn primary" id="send-msg-btn">Отправить</button>
-  `);
-  $('send-msg-btn').addEventListener('click', async () => {
-    const text = $('msg-text').value.trim();
-    if (!text) { toast('Введите текст', 'error'); return; }
-    try {
-      const res = await api('/api/admin/user/message', { user_id: uid, text });
-      if (res.ok) { toast('Отправлено', 'success'); closeModal(); }
-      else toast('Не доставлено', 'error');
-    } catch (e) { toast('Ошибка', 'error'); }
-  });
-}
-
 async function deleteUser(uid) {
-  if (!confirm('Удалить пользователя из базы?')) return;
+  if (!confirm('Удалить сотрудника? Он больше не сможет войти.')) return;
   try {
     await api('/api/admin/user/delete', { user_id: uid });
     toast('Удалён', 'success');
@@ -841,13 +853,11 @@ async function loadRestaurants() {
     const rests = data.restaurants || [];
     const rows = rests.map(r => `
       <tr>
-        <td><b>${esc(r.name)}</b><br><span style="font-size:11px;color:var(--text-muted);">${esc(r.key)}</span></td>
+        <td><b>${esc(r.name)}</b><br><span style="font-size:11px;color:var(--text-muted);font-family:monospace;">${esc(r.key)}</span></td>
         <td>${esc(r.address || '—')}</td>
         <td>${esc(r.phone || '—')}</td>
-        <td>
-          ${r.status === 'open' ? '<span class="tag green">🟢 Открыто</span>' : '<span class="tag red">🔴 Закрыто</span>'}
-          ${r.force_status ? '<span class="tag amber" style="margin-left:4px;">вручную</span>' : ''}
-        </td>
+        <td>${r.status === 'open' ? '<span class="tag green">🟢 Открыто</span>' : '<span class="tag red">🔴 Закрыто</span>'}
+            ${r.force_status ? '<span class="tag amber" style="margin-left:4px;">вручную</span>' : ''}</td>
         <td>${esc(r.territory_manager_name || '—')}</td>
         <td class="actions-cell">
           <button class="icon-btn" data-edit="${esc(r.key)}" title="Редактировать">✏️</button>
@@ -857,20 +867,16 @@ async function loadRestaurants() {
         </td>
       </tr>
     `).join('');
-
     $('page-content').innerHTML = `
       <div class="table-card">
         <div class="table-wrap">
           <table>
-            <thead>
-              <tr><th>Название</th><th>Адрес</th><th>Телефон</th><th>Статус</th><th>ТУ</th><th></th></tr>
-            </thead>
+            <thead><tr><th>Название</th><th>Адрес</th><th>Телефон</th><th>Статус</th><th>ТУ</th><th></th></tr></thead>
             <tbody>${rows || '<tr><td colspan="6"><div class="empty">Ресторанов нет</div></td></tr>'}</tbody>
           </table>
         </div>
       </div>
     `;
-
     document.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openRestaurantEditor(b.dataset.edit, rests)));
     document.querySelectorAll('[data-tu]').forEach(b => b.addEventListener('click', () => openTuEditor(b.dataset.tu, data.tu_candidates, rests)));
     document.querySelectorAll('[data-status]').forEach(b => b.addEventListener('click', async () => {
@@ -900,23 +906,22 @@ function openRestaurantEditor(key, rests) {
   const r = rests.find(x => x.key === key);
   if (!r) return;
   openModal('Редактирование ресторана', `
-    <div class="form-group"><label>Key</label><div><code>${esc(r.key)}</code></div></div>
+    <div class="form-group"><label>Key</label><div style="font-family:monospace;">${esc(r.key)}</div></div>
     <div class="form-group"><label>Название</label><input class="form-input" id="rf-name" value="${esc(r.name)}"></div>
     <div class="form-group"><label>Адрес</label><input class="form-input" id="rf-address" value="${esc(r.address)}"></div>
     <div class="form-row">
       <div class="form-group"><label>Телефон</label><input class="form-input" id="rf-phone" value="${esc(r.phone)}"></div>
-      <div class="form-group"><label>Яндекс.Карты (org)</label><input class="form-input" id="rf-org" value="${esc(r.org)}"></div>
+      <div class="form-group"><label>Яндекс Карты (org)</label><input class="form-input" id="rf-org" value="${esc(r.org)}"></div>
     </div>
-    <div class="form-group"><label>Часы работы</label><textarea class="form-textarea" id="rf-hours" rows="3">${esc(r.hours)}</textarea><div class="form-hint">Формат: Пн–вс: 10:00–22:00 (каждый день с новой строки)</div></div>
+    <div class="form-group"><label>Часы работы</label><textarea class="form-textarea" id="rf-hours" rows="3">${esc(r.hours)}</textarea></div>
     <div class="form-row">
-      <div class="form-group"><label>Широта</label><input class="form-input" id="rf-lat" value="${r.lat || ''}" type="number" step="0.000001"></div>
-      <div class="form-group"><label>Долгота</label><input class="form-input" id="rf-lon" value="${r.lon || ''}" type="number" step="0.000001"></div>
+      <div class="form-group"><label>Широта</label><input class="form-input" id="rf-lat" type="number" step="0.000001" value="${r.lat || ''}"></div>
+      <div class="form-group"><label>Долгота</label><input class="form-input" id="rf-lon" type="number" step="0.000001" value="${r.lon || ''}"></div>
     </div>
   `, `
     <button class="btn ghost" onclick="closeModal()">Отмена</button>
     <button class="btn primary" id="save-rest-btn">Сохранить</button>
   `);
-
   $('save-rest-btn').addEventListener('click', async () => {
     const updates = {
       name: $('rf-name').value.trim(),
@@ -929,9 +934,8 @@ function openRestaurantEditor(key, rests) {
     const lon = parseFloat($('rf-lon').value);
     if (!isNaN(lat) && !isNaN(lon)) updates.coords = { lat, lon };
     try {
-      const res = await api('/api/admin/restaurant/update', { key, updates });
-      if (res.ok) { toast('Сохранено', 'success'); closeModal(); loadRestaurants(); }
-      else toast('Ошибка', 'error');
+      await api('/api/admin/restaurant/update', { key, updates });
+      toast('Сохранено', 'success'); closeModal(); loadRestaurants();
     } catch (e) { toast('Ошибка', 'error'); }
   });
 }
@@ -943,7 +947,7 @@ function openRestaurantAdd() {
     <div class="form-group"><label>Часы работы</label><textarea class="form-textarea" id="ra-hours" rows="3" placeholder="Пн–вс: 10:00–22:00"></textarea></div>
     <div class="form-row">
       <div class="form-group"><label>Телефон</label><input class="form-input" id="ra-phone" placeholder="+7…"></div>
-      <div class="form-group"><label>Яндекс.Карты org</label><input class="form-input" id="ra-org" placeholder="vokker/…"></div>
+      <div class="form-group"><label>Яндекс.Карты</label><input class="form-input" id="ra-org" placeholder="vokker/…"></div>
     </div>
   `, `
     <button class="btn ghost" onclick="closeModal()">Отмена</button>
@@ -978,7 +982,7 @@ function openTuEditor(key, candidates, rests) {
         <option value="">— не назначен —</option>
         ${opts}
       </select>
-      <div class="form-hint">${candidates.length ? '' : 'Нет пользователей с должностью «Территориальный управляющий». Сначала назначь её в карточке пользователя.'}</div>
+      <div class="form-hint">${candidates.length ? '' : 'Нет сотрудников с должностью «Территориальный управляющий». Сначала назначь её в карточке сотрудника.'}</div>
     </div>
   `, `
     <button class="btn ghost" onclick="closeModal()">Отмена</button>
@@ -1013,14 +1017,12 @@ async function loadNews() {
           <td>${status}</td>
           <td style="font-size:12px;color:var(--text-muted);">${fmtDate(n.created_at, true)}</td>
           <td class="actions-cell">
-            <button class="icon-btn" data-bc="${n.id}" title="Разослать">📢</button>
             <button class="icon-btn" data-title="${n.id}" title="Изменить заголовок">✏️</button>
             ${n.published ? `<button class="icon-btn danger" data-del="${n.id}" title="Удалить">🗑</button>` : ''}
           </td>
         </tr>
       `;
     }).join('');
-
     $('page-content').innerHTML = `
       <div class="table-card">
         <div class="table-wrap">
@@ -1031,8 +1033,6 @@ async function loadNews() {
         </div>
       </div>
     `;
-
-    document.querySelectorAll('[data-bc]').forEach(b => b.addEventListener('click', () => openNewsBroadcast(parseInt(b.dataset.bc))));
     document.querySelectorAll('[data-title]').forEach(b => b.addEventListener('click', () => openNewsEditTitle(parseInt(b.dataset.title), news)));
     document.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
       if (!confirm('Удалить новость?')) return;
@@ -1080,7 +1080,7 @@ function openNewsAdd() {
       body: $('n-body').value.trim(),
       level: $('n-level').value,
     };
-    if (!body.title || !body.body) { toast('Заполните все поля', 'error'); return; }
+    if (!body.title || !body.body) { toast('Заполните поля', 'error'); return; }
     if ($('n-sched').value === 'later') {
       const dt = $('n-publish-at').value;
       if (!dt) { toast('Укажите дату и время', 'error'); return; }
@@ -1108,34 +1108,6 @@ function openNewsEditTitle(id, news) {
       toast('Сохранено', 'success'); closeModal(); loadNews();
     } catch (e) { toast('Ошибка', 'error'); }
   });
-}
-
-async function openNewsBroadcast(id) {
-  try {
-    const rdata = await api('/api/admin/restaurants', {});
-    const rests = rdata.restaurants || [];
-    const opts = rests.map(r => `<option value="${esc(r.key)}">${esc(r.name)}</option>`).join('');
-    openModal('Рассылка новости', `
-      <div class="form-group">
-        <label>Кому</label>
-        <select class="form-select" id="bc-target">
-          <option value="">🌍 Всем сотрудникам</option>
-          ${opts}
-        </select>
-      </div>
-      <div class="form-hint">Рассылка идёт в фоне, придёт отчёт в Telegram.</div>
-    `, `
-      <button class="btn ghost" onclick="closeModal()">Отмена</button>
-      <button class="btn primary" id="do-bc-btn">Разослать</button>
-    `);
-    $('do-bc-btn').addEventListener('click', async () => {
-      const target = $('bc-target').value || null;
-      try {
-        await api('/api/admin/news/broadcast', { id, restaurant_key: target });
-        toast('Рассылка запущена', 'success'); closeModal();
-      } catch (e) { toast('Ошибка', 'error'); }
-    });
-  } catch (e) { toast('Ошибка', 'error'); }
 }
 
 /* ================== STANDARDS ================== */
@@ -1180,7 +1152,7 @@ function openStandardAdd() {
     <div class="form-group"><label>Название</label><input class="form-input" id="s-title"></div>
     <div class="form-group"><label>Категория</label><input class="form-input" id="s-cat" placeholder="Технология"></div>
     <div class="form-group"><label>Описание</label><textarea class="form-textarea" id="s-desc"></textarea></div>
-    <div class="form-group"><label>Ссылка (необязательно)</label><input class="form-input" id="s-url" placeholder="https://…"></div>
+    <div class="form-group"><label>Ссылка</label><input class="form-input" id="s-url" placeholder="https://…"></div>
   `, `
     <button class="btn ghost" onclick="closeModal()">Отмена</button>
     <button class="btn primary" id="create-std-btn">Создать</button>
@@ -1266,7 +1238,7 @@ function openFaqAdd() {
   openModal('Новый вопрос', `
     <div class="form-group"><label>Вопрос</label><textarea class="form-textarea" id="f-q" rows="2"></textarea></div>
     <div class="form-group"><label>Ответ</label><textarea class="form-textarea" id="f-a" rows="4"></textarea></div>
-    <div class="form-group"><label>Категория (необязательно)</label><input class="form-input" id="f-cat"></div>
+    <div class="form-group"><label>Категория</label><input class="form-input" id="f-cat"></div>
   `, `
     <button class="btn ghost" onclick="closeModal()">Отмена</button>
     <button class="btn primary" id="create-faq-btn">Создать</button>
@@ -1378,7 +1350,6 @@ async function loadQuestions() {
         <td style="font-size:12px;color:var(--text-muted);">${fmtDate(q.created_at, true)}</td>
         <td class="actions-cell">
           ${!q.replied ? `<button class="icon-btn" data-reply="${q.id}" title="Ответить">✍️</button>` : ''}
-          <button class="icon-btn" data-user="${q.user_id}" title="Профиль">👤</button>
         </td>
       </tr>
     `).join('');
@@ -1386,14 +1357,13 @@ async function loadQuestions() {
       <div class="table-card">
         <div class="table-wrap">
           <table>
-            <thead><tr><th>User ID</th><th>Кто</th><th>Вопрос</th><th>Статус</th><th>Когда</th><th></th></tr></thead>
+            <thead><tr><th>ID</th><th>Кто</th><th>Вопрос</th><th>Статус</th><th>Когда</th><th></th></tr></thead>
             <tbody>${rows || '<tr><td colspan="6"><div class="empty">Вопросов нет</div></td></tr>'}</tbody>
           </table>
         </div>
       </div>
     `;
     document.querySelectorAll('[data-reply]').forEach(b => b.addEventListener('click', () => openReply(parseInt(b.dataset.reply), list)));
-    document.querySelectorAll('[data-user]').forEach(b => b.addEventListener('click', () => openUserEditor(parseInt(b.dataset.user))));
     refreshQuestionCount();
   } catch (e) { $('page-content').innerHTML = '<div class="empty">Ошибка</div>'; }
 }
@@ -1404,18 +1374,16 @@ function openReply(id, list) {
   openModal('Ответ на вопрос', `
     <div class="form-group"><label>Вопрос</label><div style="background:#F8F9FA;padding:12px;border-radius:10px;font-size:14px;">${esc(q.text)}</div></div>
     <div class="form-group"><label>Ответ</label><textarea class="form-textarea" id="reply-text" rows="4"></textarea></div>
-    <div class="form-hint">Ответ уйдёт пользователю в Telegram-бот.</div>
   `, `
     <button class="btn ghost" onclick="closeModal()">Отмена</button>
-    <button class="btn primary" id="send-reply-btn">Отправить</button>
+    <button class="btn primary" id="send-reply-btn">Сохранить</button>
   `);
   $('send-reply-btn').addEventListener('click', async () => {
     const text = $('reply-text').value.trim();
     if (!text) { toast('Введите текст', 'error'); return; }
     try {
-      const res = await api('/api/admin/question/reply', { id, text });
-      if (res.sent) toast('Отправлено', 'success');
-      else toast('Сохранено, но не доставлено', 'error');
+      await api('/api/admin/question/reply', { id, text });
+      toast('Сохранено', 'success');
       closeModal(); loadQuestions();
     } catch (e) { toast('Ошибка', 'error'); }
   });
@@ -1424,7 +1392,7 @@ function openReply(id, list) {
 /* ================== REPORTS ================== */
 async function loadReports() {
   $('page-actions').innerHTML = `
-    <button class="btn ghost small" id="exp-users">📤 CSV пользователей</button>
+    <button class="btn ghost small" id="exp-users">📤 CSV сотрудников</button>
     <button class="btn ghost small" id="exp-news">📤 CSV новостей</button>
   `;
   $('exp-users').addEventListener('click', exportUsers);

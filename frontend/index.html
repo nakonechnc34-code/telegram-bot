@@ -215,15 +215,6 @@
     display: none; z-index: 1;
   }
 
-  .custom-map-marker {
-    background: #ff2d55; color: #fff; border: 2px solid #fff; border-radius: 50%;
-    width: 32px !important; height: 32px !important;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 16px; box-shadow: 0 4px 12px rgba(255,45,85,0.4);
-  }
-  .custom-map-marker.open { background: #34c759; box-shadow: 0 4px 12px rgba(52,199,89,0.4); }
-  .custom-map-marker.closed { background: #ff3b30; box-shadow: 0 4px 12px rgba(255,59,48,0.4); }
-
   .rest-card {
     background: var(--card-bg);
     border-radius: 18px;
@@ -623,16 +614,16 @@ let _avatarRetryDone = false;
 let BOOT = null;
 let currentStandardCat = 'all';
 let currentRestFilter = 'all';
-let leafletMap = null;
-let leafletMarkers = null;
+let yandexMap = null;
+let yandexClusterer = null;
 
 const sectionLoaders = {
   'sec-profile': () => { if (BOOT) renderProfileFromBoot(); },
   'sec-restaurants': () => {
     if (BOOT) {
       renderRestaurants();
-      if (document.getElementById('btn-view-map').classList.contains('active') && leafletMap) {
-        setTimeout(() => leafletMap.invalidateSize(), 100);
+      if (document.getElementById('btn-view-map').classList.contains('active') && yandexMap) {
+        setTimeout(() => { yandexMap.container.fitToViewport(); }, 100);
       }
     }
   },
@@ -879,7 +870,6 @@ function renderRestaurantsList(list, query) {
       '<div class="rest-address-row">' +
       '<span class="icon">📍</span> ' + esc(r.address) +
       '</div>' +
-      // ❌ Строка с номером телефона удалена
       '<div class="rest-actions">' +
       (r.phone ? '<a href="tel:' + esc(r.phone.replace(/[^\d+]/g, '')) + '" class="btn-call" onclick="event.stopPropagation()">📞 Позвонить</a>' : '') +
       '<a href="' + routeUrl + '" target="_blank" rel="noopener noreferrer" class="btn-route" onclick="event.stopPropagation()">🗺 Маршрут</a>' +
@@ -888,117 +878,90 @@ function renderRestaurantsList(list, query) {
   }).join('');
 }
 
-let _leafletPromise = null;
-function loadLeaflet() {
-  if (window.L && window.L.markerClusterGroup) return Promise.resolve();
-  if (_leafletPromise) return _leafletPromise;
+let _yandexMapsPromise = null;
 
-  _leafletPromise = new Promise((resolve, reject) => {
-    if (!document.querySelector('link[href*="leaflet.css"]')) {
-      const l1 = document.createElement('link');
-      l1.rel = 'stylesheet';
-      l1.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-      document.head.appendChild(l1);
-    }
-    if (!document.querySelector('link[href*="MarkerCluster.css"]')) {
-      const l2 = document.createElement('link');
-      l2.rel = 'stylesheet';
-      l2.href = 'https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css';
-      document.head.appendChild(l2);
-      const l3 = document.createElement('link');
-      l3.rel = 'stylesheet';
-      l3.href = 'https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css';
-      document.head.appendChild(l3);
-    }
+function loadYandexMaps() {
+  if (window.ymaps) return Promise.resolve();
+  if (_yandexMapsPromise) return _yandexMapsPromise;
 
-    const loadScript = (src, cb) => {
-      const s = document.createElement('script');
-      s.src = src;
-      s.onload = cb;
-      s.onerror = () => reject(new Error('Не удалось загрузить ' + src));
-      document.head.appendChild(s);
-    };
+  _yandexMapsPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://api-maps.yandex.ru/2.1/?apikey=f35e1fb6-2431-4c95-98c8-4b99f54d97c1&lang=ru_RU';
+    s.onload = () => ymaps.ready(resolve);
+    s.onerror = () => reject(new Error('Не удалось загрузить Яндекс Карты'));
+    document.head.appendChild(s);
+  }).finally(() => { _yandexMapsPromise = null; });
 
-    if (!window.L) {
-      loadScript('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', () => {
-        loadScript('https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js', resolve);
-      });
-    } else {
-      loadScript('https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js', resolve);
-    }
-  }).finally(() => { _leafletPromise = null; });
-
-  return _leafletPromise;
+  return _yandexMapsPromise;
 }
 
 function initInteractiveMap(restaurants) {
   const mapContainer = document.getElementById('restaurants-map');
-  if (!window.L || !window.L.markerClusterGroup) return;
+  if (!window.ymaps) return;
 
-  if (!leafletMap) {
-    leafletMap = L.map(mapContainer, { zoomControl: false }).setView([55.7558, 37.6173], 10);
+  if (!yandexMap) {
+    yandexMap = new ymaps.Map(mapContainer, {
+      center: [55.7558, 37.6173],
+      zoom: 10,
+      controls: ['zoomControl']
+    });
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap'
-    }).addTo(leafletMap);
-
-    L.control.zoom({ position: 'bottomright' }).addTo(leafletMap);
-
-    leafletMarkers = L.markerClusterGroup({
-      maxClusterRadius: 40,
-      spiderfyOnMaxZoom: true,
-      showCoverageOnHover: false,
-    }).addTo(leafletMap);
+    yandexClusterer = new ymaps.Clusterer({
+      preset: 'islands#invertedVioletClusterIcons',
+      groupByCoordinates: false,
+      clusterDisableClickZoom: true
+    });
+    yandexMap.geoObjects.add(yandexClusterer);
   }
 
-  leafletMarkers.clearLayers();
+  yandexClusterer.removeAll();
 
-  const bounds = L.latLngBounds();
-  let addedCount = 0;
-
+  const placemarks = [];
   restaurants.forEach(r => {
     if (!r.lat || !r.lon) return;
 
     const isOpen = r.status === 'open';
-    const icon = L.divIcon({
-      className: 'custom-map-marker ' + (isOpen ? 'open' : 'closed'),
-      html: isOpen ? '🟢' : '🔴',
-      iconSize: [32, 32],
-      iconAnchor: [16, 16]
-    });
-
     const popupUrl = esc(mapUrlFor(r));
     const popupTel = r.phone ? esc(r.phone.replace(/[^\d+]/g, '')) : '';
-    const popupHtml =
-      '<div style="text-align:center; padding:4px; min-width:180px">' +
-      '<b style="font-size:15px">' + esc(r.name) + '</b><br>' +
-      '<span style="font-size:12px;color:#666">' + esc(r.address) + '</span><br>' +
-      '<span style="font-size:12px;color:' + (isOpen ? '#2e7d43' : '#b04a2e') + '; font-weight:600">' +
-        (isOpen ? 'Открыто' : 'Закрыто') +
-      '</span><br>' +
-      (popupTel ? '<a href="tel:' + popupTel + '" style="display:inline-block; margin-top:8px; padding:6px 12px; background:#34c759; color:#fff; text-decoration:none; border-radius:10px; font-size:12px; font-weight:600">📞 Позвонить</a>' : '') +
-      '<a href="' + popupUrl + '" target="_blank" rel="noopener noreferrer" style="display:inline-block; margin-top:4px; padding:6px 12px; background:#ff2d55; color:#fff; text-decoration:none; border-radius:10px; font-size:12px; font-weight:600">🗺 Маршрут</a>' +
-      '</div>';
 
-    const marker = L.marker([r.lat, r.lon], { icon }).bindPopup(popupHtml);
+    const balloonContent = `
+      <div style="text-align:center; padding:4px; min-width:180px; font-family: sans-serif;">
+        <b style="font-size:15px">${esc(r.name)}</b><br>
+        <span style="font-size:12px;color:#666">${esc(r.address)}</span><br>
+        <span style="font-size:12px;color:${isOpen ? '#2e7d43' : '#b04a2e'}; font-weight:600">
+          ${isOpen ? 'Открыто' : 'Закрыто'}
+        </span><br>
+        ${popupTel ? `<a href="tel:${popupTel}" style="display:inline-block; margin-top:8px; padding:6px 12px; background:#34c759; color:#fff; text-decoration:none; border-radius:10px; font-size:12px; font-weight:600">📞 Позвонить</a>` : ''}
+        <a href="${popupUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block; margin-top:4px; padding:6px 12px; background:#ff2d55; color:#fff; text-decoration:none; border-radius:10px; font-size:12px; font-weight:600">🗺 Маршрут</a>
+      </div>
+    `;
 
-    leafletMarkers.addLayer(marker);
-    bounds.extend([r.lat, r.lon]);
-    addedCount++;
+    const placemark = new ymaps.Placemark([r.lat, r.lon], {
+      balloonContent: balloonContent
+    }, {
+      preset: isOpen ? 'islands#greenIcon' : 'islands#redIcon'
+    });
+
+    placemarks.push(placemark);
   });
 
-  if (addedCount > 0 && bounds.isValid()) {
-    leafletMap.fitBounds(bounds, { padding: [30, 30] });
+  yandexClusterer.add(placemarks);
+
+  if (yandexMap && yandexClusterer.getGeoObjects().length > 0) {
+    try {
+      yandexMap.setBounds(yandexClusterer.getBounds(), { checkZoomRange: true, zoomMargin: 30 });
+    } catch (e) {
+      yandexMap.setCenter([55.7558, 37.6173], 10);
+    }
   }
-  setTimeout(() => { if (leafletMap) leafletMap.invalidateSize(); }, 200);
+  setTimeout(() => { if (yandexMap) yandexMap.container.fitToViewport(); }, 200);
 }
 
 function renderRestaurants() {
   if (!BOOT) return;
   const query = document.getElementById('rest-search').value;
   renderRestaurantsList(BOOT.restaurants, query);
-  if (document.getElementById('btn-view-map').classList.contains('active') && window.L) {
+  if (document.getElementById('btn-view-map').classList.contains('active') && window.ymaps) {
     initInteractiveMap(getFilteredRestaurants(BOOT.restaurants, query));
   }
 }
@@ -1025,10 +988,10 @@ document.getElementById('btn-view-map').addEventListener('click', async function
   document.getElementById('rest-list-wrapper').style.display = 'none';
   const mapContainer = document.getElementById('restaurants-map');
   mapContainer.style.display = 'block';
-  mapContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--hint-color);">Загрузка карты...</div>';
+  mapContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--hint-color);">Загрузка Яндекс Карт...</div>';
 
   try {
-    await loadLeaflet();
+    await loadYandexMaps();
     mapContainer.innerHTML = '';
     initInteractiveMap(getFilteredRestaurants(BOOT.restaurants, document.getElementById('rest-search').value));
   } catch (e) {
@@ -1288,7 +1251,7 @@ async function refreshSection(sec) {
     else if (sec === 'sec-restaurants') {
       BOOT.restaurants = prepareRestaurants(data);
       renderRestaurants();
-      if (document.getElementById('btn-view-map').classList.contains('active') && window.L) {
+      if (document.getElementById('btn-view-map').classList.contains('active') && window.ymaps) {
         initInteractiveMap(getFilteredRestaurants(BOOT.restaurants, document.getElementById('rest-search').value));
       }
       try { writeBootCache(Object.assign({}, BOOT)); } catch(e) {}

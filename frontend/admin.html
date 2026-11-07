@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Wokker · Админ</title>
+<!-- ИКОНКА САЙТА -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23FF1A1A'/%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%23000' stroke-width='8'/%3E%3Cpath d='M25 50 A 25 25 0 0 0 75 50' fill='none' stroke='%23000' stroke-width='12' stroke-linecap='round'/%3E%3Cpath d='M38 25 C45 15 35 10 40 5 C42 15 50 20 45 30 C42 35 35 35 32 30 C38 28 38 25 38 25 Z' fill='%23000'/%3E%3Cpath d='M62 25 C69 15 59 10 64 5 C66 15 74 20 69 30 C66 35 59 35 56 30 C62 28 62 25 62 25 Z' fill='%23000'/%3E%3C/svg%3E">
+
 <style>
   :root {
     --bg: #F5F5F7; --card-bg: #FFFFFF; --text-main: #1C1C1E;
@@ -331,7 +334,6 @@
      АДАПТИВ ДЛЯ ПЛАНШЕТОВ И ТЕЛЕФОНОВ
      ============================================================ */
   @media (max-width: 900px) {
-    /* Сайдбар превращается в выдвижное меню */
     .layout { display: block; }
     .sidebar {
       position: fixed; top: 0; left: 0; bottom: 0;
@@ -353,7 +355,6 @@
     .topbar .actions { gap: 6px; }
     .content { padding: 16px; }
 
-    /* Модалки почти на весь экран */
     .modal-overlay { padding: 12px; }
     .modal { max-width: 100%; border-radius: 14px; }
     .modal-body { padding: 16px; }
@@ -361,22 +362,18 @@
     .modal-header h3 { font-size: 16px; }
     .modal-footer { padding: 12px 16px; }
 
-    /* Форма — в одну колонку */
     .form-row { grid-template-columns: 1fr; gap: 0; }
     .perm-grid { grid-template-columns: 1fr; }
 
-    /* Поля — 16px, чтобы iOS не зумил при фокусе */
     .form-input, .form-select, .form-textarea,
     .login-input, .q, .search-bar input, .medbook-row input {
       font-size: 16px;
       min-height: 44px;
     }
 
-    /* Таблицы компактнее */
     th, td { padding: 10px 12px; font-size: 12px; }
     th { font-size: 10px; }
 
-    /* Сетка статистики в 2 колонки */
     .stats-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
     .stat-card { padding: 14px; border-radius: 12px; }
     .stat-card .label { font-size: 10px; margin-bottom: 4px; }
@@ -387,21 +384,17 @@
     .search-bar { flex-wrap: wrap; }
     .search-bar input { max-width: 100%; }
 
-    /* Кнопки действий — крупнее для тапа */
     .icon-btn { width: 36px; height: 36px; font-size: 16px; }
     .btn.small { padding: 8px 12px; font-size: 12px; min-height: 36px; }
 
-    /* Медкнижка — компактнее */
     .medbook-row { grid-template-columns: 1fr 120px 75px; gap: 8px; font-size: 12px; }
     .medbook-row input { padding: 8px 6px; font-size: 14px; }
     .ref-row { grid-template-columns: 1fr 80px 60px 60px; gap: 6px; font-size: 12px; }
     .ref-row .ref-badge { font-size: 10px; padding: 2px 5px; }
 
-    /* Тосты снизу на всю ширину */
     .toast-container { bottom: 16px; right: 12px; left: 12px; align-items: stretch; }
     .toast { max-width: 100%; text-align: center; }
 
-    /* Login */
     .login-card { padding: 28px 20px; }
     .login-card h1 { font-size: 22px; }
     .login-logo { width: 52px; height: 52px; font-size: 26px; }
@@ -433,7 +426,7 @@
     <h1>Wokker Admin</h1>
     <div class="sub">Вход в панель управления</div>
     <input class="login-input" id="login-login" type="text" placeholder="Логин" maxlength="5"
-           style="text-transform: lowercase;" autocomplete="username" inputmode="text">
+           style="text-transform: lowercase;" autocomplete="username">
     <input class="login-input" id="login-password" type="password" placeholder="Пароль"
            autocomplete="current-password">
     <button class="login-btn" id="login-btn">Войти</button>
@@ -730,7 +723,7 @@ const SECTION_LOADERS = {
 };
 document.querySelectorAll('.nav-item').forEach(btn => {
   btn.addEventListener('click', () => {
-    closeSidebar();  // закрываем drawer на мобильных
+    closeSidebar();
     navigate(btn.dataset.sec);
   });
 });
@@ -943,7 +936,6 @@ function openUserCreate() {
       <div class="form-hint error" id="nc-error"></div>
     `, `<button class="btn ghost" onclick="closeModal()">Отмена</button><button class="btn primary" id="nc-save">Создать</button>`);
 
-    // === ЖИВОЙ ПРЕДПРОСМОТР ЛОГИНА ===
     function previewLogin(name) {
       const translit = {"а":"a","б":"b","в":"v","г":"g","д":"d","е":"e","ё":"e","ж":"zh","з":"z","и":"i","й":"y","к":"k","л":"l","м":"m","н":"n","о":"o","п":"p","р":"r","с":"s","т":"t","у":"u","ф":"f","х":"h","ц":"ts","ч":"ch","ш":"sh","щ":"sch","ъ":"","ы":"y","ь":"","э":"e","ю":"yu","я":"ya"};
       const parts = (name || "").trim().split(/\s+/);
@@ -967,7 +959,6 @@ function openUserCreate() {
       $('lp-value').textContent = previewLogin(name);
     });
 
-    // === СОЗДАНИЕ ===
     $('nc-save').addEventListener('click', async () => {
       const errEl = $('nc-error');
       errEl.textContent = '';

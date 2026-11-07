@@ -91,7 +91,6 @@
   .card { background: var(--card-bg); border-radius: var(--radius);
     margin: 0 16px 16px; padding: 20px; box-shadow: var(--shadow); }
 
-  /* PROFILE */
   .profile-wrapper { margin: 24px 16px 16px; }
   .profile-card { background: var(--card-bg); border-radius: 28px;
     box-shadow: var(--shadow); overflow: hidden; position: relative; }
@@ -143,6 +142,99 @@
   .action-btn:active { transform: scale(0.98); }
   .action-btn.danger { color: var(--accent); }
   .action-btn.admin { background: linear-gradient(135deg, #AF52DE 0%, #8E44AD 100%); color: #fff; }
+
+  /* ===== MEDBOOK в профиле ===== */
+  .medbook-card {
+    background: var(--card-bg); border-radius: 24px; padding: 20px;
+    margin-bottom: 12px; box-shadow: var(--shadow);
+  }
+  .medbook-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 4px; gap: 8px; flex-wrap: wrap;
+  }
+  .medbook-header h3 {
+    font-size: 16px; font-weight: 800; letter-spacing: -0.3px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .medbook-status {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 12px; border-radius: 100px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+  }
+  .medbook-status.ok { background: var(--green-soft); color: #1B7A36; }
+  .medbook-status.expiring { background: var(--amber-soft); color: #C77700; }
+  .medbook-status.invalid { background: var(--accent-soft); color: var(--accent); }
+  .medbook-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 12px; }
+
+  .medbook-card details { background: #F8F9FA; border-radius: 14px; padding: 0; margin: 12px 0 0; box-shadow: none; }
+  .medbook-card summary {
+    padding: 12px 16px; font-size: 14px; font-weight: 700; color: var(--text-main);
+    cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center;
+  }
+  .medbook-card summary::-webkit-details-marker { display: none; }
+  .medbook-card summary::after { content: '+'; font-size: 18px; color: var(--text-muted); font-weight: 400; }
+  .medbook-card details[open] summary::after { content: '−'; }
+  .medbook-card details[open] summary { border-bottom: 1px solid rgba(0,0,0,0.06); }
+
+  .medbook-block { padding: 12px 16px; }
+  .medbook-block h4 { font-size: 11px; font-weight: 800; text-transform: uppercase;
+    color: var(--text-muted); letter-spacing: 0.5px; margin-bottom: 8px; }
+  .medbook-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 0; border-bottom: 1px solid rgba(0,0,0,0.04);
+    font-size: 13px; gap: 8px;
+  }
+  .medbook-item:last-child { border-bottom: none; }
+  .medbook-item .mbi-name { font-weight: 600; color: var(--text-main); flex: 1; min-width: 0; }
+  .medbook-item .mbi-name .req { color: var(--accent); font-weight: 800; margin-left: 2px; }
+  .medbook-item .mbi-date {
+    font-family: monospace; font-size: 12px; font-weight: 600;
+    color: var(--text-muted); white-space: nowrap;
+  }
+  .medbook-item .mbi-status {
+    font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 6px;
+    text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap;
+  }
+  .mbi-status.ok { background: var(--green-soft); color: #1B7A36; }
+  .mbi-status.expiring { background: var(--amber-soft); color: #C77700; }
+  .mbi-status.expired, .mbi-status.missing, .mbi-status.invalid_date { background: var(--accent-soft); color: var(--accent); }
+
+  /* ===== TEAM ===== */
+  .team-territory-title {
+    margin: 24px 16px 12px; padding: 12px 16px;
+    background: linear-gradient(135deg, #F4E5FB 0%, #E8D5F0 100%);
+    border-radius: 16px;
+    font-size: 15px; font-weight: 800; color: #7C3FA8;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .team-territory-title .mgr-emoji { font-size: 18px; }
+  .team-restaurant-title {
+    margin: 20px 16px 8px; padding: 8px 16px;
+    font-size: 13px; font-weight: 800; color: var(--beige-dark);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    display: flex; align-items: center; gap: 6px;
+    border-left: 3px solid var(--beige);
+  }
+  .team-card { background: var(--card-bg); border-radius: 18px;
+    margin: 0 16px 10px; padding: 14px 16px; box-shadow: var(--shadow);
+    display: flex; align-items: center; gap: 14px; }
+  .team-avatar { width: 46px; height: 46px; border-radius: 50%;
+    background: var(--beige-soft); color: var(--beige);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 800; flex-shrink: 0; }
+  .team-info { flex: 1; min-width: 0; }
+  .team-name { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+  .team-pos { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+  .team-status { display: flex; gap: 4px; flex-wrap: wrap; }
+  .team-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 6px; }
+  .team-badge.green { background: var(--green-soft); color: #1B7A36; }
+  .team-badge.red { background: var(--accent-soft); color: var(--accent); }
+  .team-badge.gray { background: #F2F2F7; color: var(--text-muted); }
+  .team-badge.amber { background: var(--amber-soft); color: #C77700; }
+  .team-actions a { width: 38px; height: 38px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--green-soft); color: #1B7A36;
+    text-decoration: none; font-size: 16px; }
 
   .q { width: calc(100% - 32px); margin: 0 16px 16px; border: none;
     border-radius: 16px; padding: 16px; font-size: 16px;
@@ -295,6 +387,14 @@
 <div id="main-app" style="display:none;">
   <div class="section active" id="sec-profile"><div id="profile-box"></div></div>
 
+  <div class="section" id="sec-team">
+    <div class="rest-tab-header">
+      <div class="title">Моя команда</div>
+      <div class="sub" id="team-subtitle">Сотрудники</div>
+    </div>
+    <div id="team-list"></div>
+  </div>
+
   <div class="section" id="sec-restaurants">
     <div class="rest-tab-header">
       <div class="title">Рестораны</div>
@@ -350,6 +450,10 @@
     <button data-sec="sec-profile" class="active">
       <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       Профиль
+    </button>
+    <button data-sec="sec-team" id="tab-team" style="display: none;">
+      <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Команда
     </button>
     <button data-sec="sec-restaurants">
       <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
@@ -494,8 +598,10 @@ async function loadAndRender() {
     BOOT = data;
     if (!BOOT.profile) { showToast('Профиль не найден', 'error'); showLogin(); return; }
     showMainApp();
+    checkTeamTabVisibility();
     updateNewsBadge();
     renderProfileFromBoot();
+    renderTeamFromBoot();
     renderNewsFromBoot();
     renderRestaurants();
     renderStandardsFromBoot();
@@ -505,9 +611,16 @@ async function loadAndRender() {
   }
 }
 
+function checkTeamTabVisibility() {
+  const tab = $('tab-team');
+  const canSee = !!(BOOT && BOOT.can_see_team);
+  tab.style.display = canSee ? 'flex' : 'none';
+}
+
 /* ================== TABS ================== */
 const sectionLoaders = {
   'sec-profile': () => renderProfileFromBoot(),
+  'sec-team': () => renderTeamFromBoot(),
   'sec-restaurants': () => {
     renderRestaurants();
     if ($('btn-view-map').classList.contains('active') && yandexMap) {
@@ -553,9 +666,59 @@ function renderProfileFromBoot() {
   const box = $('profile-box');
   if (!BOOT || !BOOT.profile) { box.innerHTML = '<div class="no-results">Профиль недоступен</div>'; return; }
   const p = BOOT.profile;
+  const mb = BOOT.medbook || null;
   const restBadge = p.restaurant_key === 'office' ? 'office' : 'normal';
   const avatarLetter = (p.full_name || p.first_name || '?').charAt(0).toUpperCase();
   const phoneClean = (p.phone || '').replace(/[^\d+]/g, '');
+
+  // Медкнижка
+  let medbookHtml = '';
+  if (mb && !p.is_admin) {
+    let statusClass = 'invalid', statusText = '❌ Недействительна';
+    if (mb.status === 'ok') { statusClass = 'ok'; statusText = '✅ Действительна'; }
+    else if (mb.status === 'expiring') { statusClass = 'expiring'; statusText = '⚠️ Скоро истекает'; }
+
+    const renderItems = (items) => items.map(it => {
+      let stText = '', stClass = '';
+      if (it.status === 'ok') { stText = 'OK'; stClass = 'ok'; }
+      else if (it.status === 'expiring') { stText = 'Скоро'; stClass = 'expiring'; }
+      else if (it.status === 'expired') { stText = 'Просроч.'; stClass = 'expired'; }
+      else if (it.status === 'missing') { stText = 'Нет'; stClass = 'missing'; }
+      else { stText = 'Ошибка'; stClass = 'invalid_date'; }
+      const dateStr = it.date || '—';
+      return `
+        <div class="medbook-item">
+          <div class="mbi-name">${esc(it.name)}${it.required ? '<span class="req">*</span>' : ''}</div>
+          <div class="mbi-date">${esc(dateStr)}</div>
+          <div class="mbi-status ${stClass}">${stText}</div>
+        </div>`;
+    }).join('');
+
+    medbookHtml = `
+      <div class="medbook-card">
+        <div class="medbook-header">
+          <h3>🩺 Медкнижка</h3>
+          <span class="medbook-status ${statusClass}">${statusText}</span>
+        </div>
+        <div class="medbook-sub">${mb.missing > 0 ? `Не заполнено ${mb.missing} из ${mb.total}` : `Все пункты заполнены (${mb.total})`}</div>
+        <details>
+          <summary>Показать все пункты (${mb.total})</summary>
+          <div class="medbook-block">
+            <h4>👨‍⚕️ Врачи</h4>
+            ${renderItems(mb.doctors || [])}
+          </div>
+          <div class="medbook-block">
+            <h4>🧪 Анализы</h4>
+            ${renderItems(mb.tests || [])}
+          </div>
+          <div class="medbook-block">
+            <h4>💉 Прививки</h4>
+            ${renderItems(mb.vaccines || [])}
+          </div>
+        </details>
+      </div>
+    `;
+  }
 
   box.innerHTML = `
     <div class="profile-wrapper">
@@ -599,6 +762,9 @@ function renderProfileFromBoot() {
           </div>
         </div>
       </div>
+
+      ${medbookHtml}
+
       <div class="actions-block">
         ${p.is_admin ? `<button class="action-btn admin" id="open-admin-btn">🛠 Открыть админ-панель</button>` : ''}
         <button class="action-btn" id="report-bug-btn">⚠️ Сообщить об ошибке</button>
@@ -626,6 +792,113 @@ async function logout() {
   clearToken();
   BOOT = null;
   showLogin();
+}
+
+/* ================== TEAM ================== */
+function positionPriority(pos) {
+  const lp = (pos || "").toLowerCase();
+  if (lp.includes("управляющий сменой")) return 1;
+  if (lp.includes("горячего")) return 2;
+  if (lp.includes("холодного")) return 3;
+  return 99;
+}
+
+function sortByPosition(arr) {
+  return arr.slice().sort((a, b) => {
+    const pa = positionPriority(a.position), pb = positionPriority(b.position);
+    if (pa !== pb) return pa - pb;
+    return (a.full_name || "").localeCompare(b.full_name || "");
+  });
+}
+
+function renderTeamCard(t) {
+  const initial = (t.full_name || "?").charAt(0).toUpperCase();
+  const badges = [];
+  if (t.is_certified) badges.push('<span class="team-badge green">📜 Сертификат</span>');
+  else badges.push('<span class="team-badge gray">📜 Нет сертификата</span>');
+
+  if (t.medbook_status === 'ok') badges.push('<span class="team-badge green">🩺 Медкнижка</span>');
+  else if (t.medbook_status === 'expiring') badges.push('<span class="team-badge amber">🩺 Скоро истекает</span>');
+  else badges.push('<span class="team-badge red">🩺 Недействительна</span>');
+
+  const phoneClean = (t.phone || "").replace(/[^\d+]/g, "");
+  return `
+    <div class="team-card">
+      <div class="team-avatar">${esc(initial)}</div>
+      <div class="team-info">
+        <div class="team-name">${esc(t.full_name || "—")}</div>
+        <div class="team-pos">${esc(t.position || "—")}</div>
+        <div class="team-status">${badges.join("")}</div>
+      </div>
+      ${phoneClean ? `<div class="team-actions"><a href="tel:${esc(phoneClean)}" aria-label="Позвонить">📞</a></div>` : ""}
+    </div>`;
+}
+
+function renderTeamFromBoot() {
+  const box = $('team-list');
+  const team = (BOOT && BOOT.team) || [];
+  const pos = (BOOT && BOOT.profile && BOOT.profile.position || "").toLowerCase();
+  const isHR = pos.trim() === "hr";
+  const isTU = pos.includes("территориальный");
+  const isUS = pos.includes("управляющий сменой");
+
+  // Подзаголовок
+  const subtitle = $('team-subtitle');
+  if (subtitle) {
+    if (isHR) subtitle.textContent = "Все сотрудники по территориям";
+    else if (isTU) subtitle.textContent = "Сотрудники ваших ресторанов";
+    else subtitle.textContent = "Сотрудники вашего ресторана";
+  }
+
+  if (!team.length) {
+    box.innerHTML = '<div class="no-results">Список сотрудников пуст</div>';
+    return;
+  }
+
+  // === HR: группировка по ТУ → ресторан ===
+  if (isHR) {
+    const byMgr = {};
+    for (const t of team) {
+      const mgr = t.manager_name || "Без территориального управляющего";
+      const rest = t.restaurant_name || "Без ресторана";
+      if (!byMgr[mgr]) byMgr[mgr] = {};
+      if (!byMgr[mgr][rest]) byMgr[mgr][rest] = [];
+      byMgr[mgr][rest].push(t);
+    }
+    let html = "";
+    const mgrs = Object.keys(byMgr).sort();
+    for (const mgr of mgrs) {
+      html += `<div class="team-territory-title"><span class="mgr-emoji">🏢</span>${esc(mgr)}</div>`;
+      const rests = Object.keys(byMgr[mgr]).sort();
+      for (const rest of rests) {
+        html += `<div class="team-restaurant-title">📍 ${esc(rest)}</div>`;
+        html += sortByPosition(byMgr[mgr][rest]).map(renderTeamCard).join("");
+      }
+    }
+    box.innerHTML = html;
+    return;
+  }
+
+  // === ТУ: группировка по ресторанам ===
+  if (isTU) {
+    const byRest = {};
+    for (const t of team) {
+      const rest = t.restaurant_name || "Без ресторана";
+      if (!byRest[rest]) byRest[rest] = [];
+      byRest[rest].push(t);
+    }
+    let html = "";
+    const rests = Object.keys(byRest).sort();
+    for (const rest of rests) {
+      html += `<div class="team-restaurant-title">📍 ${esc(rest)}</div>`;
+      html += sortByPosition(byRest[rest]).map(renderTeamCard).join("");
+    }
+    box.innerHTML = html;
+    return;
+  }
+
+  // === УС: просто список, один ресторан ===
+  box.innerHTML = sortByPosition(team).map(renderTeamCard).join("");
 }
 
 /* ================== RESTAURANTS ================== */

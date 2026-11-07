@@ -1,3 +1,14 @@
+Чтобы панель навигации выглядела аккуратно и компактно, нужно сделать три вещи:
+
+1. Опустить её чуть ближе к нижнему краю экрана.
+2. Уменьшить её высоту (убрать лишние отступы внутри).
+3. Сократить текст последней кнопки, чтобы он не переносился на две строки (из-за этого панель становилась визуально огромной).
+
+Я изменил padding и позиционирование, а также заменил надпись «Вопрос/ответ» на «Вопросы» (это отлично вписывается в общий ритм с остальными вкладками). Теперь всё должно смотреться гармонично.
+
+Вот полностью обновлённый index.html:
+
+```html
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -29,7 +40,7 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background: var(--bg);
     color: var(--text-color);
-    padding-bottom: 96px;
+    padding-bottom: 80px; /* Уменьшили нижний отступ, так как панель стала тоньше */
     transition: background 0.25s ease, color 0.25s ease;
   }
 
@@ -62,23 +73,28 @@
   }
   .q:focus { border-color: var(--beige); }
 
+  /* ОБНОВЛЕННАЯ ПАНЕЛЬ НАВИГАЦИИ */
   .tabs {
-    position: fixed; bottom: calc(12px + env(safe-area-inset-bottom));
-    left: 12px; right: 12px; display: flex;
+    position: fixed; 
+    bottom: calc(6px + env(safe-area-inset-bottom)); /* Опустили ниже */
+    left: 10px; right: 10px; display: flex;
     background: var(--card-bg);
     backdrop-filter: blur(20px) saturate(1.8);
     -webkit-backdrop-filter: blur(20px) saturate(1.8);
     border: 1px solid rgba(128, 128, 128, 0.15);
-    border-radius: 26px; padding: 6px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    border-radius: 22px; /* Сделали скругление чуть меньше */
+    padding: 4px; /* Уменьшили внутренние отступы */
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
     z-index: 100;
   }
 
   .tabs button {
-    flex: 1; border: 0; background: none; padding: 8px 2px 6px;
-    font-size: 10px; font-weight: 500; color: var(--hint-color); border-radius: 20px;
+    flex: 1; border: 0; background: none; 
+    padding: 6px 2px 4px; /* Сделали кнопку ниже */
+    font-size: 10px; font-weight: 500; color: var(--hint-color); border-radius: 18px;
     transition: color .2s ease, background .25s ease, transform .2s ease;
     position: relative;
+    white-space: nowrap; /* Запрещаем перенос текста на новую строку */
   }
   .tabs button:active { transform: scale(0.92); }
   .tabs button.active {
@@ -88,15 +104,16 @@
   }
   .tabs .tab-icon {
     display: flex; align-items: center; justify-content: center;
-    height: 22px; margin-bottom: 3px;
+    height: 20px; /* Уменьшили высоту иконки */
+    margin-bottom: 2px; /* Уменьшили отступ под иконкой */
     transition: transform .25s cubic-bezier(.34, 1.56, .64, 1);
   }
   .tabs button.active .tab-icon { transform: translateY(-2px) scale(1.12); }
   .tabs button.active .tab-icon svg { stroke: #b2946a; }
-  .tabs .tab-icon svg { width: 22px; height: 22px; display: block; stroke: var(--hint-color); transition: stroke 0.2s; }
+  .tabs .tab-icon svg { width: 20px; height: 20px; display: block; stroke: var(--hint-color); transition: stroke 0.2s; }
 
   .badge-dot {
-    position: absolute; top: 6px; right: 28%;
+    position: absolute; top: 4px; right: 25%;
     width: 8px; height: 8px; background: var(--brand);
     border-radius: 50%; border: 1.5px solid var(--card-bg);
     display: none;
@@ -468,7 +485,7 @@
     </button>
     <button data-sec="sec-faq">
       <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
-      Вопрос/ответ
+      Вопросы <!-- Здесь мы сократили текст -->
     </button>
   </nav>
 </div>

@@ -298,6 +298,23 @@ with get_conn() as conn:
             cur.execute(ddl)
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_login ON users (LOWER(login)) WHERE login IS NOT NULL")
 
+        # === МИГРАЦИЯ: гарантируем, что user_id имеет автоинкремент (BIGSERIAL) ===
+        cur.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'S' AND relname = 'users_user_id_seq') THEN
+                    CREATE SEQUENCE users_user_id_seq;
+                END IF;
+                PERFORM setval(
+                    'users_user_id_seq',
+                    GREATEST((SELECT COALESCE(MAX(user_id), 0) FROM users), 1),
+                    (SELECT COUNT(*) FROM users) > 0
+                );
+                ALTER TABLE users ALTER COLUMN user_id SET DEFAULT nextval('users_user_id_seq');
+                ALTER SEQUENCE users_user_id_seq OWNED BY users.user_id;
+            END $$;
+        """)
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS restaurants (
                 key TEXT PRIMARY KEY,
@@ -852,14 +869,11 @@ async def handle_admin_user_update(request):
     if not target:
         return web.json_response({"error": "not_found"}, status=404)
 
-    # Если меняем is_admin, только супер-админ
     if "is_admin" in updates and not admin["is_super_admin"]:
         return web.json_response({"error": "forbidden_is_admin"}, status=403)
-    # Нельзя менять супер-админа
     if target.get("is_super_admin") and not admin["is_super_admin"]:
         return web.json_response({"error": "cannot_edit_super"}, status=403)
 
-    # Перепакуем restaurant -> restaurant_key
     if "restaurant" in updates:
         updates["restaurant_key"] = updates.pop("restaurant")
 

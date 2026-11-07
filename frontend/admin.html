@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Wokker · Админ</title>
-<!-- ИКОНКА САЙТА -->
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23FF1A1A'/%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%23000' stroke-width='8'/%3E%3Cpath d='M25 50 A 25 25 0 0 0 75 50' fill='none' stroke='%23000' stroke-width='12' stroke-linecap='round'/%3E%3Cpath d='M38 25 C45 15 35 10 40 5 C42 15 50 20 45 30 C42 35 35 35 32 30 C38 28 38 25 38 25 Z' fill='%23000'/%3E%3Cpath d='M62 25 C69 15 59 10 64 5 C66 15 74 20 69 30 C66 35 59 35 56 30 C62 28 62 25 62 25 Z' fill='%23000'/%3E%3C/svg%3E">
 
 <style>
@@ -27,7 +26,6 @@
   button, input, select, textarea { font-family: inherit; font-size: inherit; }
   button { cursor: pointer; }
 
-  /* ============ LOGIN ============ */
   #login-screen {
     position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
     background: linear-gradient(135deg, #1C1C1E 0%, #2C2C2E 100%); z-index: 2000;
@@ -55,7 +53,6 @@
   .login-error { color: var(--accent); font-size: 13px; min-height: 18px;
     margin-top: 10px; font-weight: 600; line-height: 1.4; }
 
-  /* ============ APP ============ */
   #app { display: none; min-height: 100vh; }
   .layout { display: flex; min-height: 100vh; }
   .sidebar {
@@ -330,9 +327,6 @@
 
   .loading { text-align: center; padding: 60px; color: var(--text-muted); }
 
-  /* ============================================================
-     АДАПТИВ ДЛЯ ПЛАНШЕТОВ И ТЕЛЕФОНОВ
-     ============================================================ */
   @media (max-width: 900px) {
     .layout { display: block; }
     .sidebar {
@@ -494,6 +488,7 @@
 const TOKEN_KEY = 'wokker_admin_token';
 const LOGIN_RE = /^[a-z]{3}\d{2}$/;
 
+// FIX: добавлены новые права: restaurant_edit, faq_edit, positions_edit, questions_reply
 const PERMISSIONS_LIST = [
   { key: 'users_create', label: 'Добавлять сотрудников', icon: '➕' },
   { key: 'users_edit', label: 'Редактировать сотрудников', icon: '✏️' },
@@ -503,12 +498,16 @@ const PERMISSIONS_LIST = [
   { key: 'medbook_tests_manage', label: 'Анализы: добавление и сроки', icon: '🧪' },
   { key: 'medbook_vaccines_manage', label: 'Прививки: добавление и сроки', icon: '💉' },
   { key: 'restaurant_tu', label: 'Менять ТУ у ресторанов', icon: '👔' },
+  { key: 'restaurant_edit', label: 'Редактировать рестораны', icon: '🏪' },
   { key: 'standards_edit', label: 'Менять стандарты', icon: '📚' },
   { key: 'checklist_create', label: 'Создавать чек-листы', icon: '📋' },
   { key: 'checklist_edit', label: 'Редактировать чек-листы', icon: '✏️' },
   { key: 'news_write', label: 'Писать новости', icon: '📝' },
   { key: 'news_edit', label: 'Редактировать новости', icon: '✏️' },
   { key: 'news_suggest', label: 'Предлагать новости', icon: '💭' },
+  { key: 'faq_edit', label: 'Редактировать FAQ', icon: '❓' },
+  { key: 'positions_edit', label: 'Управлять должностями', icon: '💼' },
+  { key: 'questions_reply', label: 'Отвечать на вопросы', icon: '💬' },
 ];
 
 let ME = null;
@@ -541,6 +540,7 @@ function fmtDate(iso, withTime) {
   } catch (e) { return iso; }
 }
 
+// FIX: разделены 401 (логаут) и 403 (нет прав — остаёмся), кроме error:"fired"
 async function api(path, body) {
   const payload = { webToken: getToken() };
   if (body && typeof body === 'object') Object.assign(payload, body);
@@ -549,10 +549,20 @@ async function api(path, body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (res.status === 401 || res.status === 403) {
+  if (res.status === 401) {
     clearToken();
     showLogin();
     throw new Error('unauthorized');
+  }
+  if (res.status === 403) {
+    let j = {};
+    try { j = await res.json(); } catch (e) {}
+    if (j.error === 'fired') {
+      clearToken();
+      showLogin();
+      throw new Error('fired');
+    }
+    throw new Error(j.error || 'forbidden');
   }
   if (!res.ok) {
     let msg = 'error';
@@ -675,7 +685,7 @@ $('change-password-btn').addEventListener('click', () => { closeSidebar(); openC
 function openChangePassword() {
   openModal('🔐 Сменить пароль', `
     <div class="form-group"><label>Текущий пароль</label><input class="form-input" id="cp-old" type="password"></div>
-    <div class="form-group"><label>Новый пароль</label><input class="form-input" id="cp-new" type="password"><div class="form-hint">Минимум 6 символов</div></div>
+    <div class="form-group"><label>Новый пароль</label><input class="form-input" id="cp-new" type="password"><div class="form-hint">Минимум 8 символов</div></div>
     <div class="form-group"><label>Повторите</label><input class="form-input" id="cp-new2" type="password"></div>
     <div class="form-hint error" id="cp-error"></div>
   `, `<button class="btn ghost" onclick="closeModal()">Отмена</button><button class="btn primary" id="cp-save">Сохранить</button>`);
@@ -683,14 +693,16 @@ function openChangePassword() {
     const errEl = $('cp-error');
     errEl.textContent = '';
     if (!$('cp-old').value) { errEl.textContent = 'Введите текущий пароль'; return; }
-    if (!$('cp-new').value || $('cp-new').value.length < 6) { errEl.textContent = 'Новый минимум 6'; return; }
+    // FIX: минимум 8 символов (было 6)
+    if (!$('cp-new').value || $('cp-new').value.length < 8) { errEl.textContent = 'Новый минимум 8 символов'; return; }
     if ($('cp-new').value !== $('cp-new2').value) { errEl.textContent = 'Пароли не совпадают'; return; }
     try {
       await api('/api/admin/change-password', { old_password: $('cp-old').value, new_password: $('cp-new').value });
       toast('Пароль изменён', 'success'); closeModal();
     } catch (e) {
       if (e.message === 'wrong_password') errEl.textContent = 'Текущий пароль неверный';
-      else errEl.textContent = 'Ошибка';
+      else if (e.message === 'password_too_short') errEl.textContent = 'Минимум 8 символов';
+      else errEl.textContent = 'Ошибка: ' + e.message;
     }
   });
 }
@@ -834,7 +846,7 @@ function renderUsersTbody(users) {
   const tbody = $('users-tbody');
   if (!tbody) return;
   if (!users.length) {
-    tbody.innerHTML = `<tr><td colspan="${_usersTab === 'fired' ? 5 : 5}"><div class="empty">${_usersTab === 'fired' ? 'Уволенных нет' : 'Нет сотрудников'}</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty">${_usersTab === 'fired' ? 'Уволенных нет' : 'Нет сотрудников'}</div></td></tr>`;
     return;
   }
   const canEdit = hasPerm('users_edit');
@@ -884,7 +896,7 @@ async function fireUser(uid) {
     loadUsers(_usersCurrentSearch);
   } catch (e) {
     const map = { forbidden: 'Нет права увольнять', cannot_fire_super: 'Нельзя уволить супер-админа',
-      cannot_fire_self: 'Нельзя уволить себя', already_fired: 'Уже уволен' };
+      cannot_fire_self: 'Нельзя уволить себя', already_fired: 'Уже уволен', invalid_id: 'Неверный ID' };
     toast(map[e.message] || 'Ошибка: ' + e.message, 'error');
   }
 }
@@ -918,7 +930,8 @@ function openUserCreate() {
         <div style="flex:1;">
           <div class="lp-label">Логин будет выдан</div>
           <div class="lp-value" id="lp-value">—</div>
-          <div class="lp-hint">Изменять нельзя. Сотрудник увидит его после создания.</div>
+          <!-- FIX: честный текст — превью может отличаться от реального -->
+          <div class="lp-hint">Примерно. Точный логин покажем после создания (может отличаться при коллизии).</div>
         </div>
       </div>
 
@@ -997,11 +1010,17 @@ function openUserCreate() {
       } catch (e) {
         const map = {
             invalid: 'Проверьте данные (пароль минимум 6 символов)',
-            forbidden: 'Нет права'
+            forbidden: 'Нет права',
+            invalid_json: 'Ошибка данных',
         };
         errEl.textContent = map[e.message] || 'Ошибка: ' + e.message;
       }
     });
+  // FIX: обработка ошибок загрузки справочников
+  }).catch(e => {
+    if (e.message !== 'unauthorized' && e.message !== 'fired') {
+      toast('Ошибка загрузки данных: ' + e.message, 'error');
+    }
   });
 }
 
@@ -1017,6 +1036,7 @@ async function openUserEditor(uid) {
     const canFire = hasPerm('users_fire');
     const restOpts = restData.restaurants.map(r => `<option value="${esc(r.key)}" ${r.key === u.restaurant_key ? 'selected' : ''}>${esc(r.name)}</option>`).join('');
     const posOpts = posData.positions.filter(p => !p.is_archived).map(p => `<option value="${esc(p.name)}" ${p.name === u.position ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+    // FIX: сервер теперь возвращает medbook_status — отображаем корректно
     const mbStatus = u.medbook_status || 'invalid';
     let mbBadge = '';
     if (!u.is_admin) {
@@ -1079,11 +1099,13 @@ async function openUserEditor(uid) {
         refreshUsersTable(_usersCurrentSearch);
       } catch (e) {
         const map = { forbidden: 'Нет права', forbidden_is_admin: 'Только супер-админ может менять админ-права',
-          cannot_edit_super: 'Нельзя редактировать супер-админа' };
+          cannot_edit_super: 'Нельзя редактировать супер-админа', invalid_id: 'Неверный ID' };
         errEl.textContent = map[e.message] || 'Ошибка: ' + e.message;
       }
     });
-  } catch (e) { toast('Ошибка загрузки', 'error'); }
+  } catch (e) {
+    if (e.message !== 'unauthorized' && e.message !== 'fired') toast('Ошибка загрузки', 'error');
+  }
 }
 
 /* ================== MEDBOOKS ================== */
@@ -1447,12 +1469,12 @@ function openPermEditor(uid, admins) {
 async function loadRestaurants() {
   const data = await api('/api/admin/restaurants', {});
   const canTu = hasPerm('restaurant_tu');
+  // FIX: "открыт", если не 'closed' (статус по умолчанию — открыт)
   const rows = data.restaurants.map(r => `
     <tr>
       <td><b>${esc(r.name)}</b></td>
-      <td>${r.force_status === 'open' ? '<span class="tag green">🟢</span>'
-         : r.force_status === 'closed' ? '<span class="tag red">🔴</span>'
-         : '<span class="tag gray">—</span>'}</td>
+      <td>${r.force_status !== 'closed' ? '<span class="tag green">🟢</span>'
+         : '<span class="tag red">🔴</span>'}</td>
       <td>${esc(r.territory_manager_name || '—')}</td>
       <td class="actions-cell">
         <button class="icon-btn" data-edit="${esc(r.key)}">✏️</button>
@@ -1632,7 +1654,10 @@ function openNewsAdd() {
       closeModal();
       loadNews();
       refreshCounters();
-    } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+    } catch (e) {
+      if (e.message === 'forbidden') toast('Нет прав на публикацию', 'error');
+      else toast('Ошибка: ' + e.message, 'error');
+    }
   });
 }
 function openNewsEdit(id, news) {
@@ -1724,29 +1749,32 @@ function openStdEdit(id, list) {
 
 /* ================== FAQ ================== */
 async function loadFaq() {
-  $('page-actions').innerHTML = '<button class="btn primary small" id="faq-add-btn">+ Добавить</button>';
-  $('faq-add-btn').addEventListener('click', openFaqAdd);
+  const canEdit = hasPerm('faq_edit');
+  $('page-actions').innerHTML = canEdit ? '<button class="btn primary small" id="faq-add-btn">+ Добавить</button>' : '';
+  if (canEdit) $('faq-add-btn').addEventListener('click', openFaqAdd);
   const data = await api('/api/admin/faq', {});
   const rows = data.faq.map(f => `
     <tr>
       <td><b>${esc(f.question)}</b></td>
       <td class="actions-cell">
-        <button class="icon-btn" data-edit="${f.id}">✏️</button>
-        <button class="icon-btn danger" data-del="${f.id}">🗑</button>
+        ${canEdit ? `<button class="icon-btn" data-edit="${f.id}">✏️</button>
+        <button class="icon-btn danger" data-del="${f.id}">🗑</button>` : '—'}
       </td>
     </tr>`).join('');
   $('page-content').innerHTML = `<div class="table-card"><div class="table-wrap"><table>
     <thead><tr><th>Вопрос</th><th></th></tr></thead>
     <tbody>${rows}</tbody></table></div></div>`;
-  document.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openFaqEdit(parseInt(b.dataset.edit), data.faq)));
-  document.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
-    if (!confirm('Удалить?')) return;
-    try {
-      await api('/api/admin/faq/delete', { id: parseInt(b.dataset.del) });
-      toast('Удалено', 'success');
-      loadFaq();
-    } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
-  }));
+  if (canEdit) {
+    document.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openFaqEdit(parseInt(b.dataset.edit), data.faq)));
+    document.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('Удалить?')) return;
+      try {
+        await api('/api/admin/faq/delete', { id: parseInt(b.dataset.del) });
+        toast('Удалено', 'success');
+        loadFaq();
+      } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+    }));
+  }
 }
 function openFaqAdd() {
   openModal('Новый вопрос', `
@@ -1782,14 +1810,15 @@ function openFaqEdit(id, list) {
 
 /* ================== POSITIONS ================== */
 async function loadPositions() {
-  $('page-actions').innerHTML = '<button class="btn primary small" id="pos-add-btn">+ Добавить</button>';
-  $('pos-add-btn').addEventListener('click', openPosAdd);
+  const canEdit = hasPerm('positions_edit');
+  $('page-actions').innerHTML = canEdit ? '<button class="btn primary small" id="pos-add-btn">+ Добавить</button>' : '';
+  if (canEdit) $('pos-add-btn').addEventListener('click', openPosAdd);
   const data = await api('/api/admin/positions', {});
   const active = data.positions.filter(p => !p.is_archived);
   const arch = data.positions.filter(p => p.is_archived);
   const rows = active.map(p => `
     <tr><td><b>${esc(p.name)}</b></td>
-    <td class="actions-cell"><button class="icon-btn danger" data-arch="${p.id}">📦</button></td></tr>`).join('');
+    <td class="actions-cell">${canEdit ? `<button class="icon-btn danger" data-arch="${p.id}">📦</button>` : '—'}</td></tr>`).join('');
   $('page-content').innerHTML = `
     <div class="table-card"><div class="table-wrap"><table>
       <thead><tr><th>Активные (${active.length})</th><th></th></tr></thead>
@@ -1798,14 +1827,16 @@ async function loadPositions() {
       <thead><tr><th>📦 Архив (${arch.length})</th></tr></thead>
       <tbody>${arch.map(p => `<tr><td style="color:var(--text-muted);text-decoration:line-through;">${esc(p.name)}</td></tr>`).join('')}</tbody>
     </table></div></div>` : ''}`;
-  document.querySelectorAll('[data-arch]').forEach(b => b.addEventListener('click', async () => {
-    if (!confirm('В архив?')) return;
-    try {
-      await api('/api/admin/position/archive', { id: parseInt(b.dataset.arch) });
-      toast('В архиве', 'success');
-      loadPositions();
-    } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
-  }));
+  if (canEdit) {
+    document.querySelectorAll('[data-arch]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('В архив?')) return;
+      try {
+        await api('/api/admin/position/archive', { id: parseInt(b.dataset.arch) });
+        toast('В архиве', 'success');
+        loadPositions();
+      } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+    }));
+  }
 }
 function openPosAdd() {
   openModal('Новая должность', `
@@ -1825,18 +1856,21 @@ function openPosAdd() {
 
 /* ================== QUESTIONS ================== */
 async function loadQuestions() {
+  const canReply = hasPerm('questions_reply');
   const data = await api('/api/admin/questions', {});
   const rows = data.questions.map(q => `
     <tr>
       <td><b>${esc(q.full_name || '—')}</b></td>
       <td>${q.replied ? '<span class="tag green">✅</span>' : '<span class="tag amber">❓</span>'}</td>
       <td style="font-size:12px;color:var(--text-muted);">${fmtDate(q.created_at, false)}</td>
-      <td class="actions-cell">${!q.replied ? `<button class="icon-btn" data-reply="${q.id}">✍️</button>` : ''}</td>
+      <td class="actions-cell">${!q.replied && canReply ? `<button class="icon-btn" data-reply="${q.id}">✍️</button>` : ''}</td>
     </tr>`).join('');
   $('page-content').innerHTML = `<div class="table-card"><div class="table-wrap"><table>
     <thead><tr><th>Кто</th><th>Статус</th><th>Когда</th><th></th></tr></thead>
     <tbody>${rows || '<tr><td colspan="4"><div class="empty">Вопросов нет</div></td></tr>'}</tbody></table></div></div>`;
-  document.querySelectorAll('[data-reply]').forEach(b => b.addEventListener('click', () => openReply(parseInt(b.dataset.reply), data.questions)));
+  if (canReply) {
+    document.querySelectorAll('[data-reply]').forEach(b => b.addEventListener('click', () => openReply(parseInt(b.dataset.reply), data.questions)));
+  }
   refreshCounters();
 }
 function openReply(id, list) {

@@ -35,7 +35,6 @@ def _json_default(obj):
 def _json_dumps(data):
     return json.dumps(data, ensure_ascii=False, default=_json_default)
 
-# Глобальный monkey-patch: все web.json_response автоматически используют наш dumps
 _orig_json_response = web.json_response
 def _safe_json_response(data=None, *args, **kwargs):
     kwargs.setdefault("dumps", _json_dumps)
@@ -225,7 +224,6 @@ async def _run(fn, *args):
     return await asyncio.to_thread(fn, *args)
 
 def _run_migration(sql, label):
-    """Выполняет миграцию в отдельной транзакции, чтобы не откатывать все остальные при ошибке."""
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
@@ -285,7 +283,6 @@ VACCINES_SEED = [
 # ============= ИНИЦИАЛИЗАЦИЯ БД =============
 init_pool()
 
-# Основная таблица — одна транзакция
 _run_migration("""
     CREATE TABLE IF NOT EXISTS users (
         user_id BIGSERIAL PRIMARY KEY,
@@ -309,7 +306,6 @@ _run_migration("""
     )
 """, "CREATE users")
 
-# Все ALTER-миграции — каждая отдельно
 for _col, _sql in [
     ("login", "ALTER TABLE users ADD COLUMN IF NOT EXISTS login TEXT"),
     ("password_hash", "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT"),
@@ -329,13 +325,11 @@ for _col, _sql in [
 
 _run_migration("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_login ON users (LOWER(login)) WHERE login IS NOT NULL", "idx login")
 
-# Фикс NULL в boolean-колонках
 _run_migration("UPDATE users SET is_fired = FALSE WHERE is_fired IS NULL", "NULL is_fired")
 _run_migration("UPDATE users SET is_admin = FALSE WHERE is_admin IS NULL", "NULL is_admin")
 _run_migration("UPDATE users SET is_super_admin = FALSE WHERE is_super_admin IS NULL", "NULL is_super_admin")
 _run_migration("UPDATE users SET is_certified = FALSE WHERE is_certified IS NULL", "NULL is_certified")
 
-# Гарантируем автоинкремент user_id
 _run_migration("""
     DO $$
     BEGIN
@@ -352,7 +346,6 @@ _run_migration("""
     END $$;
 """, "user_id sequence")
 
-# Остальные таблицы
 _run_migration("""
     CREATE TABLE IF NOT EXISTS restaurants (
         key TEXT PRIMARY KEY,
@@ -460,7 +453,6 @@ _run_migration("""
     )
 """, "CREATE sessions")
 
-# Seеды (в одной транзакции)
 with get_conn() as conn:
     with conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM restaurants")
@@ -511,7 +503,6 @@ with get_conn() as conn:
             cur.execute("INSERT INTO news (title, body, level, status) VALUES (%s,%s,%s,%s)",
                         ("Обновление меню", "Появились новые позиции в меню.", "normal", "published"))
 
-        # Создание / повышение супер-админа
         cur.execute("SELECT COUNT(*) FROM users WHERE is_super_admin = TRUE")
         if cur.fetchone()[0] == 0:
             pw = hash_password(ADMIN_PASSWORD)
@@ -1671,13 +1662,14 @@ async def handle_admin_debug_users(request):
             rows = [dict(r) for r in cur.fetchall()]
     return web.json_response({"count": len(rows), "users": rows})
 
-# ============= BOOTSTRAP =============
+# ============= BOOTSTRAP (с командой и медкнижкой) =============
 def _sync_bootstrap(user_id):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("UPDATE users SET last_seen_at = NOW() WHERE user_id = %s", (user_id,))
             cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
             user = dict(cur.fetchone())
+
             cur.execute("SELECT * FROM news WHERE status = 'published' ORDER BY created_at DESC LIMIT 50")
             news_rows = [dict(r) for r in cur.fetchall()]
             cur.execute("SELECT * FROM standards ORDER BY id")
@@ -1686,14 +1678,62 @@ def _sync_bootstrap(user_id):
             faq_rows = [dict(r) for r in cur.fetchall()]
             cur.execute("SELECT * FROM restaurants WHERE key != 'office' ORDER BY sort, name")
             rest_rows = [dict(r) for r in cur.fetchall()]
+
+            # Медкнижка: справочники
+            cur.execute("SELECT * FROM medbook_doctors ORDER BY sort, id")
+            doctors = [dict(r) for r in cur.fetchall()]
+            cur.execute("SELECT * FROM medbook_tests ORDER BY sort, id")
+            tests = [dict(r) for r in cur.fetchall()]
+            cur.execute("SELECT * FROM medbook_vaccines ORDER BY sort, id")
+            vaccines = [dict(r) for r in cur.fetchall()]
+
+            # Роль и видимость команды
+            pos_lower = (user.get("position") or "").lower()
+            is_hr = pos_lower.strip() == "hr"
+            is_tu = "территориальный" in pos_lower
+            is_us = "управляющий сменой" in pos_lower
+            can_see_team = is_hr or is_tu or is_us
+
+            team_rows = []
+            if can_see_team:
+                cur.execute("""
+                    SELECT u.user_id, u.full_name, u.position, u.phone,
+                           u.restaurant_key, r.name AS restaurant_name,
+                           COALESCE(u.is_certified, FALSE) AS is_certified,
+                           u.medbook,
+                           mgr.full_name AS manager_name
+                    FROM users u
+                    LEFT JOIN restaurants r ON u.restaurant_key = r.key
+                    LEFT JOIN users mgr ON r.territory_manager_id = mgr.user_id
+                    WHERE u.user_id != %s
+                      AND COALESCE(u.is_fired, FALSE) = FALSE
+                      AND COALESCE(u.is_admin, FALSE) = FALSE
+                      AND u.login IS NOT NULL
+                    ORDER BY u.full_name
+                """, (user_id,))
+                all_staff = [dict(r) for r in cur.fetchall()]
+
+                if is_us:
+                    my_rest = user.get("restaurant_key")
+                    team_rows = [s for s in all_staff if s.get("restaurant_key") == my_rest]
+                elif is_tu:
+                    cur.execute("SELECT key FROM restaurants WHERE territory_manager_id = %s", (user_id,))
+                    my_rests = {r[0] for r in cur.fetchall()}
+                    team_rows = [s for s in all_staff if s.get("restaurant_key") in my_rests]
+                else:  # HR — все
+                    team_rows = all_staff
+
     user.pop("password_hash", None)
-    return user, news_rows, std_rows, faq_rows, rest_rows
+    return (user, news_rows, std_rows, faq_rows, rest_rows,
+            doctors, tests, vaccines, team_rows, can_see_team)
 
 async def handle_bootstrap(request):
     user, err = await get_auth_user(request)
     if err:
         return denied(err)
-    u, news_rows, std_rows, faq_rows, rest_rows = await _run(_sync_bootstrap, user["user_id"])
+    (u, news_rows, std_rows, faq_rows, rest_rows,
+     doctors, tests, vaccines, team_rows, can_see_team) = await _run(_sync_bootstrap, user["user_id"])
+
     restaurant_name = ""
     restaurant_key = u.get("restaurant_key") or ""
     for r in rest_rows:
@@ -1712,12 +1752,72 @@ async def handle_bootstrap(request):
         "is_certified": bool(u.get("is_certified")),
         "is_admin": bool(u.get("is_admin")),
     }
+
+    # ===== Медкнижка =====
+    mb = u.get("medbook") or {}
+    if isinstance(mb, str):
+        try:
+            mb = json.loads(mb)
+        except Exception:
+            mb = {}
+
+    def build_section(items, source):
+        out = []
+        for it in items:
+            date_str = mb.get(source, {}).get(str(it["id"]), "")
+            st = entry_status(date_str, it["validity_months"])
+            out.append({
+                "id": it["id"],
+                "name": it["name"],
+                "required": bool(it.get("required")),
+                "validity_months": it["validity_months"],
+                "date": date_str,
+                "status": st,
+            })
+        return out
+
+    medbook_status = compute_medbook_status(mb, doctors, tests, vaccines)
+    missing, total = medbook_missing_count(mb, doctors, tests, vaccines)
+
+    medbook_payload = {
+        "status": medbook_status,
+        "missing": missing,
+        "total": total,
+        "doctors": build_section(doctors, "doctors"),
+        "tests": build_section(tests, "tests"),
+        "vaccines": build_section(vaccines, "vaccines"),
+    }
+
+    # ===== Команда =====
+    team_list = []
+    for t in team_rows:
+        tmb = t.get("medbook") or {}
+        if isinstance(tmb, str):
+            try:
+                tmb = json.loads(tmb)
+            except Exception:
+                tmb = {}
+        team_list.append({
+            "user_id": t["user_id"],
+            "full_name": t["full_name"] or "",
+            "position": t["position"] or "",
+            "phone": t["phone"] or "",
+            "restaurant_key": t.get("restaurant_key") or "",
+            "restaurant_name": t.get("restaurant_name") or "",
+            "manager_name": t.get("manager_name") or "",
+            "is_certified": bool(t.get("is_certified")),
+            "medbook_status": compute_medbook_status(tmb, doctors, tests, vaccines),
+        })
+
     return web.json_response({
         "profile": profile,
+        "medbook": medbook_payload,
         "news": news_rows,
         "standards": std_rows,
         "faq": faq_rows,
         "restaurants": rest_rows,
+        "team": team_list,
+        "can_see_team": can_see_team,
     })
 
 # ============= QUESTIONS (staff) =============

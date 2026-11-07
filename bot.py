@@ -276,7 +276,6 @@ with get_conn() as conn:
                 PRIMARY KEY (admin_id, user_id)
             )
         """)
-
         cur.execute("""
             CREATE TABLE IF NOT EXISTS web_sessions (
                 token TEXT PRIMARY KEY,
@@ -285,7 +284,6 @@ with get_conn() as conn:
                 last_used_at TIMESTAMPTZ DEFAULT NOW()
             )
         """)
-
         cur.execute("""
             CREATE TABLE IF NOT EXISTS web_auth_codes (
                 user_id BIGINT PRIMARY KEY,
@@ -351,7 +349,6 @@ with get_conn() as conn:
             for i, name in enumerate(POSITIONS_SEED):
                 cur.execute("INSERT INTO positions (name, sort) VALUES (%s, %s)", (name, i))
 
-        # ---- Миграция v2: переименование должностей + HR ----
         cur.execute("UPDATE users SET position = 'Повар холодного цеха' WHERE position = 'Холодный Цех'")
         cur.execute("UPDATE users SET position = 'Повар горячего цеха' WHERE position = 'Жарщик'")
         cur.execute("UPDATE positions SET name = 'Повар холодного цеха' WHERE name = 'Холодный Цех'")
@@ -647,6 +644,25 @@ def _sync_db_list_tu_candidates():
                            WHERE is_blocked = FALSE AND full_name IS NOT NULL
                              AND LOWER(COALESCE(position,'')) LIKE '%%территориальный управляющий%%'
                            ORDER BY full_name""")
+            return cur.fetchall()
+
+def _sync_db_admin_users_list(search=""):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            base = """SELECT u.user_id, u.full_name, u.phone, u.birth_date, u.position,
+                      u.restaurant, r.name, u.welcomed, u.is_blocked,
+                      u.is_certified, u.is_medbook_valid,
+                      u.created_at, u.last_seen_at
+                      FROM users u LEFT JOIN restaurants r ON u.restaurant = r.key"""
+            if search:
+                q = f"%{search}%"
+                cur.execute(base + """ WHERE LOWER(COALESCE(u.full_name,'')) LIKE %s
+                                  OR LOWER(COALESCE(u.phone,'')) LIKE %s
+                                  OR CAST(u.user_id AS TEXT) LIKE %s
+                                  ORDER BY u.user_id DESC""",
+                            (q, q, f"%{search}%"))
+            else:
+                cur.execute(base + " ORDER BY u.user_id DESC")
             return cur.fetchall()
 
 def _sync_get_report_stats():
@@ -1046,7 +1062,6 @@ def _sync_db_request_web_code(phone_raw):
         return None
     if len(digits) == 11 and digits.startswith('8'):
         digits = '7' + digits[1:]
-
     last10 = digits[-10:]
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -1059,10 +1074,8 @@ def _sync_db_request_web_code(phone_raw):
             row = cur.fetchone()
             if not row:
                 return None
-
             user_id = row[0]
             code = f"{secrets.randbelow(900000) + 100000}"
-
             cur.execute("DELETE FROM web_auth_codes WHERE user_id = %s", (user_id,))
             cur.execute("INSERT INTO web_auth_codes (user_id, code) VALUES (%s, %s)", (user_id, code))
             return user_id, code
@@ -1072,7 +1085,6 @@ def _sync_db_verify_web_code(phone_raw, code):
     if len(digits) == 11 and digits.startswith('8'):
         digits = '7' + digits[1:]
     last10 = digits[-10:]
-
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -1184,7 +1196,6 @@ def _sync_bootstrap_data(user_id):
                         "FROM restaurants ORDER BY sort, name")
             rest_rows = cur.fetchall()
 
-            # --- Team ---
             can_see_team = False
             team_rows = []
             if user_row and len(user_row) > 3 and user_row[3]:
@@ -1391,7 +1402,6 @@ def sparkline(values):
     return "".join(out)
 
 def row_user_flags(row):
-    """Возвращает (is_blocked, is_certified, is_medbook_valid) из кортежа пользователя."""
     if not row:
         return False, False, False
     is_blocked = bool(row[6]) if len(row) > 6 else False
@@ -5318,6 +5328,718 @@ async def handle_auth_verify(request):
 async def handle_health(request):
     return web.Response(text="OK")
 
+
+# ============= ADMIN WEB API =============
+async def get_admin_user(request):
+    user_id, err = await get_auth_user(request)
+    if err:
+        return None, err
+    if not is_admin(user_id):
+        return None, 403
+    return user_id, None
+
+def admin_denied(status):
+    if status == 403:
+        return web.json_response({"error": "forbidden"}, status=403, dumps=json_dumps)
+    return web.json_response({"error": "unauthorized"}, status=401, dumps=json_dumps)
+
+async def handle_admin_page(request):
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "admin.html")
+    if not os.path.exists(p):
+        return web.Response(text="frontend/admin.html not found", status=404)
+    with open(p, "rb") as f:
+        return web.Response(body=f.read(), content_type="text/html", charset="utf-8")
+
+async def handle_admin_me(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    row = await db_get(uid)
+    return web.json_response({
+        "is_admin": True,
+        "profile": {
+            "user_id": uid,
+            "full_name": row[0] if row else "",
+            "position": row[3] if row else "",
+        },
+    }, dumps=json_dumps)
+
+async def handle_admin_dashboard(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    return web.json_response({
+        "stats": await db_dashboard_stats(),
+        "report": await get_report_stats(),
+    }, dumps=json_dumps)
+
+def _user_row_to_dict(target_id, row, names=None):
+    names = names or {}
+    if not row:
+        return None
+    return {
+        "user_id": target_id,
+        "full_name": row[0] or "", "phone": row[1] or "",
+        "birth_date": row[2] or "", "position": row[3] or "",
+        "restaurant_key": row[4] or "",
+        "restaurant_name": names.get(row[4], row[4]) if row[4] else "",
+        "welcomed": bool(row[5]), "is_blocked": bool(row[6]),
+        "is_certified": bool(row[7]) if len(row) > 7 else False,
+        "is_medbook_valid": bool(row[8]) if len(row) > 8 else False,
+    }
+
+async def handle_admin_users(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    search = (payload.get("search") or "").strip().lower()
+    rows = await _run(_sync_db_admin_users_list, search)
+    result = []
+    for r in rows:
+        u, fn, ph, bd, pos, rest, rn, wel, blk, cert, mb, cr, ls = r
+        result.append({
+            "user_id": u, "full_name": fn or "", "phone": ph or "",
+            "birth_date": bd or "", "position": pos or "",
+            "restaurant_key": rest or "", "restaurant_name": rn or "",
+            "welcomed": bool(wel), "is_blocked": bool(blk),
+            "is_certified": bool(cert), "is_medbook_valid": bool(mb),
+            "created_at": cr.isoformat() if cr else None,
+            "last_seen_at": ls.isoformat() if ls else None,
+        })
+    return web.json_response({"users": result}, dumps=json_dumps)
+
+async def handle_admin_user_get(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    target = safe_int(payload.get("user_id"))
+    if not target:
+        return web.json_response({"error": "invalid"}, status=400, dumps=json_dumps)
+    row = await db_get(target)
+    if not row:
+        return web.json_response({"error": "not_found"}, status=404, dumps=json_dumps)
+    names = await restaurant_names_map()
+    return web.json_response({
+        "user": _user_row_to_dict(target, row, names),
+        "is_pinned": await db_is_pinned(uid, target),
+    }, dumps=json_dumps)
+
+async def handle_admin_user_update(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    target = safe_int(payload.get("user_id"))
+    updates = payload.get("updates") or {}
+    if not target:
+        return web.json_response({"error": "invalid"}, status=400, dumps=json_dumps)
+    allowed = {"full_name", "phone", "birth_date", "position", "restaurant",
+               "is_certified", "is_medbook_valid", "is_blocked"}
+    changed = {}
+    for field, value in updates.items():
+        if field not in allowed:
+            continue
+        if field in ("is_certified", "is_medbook_valid", "is_blocked"):
+            v = bool(value)
+        elif field == "full_name":
+            v = str(value).strip()
+            if not NAME_RE.match(v) or len(v.split()) < 2:
+                continue
+        elif field == "phone":
+            v = str(value).strip()
+            d = v.replace("+", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+            if not d.isdigit() or len(d) < 10:
+                continue
+        elif field == "birth_date":
+            v = str(value).strip()
+            try:
+                datetime.strptime(v, "%d.%m.%Y")
+            except ValueError:
+                continue
+        else:
+            v = str(value or "")
+        await db_update_user(target, field, v)
+        await db_audit(uid, "user_update", "user", target, f"{field}={v}")
+        changed[field] = v
+    row = await db_get(target)
+    names = await restaurant_names_map()
+    return web.json_response({
+        "ok": True, "changed": changed,
+        "user": _user_row_to_dict(target, row, names),
+    }, dumps=json_dumps)
+
+async def handle_admin_user_delete(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    target = safe_int(payload.get("user_id"))
+    if not target or target == ADMIN_ID:
+        return web.json_response({"error": "invalid"}, status=400, dumps=json_dumps)
+    ok = await db_delete_user(target)
+    if ok:
+        await db_audit(uid, "user_delete", "user", target)
+    return web.json_response({"ok": ok}, dumps=json_dumps)
+
+async def handle_admin_user_pin(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    target = safe_int(payload.get("user_id"))
+    if not target:
+        return web.json_response({"error": "invalid"}, status=400, dumps=json_dumps)
+    return web.json_response({"is_pinned": await db_pin_toggle(uid, target)}, dumps=json_dumps)
+
+async def handle_admin_user_message(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    target = safe_int(payload.get("user_id"))
+    text = (payload.get("text") or "").strip()
+    if not target or not text or len(text) > 2000:
+        return web.json_response({"error": "invalid"}, status=400, dumps=json_dumps)
+    ok = False
+    try:
+        await bot.send_message(target,
+            f"💬 <b>Сообщение от администратора</b>\n\n{html.escape(text)}",
+            parse_mode="HTML")
+        ok = True
+    except Exception:
+        pass
+    await db_audit(uid, "admin_dm", "user", target, text[:80])
+    return web.json_response({"ok": ok}, dumps=json_dumps)
+
+async def handle_admin_restaurants(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    rows = await db_restaurants_all()
+    tu_ids = set(r.get("territory_manager_id") for r in rows if r.get("territory_manager_id"))
+    tu_names = {}
+    for tid in tu_ids:
+        t = await db_get(tid)
+        if t:
+            tu_names[tid] = t[0] or f"ID {tid}"
+    result = []
+    for r in rows:
+        status, status_text = restaurant_status_for(r)
+        result.append({
+            "key": r["key"], "name": r["name"],
+            "address": r.get("address") or "", "hours": r.get("hours") or "",
+            "phone": r.get("phone") or "", "org": r.get("org") or "",
+            "lat": r.get("lat"), "lon": r.get("lon"),
+            "sort": r.get("sort") if r.get("sort") is not None else 100,
+            "force_status": r.get("force_status"),
+            "status": status, "status_text": status_text,
+            "territory_manager_id": r.get("territory_manager_id"),
+            "territory_manager_name": tu_names.get(r.get("territory_manager_id"), ""),
+        })
+    tu_candidates = await db_list_tu_candidates()
+    return web.json_response({
+        "restaurants": result,
+        "tu_candidates": [{"user_id": u, "full_name": f} for u, f in tu_candidates],
+    }, dumps=json_dumps)
+
+async def handle_admin_restaurant_update(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    key = (payload.get("key") or "").strip()
+    updates = payload.get("updates") or {}
+    if not key:
+        return web.json_response({"error": "invalid"}, status=400, dumps=json_dumps)
+    allowed = {"name", "address", "phone", "hours", "org", "coords"}
+    changed = {}
+    for field, value in updates.items():
+        if field not in allowed:
+            continue
+        if field == "coords":
+            try:
+                lat = float(value.get("lat"))
+                lon = float(value.get("lon"))
+                if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+                    continue
+                await db_restaurant_set_coords(key, round(lat, 6), round(lon, 6))
+                changed["coords"] = {"lat": lat, "lon": lon}
+                await db_audit(uid, "rest_update", "restaurant", key, f"coords={lat},{lon}")
+            except (TypeError, ValueError, AttributeError):
+                continue
+            continue
+        v = str(value or "")
+        if field == "name" and len(v) < 2:
+            continue
+        if field == "hours" and v and not validate_hours_schedule(v):
+            continue
+        await db_restaurant_update(key, field, v)
+        changed[field] = v
+        await db_audit(uid, "rest_update", "restaurant", key, f"{field}={v}")
+    invalidate_rest_cache()
+    return web.json_response({"ok": True, "changed": changed}, dumps=json_dumps)
+
+async def handle_admin_restaurant_add(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    name = (payload.get("name") or "").strip()
+    address = (payload.get("address") or "").strip()
+    hours = (payload.get("hours") or "").strip()
+    phone = (payload.get("phone") or "").strip()
+    org = (payload.get("org") or "").strip()
+    if len(name) < 2 or not validate_hours_schedule(hours):
+        return web.json_response({"error": "invalid"}, status=400, dumps=json_dumps)
+    key = slugify(name)
+    ok = await db_restaurant_add(key, name, address, hours, phone, org)
+    if ok:
+        invalidate_rest_cache()
+        await db_audit(uid, "rest_add", "restaurant", key, name)
+    return web.json_response({"ok": ok, "key": key}, dumps=json_dumps)
+
+async def handle_admin_restaurant_delete(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    key = (payload.get("key") or "").strip()
+    ok, reason = await db_restaurant_delete(key)
+    if ok:
+        invalidate_rest_cache()
+        await db_audit(uid, "rest_delete", "restaurant", key)
+    return web.json_response({"ok": ok, "reason": reason}, dumps=json_dumps)
+
+async def handle_admin_restaurant_status(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    key = (payload.get("key") or "").strip()
+    st = payload.get("status")
+    if st == "auto":
+        st = None
+    if st not in (None, "open", "closed"):
+        return web.json_response({"error": "invalid"}, status=400, dumps=json_dumps)
+    ok = await db_restaurant_set_status(key, st)
+    if ok:
+        invalidate_rest_cache()
+        await db_audit(uid, "rest_set_status", "restaurant", key, str(st))
+    return web.json_response({"ok": ok}, dumps=json_dumps)
+
+async def handle_admin_restaurant_tu(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    key = (payload.get("key") or "").strip()
+    tu = payload.get("territory_manager_id")
+    if tu is not None:
+        tu = safe_int(tu) or None
+    ok = await db_restaurant_set_tu(key, tu)
+    if ok:
+        await db_audit(uid, "rest_set_tu", "restaurant", key, str(tu))
+    return web.json_response({"ok": ok}, dumps=json_dumps)
+
+def _news_row_to_dict(row):
+    nid, title, body, imp, lvl, created, published, publish_at = row
+    return {
+        "id": nid, "title": title, "body": body,
+        "level": lvl or "normal", "important": bool(imp),
+        "created_at": created.isoformat() if created else None,
+        "published": bool(published),
+        "publish_at": publish_at.isoformat() if publish_at else None,
+    }
+
+async def handle_admin_news_list(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    rows = await db_list_news_admin()
+    return web.json_response({"news": [_news_row_to_dict(r) for r in rows]}, dumps=json_dumps)
+
+async def handle_admin_news_add(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    title = (payload.get("title") or "").strip()
+    body = (payload.get("body") or "").strip()
+    level = payload.get("level") or "normal"
+    if not title or len(title) > 100 or not body or len(body) > 2000:
+        return web.json_response({"error": "invalid"}, status=400, dumps=json_dumps)
+    if level not in ("urgent", "important", "normal"):
+        level = "normal"
+    publish_at = None
+    raw = payload.get("publish_at")
+    if raw:
+        try:
+            dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            publish_at = dt.isoformat()
+        except ValueError:
+            return web.json_response({"error": "invalid_date"}, status=400, dumps=json_dumps)
+    nid = await db_add_news(title, body, level, publish_at=publish_at)
+    await db_audit(uid, "news_add", "news", nid, title)
+    return web.json_response({"ok": True, "id": nid}, dumps=json_dumps)
+
+async def handle_admin_news_update(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    nid = safe_int(payload.get("id"))
+    title = payload.get("title")
+    if not nid:
+        return web.json_response({"error": "invalid"}, status=400, dumps=json_dumps)
+    if title is not None:
+        title = title.strip()
+        if not title or len(title) > 100:
+            return web.json_response({"error": "invalid_title"}, status=400, dumps=json_dumps)
+        await db_news_update_title(nid, title)
+        await db_audit(uid, "news_edit_title", "news", nid, title)
+    return web.json_response({"ok": True}, dumps=json_dumps)
+
+async def handle_admin_news_delete(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    nid = safe_int(payload.get("id"))
+    ok = await db_delete_news(nid)
+    if ok:
+        await db_audit(uid, "news_delete", "news", nid)
+    return web.json_response({"ok": ok}, dumps=json_dumps)
+
+async def handle_admin_news_broadcast(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    nid = safe_int(payload.get("id"))
+    rkey = payload.get("restaurant_key") or None
+    row = await db_get_news(nid)
+    if not row:
+        return web.json_response({"error": "not_found"}, status=404, dumps=json_dumps)
+    title, body, level = row
+    lock = f"web:{nid}:{rkey or 'all'}"
+    if not try_lock_broadcast(lock):
+        return web.json_response({"error": "busy"}, status=409, dumps=json_dumps)
+    await db_audit(uid, "broadcast_web", "news", nid, f"target={rkey or 'all'}")
+    async def _r():
+        try:
+            await broadcast_news(title, body, level, restaurant_key=rkey)
+        finally:
+            unlock_broadcast(lock)
+    spawn(_r(), name=f"web_bc_{nid}")
+    return web.json_response({"ok": True}, dumps=json_dumps)
+
+async def handle_admin_standards_list(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    rows = await db_list_standards()
+    return web.json_response({"standards": [
+        {"id": s, "title": t, "category": c or "", "description": d or "", "url": u or ""}
+        for s, t, c, d, u in rows
+    ]}, dumps=json_dumps)
+
+async def handle_admin_standard_add(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        p = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    t = (p.get("title") or "").strip()
+    c = (p.get("category") or "").strip()
+    d = (p.get("description") or "").strip()
+    u = (p.get("url") or "").strip()
+    if len(t) < 3 or len(d) < 5:
+        return web.json_response({"error": "invalid"}, status=400, dumps=json_dumps)
+    if u and not URL_RE.match(u):
+        return web.json_response({"error": "invalid_url"}, status=400, dumps=json_dumps)
+    await db_add_standard(t, c, d, u)
+    await db_audit(uid, "std_add", "standard", "", t)
+    return web.json_response({"ok": True}, dumps=json_dumps)
+
+async def handle_admin_standard_update(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        p = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    sid = safe_int(p.get("id"))
+    field = p.get("field")
+    value = str(p.get("value") or "").strip()
+    if not sid or field not in ("title", "category", "description", "url"):
+        return web.json_response({"error": "invalid"}, status=400, dumps=json_dumps)
+    if field == "url" and value and not URL_RE.match(value):
+        return web.json_response({"error": "invalid_url"}, status=400, dumps=json_dumps)
+    ok = await db_update_standard(sid, field, value)
+    if ok:
+        await db_audit(uid, "std_update", "standard", sid, f"{field}={value}")
+    return web.json_response({"ok": ok}, dumps=json_dumps)
+
+async def handle_admin_standard_delete(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        p = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    sid = safe_int(p.get("id"))
+    ok = await db_delete_standard(sid)
+    if ok:
+        await db_audit(uid, "std_delete", "standard", sid)
+    return web.json_response({"ok": ok}, dumps=json_dumps)
+
+async def handle_admin_faq_list(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    rows = await db_list_faq()
+    return web.json_response({"faq": [
+        {"id": f, "question": q, "answer": a, "category": c or ""}
+        for f, q, a, c in rows
+    ]}, dumps=json_dumps)
+
+async def handle_admin_faq_add(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        p = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    q = (p.get("question") or "").strip()
+    a = (p.get("answer") or "").strip()
+    c = (p.get("category") or "").strip()
+    if len(q) < 5 or len(a) < 3:
+        return web.json_response({"error": "invalid"}, status=400, dumps=json_dumps)
+    await db_add_faq(q, a, c)
+    await db_audit(uid, "faq_add", "faq", "", q)
+    return web.json_response({"ok": True}, dumps=json_dumps)
+
+async def handle_admin_faq_update(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        p = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    fid = safe_int(p.get("id"))
+    field = p.get("field")
+    value = str(p.get("value") or "").strip()
+    if not fid or field not in ("question", "answer"):
+        return web.json_response({"error": "invalid"}, status=400, dumps=json_dumps)
+    ok = await db_update_faq(fid, field, value)
+    if ok:
+        await db_audit(uid, "faq_update", "faq", fid, f"{field}={value}")
+    return web.json_response({"ok": ok}, dumps=json_dumps)
+
+async def handle_admin_faq_delete(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        p = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    fid = safe_int(p.get("id"))
+    ok = await db_delete_faq(fid)
+    if ok:
+        await db_audit(uid, "faq_delete", "faq", fid)
+    return web.json_response({"ok": ok}, dumps=json_dumps)
+
+async def handle_admin_positions_list(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    rows = await db_positions_list(include_archived=True)
+    return web.json_response({"positions": [
+        {"id": p, "name": n, "sort": s, "is_archived": bool(a)}
+        for p, n, s, a in rows
+    ]}, dumps=json_dumps)
+
+async def handle_admin_position_add(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        p = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    name = (p.get("name") or "").strip()
+    if len(name) < 2:
+        return web.json_response({"error": "invalid"}, status=400, dumps=json_dumps)
+    ok = await db_position_add(name)
+    if ok:
+        await db_audit(uid, "pos_add", "position", "", name)
+    return web.json_response({"ok": ok}, dumps=json_dumps)
+
+async def handle_admin_position_archive(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        p = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    pid = safe_int(p.get("id"))
+    ok = await db_position_archive(pid)
+    if ok:
+        await db_audit(uid, "pos_archive", "position", pid)
+    return web.json_response({"ok": ok}, dumps=json_dumps)
+
+async def handle_admin_questions_list(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    rows = await db_questions_list(unanswered_only=False, limit=200)
+    return web.json_response({"questions": [
+        {"id": q, "user_id": u, "text": txt,
+         "created_at": ca.isoformat() if ca else None,
+         "replied": bool(rep), "full_name": fn or ""}
+        for q, u, txt, ca, rep, fn in rows
+    ]}, dumps=json_dumps)
+
+async def handle_admin_question_reply(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    try:
+        p = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
+    qid = safe_int(p.get("id"))
+    text = (p.get("text") or "").strip()
+    if not qid or not text or len(text) > 2000:
+        return web.json_response({"error": "invalid"}, status=400, dumps=json_dumps)
+    q = await db_question_get(qid)
+    if not q:
+        return web.json_response({"error": "not_found"}, status=404, dumps=json_dumps)
+    await db_question_reply(qid, text, uid)
+    await db_audit(uid, "question_reply", "question", qid, text[:80])
+    sent = False
+    try:
+        await bot.send_message(q["user_id"],
+            f"💬 <b>Ответ от администратора</b>\n\n{html.escape(text)}",
+            parse_mode="HTML")
+        sent = True
+    except Exception:
+        pass
+    return web.json_response({"ok": True, "sent": sent}, dumps=json_dumps)
+
+async def handle_admin_audit_list(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    rows = await db_audit_list(limit=300)
+    return web.json_response({"audit": [
+        {"id": a, "admin_id": adm, "action": ac,
+         "target_type": tt or "", "target_id": ti or "",
+         "details": det or "",
+         "created_at": ca.isoformat() if ca else None}
+        for a, adm, ac, tt, ti, det, ca in rows
+    ]}, dumps=json_dumps)
+
+async def handle_admin_reports(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    return web.json_response({
+        "report": await get_report_stats(),
+        "stats": await db_dashboard_stats(),
+    }, dumps=json_dumps)
+
+async def handle_admin_export_users(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["user_id", "full_name", "phone", "birth_date", "position",
+                     "restaurant", "is_blocked", "is_certified",
+                     "is_medbook_valid", "welcomed", "created_at"])
+    for r in await _run(_sync_db_admin_users_list, ""):
+        u, fn, ph, bd, pos, rest, rn, wel, blk, cert, mb, cr, ls = r
+        writer.writerow([u, fn or "", ph or "", bd or "", pos or "",
+                         rn or rest or "",
+                         "yes" if blk else "no",
+                         "yes" if cert else "no",
+                         "yes" if mb else "no",
+                         "yes" if wel else "no",
+                         cr.strftime("%d.%m.%Y %H:%M") if cr else ""])
+    return web.json_response({"csv": output.getvalue()}, dumps=json_dumps)
+
+async def handle_admin_export_news(request):
+    uid, err = await get_admin_user(request)
+    if err:
+        return admin_denied(err)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["id", "title", "body", "level", "created_at", "published", "publish_at"])
+    for row in await db_list_news_admin():
+        nid, title, body, imp, lvl, cr, pub, pa = row
+        writer.writerow([nid, title, body, lvl or "normal",
+                         cr.strftime("%d.%m.%Y %H:%M") if cr else "",
+                         "yes" if pub else "no",
+                         pa.strftime("%d.%m.%Y %H:%M") if pa else ""])
+    return web.json_response({"csv": output.getvalue()}, dumps=json_dumps)
+
+
 @web.middleware
 async def error_middleware(request, handler):
     try:
@@ -5343,8 +6065,6 @@ async def gzip_middleware(request, handler):
             and response.content_type in _GZIP_TYPES):
         compressed = gzip.compress(body, compresslevel=6)
         if len(compressed) < len(body):
-            # Меняем тело и удаляем старый Content-Length,
-            # чтобы aiohttp сам корректно пересчитал размер
             response.body = compressed
             response.headers["Content-Encoding"] = "gzip"
             if "Content-Length" in response.headers:
@@ -5354,6 +6074,7 @@ async def gzip_middleware(request, handler):
 
 app = web.Application(middlewares=[error_middleware, gzip_middleware])
 
+# ============= ROUTES =============
 app.router.add_get("/", handle_index)
 app.router.add_get("/favicon.ico", handle_favicon)
 app.router.add_post("/api/auth/request-code", handle_auth_request)
@@ -5368,6 +6089,47 @@ app.router.add_post("/api/profile", handle_profile)
 app.router.add_post("/api/avatar", handle_avatar)
 app.router.add_post("/api/questions", handle_questions)
 app.router.add_get("/api/health", handle_health)
+
+# ============= ADMIN WEB ROUTES =============
+app.router.add_get("/admin", handle_admin_page)
+app.router.add_get("/admin/", handle_admin_page)
+app.router.add_post("/api/admin/me", handle_admin_me)
+app.router.add_post("/api/admin/dashboard", handle_admin_dashboard)
+app.router.add_post("/api/admin/users", handle_admin_users)
+app.router.add_post("/api/admin/user/get", handle_admin_user_get)
+app.router.add_post("/api/admin/user/update", handle_admin_user_update)
+app.router.add_post("/api/admin/user/delete", handle_admin_user_delete)
+app.router.add_post("/api/admin/user/pin", handle_admin_user_pin)
+app.router.add_post("/api/admin/user/message", handle_admin_user_message)
+app.router.add_post("/api/admin/restaurants", handle_admin_restaurants)
+app.router.add_post("/api/admin/restaurant/update", handle_admin_restaurant_update)
+app.router.add_post("/api/admin/restaurant/add", handle_admin_restaurant_add)
+app.router.add_post("/api/admin/restaurant/delete", handle_admin_restaurant_delete)
+app.router.add_post("/api/admin/restaurant/status", handle_admin_restaurant_status)
+app.router.add_post("/api/admin/restaurant/tu", handle_admin_restaurant_tu)
+app.router.add_post("/api/admin/news", handle_admin_news_list)
+app.router.add_post("/api/admin/news/add", handle_admin_news_add)
+app.router.add_post("/api/admin/news/update", handle_admin_news_update)
+app.router.add_post("/api/admin/news/delete", handle_admin_news_delete)
+app.router.add_post("/api/admin/news/broadcast", handle_admin_news_broadcast)
+app.router.add_post("/api/admin/standards", handle_admin_standards_list)
+app.router.add_post("/api/admin/standard/add", handle_admin_standard_add)
+app.router.add_post("/api/admin/standard/update", handle_admin_standard_update)
+app.router.add_post("/api/admin/standard/delete", handle_admin_standard_delete)
+app.router.add_post("/api/admin/faq", handle_admin_faq_list)
+app.router.add_post("/api/admin/faq/add", handle_admin_faq_add)
+app.router.add_post("/api/admin/faq/update", handle_admin_faq_update)
+app.router.add_post("/api/admin/faq/delete", handle_admin_faq_delete)
+app.router.add_post("/api/admin/positions", handle_admin_positions_list)
+app.router.add_post("/api/admin/position/add", handle_admin_position_add)
+app.router.add_post("/api/admin/position/archive", handle_admin_position_archive)
+app.router.add_post("/api/admin/questions", handle_admin_questions_list)
+app.router.add_post("/api/admin/question/reply", handle_admin_question_reply)
+app.router.add_post("/api/admin/audit", handle_admin_audit_list)
+app.router.add_post("/api/admin/reports", handle_admin_reports)
+app.router.add_post("/api/admin/export/users", handle_admin_export_users)
+app.router.add_post("/api/admin/export/news", handle_admin_export_news)
+
 
 async def main():
     port = int(os.getenv("PORT", 8080))

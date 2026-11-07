@@ -487,15 +487,28 @@ with get_conn() as conn:
             cur.execute("INSERT INTO news (title, body, level, status) VALUES (%s,%s,%s,%s)",
                         ("Обновление меню", "Появились новые позиции в меню.", "normal", "published"))
 
-        # Создание первичного супер-админа
+        # ===== Создание / повышение первичного супер-админа =====
         cur.execute("SELECT COUNT(*) FROM users WHERE is_super_admin = TRUE")
         if cur.fetchone()[0] == 0:
             pw = hash_password(ADMIN_PASSWORD)
-            cur.execute("""
-                INSERT INTO users (login, password_hash, full_name, position, is_admin, is_super_admin)
-                VALUES (%s, %s, 'Администратор', 'Администратор', TRUE, TRUE)
-            """, (ADMIN_LOGIN, pw))
-            print(f"✅ Создан супер-администратор: логин={ADMIN_LOGIN}")
+            cur.execute("SELECT user_id FROM users WHERE LOWER(login) = LOWER(%s)", (ADMIN_LOGIN,))
+            existing = cur.fetchone()
+            if existing:
+                # Пользователь с таким логином уже есть — повышаем до супер-админа
+                cur.execute("""
+                    UPDATE users SET password_hash = %s, is_admin = TRUE, is_super_admin = TRUE,
+                           is_fired = FALSE, fired_at = NULL, fired_by = NULL,
+                           full_name = COALESCE(NULLIF(full_name, ''), 'Администратор'),
+                           position = COALESCE(NULLIF(position, ''), 'Администратор')
+                    WHERE user_id = %s
+                """, (pw, existing[0]))
+                print(f"✅ Существующий пользователь '{ADMIN_LOGIN}' повышен до супер-администратора")
+            else:
+                cur.execute("""
+                    INSERT INTO users (login, password_hash, full_name, position, is_admin, is_super_admin)
+                    VALUES (%s, %s, 'Администратор', 'Администратор', TRUE, TRUE)
+                """, (ADMIN_LOGIN, pw))
+                print(f"✅ Создан супер-администратор: логин={ADMIN_LOGIN}")
 
 print("✅ БД инициализирована")
 

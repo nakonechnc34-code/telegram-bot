@@ -1,0 +1,1482 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wokker · Админ</title>
+
+<style>
+  :root {
+    --bg: #F5F5F7;
+    --card-bg: #FFFFFF;
+    --text-main: #1C1C1E;
+    --text-muted: #8E8E93;
+    --accent: #FF3B30;
+    --accent-soft: #FFEBEA;
+    --green: #34C759;
+    --green-soft: #E8F8EB;
+    --amber: #FF9500;
+    --amber-soft: #FFF4E0;
+    --blue: #007AFF;
+    --blue-soft: #E5F0FF;
+    --border: rgba(0,0,0,0.08);
+    --sidebar: #1C1C1E;
+    --sidebar-hover: #2C2C2E;
+    --shadow: 0 4px 16px rgba(0,0,0,0.06);
+    --shadow-lg: 0 24px 64px rgba(0,0,0,0.14);
+  }
+  * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--text-main); font-size: 14px;
+    -webkit-font-smoothing: antialiased; overflow-x: hidden;
+  }
+  button, input, select, textarea { font-family: inherit; font-size: inherit; }
+  button { cursor: pointer; }
+
+  /* ===== LOGIN ===== */
+  #login-screen {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #1C1C1E 0%, #2C2C2E 100%); z-index: 2000;
+  }
+  .login-card {
+    background: #fff; border-radius: 24px; padding: 40px; width: 100%; max-width: 400px;
+    box-shadow: 0 32px 80px rgba(0,0,0,0.4);
+  }
+  .login-card h1 { font-size: 26px; font-weight: 800; margin-bottom: 6px; letter-spacing: -0.5px; }
+  .login-card .sub { color: var(--text-muted); margin-bottom: 28px; font-size: 14px; }
+  .login-logo { width: 60px; height: 60px; background: #F8F9FA; border-radius: 18px;
+    display: flex; align-items: center; justify-content: center; font-size: 32px; margin-bottom: 20px; }
+  .login-input {
+    width: 100%; border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 16px; font-size: 15px; background: #F8F9FA; outline: none;
+    transition: border-color 0.2s, background 0.2s; margin-bottom: 12px;
+    font-weight: 600; color: var(--text-main);
+  }
+  .login-input:focus { border-color: var(--accent); background: #fff; }
+  .login-btn {
+    width: 100%; background: var(--accent); color: #fff; border: 0; border-radius: 12px;
+    padding: 14px; font-size: 15px; font-weight: 700; margin-top: 8px; transition: opacity 0.2s;
+  }
+  .login-btn:hover { opacity: 0.92; }
+  .login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .login-error { color: var(--accent); font-size: 13px; min-height: 18px; margin-top: 10px; font-weight: 600; }
+  .login-back { background: none; border: none; color: var(--text-muted); font-size: 13px;
+    font-weight: 600; padding: 12px 0; width: 100%; margin-top: 4px; }
+
+  /* ===== LAYOUT ===== */
+  #app { display: none; min-height: 100vh; }
+  .layout { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: 240px; background: var(--sidebar); color: #fff; padding: 20px 12px;
+    display: flex; flex-direction: column; flex-shrink: 0; position: sticky; top: 0; height: 100vh;
+  }
+  .sidebar-logo {
+    display: flex; align-items: center; gap: 12px; padding: 10px 12px 24px; font-weight: 800;
+    font-size: 17px; letter-spacing: -0.3px;
+  }
+  .sidebar-logo .badge {
+    background: var(--accent); color: #fff; font-size: 10px; padding: 3px 7px;
+    border-radius: 6px; font-weight: 800; text-transform: uppercase;
+  }
+  .sidebar nav { display: flex; flex-direction: column; gap: 2px; flex: 1; overflow-y: auto; }
+  .nav-item {
+    background: none; border: 0; color: rgba(255,255,255,0.7); text-align: left;
+    padding: 10px 14px; border-radius: 10px; font-size: 14px; font-weight: 500;
+    display: flex; align-items: center; gap: 10px; transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .nav-item:hover { background: var(--sidebar-hover); color: #fff; }
+  .nav-item.active { background: var(--accent); color: #fff; font-weight: 600; }
+  .nav-item .ico { width: 18px; display: inline-block; text-align: center; }
+  .nav-item .count {
+    margin-left: auto; background: rgba(255,255,255,0.15); padding: 2px 8px;
+    border-radius: 20px; font-size: 11px; font-weight: 700;
+  }
+  .nav-item.active .count { background: rgba(255,255,255,0.25); }
+  .sidebar-footer {
+    padding: 14px; border-top: 1px solid rgba(255,255,255,0.1); margin-top: 12px;
+    font-size: 12px; color: rgba(255,255,255,0.6);
+  }
+  .sidebar-footer .who { color: #fff; font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+  .sidebar-footer button {
+    background: rgba(255,255,255,0.1); border: 0; color: #fff;
+    padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 600;
+    width: 100%; margin-top: 10px; transition: background 0.15s;
+  }
+  .sidebar-footer button:hover { background: rgba(255,59,48,0.6); }
+
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .topbar {
+    padding: 20px 32px; background: var(--card-bg); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    position: sticky; top: 0; z-index: 50;
+  }
+  .topbar h2 { font-size: 20px; font-weight: 800; letter-spacing: -0.3px; }
+  .topbar .actions { display: flex; gap: 8px; align-items: center; }
+  .content { padding: 24px 32px; flex: 1; }
+
+  /* ===== BUTTONS ===== */
+  .btn {
+    border: 0; border-radius: 10px; padding: 10px 18px; font-size: 13px; font-weight: 600;
+    transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px;
+    background: #F2F2F7; color: var(--text-main);
+  }
+  .btn:hover { background: #E5E5EA; }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.primary:hover { background: #E6342A; }
+  .btn.green { background: var(--green); color: #fff; }
+  .btn.green:hover { background: #2DB34E; }
+  .btn.ghost { background: transparent; border: 1px solid var(--border); }
+  .btn.ghost:hover { background: #F8F9FA; }
+  .btn.small { padding: 6px 12px; font-size: 12px; }
+  .btn.danger { background: var(--accent-soft); color: var(--accent); }
+  .btn.danger:hover { background: #FFD9D6; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ===== TABLES ===== */
+  .table-card {
+    background: var(--card-bg); border-radius: 14px; box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 14px 18px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; }
+  th {
+    background: #F8F9FA; font-weight: 700; font-size: 11px;
+    text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #FAFAFA; }
+  .row-clickable { cursor: pointer; }
+  .tag {
+    display: inline-block; padding: 3px 8px; border-radius: 6px;
+    font-size: 11px; font-weight: 700; white-space: nowrap;
+  }
+  .tag.green { background: var(--green-soft); color: #1B7A36; }
+  .tag.red { background: var(--accent-soft); color: var(--accent); }
+  .tag.gray { background: #F2F2F7; color: var(--text-muted); }
+  .tag.amber { background: var(--amber-soft); color: #C77700; }
+  .tag.blue { background: var(--blue-soft); color: #0055CC; }
+  .tag-stack { display: flex; gap: 4px; flex-wrap: wrap; }
+
+  .actions-cell { display: flex; gap: 6px; justify-content: flex-end; }
+  .icon-btn {
+    background: #F2F2F7; border: 0; border-radius: 8px; width: 30px; height: 30px;
+    display: inline-flex; align-items: center; justify-content: center; font-size: 14px;
+    transition: background 0.15s;
+  }
+  .icon-btn:hover { background: #E5E5EA; }
+  .icon-btn.danger { background: var(--accent-soft); color: var(--accent); }
+  .icon-btn.danger:hover { background: #FFD9D6; }
+
+  /* ===== SEARCH BAR ===== */
+  .search-bar {
+    display: flex; gap: 12px; margin-bottom: 16px; align-items: center;
+  }
+  .search-bar input {
+    flex: 1; max-width: 360px; border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 14px; font-size: 14px; outline: none; background: #fff;
+    transition: border-color 0.15s;
+  }
+  .search-bar input:focus { border-color: var(--accent); }
+
+  /* ===== DASHBOARD ===== */
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .stat-card {
+    background: var(--card-bg); border-radius: 14px; padding: 20px; box-shadow: var(--shadow);
+  }
+  .stat-card .label { font-size: 12px; color: var(--text-muted); font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-card .value { font-size: 28px; font-weight: 800; letter-spacing: -1px; }
+  .stat-card .hint { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+  .stat-card.accent .value { color: var(--accent); }
+  .stat-card.green .value { color: var(--green); }
+  .stat-card.amber .value { color: var(--amber); }
+
+  .chart-card {
+    background: var(--card-bg); border-radius: 14px; padding: 24px; box-shadow: var(--shadow);
+    margin-bottom: 16px;
+  }
+  .chart-card h3 { font-size: 14px; font-weight: 700; margin-bottom: 20px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; }
+  .bar-chart { display: flex; align-items: flex-end; gap: 12px; height: 120px; }
+  .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .bar { width: 100%; background: var(--accent); border-radius: 6px 6px 0 0; min-height: 4px; transition: height 0.3s; position: relative; }
+  .bar:hover { opacity: 0.8; }
+  .bar-label { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+  .bar-value { font-size: 12px; font-weight: 700; }
+
+  .attention-list { display: flex; flex-direction: column; gap: 10px; }
+  .attention-item {
+    background: var(--card-bg); border-radius: 12px; padding: 16px 18px;
+    display: flex; justify-content: space-between; align-items: center;
+    box-shadow: var(--shadow); border-left: 4px solid var(--accent);
+  }
+  .attention-item.amber { border-left-color: var(--amber); }
+  .attention-item.green { border-left-color: var(--green); }
+
+  /* ===== EMPTY ===== */
+  .empty {
+    text-align: center; padding: 60px 20px; color: var(--text-muted);
+    background: var(--card-bg); border-radius: 14px; box-shadow: var(--shadow);
+  }
+  .empty .emoji { font-size: 48px; margin-bottom: 12px; display: block; }
+
+  /* ===== MODAL ===== */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    display: none; align-items: center; justify-content: center; z-index: 1000;
+    padding: 20px; backdrop-filter: blur(4px);
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: #fff; border-radius: 16px; width: 100%; max-width: 620px;
+    max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lg);
+  }
+  .modal-header {
+    padding: 20px 24px; border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+    position: sticky; top: 0; background: #fff; z-index: 1;
+  }
+  .modal-header h3 { font-size: 18px; font-weight: 800; letter-spacing: -0.3px; }
+  .modal-close {
+    background: #F2F2F7; border: 0; width: 32px; height: 32px; border-radius: 8px;
+    font-size: 18px; display: flex; align-items: center; justify-content: center;
+  }
+  .modal-body { padding: 24px; }
+  .modal-footer {
+    padding: 16px 24px; border-top: 1px solid var(--border);
+    display: flex; justify-content: flex-end; gap: 8px; position: sticky; bottom: 0;
+    background: #fff;
+  }
+  .form-group { margin-bottom: 16px; }
+  .form-group label {
+    display: block; font-size: 12px; font-weight: 700; color: var(--text-muted);
+    margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .form-input, .form-select, .form-textarea {
+    width: 100%; border: 1px solid var(--border); border-radius: 10px;
+    padding: 11px 14px; font-size: 14px; outline: none; background: #fff;
+    transition: border-color 0.15s; color: var(--text-main);
+  }
+  .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--accent); }
+  .form-textarea { resize: vertical; min-height: 100px; font-family: inherit; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .form-hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; }
+  .checkbox-row input { width: 18px; height: 18px; accent-color: var(--accent); }
+  .checkbox-row label { font-size: 14px; font-weight: 500; cursor: pointer; text-transform: none; letter-spacing: 0; color: var(--text-main); margin: 0; }
+
+  /* ===== TOAST ===== */
+  .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 3000; display: flex; flex-direction: column; gap: 10px; }
+  .toast {
+    background: rgba(28, 28, 30, 0.96); color: #fff; padding: 14px 20px;
+    border-radius: 12px; font-size: 13px; font-weight: 600; max-width: 380px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2); animation: slideIn 0.25s ease;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .toast.error { background: rgba(255, 59, 48, 0.96); }
+  .toast.success { background: rgba(52, 199, 89, 0.96); }
+  @keyframes slideIn {
+    from { transform: translateX(120%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+
+  /* ===== LOADING ===== */
+  .loader {
+    display: inline-block; width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff;
+    border-radius: 50%; animation: spin 0.6s linear infinite;
+  }
+  .loader.dark { border-color: rgba(0,0,0,0.15); border-top-color: var(--text-main); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .page-loading { text-align: center; padding: 60px; color: var(--text-muted); }
+  .page-loading .loader.dark { width: 32px; height: 32px; border-width: 3px; margin-bottom: 12px; }
+
+  /* ===== DETAIL PANEL ===== */
+  .detail-row { display: grid; grid-template-columns: 140px 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .detail-row:last-child { border-bottom: none; }
+  .detail-row .k { font-weight: 700; color: var(--text-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; }
+  .detail-row .v { font-size: 14px; }
+
+  /* ===== TABS (внутри страницы) ===== */
+  .subtabs { display: flex; gap: 6px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+  .subtab {
+    background: none; border: 0; padding: 10px 16px; font-size: 13px; font-weight: 600;
+    color: var(--text-muted); border-bottom: 2px solid transparent; transition: all 0.15s;
+  }
+  .subtab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .subtab:hover { color: var(--text-main); }
+</style>
+</head>
+<body>
+
+<!-- ===== LOGIN ===== -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">🛠</div>
+    <h1>Wokker Admin</h1>
+    <div class="sub">Панель управления</div>
+    <div id="login-step-phone">
+      <input class="login-input" id="login-phone" type="tel" placeholder="+7 (900) 000-00-00" autocomplete="tel">
+      <button class="login-btn" id="login-phone-btn">Получить код</button>
+    </div>
+    <div id="login-step-code" style="display:none;">
+      <div class="sub" style="margin-bottom:16px;">Код отправлен в Telegram-бот.</div>
+      <input class="login-input" id="login-code" type="text" inputmode="numeric" maxlength="6" placeholder="— — — — — —" autocomplete="one-time-code">
+      <button class="login-btn" id="login-code-btn">Войти</button>
+      <button class="login-back" id="login-back-btn">← Другой номер</button>
+    </div>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<!-- ===== APP ===== -->
+<div id="app">
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-logo">🍜 Wokker <span class="badge">Admin</span></div>
+      <nav id="nav">
+        <button class="nav-item" data-sec="dashboard"><span class="ico">📊</span> Дашборд</button>
+        <button class="nav-item" data-sec="users"><span class="ico">👥</span> Пользователи</button>
+        <button class="nav-item" data-sec="restaurants"><span class="ico">🏪</span> Рестораны</button>
+        <button class="nav-item" data-sec="news"><span class="ico">📰</span> Новости</button>
+        <button class="nav-item" data-sec="standards"><span class="ico">📚</span> Стандарты</button>
+        <button class="nav-item" data-sec="faq"><span class="ico">❓</span> FAQ</button>
+        <button class="nav-item" data-sec="positions"><span class="ico">💼</span> Должности</button>
+        <button class="nav-item" data-sec="questions"><span class="ico">💬</span> Вопросы <span class="count" id="q-count" style="display:none;">0</span></button>
+        <button class="nav-item" data-sec="reports"><span class="ico">📈</span> Отчёты</button>
+        <button class="nav-item" data-sec="audit"><span class="ico">📜</span> История</button>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="who" id="admin-name">—</div>
+        <div>Администратор</div>
+        <button id="logout-btn">Выйти</button>
+      </div>
+    </aside>
+
+    <div class="main">
+      <div class="topbar">
+        <h2 id="page-title">Дашборд</h2>
+        <div class="actions" id="page-actions"></div>
+      </div>
+      <div class="content" id="page-content"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toasts"></div>
+
+<!-- ===== MODAL ===== -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-title">—</h3>
+      <button class="modal-close" id="modal-close">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-footer" id="modal-footer"></div>
+  </div>
+</div>
+
+<script>
+/* ================== CONFIG ================== */
+const TOKEN_KEY = 'wokker_admin_token';
+let ME = null;
+
+/* ================== UTILS ================== */
+const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $ = id => document.getElementById(id);
+
+function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
+function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
+function clearToken() { localStorage.removeItem(TOKEN_KEY); }
+
+function toast(text, type) {
+  const el = document.createElement('div');
+  el.className = 'toast' + (type ? ' ' + type : '');
+  el.textContent = text;
+  $('toasts').appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity 0.3s'; }, 2600);
+  setTimeout(() => el.remove(), 3000);
+}
+
+async function api(path, body) {
+  const payload = { webToken: getToken() };
+  if (body && typeof body === 'object') Object.assign(payload, body);
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (res.status === 401 || res.status === 403) {
+    clearToken();
+    showLogin();
+    throw new Error('unauthorized');
+  }
+  if (!res.ok) {
+    let msg = 'error';
+    try { const j = await res.json(); msg = j.error || msg; } catch (e) {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+function fmtDate(iso, withTime) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    const pad = n => String(n).padStart(2, '0');
+    const date = `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`;
+    if (!withTime) return date;
+    return `${date} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch (e) { return iso; }
+}
+
+/* ================== LOGIN ================== */
+function showLogin() {
+  $('app').style.display = 'none';
+  $('login-screen').style.display = 'flex';
+  $('login-step-phone').style.display = 'block';
+  $('login-step-code').style.display = 'none';
+  $('login-error').textContent = '';
+  $('login-code').value = '';
+}
+function showApp() {
+  $('login-screen').style.display = 'none';
+  $('app').style.display = 'block';
+}
+function normalizePhone(raw) {
+  const d = (raw || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.length === 11 && d.startsWith('8')) return '+7' + d.slice(1);
+  if (d.length === 11 && d.startsWith('7')) return '+' + d;
+  if (d.length === 10) return '+7' + d;
+  return raw.trim();
+}
+
+let _loginPhone = '';
+$('login-phone-btn').addEventListener('click', async () => {
+  const phone = normalizePhone($('login-phone').value);
+  const errEl = $('login-error');
+  errEl.textContent = '';
+  if (!phone || phone.replace(/\D/g, '').length < 10) {
+    errEl.textContent = 'Введите корректный номер';
+    return;
+  }
+  const btn = $('login-phone-btn');
+  btn.disabled = true; btn.textContent = 'Отправляем…';
+  try {
+    const res = await fetch('/api/auth/request-code', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone }),
+    });
+    if (res.status === 404) { errEl.textContent = 'Номер не найден'; return; }
+    if (res.status === 429) { errEl.textContent = 'Подождите минуту'; return; }
+    if (!res.ok) { errEl.textContent = 'Ошибка сервера'; return; }
+    _loginPhone = phone;
+    $('login-step-phone').style.display = 'none';
+    $('login-step-code').style.display = 'block';
+    $('login-code').focus();
+  } catch (e) { errEl.textContent = 'Сеть недоступна'; }
+  finally { btn.disabled = false; btn.textContent = 'Получить код'; }
+});
+
+$('login-code-btn').addEventListener('click', async () => {
+  const code = ($('login-code').value || '').trim();
+  const errEl = $('login-error');
+  errEl.textContent = '';
+  if (!/^\d{4,6}$/.test(code)) { errEl.textContent = 'Введите код из 6 цифр'; return; }
+  const btn = $('login-code-btn');
+  btn.disabled = true; btn.textContent = 'Проверяем…';
+  try {
+    const res = await fetch('/api/auth/verify-code', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: _loginPhone, code }),
+    });
+    if (res.status === 401) { errEl.textContent = 'Неверный код'; return; }
+    if (!res.ok) { errEl.textContent = 'Ошибка'; return; }
+    const data = await res.json();
+    if (!data.token) { errEl.textContent = 'Ошибка'; return; }
+    setToken(data.token);
+    await checkAdminAndLoad();
+  } catch (e) { errEl.textContent = 'Сеть недоступна'; }
+  finally { btn.disabled = false; btn.textContent = 'Войти'; }
+});
+
+$('login-back-btn').addEventListener('click', () => {
+  $('login-step-phone').style.display = 'block';
+  $('login-step-code').style.display = 'none';
+  $('login-error').textContent = '';
+});
+
+async function checkAdminAndLoad() {
+  try {
+    const res = await api('/api/admin/me', {});
+    ME = res.profile;
+    $('admin-name').textContent = ME.full_name || '—';
+    showApp();
+    navigate('dashboard');
+    refreshQuestionCount();
+  } catch (e) {
+    if (e.message === 'forbidden') {
+      clearToken();
+      showLogin();
+      $('login-error').textContent = 'Доступ только для администратора';
+    } else if (e.message !== 'unauthorized') {
+      toast('Ошибка загрузки', 'error');
+    }
+  }
+}
+
+$('logout-btn').addEventListener('click', () => {
+  if (!confirm('Выйти?')) return;
+  clearToken();
+  ME = null;
+  showLogin();
+});
+
+/* ================== MODAL ================== */
+function openModal(title, bodyHtml, footerHtml) {
+  $('modal-title').textContent = title;
+  $('modal-body').innerHTML = bodyHtml;
+  $('modal-footer').innerHTML = footerHtml || '';
+  $('modal-overlay').classList.add('show');
+}
+function closeModal() { $('modal-overlay').classList.remove('show'); }
+$('modal-close').addEventListener('click', closeModal);
+$('modal-overlay').addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
+
+/* ================== NAV ================== */
+const SECTION_TITLES = {
+  dashboard: 'Дашборд',
+  users: 'Пользователи',
+  restaurants: 'Рестораны',
+  news: 'Новости',
+  standards: 'Стандарты',
+  faq: 'FAQ',
+  positions: 'Должности',
+  questions: 'Вопросы',
+  reports: 'Отчёты',
+  audit: 'История действий',
+};
+const SECTION_LOADERS = {
+  dashboard: loadDashboard,
+  users: loadUsers,
+  restaurants: loadRestaurants,
+  news: loadNews,
+  standards: loadStandards,
+  faq: loadFaq,
+  positions: loadPositions,
+  questions: loadQuestions,
+  reports: loadReports,
+  audit: loadAudit,
+};
+
+document.querySelectorAll('.nav-item').forEach(btn => {
+  btn.addEventListener('click', () => navigate(btn.dataset.sec));
+});
+
+function navigate(sec) {
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.sec === sec));
+  $('page-title').textContent = SECTION_TITLES[sec] || '—';
+  $('page-actions').innerHTML = '';
+  $('page-content').innerHTML = '<div class="page-loading"><div class="loader dark"></div><div>Загрузка…</div></div>';
+  const loader = SECTION_LOADERS[sec];
+  if (loader) loader();
+}
+
+async function refreshQuestionCount() {
+  try {
+    const data = await api('/api/admin/questions', {});
+    const open = (data.questions || []).filter(q => !q.replied).length;
+    const el = $('q-count');
+    if (open > 0) { el.textContent = open; el.style.display = 'inline-block'; }
+    else el.style.display = 'none';
+  } catch (e) {}
+}
+
+/* ================== DASHBOARD ================== */
+async function loadDashboard() {
+  $('page-actions').innerHTML = '<button class="btn ghost small" id="dash-refresh">↻ Обновить</button>';
+  $('dash-refresh').addEventListener('click', loadDashboard);
+  try {
+    const { stats, report } = await api('/api/admin/dashboard', {});
+    const chart = stats.chart || [];
+    const maxVal = Math.max(...chart, 1);
+    const days = ['-6д','-5д','-4д','-3д','-2д','-1д','Сегодня'];
+    const barsHtml = chart.map((v, i) => `
+      <div class="bar-col">
+        <div class="bar-value">${v}</div>
+        <div class="bar" style="height:${Math.max(6, (v/maxVal)*80)}px; background:${i === chart.length-1 ? 'var(--green)' : 'var(--accent)'};"></div>
+        <div class="bar-label">${days[i]}</div>
+      </div>
+    `).join('');
+
+    const attention = [];
+    if (stats.questions_open > 0) attention.push({ text: `❓ ${stats.questions_open} вопросов без ответа`, type: 'accent' });
+    if (stats.unfinished > 0) attention.push({ text: `🆕 ${stats.unfinished} незавершённых регистраций`, type: 'amber' });
+    if (stats.inactive > 0) attention.push({ text: `💤 ${stats.inactive} не заходили 7+ дней`, type: 'amber' });
+    if (stats.news_scheduled > 0) attention.push({ text: `⏰ ${stats.news_scheduled} отложенных новостей`, type: 'blue' });
+
+    const attentionHtml = attention.length
+      ? attention.map(a => `<div class="attention-item ${a.type === 'accent' ? '' : a.type}">${a.text}</div>`).join('')
+      : '<div class="attention-item green">✅ Всё в порядке — ничего не требует внимания</div>';
+
+    $('page-content').innerHTML = `
+      <div class="stats-grid">
+        <div class="stat-card accent">
+          <div class="label">Сегодня</div>
+          <div class="value">+${stats.new_today}</div>
+          <div class="hint">новых регистраций</div>
+        </div>
+        <div class="stat-card green">
+          <div class="label">Всего активных</div>
+          <div class="value">${report.active}</div>
+          <div class="hint">из ${report.total}</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Новых за 7 дней</div>
+          <div class="value">${report.new7}</div>
+          <div class="hint">всего</div>
+        </div>
+        <div class="stat-card amber">
+          <div class="label">Не заходили 7+</div>
+          <div class="value">${report.inactive7}</div>
+          <div class="hint">надо разбудить</div>
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <h3>Регистрации за 7 дней</h3>
+        <div class="bar-chart">${barsHtml}</div>
+      </div>
+
+      <div class="chart-card">
+        <h3>Требует внимания</h3>
+        <div class="attention-list">${attentionHtml}</div>
+      </div>
+    `;
+  } catch (e) {
+    $('page-content').innerHTML = '<div class="empty">Не удалось загрузить дашборд</div>';
+  }
+}
+
+/* ================== USERS ================== */
+let _usersCache = [];
+
+async function loadUsers(search) {
+  $('page-actions').innerHTML = '<button class="btn ghost small" id="users-export">📤 Экспорт CSV</button>';
+  $('users-export').addEventListener('click', exportUsers);
+  try {
+    const data = await api('/api/admin/users', { search: search || '' });
+    _usersCache = data.users || [];
+    const searchBar = `
+      <div class="search-bar">
+        <input id="users-search" placeholder="Поиск по имени, телефону или ID…" value="${esc(search||'')}">
+      </div>
+    `;
+    const rows = _usersCache.map(u => {
+      const tags = [];
+      if (u.is_blocked) tags.push('<span class="tag red">🚫 Заблок</span>');
+      if (u.is_certified) tags.push('<span class="tag green">📜 Сертификат</span>');
+      else tags.push('<span class="tag gray">📜 Нет</span>');
+      if (u.is_medbook_valid) tags.push('<span class="tag green">🩺 Медкнижка</span>');
+      else tags.push('<span class="tag red">🩺 Просрочена</span>');
+      if (!u.welcomed) tags.push('<span class="tag amber">🆕 Не закончил</span>');
+
+      return `
+        <tr class="row-clickable" data-uid="${u.user_id}">
+          <td><code style="font-size:11px;">${u.user_id}</code></td>
+          <td><b>${esc(u.full_name || '—')}</b></td>
+          <td>${esc(u.phone || '—')}</td>
+          <td>${esc(u.position || '—')}</td>
+          <td>${esc(u.restaurant_name || '—')}</td>
+          <td><div class="tag-stack">${tags.join('')}</div></td>
+          <td style="font-size:12px;color:var(--text-muted);">${fmtDate(u.last_seen_at, false)}</td>
+          <td class="actions-cell">
+            <button class="icon-btn" data-edit="${u.user_id}" title="Редактировать">✏️</button>
+            <button class="icon-btn" data-msg="${u.user_id}" title="Написать">💬</button>
+            <button class="icon-btn danger" data-del="${u.user_id}" title="Удалить">🗑</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    $('page-content').innerHTML = searchBar + `
+      <div class="table-card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>ФИО</th><th>Телефон</th><th>Должность</th>
+                <th>Ресторан</th><th>Статусы</th><th>Был(а)</th><th></th>
+              </tr>
+            </thead>
+            <tbody>${rows || '<tr><td colspan="8"><div class="empty">Пользователей нет</div></td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    const searchInput = $('users-search');
+    let timer;
+    searchInput.addEventListener('input', () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => loadUsers(searchInput.value.trim()), 400);
+    });
+
+    document.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', e => {
+      e.stopPropagation();
+      openUserEditor(parseInt(b.dataset.edit));
+    }));
+    document.querySelectorAll('[data-msg]').forEach(b => b.addEventListener('click', e => {
+      e.stopPropagation();
+      openUserMessage(parseInt(b.dataset.msg));
+    }));
+    document.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', e => {
+      e.stopPropagation();
+      deleteUser(parseInt(b.dataset.del));
+    }));
+    document.querySelectorAll('tr[data-uid]').forEach(tr => tr.addEventListener('click', () => openUserEditor(parseInt(tr.dataset.uid))));
+  } catch (e) {
+    $('page-content').innerHTML = '<div class="empty">Ошибка загрузки пользователей</div>';
+  }
+}
+
+async function openUserEditor(uid) {
+  try {
+    const data = await api('/api/admin/user/get', { user_id: uid });
+    const u = data.user;
+    openModal('Редактирование пользователя', `
+      <div class="form-group"><label>ID</label><div style="padding:10px 0;"><code>${u.user_id}</code></div></div>
+      <div class="form-group"><label>ФИО</label><input class="form-input" id="f-full_name" value="${esc(u.full_name)}"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Телефон</label><input class="form-input" id="f-phone" value="${esc(u.phone)}"></div>
+        <div class="form-group"><label>Дата рождения</label><input class="form-input" id="f-birth_date" value="${esc(u.birth_date)}" placeholder="ДД.ММ.ГГГГ"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Должность</label><input class="form-input" id="f-position" value="${esc(u.position)}"></div>
+        <div class="form-group"><label>Ресторан (key)</label><input class="form-input" id="f-restaurant" value="${esc(u.restaurant_key)}" placeholder="например belyaevo"></div>
+      </div>
+      <div class="form-group">
+        <div class="checkbox-row"><input type="checkbox" id="f-is_certified" ${u.is_certified ? 'checked' : ''}><label for="f-is_certified">Сертификация пройдена</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="f-is_medbook_valid" ${u.is_medbook_valid ? 'checked' : ''}><label for="f-is_medbook_valid">Мед. книжка действительна</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="f-is_blocked" ${u.is_blocked ? 'checked' : ''}><label for="f-is_blocked">Заблокирован</label></div>
+      </div>
+    `, `
+      <button class="btn ghost" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" id="save-user-btn">Сохранить</button>
+    `);
+
+    $('save-user-btn').addEventListener('click', async () => {
+      const updates = {
+        full_name: $('f-full_name').value.trim(),
+        phone: $('f-phone').value.trim(),
+        birth_date: $('f-birth_date').value.trim(),
+        position: $('f-position').value.trim(),
+        restaurant: $('f-restaurant').value.trim(),
+        is_certified: $('f-is_certified').checked,
+        is_medbook_valid: $('f-is_medbook_valid').checked,
+        is_blocked: $('f-is_blocked').checked,
+      };
+      try {
+        await api('/api/admin/user/update', { user_id: uid, updates });
+        toast('Сохранено', 'success');
+        closeModal();
+        loadUsers();
+      } catch (e) { toast('Ошибка сохранения', 'error'); }
+    });
+  } catch (e) { toast('Не удалось загрузить', 'error'); }
+}
+
+function openUserMessage(uid) {
+  openModal('Написать пользователю', `
+    <div class="form-group"><label>Сообщение</label><textarea class="form-textarea" id="msg-text" placeholder="Текст сообщения…"></textarea></div>
+  `, `
+    <button class="btn ghost" onclick="closeModal()">Отмена</button>
+    <button class="btn primary" id="send-msg-btn">Отправить</button>
+  `);
+  $('send-msg-btn').addEventListener('click', async () => {
+    const text = $('msg-text').value.trim();
+    if (!text) { toast('Введите текст', 'error'); return; }
+    try {
+      const res = await api('/api/admin/user/message', { user_id: uid, text });
+      if (res.ok) { toast('Отправлено', 'success'); closeModal(); }
+      else toast('Не доставлено', 'error');
+    } catch (e) { toast('Ошибка', 'error'); }
+  });
+}
+
+async function deleteUser(uid) {
+  if (!confirm('Удалить пользователя из базы?')) return;
+  try {
+    await api('/api/admin/user/delete', { user_id: uid });
+    toast('Удалён', 'success');
+    loadUsers();
+  } catch (e) { toast('Ошибка', 'error'); }
+}
+
+async function exportUsers() {
+  try {
+    const { csv } = await api('/api/admin/export/users', {});
+    downloadCsv(csv, 'users.csv');
+  } catch (e) { toast('Ошибка экспорта', 'error'); }
+}
+
+function downloadCsv(csv, filename) {
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ================== RESTAURANTS ================== */
+async function loadRestaurants() {
+  $('page-actions').innerHTML = '<button class="btn primary small" id="rest-add-btn">+ Добавить</button>';
+  $('rest-add-btn').addEventListener('click', openRestaurantAdd);
+  try {
+    const data = await api('/api/admin/restaurants', {});
+    const rests = data.restaurants || [];
+    const rows = rests.map(r => `
+      <tr>
+        <td><b>${esc(r.name)}</b><br><span style="font-size:11px;color:var(--text-muted);">${esc(r.key)}</span></td>
+        <td>${esc(r.address || '—')}</td>
+        <td>${esc(r.phone || '—')}</td>
+        <td>
+          ${r.status === 'open' ? '<span class="tag green">🟢 Открыто</span>' : '<span class="tag red">🔴 Закрыто</span>'}
+          ${r.force_status ? '<span class="tag amber" style="margin-left:4px;">вручную</span>' : ''}
+        </td>
+        <td>${esc(r.territory_manager_name || '—')}</td>
+        <td class="actions-cell">
+          <button class="icon-btn" data-edit="${esc(r.key)}" title="Редактировать">✏️</button>
+          <button class="icon-btn" data-tu="${esc(r.key)}" title="Назначить ТУ">👔</button>
+          <button class="icon-btn" data-status="${esc(r.key)}" data-cur="${r.force_status || 'auto'}" title="Статус">${r.status === 'open' ? '🔴' : '🟢'}</button>
+          ${r.key !== 'office' ? `<button class="icon-btn danger" data-del="${esc(r.key)}" title="Удалить">🗑</button>` : ''}
+        </td>
+      </tr>
+    `).join('');
+
+    $('page-content').innerHTML = `
+      <div class="table-card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Название</th><th>Адрес</th><th>Телефон</th><th>Статус</th><th>ТУ</th><th></th></tr>
+            </thead>
+            <tbody>${rows || '<tr><td colspan="6"><div class="empty">Ресторанов нет</div></td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    document.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openRestaurantEditor(b.dataset.edit, rests)));
+    document.querySelectorAll('[data-tu]').forEach(b => b.addEventListener('click', () => openTuEditor(b.dataset.tu, data.tu_candidates, rests)));
+    document.querySelectorAll('[data-status]').forEach(b => b.addEventListener('click', async () => {
+      const cur = b.dataset.cur;
+      const next = cur === 'auto' ? 'closed' : cur === 'closed' ? 'open' : 'auto';
+      try {
+        await api('/api/admin/restaurant/status', { key: b.dataset.status, status: next });
+        toast('Статус обновлён', 'success');
+        loadRestaurants();
+      } catch (e) { toast('Ошибка', 'error'); }
+    }));
+    document.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('Удалить ресторан?')) return;
+      try {
+        const res = await api('/api/admin/restaurant/delete', { key: b.dataset.del });
+        if (res.ok) { toast('Удалён', 'success'); loadRestaurants(); }
+        else if (res.reason === 'users_attached') toast('Есть привязанные сотрудники', 'error');
+        else toast('Ошибка', 'error');
+      } catch (e) { toast('Ошибка', 'error'); }
+    }));
+  } catch (e) {
+    $('page-content').innerHTML = '<div class="empty">Ошибка загрузки ресторанов</div>';
+  }
+}
+
+function openRestaurantEditor(key, rests) {
+  const r = rests.find(x => x.key === key);
+  if (!r) return;
+  openModal('Редактирование ресторана', `
+    <div class="form-group"><label>Key</label><div><code>${esc(r.key)}</code></div></div>
+    <div class="form-group"><label>Название</label><input class="form-input" id="rf-name" value="${esc(r.name)}"></div>
+    <div class="form-group"><label>Адрес</label><input class="form-input" id="rf-address" value="${esc(r.address)}"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Телефон</label><input class="form-input" id="rf-phone" value="${esc(r.phone)}"></div>
+      <div class="form-group"><label>Яндекс.Карты (org)</label><input class="form-input" id="rf-org" value="${esc(r.org)}"></div>
+    </div>
+    <div class="form-group"><label>Часы работы</label><textarea class="form-textarea" id="rf-hours" rows="3">${esc(r.hours)}</textarea><div class="form-hint">Формат: Пн–вс: 10:00–22:00 (каждый день с новой строки)</div></div>
+    <div class="form-row">
+      <div class="form-group"><label>Широта</label><input class="form-input" id="rf-lat" value="${r.lat || ''}" type="number" step="0.000001"></div>
+      <div class="form-group"><label>Долгота</label><input class="form-input" id="rf-lon" value="${r.lon || ''}" type="number" step="0.000001"></div>
+    </div>
+  `, `
+    <button class="btn ghost" onclick="closeModal()">Отмена</button>
+    <button class="btn primary" id="save-rest-btn">Сохранить</button>
+  `);
+
+  $('save-rest-btn').addEventListener('click', async () => {
+    const updates = {
+      name: $('rf-name').value.trim(),
+      address: $('rf-address').value.trim(),
+      phone: $('rf-phone').value.trim(),
+      org: $('rf-org').value.trim(),
+      hours: $('rf-hours').value.trim(),
+    };
+    const lat = parseFloat($('rf-lat').value);
+    const lon = parseFloat($('rf-lon').value);
+    if (!isNaN(lat) && !isNaN(lon)) updates.coords = { lat, lon };
+    try {
+      const res = await api('/api/admin/restaurant/update', { key, updates });
+      if (res.ok) { toast('Сохранено', 'success'); closeModal(); loadRestaurants(); }
+      else toast('Ошибка', 'error');
+    } catch (e) { toast('Ошибка', 'error'); }
+  });
+}
+
+function openRestaurantAdd() {
+  openModal('Новый ресторан', `
+    <div class="form-group"><label>Название</label><input class="form-input" id="ra-name" placeholder="Мега Химки"></div>
+    <div class="form-group"><label>Адрес</label><input class="form-input" id="ra-address" placeholder="Москва, ул. Ленина, 5"></div>
+    <div class="form-group"><label>Часы работы</label><textarea class="form-textarea" id="ra-hours" rows="3" placeholder="Пн–вс: 10:00–22:00"></textarea></div>
+    <div class="form-row">
+      <div class="form-group"><label>Телефон</label><input class="form-input" id="ra-phone" placeholder="+7…"></div>
+      <div class="form-group"><label>Яндекс.Карты org</label><input class="form-input" id="ra-org" placeholder="vokker/…"></div>
+    </div>
+  `, `
+    <button class="btn ghost" onclick="closeModal()">Отмена</button>
+    <button class="btn primary" id="create-rest-btn">Создать</button>
+  `);
+  $('create-rest-btn').addEventListener('click', async () => {
+    const body = {
+      name: $('ra-name').value.trim(),
+      address: $('ra-address').value.trim(),
+      hours: $('ra-hours').value.trim(),
+      phone: $('ra-phone').value.trim(),
+      org: $('ra-org').value.trim(),
+    };
+    if (!body.name || !body.hours) { toast('Заполните имя и часы', 'error'); return; }
+    try {
+      const res = await api('/api/admin/restaurant/add', body);
+      if (res.ok) { toast('Создан', 'success'); closeModal(); loadRestaurants(); }
+      else toast('Ошибка (key уже есть?)', 'error');
+    } catch (e) { toast('Ошибка', 'error'); }
+  });
+}
+
+function openTuEditor(key, candidates, rests) {
+  const r = rests.find(x => x.key === key);
+  const opts = (candidates || []).map(c =>
+    `<option value="${c.user_id}" ${r.territory_manager_id === c.user_id ? 'selected' : ''}>${esc(c.full_name)} (ID ${c.user_id})</option>`
+  ).join('');
+  openModal('Назначить ТУ', `
+    <div class="form-group">
+      <label>Территориальный управляющий</label>
+      <select class="form-select" id="tu-select">
+        <option value="">— не назначен —</option>
+        ${opts}
+      </select>
+      <div class="form-hint">${candidates.length ? '' : 'Нет пользователей с должностью «Территориальный управляющий». Сначала назначь её в карточке пользователя.'}</div>
+    </div>
+  `, `
+    <button class="btn ghost" onclick="closeModal()">Отмена</button>
+    <button class="btn primary" id="save-tu-btn">Сохранить</button>
+  `);
+  $('save-tu-btn').addEventListener('click', async () => {
+    const val = $('tu-select').value;
+    try {
+      await api('/api/admin/restaurant/tu', { key, territory_manager_id: val ? parseInt(val) : null });
+      toast('Сохранено', 'success'); closeModal(); loadRestaurants();
+    } catch (e) { toast('Ошибка', 'error'); }
+  });
+}
+
+/* ================== NEWS ================== */
+async function loadNews() {
+  $('page-actions').innerHTML = '<button class="btn primary small" id="news-add-btn">+ Добавить</button>';
+  $('news-add-btn').addEventListener('click', openNewsAdd);
+  try {
+    const data = await api('/api/admin/news', {});
+    const news = data.news || [];
+    const rows = news.map(n => {
+      const lvl = n.level === 'urgent' ? '<span class="tag red">Срочно</span>'
+        : n.level === 'important' ? '<span class="tag amber">Важно</span>'
+        : '<span class="tag gray">Обычная</span>';
+      const status = n.published ? '<span class="tag green">Опубликована</span>'
+        : `<span class="tag blue">⏰ ${fmtDate(n.publish_at, true)}</span>`;
+      return `
+        <tr>
+          <td>${lvl}</td>
+          <td><b>${esc(n.title)}</b><br><span style="font-size:11px;color:var(--text-muted);">${esc((n.body||'').substring(0, 60))}${(n.body||'').length>60?'…':''}</span></td>
+          <td>${status}</td>
+          <td style="font-size:12px;color:var(--text-muted);">${fmtDate(n.created_at, true)}</td>
+          <td class="actions-cell">
+            <button class="icon-btn" data-bc="${n.id}" title="Разослать">📢</button>
+            <button class="icon-btn" data-title="${n.id}" title="Изменить заголовок">✏️</button>
+            ${n.published ? `<button class="icon-btn danger" data-del="${n.id}" title="Удалить">🗑</button>` : ''}
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    $('page-content').innerHTML = `
+      <div class="table-card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Тип</th><th>Заголовок</th><th>Статус</th><th>Создано</th><th></th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="5"><div class="empty">Новостей нет</div></td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    document.querySelectorAll('[data-bc]').forEach(b => b.addEventListener('click', () => openNewsBroadcast(parseInt(b.dataset.bc))));
+    document.querySelectorAll('[data-title]').forEach(b => b.addEventListener('click', () => openNewsEditTitle(parseInt(b.dataset.title), news)));
+    document.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('Удалить новость?')) return;
+      try { await api('/api/admin/news/delete', { id: parseInt(b.dataset.del) }); toast('Удалена', 'success'); loadNews(); }
+      catch (e) { toast('Ошибка', 'error'); }
+    }));
+  } catch (e) {
+    $('page-content').innerHTML = '<div class="empty">Ошибка загрузки</div>';
+  }
+}
+
+function openNewsAdd() {
+  openModal('Новая новость', `
+    <div class="form-group"><label>Заголовок</label><input class="form-input" id="n-title" maxlength="100"></div>
+    <div class="form-group"><label>Текст</label><textarea class="form-textarea" id="n-body" maxlength="2000"></textarea></div>
+    <div class="form-group">
+      <label>Уровень</label>
+      <select class="form-select" id="n-level">
+        <option value="normal">🔵 Обычная</option>
+        <option value="important">🟡 Важная</option>
+        <option value="urgent">🔴 Срочная</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Публикация</label>
+      <select class="form-select" id="n-sched">
+        <option value="now">📤 Сейчас</option>
+        <option value="later">⏰ Отложить</option>
+      </select>
+    </div>
+    <div class="form-group" id="n-sched-time" style="display:none;">
+      <label>Дата и время</label>
+      <input class="form-input" type="datetime-local" id="n-publish-at">
+    </div>
+  `, `
+    <button class="btn ghost" onclick="closeModal()">Отмена</button>
+    <button class="btn primary" id="create-news-btn">Создать</button>
+  `);
+  $('n-sched').addEventListener('change', e => {
+    $('n-sched-time').style.display = e.target.value === 'later' ? 'block' : 'none';
+  });
+  $('create-news-btn').addEventListener('click', async () => {
+    const body = {
+      title: $('n-title').value.trim(),
+      body: $('n-body').value.trim(),
+      level: $('n-level').value,
+    };
+    if (!body.title || !body.body) { toast('Заполните все поля', 'error'); return; }
+    if ($('n-sched').value === 'later') {
+      const dt = $('n-publish-at').value;
+      if (!dt) { toast('Укажите дату и время', 'error'); return; }
+      body.publish_at = new Date(dt).toISOString();
+    }
+    try {
+      await api('/api/admin/news/add', body);
+      toast('Создана', 'success'); closeModal(); loadNews();
+    } catch (e) { toast('Ошибка', 'error'); }
+  });
+}
+
+function openNewsEditTitle(id, news) {
+  const n = news.find(x => x.id === id);
+  if (!n) return;
+  openModal('Изменить заголовок', `
+    <div class="form-group"><label>Заголовок</label><input class="form-input" id="edit-n-title" value="${esc(n.title)}" maxlength="100"></div>
+  `, `
+    <button class="btn ghost" onclick="closeModal()">Отмена</button>
+    <button class="btn primary" id="save-title-btn">Сохранить</button>
+  `);
+  $('save-title-btn').addEventListener('click', async () => {
+    try {
+      await api('/api/admin/news/update', { id, title: $('edit-n-title').value.trim() });
+      toast('Сохранено', 'success'); closeModal(); loadNews();
+    } catch (e) { toast('Ошибка', 'error'); }
+  });
+}
+
+async function openNewsBroadcast(id) {
+  try {
+    const rdata = await api('/api/admin/restaurants', {});
+    const rests = rdata.restaurants || [];
+    const opts = rests.map(r => `<option value="${esc(r.key)}">${esc(r.name)}</option>`).join('');
+    openModal('Рассылка новости', `
+      <div class="form-group">
+        <label>Кому</label>
+        <select class="form-select" id="bc-target">
+          <option value="">🌍 Всем сотрудникам</option>
+          ${opts}
+        </select>
+      </div>
+      <div class="form-hint">Рассылка идёт в фоне, придёт отчёт в Telegram.</div>
+    `, `
+      <button class="btn ghost" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" id="do-bc-btn">Разослать</button>
+    `);
+    $('do-bc-btn').addEventListener('click', async () => {
+      const target = $('bc-target').value || null;
+      try {
+        await api('/api/admin/news/broadcast', { id, restaurant_key: target });
+        toast('Рассылка запущена', 'success'); closeModal();
+      } catch (e) { toast('Ошибка', 'error'); }
+    });
+  } catch (e) { toast('Ошибка', 'error'); }
+}
+
+/* ================== STANDARDS ================== */
+async function loadStandards() {
+  $('page-actions').innerHTML = '<button class="btn primary small" id="std-add-btn">+ Добавить</button>';
+  $('std-add-btn').addEventListener('click', openStandardAdd);
+  try {
+    const data = await api('/api/admin/standards', {});
+    const list = data.standards || [];
+    const rows = list.map(s => `
+      <tr>
+        <td><b>${esc(s.title)}</b></td>
+        <td>${esc(s.category || '—')}</td>
+        <td style="max-width:400px;font-size:12px;color:var(--text-muted);">${esc((s.description||'').substring(0,120))}${s.description.length>120?'…':''}</td>
+        <td class="actions-cell">
+          <button class="icon-btn" data-edit="${s.id}" title="Редактировать">✏️</button>
+          <button class="icon-btn danger" data-del="${s.id}" title="Удалить">🗑</button>
+        </td>
+      </tr>
+    `).join('');
+    $('page-content').innerHTML = `
+      <div class="table-card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Название</th><th>Категория</th><th>Описание</th><th></th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="4"><div class="empty">Стандартов нет</div></td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+    document.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openStandardEdit(parseInt(b.dataset.edit), list)));
+    document.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('Удалить?')) return;
+      try { await api('/api/admin/standard/delete', { id: parseInt(b.dataset.del) }); toast('Удалено', 'success'); loadStandards(); }
+      catch (e) { toast('Ошибка', 'error'); }
+    }));
+  } catch (e) { $('page-content').innerHTML = '<div class="empty">Ошибка</div>'; }
+}
+
+function openStandardAdd() {
+  openModal('Новый стандарт', `
+    <div class="form-group"><label>Название</label><input class="form-input" id="s-title"></div>
+    <div class="form-group"><label>Категория</label><input class="form-input" id="s-cat" placeholder="Технология"></div>
+    <div class="form-group"><label>Описание</label><textarea class="form-textarea" id="s-desc"></textarea></div>
+    <div class="form-group"><label>Ссылка (необязательно)</label><input class="form-input" id="s-url" placeholder="https://…"></div>
+  `, `
+    <button class="btn ghost" onclick="closeModal()">Отмена</button>
+    <button class="btn primary" id="create-std-btn">Создать</button>
+  `);
+  $('create-std-btn').addEventListener('click', async () => {
+    try {
+      await api('/api/admin/standard/add', {
+        title: $('s-title').value.trim(),
+        category: $('s-cat').value.trim(),
+        description: $('s-desc').value.trim(),
+        url: $('s-url').value.trim(),
+      });
+      toast('Создан', 'success'); closeModal(); loadStandards();
+    } catch (e) { toast('Ошибка', 'error'); }
+  });
+}
+
+function openStandardEdit(id, list) {
+  const s = list.find(x => x.id === id);
+  if (!s) return;
+  openModal('Редактирование', `
+    <div class="form-group"><label>Название</label><input class="form-input" id="se-title" value="${esc(s.title)}"></div>
+    <div class="form-group"><label>Категория</label><input class="form-input" id="se-cat" value="${esc(s.category)}"></div>
+    <div class="form-group"><label>Описание</label><textarea class="form-textarea" id="se-desc">${esc(s.description)}</textarea></div>
+    <div class="form-group"><label>Ссылка</label><input class="form-input" id="se-url" value="${esc(s.url)}"></div>
+  `, `
+    <button class="btn ghost" onclick="closeModal()">Отмена</button>
+    <button class="btn primary" id="save-std-btn">Сохранить</button>
+  `);
+  $('save-std-btn').addEventListener('click', async () => {
+    const upd = [
+      ['title', $('se-title').value.trim()],
+      ['category', $('se-cat').value.trim()],
+      ['description', $('se-desc').value.trim()],
+      ['url', $('se-url').value.trim()],
+    ];
+    try {
+      for (const [field, value] of upd) {
+        await api('/api/admin/standard/update', { id, field, value });
+      }
+      toast('Сохранено', 'success'); closeModal(); loadStandards();
+    } catch (e) { toast('Ошибка', 'error'); }
+  });
+}
+
+/* ================== FAQ ================== */
+async function loadFaq() {
+  $('page-actions').innerHTML = '<button class="btn primary small" id="faq-add-btn">+ Добавить</button>';
+  $('faq-add-btn').addEventListener('click', openFaqAdd);
+  try {
+    const data = await api('/api/admin/faq', {});
+    const list = data.faq || [];
+    const rows = list.map(f => `
+      <tr>
+        <td><b>${esc(f.question)}</b></td>
+        <td style="max-width:400px;font-size:12px;color:var(--text-muted);">${esc((f.answer||'').substring(0,120))}${f.answer.length>120?'…':''}</td>
+        <td class="actions-cell">
+          <button class="icon-btn" data-edit="${f.id}" title="Редактировать">✏️</button>
+          <button class="icon-btn danger" data-del="${f.id}" title="Удалить">🗑</button>
+        </td>
+      </tr>
+    `).join('');
+    $('page-content').innerHTML = `
+      <div class="table-card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Вопрос</th><th>Ответ</th><th></th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="3"><div class="empty">Вопросов нет</div></td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+    document.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openFaqEdit(parseInt(b.dataset.edit), list)));
+    document.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('Удалить?')) return;
+      try { await api('/api/admin/faq/delete', { id: parseInt(b.dataset.del) }); toast('Удалено', 'success'); loadFaq(); }
+      catch (e) { toast('Ошибка', 'error'); }
+    }));
+  } catch (e) { $('page-content').innerHTML = '<div class="empty">Ошибка</div>'; }
+}
+
+function openFaqAdd() {
+  openModal('Новый вопрос', `
+    <div class="form-group"><label>Вопрос</label><textarea class="form-textarea" id="f-q" rows="2"></textarea></div>
+    <div class="form-group"><label>Ответ</label><textarea class="form-textarea" id="f-a" rows="4"></textarea></div>
+    <div class="form-group"><label>Категория (необязательно)</label><input class="form-input" id="f-cat"></div>
+  `, `
+    <button class="btn ghost" onclick="closeModal()">Отмена</button>
+    <button class="btn primary" id="create-faq-btn">Создать</button>
+  `);
+  $('create-faq-btn').addEventListener('click', async () => {
+    try {
+      await api('/api/admin/faq/add', {
+        question: $('f-q').value.trim(),
+        answer: $('f-a').value.trim(),
+        category: $('f-cat').value.trim(),
+      });
+      toast('Создан', 'success'); closeModal(); loadFaq();
+    } catch (e) { toast('Ошибка', 'error'); }
+  });
+}
+
+function openFaqEdit(id, list) {
+  const f = list.find(x => x.id === id);
+  if (!f) return;
+  openModal('Редактирование', `
+    <div class="form-group"><label>Вопрос</label><textarea class="form-textarea" id="fe-q" rows="2">${esc(f.question)}</textarea></div>
+    <div class="form-group"><label>Ответ</label><textarea class="form-textarea" id="fe-a" rows="4">${esc(f.answer)}</textarea></div>
+  `, `
+    <button class="btn ghost" onclick="closeModal()">Отмена</button>
+    <button class="btn primary" id="save-faq-btn">Сохранить</button>
+  `);
+  $('save-faq-btn').addEventListener('click', async () => {
+    try {
+      await api('/api/admin/faq/update', { id, field: 'question', value: $('fe-q').value.trim() });
+      await api('/api/admin/faq/update', { id, field: 'answer', value: $('fe-a').value.trim() });
+      toast('Сохранено', 'success'); closeModal(); loadFaq();
+    } catch (e) { toast('Ошибка', 'error'); }
+  });
+}
+
+/* ================== POSITIONS ================== */
+async function loadPositions() {
+  $('page-actions').innerHTML = '<button class="btn primary small" id="pos-add-btn">+ Добавить</button>';
+  $('pos-add-btn').addEventListener('click', openPositionAdd);
+  try {
+    const data = await api('/api/admin/positions', {});
+    const list = data.positions || [];
+    const active = list.filter(p => !p.is_archived);
+    const arch = list.filter(p => p.is_archived);
+    const rows = active.map(p => `
+      <tr>
+        <td><b>${esc(p.name)}</b></td>
+        <td>${p.sort}</td>
+        <td class="actions-cell">
+          <button class="icon-btn danger" data-arch="${p.id}" title="Архивировать">📦</button>
+        </td>
+      </tr>
+    `).join('');
+    $('page-content').innerHTML = `
+      <div class="table-card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Активные (${active.length})</th><th>Sort</th><th></th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="3"><div class="empty">Нет должностей</div></td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>
+      ${arch.length ? `
+        <div class="table-card" style="margin-top:20px;">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>📦 Архив (${arch.length})</th></tr></thead>
+              <tbody>${arch.map(p => `<tr><td style="color:var(--text-muted);text-decoration:line-through;">${esc(p.name)}</td></tr>`).join('')}</tbody>
+            </table>
+          </div>
+        </div>
+      ` : ''}
+    `;
+    document.querySelectorAll('[data-arch]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('В архив?')) return;
+      try { await api('/api/admin/position/archive', { id: parseInt(b.dataset.arch) }); toast('В архиве', 'success'); loadPositions(); }
+      catch (e) { toast('Ошибка', 'error'); }
+    }));
+  } catch (e) { $('page-content').innerHTML = '<div class="empty">Ошибка</div>'; }
+}
+
+function openPositionAdd() {
+  openModal('Новая должность', `
+    <div class="form-group"><label>Название</label><input class="form-input" id="p-name" placeholder="Например: Стажёр"></div>
+  `, `
+    <button class="btn ghost" onclick="closeModal()">Отмена</button>
+    <button class="btn primary" id="create-pos-btn">Создать</button>
+  `);
+  $('create-pos-btn').addEventListener('click', async () => {
+    try {
+      const res = await api('/api/admin/position/add', { name: $('p-name').value.trim() });
+      if (res.ok) { toast('Создана', 'success'); closeModal(); loadPositions(); }
+      else toast('Уже существует', 'error');
+    } catch (e) { toast('Ошибка', 'error'); }
+  });
+}
+
+/* ================== QUESTIONS ================== */
+async function loadQuestions() {
+  try {
+    const data = await api('/api/admin/questions', {});
+    const list = data.questions || [];
+    const rows = list.map(q => `
+      <tr>
+        <td><code style="font-size:11px;">${q.user_id}</code></td>
+        <td><b>${esc(q.full_name || '—')}</b></td>
+        <td style="max-width:400px;">${esc(q.text)}</td>
+        <td>${q.replied ? '<span class="tag green">✅ Отвечен</span>' : '<span class="tag amber">❓ Открыт</span>'}</td>
+        <td style="font-size:12px;color:var(--text-muted);">${fmtDate(q.created_at, true)}</td>
+        <td class="actions-cell">
+          ${!q.replied ? `<button class="icon-btn" data-reply="${q.id}" title="Ответить">✍️</button>` : ''}
+          <button class="icon-btn" data-user="${q.user_id}" title="Профиль">👤</button>
+        </td>
+      </tr>
+    `).join('');
+    $('page-content').innerHTML = `
+      <div class="table-card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>User ID</th><th>Кто</th><th>Вопрос</th><th>Статус</th><th>Когда</th><th></th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="6"><div class="empty">Вопросов нет</div></td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+    document.querySelectorAll('[data-reply]').forEach(b => b.addEventListener('click', () => openReply(parseInt(b.dataset.reply), list)));
+    document.querySelectorAll('[data-user]').forEach(b => b.addEventListener('click', () => openUserEditor(parseInt(b.dataset.user))));
+    refreshQuestionCount();
+  } catch (e) { $('page-content').innerHTML = '<div class="empty">Ошибка</div>'; }
+}
+
+function openReply(id, list) {
+  const q = list.find(x => x.id === id);
+  if (!q) return;
+  openModal('Ответ на вопрос', `
+    <div class="form-group"><label>Вопрос</label><div style="background:#F8F9FA;padding:12px;border-radius:10px;font-size:14px;">${esc(q.text)}</div></div>
+    <div class="form-group"><label>Ответ</label><textarea class="form-textarea" id="reply-text" rows="4"></textarea></div>
+    <div class="form-hint">Ответ уйдёт пользователю в Telegram-бот.</div>
+  `, `
+    <button class="btn ghost" onclick="closeModal()">Отмена</button>
+    <button class="btn primary" id="send-reply-btn">Отправить</button>
+  `);
+  $('send-reply-btn').addEventListener('click', async () => {
+    const text = $('reply-text').value.trim();
+    if (!text) { toast('Введите текст', 'error'); return; }
+    try {
+      const res = await api('/api/admin/question/reply', { id, text });
+      if (res.sent) toast('Отправлено', 'success');
+      else toast('Сохранено, но не доставлено', 'error');
+      closeModal(); loadQuestions();
+    } catch (e) { toast('Ошибка', 'error'); }
+  });
+}
+
+/* ================== REPORTS ================== */
+async function loadReports() {
+  $('page-actions').innerHTML = `
+    <button class="btn ghost small" id="exp-users">📤 CSV пользователей</button>
+    <button class="btn ghost small" id="exp-news">📤 CSV новостей</button>
+  `;
+  $('exp-users').addEventListener('click', exportUsers);
+  $('exp-news').addEventListener('click', async () => {
+    try { const { csv } = await api('/api/admin/export/news', {}); downloadCsv(csv, 'news.csv'); }
+    catch (e) { toast('Ошибка', 'error'); }
+  });
+  try {
+    const { report } = await api('/api/admin/reports', {});
+    $('page-content').innerHTML = `
+      <div class="stats-grid">
+        <div class="stat-card"><div class="label">Всего</div><div class="value">${report.total}</div></div>
+        <div class="stat-card green"><div class="label">Активных</div><div class="value">${report.active}</div></div>
+        <div class="stat-card accent"><div class="label">Заблокировано</div><div class="value">${report.blocked}</div></div>
+        <div class="stat-card"><div class="label">Новых за 7д</div><div class="value">${report.new7}</div></div>
+        <div class="stat-card amber"><div class="label">Неактивных 7+</div><div class="value">${report.inactive7}</div></div>
+      </div>
+    `;
+  } catch (e) { $('page-content').innerHTML = '<div class="empty">Ошибка</div>'; }
+}
+
+/* ================== AUDIT ================== */
+async function loadAudit() {
+  try {
+    const data = await api('/api/admin/audit', {});
+    const list = data.audit || [];
+    const rows = list.map(a => `
+      <tr>
+        <td style="font-size:12px;color:var(--text-muted);white-space:nowrap;">${fmtDate(a.created_at, true)}</td>
+        <td><code style="font-size:11px;">${esc(a.action)}</code></td>
+        <td>${esc(a.target_type)}:${esc(a.target_id)}</td>
+        <td style="font-size:12px;">${esc((a.details || '').substring(0, 80))}</td>
+      </tr>
+    `).join('');
+    $('page-content').innerHTML = `
+      <div class="table-card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Когда</th><th>Действие</th><th>Цель</th><th>Детали</th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="4"><div class="empty">История пуста</div></td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  } catch (e) { $('page-content').innerHTML = '<div class="empty">Ошибка</div>'; }
+}
+
+/* ================== INIT ================== */
+(async function init() {
+  if (!getToken()) { showLogin(); return; }
+  await checkAdminAndLoad();
+})();
+</script>
+</body>
+</html>

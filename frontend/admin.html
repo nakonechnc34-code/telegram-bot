@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Wokker · Админ</title>
 <style>
   :root {
@@ -24,6 +24,7 @@
   button, input, select, textarea { font-family: inherit; font-size: inherit; }
   button { cursor: pointer; }
 
+  /* ============ LOGIN ============ */
   #login-screen {
     position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
     background: linear-gradient(135deg, #1C1C1E 0%, #2C2C2E 100%); z-index: 2000;
@@ -51,6 +52,7 @@
   .login-error { color: var(--accent); font-size: 13px; min-height: 18px;
     margin-top: 10px; font-weight: 600; line-height: 1.4; }
 
+  /* ============ APP ============ */
   #app { display: none; min-height: 100vh; }
   .layout { display: flex; min-height: 100vh; }
   .sidebar {
@@ -88,11 +90,17 @@
   .sidebar-footer .badge-role.regular { background: rgba(255,255,255,0.2); color: #fff; }
   .sidebar-footer button {
     background: rgba(255,255,255,0.1); border: 0; color: #fff;
-    padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 600;
+    padding: 10px 12px; border-radius: 8px; font-size: 13px; font-weight: 600;
     width: 100%; margin-top: 6px;
   }
   .sidebar-footer button:hover { background: rgba(255,255,255,0.2); }
   .sidebar-footer button.danger:hover { background: rgba(255,59,48,0.7); }
+
+  .sidebar-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    z-index: 150; display: none;
+  }
+  .sidebar-overlay.show { display: block; }
 
   .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .topbar {
@@ -100,9 +108,19 @@
     display: flex; align-items: center; justify-content: space-between; gap: 16px;
     position: sticky; top: 0; z-index: 50;
   }
-  .topbar h2 { font-size: 20px; font-weight: 800; letter-spacing: -0.3px; }
-  .topbar .actions { display: flex; gap: 8px; align-items: center; }
+  .topbar-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .topbar h2 { font-size: 20px; font-weight: 800; letter-spacing: -0.3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .topbar .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
   .content { padding: 24px 32px; flex: 1; }
+
+  .hamburger {
+    display: none;
+    background: #F2F2F7; border: 0; border-radius: 10px;
+    width: 40px; height: 40px; font-size: 20px;
+    align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .hamburger:hover { background: #E5E5EA; }
 
   .btn { border: 0; border-radius: 10px; padding: 10px 18px; font-size: 13px; font-weight: 600;
     display: inline-flex; align-items: center; gap: 6px; background: #F2F2F7; color: var(--text-main); }
@@ -116,7 +134,7 @@
   .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .table-card { background: var(--card-bg); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
-  .table-wrap { overflow-x: auto; }
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   table { width: 100%; border-collapse: collapse; }
   th, td { padding: 14px 18px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; }
   th { background: #F8F9FA; font-weight: 700; font-size: 11px;
@@ -191,7 +209,7 @@
     font-size: 18px; display: flex; align-items: center; justify-content: center; }
   .modal-body { padding: 24px; }
   .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border);
-    display: flex; justify-content: space-between; gap: 8px; position: sticky; bottom: 0; background: #fff; }
+    display: flex; justify-content: space-between; gap: 8px; position: sticky; bottom: 0; background: #fff; flex-wrap: wrap; }
   .modal-footer .right-side { display: flex; gap: 8px; }
   .form-group { margin-bottom: 16px; }
   .form-group label { display: block; font-size: 12px; font-weight: 700; color: var(--text-muted);
@@ -240,15 +258,15 @@
     border-radius: 14px; padding: 16px 20px; margin-bottom: 12px;
     border: 1px solid rgba(255,149,0,0.25);
   }
-  .pending-card .pc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .pending-card .pc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; flex-wrap: wrap; }
   .pending-card .pc-author { font-size: 12px; color: #C77700; font-weight: 700; }
   .pending-card .pc-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
   .pending-card .pc-body { font-size: 13px; color: #6B5A2E; margin-bottom: 12px; line-height: 1.4; }
-  .pending-card .pc-actions { display: flex; gap: 8px; }
+  .pending-card .pc-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
-  .subtabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+  .subtabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .subtab { background: none; border: 0; padding: 10px 16px; font-size: 13px; font-weight: 600;
-    color: var(--text-muted); border-bottom: 2px solid transparent; cursor: pointer; }
+    color: var(--text-muted); border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap; }
   .subtab.active { color: var(--accent); border-bottom-color: var(--accent); }
   .subtab:hover { color: var(--text-main); }
   .subtab .tab-count { display: inline-block; background: #F2F2F7; color: var(--text-muted);
@@ -308,6 +326,103 @@
   @keyframes slideIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
   .loading { text-align: center; padding: 60px; color: var(--text-muted); }
+
+  /* ============================================================
+     АДАПТИВ ДЛЯ ПЛАНШЕТОВ И ТЕЛЕФОНОВ
+     ============================================================ */
+  @media (max-width: 900px) {
+    /* Сайдбар превращается в выдвижное меню */
+    .layout { display: block; }
+    .sidebar {
+      position: fixed; top: 0; left: 0; bottom: 0;
+      height: 100vh; height: 100dvh;
+      width: 280px; max-width: 85vw;
+      transform: translateX(-100%);
+      transition: transform 0.25s ease;
+      z-index: 200;
+      padding-top: max(20px, env(safe-area-inset-top));
+    }
+    .sidebar.open { transform: translateX(0); }
+    .hamburger { display: inline-flex; }
+    .main { width: 100%; }
+    .topbar {
+      padding: 12px 16px;
+      padding-top: max(12px, env(safe-area-inset-top));
+    }
+    .topbar h2 { font-size: 17px; }
+    .topbar .actions { gap: 6px; }
+    .content { padding: 16px; }
+
+    /* Модалки почти на весь экран */
+    .modal-overlay { padding: 12px; }
+    .modal { max-width: 100%; border-radius: 14px; }
+    .modal-body { padding: 16px; }
+    .modal-header { padding: 14px 16px; }
+    .modal-header h3 { font-size: 16px; }
+    .modal-footer { padding: 12px 16px; }
+
+    /* Форма — в одну колонку */
+    .form-row { grid-template-columns: 1fr; gap: 0; }
+    .perm-grid { grid-template-columns: 1fr; }
+
+    /* Поля — 16px, чтобы iOS не зумил при фокусе */
+    .form-input, .form-select, .form-textarea,
+    .login-input, .q, .search-bar input, .medbook-row input {
+      font-size: 16px;
+      min-height: 44px;
+    }
+
+    /* Таблицы компактнее */
+    th, td { padding: 10px 12px; font-size: 12px; }
+    th { font-size: 10px; }
+
+    /* Сетка статистики в 2 колонки */
+    .stats-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat-card { padding: 14px; border-radius: 12px; }
+    .stat-card .label { font-size: 10px; margin-bottom: 4px; }
+    .stat-card .value { font-size: 22px; }
+    .stat-card .hint { font-size: 10px; }
+
+    .chart-card { padding: 16px; }
+    .search-bar { flex-wrap: wrap; }
+    .search-bar input { max-width: 100%; }
+
+    /* Кнопки действий — крупнее для тапа */
+    .icon-btn { width: 36px; height: 36px; font-size: 16px; }
+    .btn.small { padding: 8px 12px; font-size: 12px; min-height: 36px; }
+
+    /* Медкнижка — компактнее */
+    .medbook-row { grid-template-columns: 1fr 120px 75px; gap: 8px; font-size: 12px; }
+    .medbook-row input { padding: 8px 6px; font-size: 14px; }
+    .ref-row { grid-template-columns: 1fr 80px 60px 60px; gap: 6px; font-size: 12px; }
+    .ref-row .ref-badge { font-size: 10px; padding: 2px 5px; }
+
+    /* Тосты снизу на всю ширину */
+    .toast-container { bottom: 16px; right: 12px; left: 12px; align-items: stretch; }
+    .toast { max-width: 100%; text-align: center; }
+
+    /* Login */
+    .login-card { padding: 28px 20px; }
+    .login-card h1 { font-size: 22px; }
+    .login-logo { width: 52px; height: 52px; font-size: 26px; }
+  }
+
+  @media (max-width: 480px) {
+    .topbar h2 { font-size: 15px; }
+    .btn { padding: 8px 12px; font-size: 12px; }
+    .btn.small { padding: 6px 10px; font-size: 11px; }
+    .stats-grid { grid-template-columns: 1fr; }
+    .content { padding: 12px; }
+    .modal-overlay { padding: 0; align-items: flex-end; }
+    .modal {
+      border-radius: 16px 16px 0 0;
+      max-height: 92vh; max-height: 92dvh;
+    }
+    .pending-card { padding: 14px 16px; }
+    .pending-card .pc-actions .btn { flex: 1; }
+    .medbook-row { grid-template-columns: 1fr 110px 65px; }
+    .ref-row { grid-template-columns: 1fr 70px 55px 55px; }
+  }
 </style>
 </head>
 <body>
@@ -318,7 +433,7 @@
     <h1>Wokker Admin</h1>
     <div class="sub">Вход в панель управления</div>
     <input class="login-input" id="login-login" type="text" placeholder="Логин" maxlength="5"
-           style="text-transform: lowercase;" autocomplete="username">
+           style="text-transform: lowercase;" autocomplete="username" inputmode="text">
     <input class="login-input" id="login-password" type="password" placeholder="Пароль"
            autocomplete="current-password">
     <button class="login-btn" id="login-btn">Войти</button>
@@ -328,7 +443,7 @@
 
 <div id="app">
   <div class="layout">
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
       <div class="sidebar-logo">🍜 Wokker <span class="badge">Admin</span></div>
       <nav id="nav">
         <button class="nav-item" data-sec="dashboard"><span class="ico">📊</span> Дашборд</button>
@@ -353,9 +468,14 @@
       </div>
     </aside>
 
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
     <div class="main">
       <div class="topbar">
-        <h2 id="page-title">Дашборд</h2>
+        <div class="topbar-left">
+          <button class="hamburger" id="hamburger" aria-label="Меню">☰</button>
+          <h2 id="page-title">Дашборд</h2>
+        </div>
         <div class="actions" id="page-actions"></div>
       </div>
       <div class="content" id="page-content"></div>
@@ -449,6 +569,24 @@ async function api(path, body) {
   return res.json();
 }
 
+/* ================== MOBILE SIDEBAR ================== */
+const sidebar = document.getElementById('sidebar');
+const sidebarOverlay = document.getElementById('sidebar-overlay');
+const hamburger = document.getElementById('hamburger');
+
+function openSidebar() {
+  sidebar.classList.add('open');
+  sidebarOverlay.classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+function closeSidebar() {
+  sidebar.classList.remove('open');
+  sidebarOverlay.classList.remove('show');
+  document.body.style.overflow = '';
+}
+if (hamburger) hamburger.addEventListener('click', openSidebar);
+if (sidebarOverlay) sidebarOverlay.addEventListener('click', closeSidebar);
+
 /* ================== PERMISSIONS ================== */
 function isSuperAdmin() { return !!(ME && ME.is_super_admin); }
 function isHR() { return !!(ME && ME.is_hr); }
@@ -535,9 +673,10 @@ $('logout-btn').addEventListener('click', async () => {
   try { await api('/api/auth/logout', {}); } catch (e) {}
   clearToken();
   ME = null;
+  closeSidebar();
   showLogin();
 });
-$('change-password-btn').addEventListener('click', openChangePassword);
+$('change-password-btn').addEventListener('click', () => { closeSidebar(); openChangePassword(); });
 
 /* ================== CHANGE PASSWORD ================== */
 function openChangePassword() {
@@ -589,7 +728,12 @@ const SECTION_LOADERS = {
   faq: loadFaq, positions: loadPositions, questions: loadQuestions,
   admins: loadAdmins, reports: loadReports, audit: loadAudit,
 };
-document.querySelectorAll('.nav-item').forEach(btn => btn.addEventListener('click', () => navigate(btn.dataset.sec)));
+document.querySelectorAll('.nav-item').forEach(btn => {
+  btn.addEventListener('click', () => {
+    closeSidebar();  // закрываем drawer на мобильных
+    navigate(btn.dataset.sec);
+  });
+});
 function navigate(sec) {
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.sec === sec));
   $('page-title').textContent = SECTION_TITLES[sec];
@@ -642,7 +786,7 @@ async function loadUsers(search) {
   _usersCurrentSearch = search || '';
   const canCreate = hasPerm('users_create');
   $('page-actions').innerHTML = `
-    ${canCreate ? '<button class="btn primary small" id="users-create">+ Создать сотрудника</button>' : ''}`;
+    ${canCreate ? '<button class="btn primary small" id="users-create">+ Создать</button>' : ''}`;
   if (canCreate) $('users-create').addEventListener('click', openUserCreate);
 
   $('page-content').innerHTML = `
@@ -663,9 +807,9 @@ async function loadUsers(search) {
 
   const thead = $('users-thead');
   if (_usersTab === 'fired') {
-    thead.innerHTML = '<tr><th>Логин</th><th>ФИО</th><th>Должность</th><th>Ресторан</th><th>Уволен</th><th>Кем</th><th></th></tr>';
+    thead.innerHTML = '<tr><th>Логин</th><th>ФИО</th><th>Должность</th><th>Уволен</th><th></th></tr>';
   } else {
-    thead.innerHTML = '<tr><th>Логин</th><th>ФИО</th><th>Телефон</th><th>Должность</th><th>Ресторан</th><th>Статусы</th><th>Медкнижка</th><th>Был(а)</th><th></th></tr>';
+    thead.innerHTML = '<tr><th>Логин</th><th>ФИО</th><th>Должность</th><th>Медкнижка</th><th></th></tr>';
   }
 
   const inp = $('users-search');
@@ -697,7 +841,7 @@ function renderUsersTbody(users) {
   const tbody = $('users-tbody');
   if (!tbody) return;
   if (!users.length) {
-    tbody.innerHTML = `<tr><td colspan="${_usersTab === 'fired' ? 7 : 9}"><div class="empty">${_usersTab === 'fired' ? 'Уволенных нет' : 'Нет сотрудников'}</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${_usersTab === 'fired' ? 5 : 5}"><div class="empty">${_usersTab === 'fired' ? 'Уволенных нет' : 'Нет сотрудников'}</div></td></tr>`;
     return;
   }
   const canEdit = hasPerm('users_edit');
@@ -711,36 +855,25 @@ function renderUsersTbody(users) {
           <td>${u.login ? `<span class="login-cell">${esc(u.login)}</span>` : '<span class="tag gray">нет</span>'}</td>
           <td><b>${esc(u.full_name || '—')}</b></td>
           <td>${esc(u.position || '—')}</td>
-          <td>${esc(u.restaurant_name || '—')}</td>
           <td style="font-size:12px;color:var(--text-muted);">${fmtDate(u.fired_at, false)}</td>
-          <td style="font-size:12px;color:var(--text-muted);">${esc(u.fired_by || '—')}</td>
           <td class="actions-cell">
             ${canFire ? `<button class="icon-btn restore" data-restore="${u.user_id}" title="Восстановить">↩️</button>` : ''}
           </td>
         </tr>`;
     }
-    const tags = [];
-    if (u.is_super_admin) tags.push('<span class="tag purple">👑</span>');
-    else if (u.is_admin) tags.push('<span class="tag blue">🛡</span>');
-    if (u.is_certified) tags.push('<span class="tag green">📜</span>');
-    else tags.push('<span class="tag gray">📜</span>');
     const mbStatus = u.medbook_status || 'invalid';
     let mbTag = '';
     if (u.is_admin) mbTag = '<span class="tag gray">—</span>';
-    else if (mbStatus === 'ok') mbTag = '<span class="tag green">✅ Действительна</span>';
-    else if (mbStatus === 'expiring') mbTag = '<span class="tag amber">⚠️ Скоро истекает</span>';
-    else mbTag = '<span class="tag red">❌ Недействительна</span>';
+    else if (mbStatus === 'ok') mbTag = '<span class="tag green">✅</span>';
+    else if (mbStatus === 'expiring') mbTag = '<span class="tag amber">⚠️</span>';
+    else mbTag = '<span class="tag red">❌</span>';
     const showFireBtn = canFire && !u.is_super_admin && u.user_id !== ME.user_id;
     return `
       <tr class="row-clickable" data-uid="${u.user_id}">
         <td>${u.login ? `<span class="login-cell">${esc(u.login)}</span>` : '<span class="tag gray">нет</span>'}</td>
         <td><b>${esc(u.full_name || '—')}</b></td>
-        <td>${esc(u.phone || '—')}</td>
         <td>${esc(u.position || '—')}</td>
-        <td>${esc(u.restaurant_name || '—')}</td>
-        <td><div class="tag-stack">${tags.join('')}</div></td>
         <td>${mbTag}</td>
-        <td style="font-size:12px;color:var(--text-muted);">${fmtDate(u.last_seen_at, false)}</td>
         <td class="actions-cell">
           ${!u.is_admin && canMedbook ? `<button class="icon-btn" data-medbook="${u.user_id}" title="Медкнижка">🩺</button>` : ''}
           ${canEdit ? `<button class="icon-btn" data-edit="${u.user_id}">✏️</button>` : ''}
@@ -779,15 +912,26 @@ function openUserCreate() {
   ]).then(([restData, posData]) => {
     const restOpts = restData.restaurants.map(r => `<option value="${esc(r.key)}">${esc(r.name)}</option>`).join('');
     const posOpts = posData.positions.filter(p => !p.is_archived).map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');
+
     openModal('Создать сотрудника', `
       <div class="form-group">
         <label>ФИО</label>
         <input class="form-input" id="nc-name" placeholder="Иванов Иван Иванович" autocomplete="off">
         <div class="form-hint">Логин будет сгенерирован из фамилии автоматически</div>
       </div>
-      <div class="form-group"><label>Пароль</label><input class="form-input" id="nc-password" placeholder="Минимум 6 символов"></div>
+
+      <div class="login-preview" id="login-preview" style="display:none;">
+        <div class="lp-icon">🔑</div>
+        <div style="flex:1;">
+          <div class="lp-label">Логин будет выдан</div>
+          <div class="lp-value" id="lp-value">—</div>
+          <div class="lp-hint">Изменять нельзя. Сотрудник увидит его после создания.</div>
+        </div>
+      </div>
+
+      <div class="form-group"><label>Пароль</label><input class="form-input" id="nc-password" placeholder="Минимум 6 символов"><div class="form-hint">Сотрудник сможет сменить после первого входа</div></div>
       <div class="form-row">
-        <div class="form-group"><label>Телефон</label><input class="form-input" id="nc-phone"></div>
+        <div class="form-group"><label>Телефон</label><input class="form-input" id="nc-phone" inputmode="tel"></div>
         <div class="form-group"><label>Дата рождения</label><input class="form-input" id="nc-birth" placeholder="ДД.ММ.ГГГГ"></div>
       </div>
       <div class="form-row">
@@ -795,15 +939,44 @@ function openUserCreate() {
         <div class="form-group"><label>Ресторан</label><select class="form-select" id="nc-restaurant"><option value="">—</option>${restOpts}</select></div>
       </div>
       <div class="form-group"><div class="checkbox-row"><input type="checkbox" id="nc-cert"><label for="nc-cert">Сертификация пройдена</label></div></div>
+      <div class="form-hint" style="font-size:12px;color:var(--text-muted);">Медкнижку можно заполнить после создания в разделе «Медкнижки»</div>
       <div class="form-hint error" id="nc-error"></div>
     `, `<button class="btn ghost" onclick="closeModal()">Отмена</button><button class="btn primary" id="nc-save">Создать</button>`);
+
+    // === ЖИВОЙ ПРЕДПРОСМОТР ЛОГИНА ===
+    function previewLogin(name) {
+      const translit = {"а":"a","б":"b","в":"v","г":"g","д":"d","е":"e","ё":"e","ж":"zh","з":"z","и":"i","й":"y","к":"k","л":"l","м":"m","н":"n","о":"o","п":"p","р":"r","с":"s","т":"t","у":"u","ф":"f","х":"h","ц":"ts","ч":"ch","ш":"sh","щ":"sch","ъ":"","ы":"y","ь":"","э":"e","ю":"yu","я":"ya"};
+      const parts = (name || "").trim().split(/\s+/);
+      const surname = (parts[0] || "").toLowerCase();
+      let letters = "";
+      for (const ch of surname) {
+        if (letters.length >= 3) break;
+        const t = translit[ch];
+        if (t) letters += t;
+      }
+      while (letters.length < 3) letters += "abcdefghijklmnopqrstuvwxyz"[Math.floor(Math.random() * 26)];
+      const rnd = Math.floor(Math.random() * 90) + 10;
+      return letters.slice(0, 3) + rnd;
+    }
+
+    $('nc-name').addEventListener('input', (e) => {
+      const name = e.target.value.trim();
+      const p = $('login-preview');
+      if (!name) { p.style.display = 'none'; return; }
+      p.style.display = 'flex';
+      $('lp-value').textContent = previewLogin(name);
+    });
+
+    // === СОЗДАНИЕ ===
     $('nc-save').addEventListener('click', async () => {
       const errEl = $('nc-error');
       errEl.textContent = '';
       const name = $('nc-name').value.trim();
       const password = $('nc-password').value;
+
       if (!name) { errEl.textContent = 'Введите ФИО'; return; }
-      if (!password || password.length < 6) { errEl.textContent = 'Пароль минимум 6'; return; }
+      if (!password || password.length < 6) { errEl.textContent = 'Пароль должен быть минимум 6 символов'; return; }
+
       try {
         const res = await api('/api/admin/user/create', {
           password, full_name: name,
@@ -812,6 +985,7 @@ function openUserCreate() {
           is_certified: $('nc-cert').checked,
         });
         closeModal();
+
         openModal('✅ Сотрудник создан', `
           <div style="text-align:center; padding: 10px 0;">
             <div style="font-size:48px; margin-bottom:12px;">🎉</div>
@@ -824,9 +998,16 @@ function openUserCreate() {
             </div>
           </div>
         `, `<button class="btn primary" id="after-create-ok">Понятно</button>`);
-        $('after-create-ok').addEventListener('click', () => { closeModal(); refreshUsersTable(_usersCurrentSearch); });
+
+        $('after-create-ok').addEventListener('click', () => {
+            closeModal();
+            refreshUsersTable(_usersCurrentSearch);
+        });
       } catch (e) {
-        const map = { invalid: 'Проверьте данные', forbidden: 'Нет права' };
+        const map = {
+            invalid: 'Проверьте данные (пароль минимум 6 символов)',
+            forbidden: 'Нет права'
+        };
         errEl.textContent = map[e.message] || 'Ошибка: ' + e.message;
       }
     });
@@ -859,7 +1040,7 @@ async function openUserEditor(uid) {
       ${canEdit ? `<div class="form-group"><label>Новый пароль</label><input class="form-input" id="eu-password" placeholder="Оставьте пустым"></div>` : ''}
       <div class="form-group"><label>ФИО</label><input class="form-input" id="eu-name" value="${esc(u.full_name)}" ${canEdit?'':'disabled'}></div>
       <div class="form-row">
-        <div class="form-group"><label>Телефон</label><input class="form-input" id="eu-phone" value="${esc(u.phone)}" ${canEdit?'':'disabled'}></div>
+        <div class="form-group"><label>Телефон</label><input class="form-input" id="eu-phone" value="${esc(u.phone)}" inputmode="tel" ${canEdit?'':'disabled'}></div>
         <div class="form-group"><label>Дата рождения</label><input class="form-input" id="eu-birth" value="${esc(u.birth_date)}" ${canEdit?'':'disabled'}></div>
       </div>
       <div class="form-row">
@@ -936,17 +1117,16 @@ async function loadMedbooks() {
     const staff = data.users || [];
     const rows = staff.map(u => {
       let statusTag = '';
-      if (u.medbook_status === 'ok') statusTag = '<span class="tag green">✅ Действительна</span>';
-      else if (u.medbook_status === 'expiring') statusTag = '<span class="tag amber">⚠️ Скоро истекает</span>';
-      else statusTag = `<span class="tag red">❌ Не заполнено ${u.missing}/${u.total}</span>`;
+      if (u.medbook_status === 'ok') statusTag = '<span class="tag green">✅</span>';
+      else if (u.medbook_status === 'expiring') statusTag = '<span class="tag amber">⚠️</span>';
+      else statusTag = `<span class="tag red">❌ ${u.missing}/${u.total}</span>`;
       return `
         <tr class="row-clickable" data-mb-user="${u.user_id}">
           <td><b>${esc(u.full_name)}</b></td>
           <td>${esc(u.position || '—')}</td>
-          <td>${esc(u.restaurant_name || '—')}</td>
           <td>${statusTag}</td>
           <td class="actions-cell">
-            ${canEdit ? `<button class="icon-btn" data-mb-edit="${u.user_id}" title="Заполнить">🩺</button>` : '<span style="color:var(--text-muted);font-size:12px;">нет права</span>'}
+            ${canEdit ? `<button class="icon-btn" data-mb-edit="${u.user_id}" title="Заполнить">🩺</button>` : '<span style="color:var(--text-muted);font-size:11px;">🔒</span>'}
           </td>
         </tr>`;
     }).join('');
@@ -956,13 +1136,13 @@ async function loadMedbooks() {
     contentHtml = `
       <div class="stats-grid" style="margin-bottom:20px;">
         <div class="stat-card green"><div class="label">Действительны</div><div class="value">${ok}</div></div>
-        <div class="stat-card amber"><div class="label">Скоро истекают</div><div class="value">${expiring}</div><div class="hint">в течение 30 дней</div></div>
-        <div class="stat-card accent"><div class="label">Недействительны</div><div class="value">${invalid}</div><div class="hint">есть пустые или просроченные</div></div>
+        <div class="stat-card amber"><div class="label">Скоро истекают</div><div class="value">${expiring}</div></div>
+        <div class="stat-card accent"><div class="label">Недействительны</div><div class="value">${invalid}</div></div>
       </div>
       ${!canEdit ? '<div class="card" style="margin-bottom:16px;padding:12px 16px;background:#F8F9FA;font-size:13px;color:var(--text-muted);">🔒 Нет права заполнять медкнижки</div>' : ''}
       <div class="table-card"><div class="table-wrap"><table>
-        <thead><tr><th>ФИО</th><th>Должность</th><th>Ресторан</th><th>Медкнижка</th><th></th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="5"><div class="empty">Нет сотрудников</div></td></tr>'}</tbody>
+        <thead><tr><th>ФИО</th><th>Должность</th><th>Статус</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="4"><div class="empty">Нет сотрудников</div></td></tr>'}</tbody>
       </table></div></div>`;
   } else {
     const typeMap = { doctors: 'doctor', tests: 'test', vaccines: 'vaccine' };
@@ -974,8 +1154,8 @@ async function loadMedbooks() {
     const rows = list.map(item => `
       <div class="ref-row">
         <div class="ref-name">${esc(item.name)}</div>
-        <div style="text-align:center;">${item.required ? '<span class="ref-badge req">Обязательно</span>' : '<span class="ref-badge opt">Не обязательно</span>'}</div>
-        <div class="ref-months">${item.validity_months} мес.</div>
+        <div style="text-align:center;">${item.required ? '<span class="ref-badge req">Обяз.</span>' : '<span class="ref-badge opt">Опц.</span>'}</div>
+        <div class="ref-months">${item.validity_months}м</div>
         <div class="actions-cell" style="justify-content:flex-end;">
           ${canManage ? `<button class="icon-btn" data-ref-edit="${item.id}" data-ref-type="${type}">✏️</button>
             <button class="icon-btn danger" data-ref-del="${item.id}" data-ref-type="${type}">🗑</button>` : '<span style="color:var(--text-muted);font-size:12px;">🔒</span>'}
@@ -984,16 +1164,18 @@ async function loadMedbooks() {
     `).join('');
     contentHtml = `
       ${!canManage ? `<div class="card" style="margin-bottom:16px;padding:12px 16px;background:#F8F9FA;font-size:13px;color:var(--text-muted);">🔒 Нет права управлять справочником</div>` : ''}
-      <div class="table-card" style="padding: 8px 20px;">
+      <div class="table-card" style="padding: 8px 16px;">
         <div class="ref-row" style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">
-          <div>Название</div><div style="text-align:center;">Обязательность</div><div class="ref-months">Срок</div><div></div>
+          <div>Название</div><div style="text-align:center;">Обяз.</div><div class="ref-months">Срок</div><div></div>
         </div>
         ${rows}
         ${canManage ? `
-          <div style="padding:16px 0; border-top:1px solid var(--border); margin-top:8px; display:flex; gap:8px;">
-            <input class="form-input" id="ref-new-name" placeholder="Название" style="flex:2;">
-            <input class="form-input" id="ref-new-months" type="number" value="12" min="1" max="120" style="flex:1;" title="Срок действия (мес.)">
-            <label style="display:flex; align-items:center; gap:6px; font-size:13px; white-space:nowrap;"><input type="checkbox" id="ref-new-required"> Обязательно</label>
+          <div style="padding:16px 0; border-top:1px solid var(--border); margin-top:8px; display:flex; flex-direction:column; gap:8px;">
+            <input class="form-input" id="ref-new-name" placeholder="Название" style="width:100%;">
+            <div style="display:flex; gap:8px; align-items:center;">
+              <input class="form-input" id="ref-new-months" type="number" value="12" min="1" max="120" style="flex:1;" placeholder="Срок (мес.)">
+              <label style="display:flex; align-items:center; gap:6px; font-size:13px; white-space:nowrap;"><input type="checkbox" id="ref-new-required"> Обязательно</label>
+            </div>
             <button class="btn primary" id="ref-add-btn" data-ref-type="${type}">+ Добавить</button>
           </div>
         ` : ''}
@@ -1040,7 +1222,6 @@ async function loadMedbooks() {
   });
 }
 
-// Клиентские хелперы для статуса (для real-time в модалке)
 function parseDdMmYyyy(s) {
   if (!s) return null;
   const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(s.trim());
@@ -1076,15 +1257,15 @@ async function openMedbookEditor(userId) {
     const dateStr = (mb[source] && mb[source][item.id]) || '';
     const st = entryStatusClient(dateStr, item.validity_months);
     let statusText = '', statusCls = '';
-    if (st === 'missing') { statusText = 'Обязательно'; statusCls = 'missing'; }
-    else if (st === 'invalid_date') { statusText = 'Дата неверна'; statusCls = 'missing'; }
-    else if (st === 'expired') { statusText = 'Просрочено'; statusCls = 'expired'; }
-    else if (st === 'expiring') { statusText = 'Скоро истечёт'; statusCls = 'expiring'; }
+    if (st === 'missing') { statusText = 'Обяз.'; statusCls = 'missing'; }
+    else if (st === 'invalid_date') { statusText = 'Ошибка'; statusCls = 'missing'; }
+    else if (st === 'expired') { statusText = 'Просроч.'; statusCls = 'expired'; }
+    else if (st === 'expiring') { statusText = 'Скоро'; statusCls = 'expiring'; }
     else { statusText = 'OK'; statusCls = 'ok'; }
     return `
       <div class="medbook-row">
         <div class="name">${esc(item.name)}${item.required ? ' <span style="color:var(--accent);font-weight:800;">*</span>' : ''}</div>
-        <input type="text" placeholder="ДД.ММ.ГГГГ" value="${esc(dateStr)}" data-mb-input="${source}:${item.id}">
+        <input type="text" placeholder="ДД.ММ.ГГГГ" value="${esc(dateStr)}" data-mb-input="${source}:${item.id}" inputmode="numeric">
         <div class="status ${statusCls}">${statusText}</div>
       </div>`;
   }).join('');
@@ -1216,9 +1397,7 @@ async function loadAdmins() {
       <tr>
         <td><span class="login-cell">${esc(a.login)}</span></td>
         <td><b>${esc(a.full_name)}</b></td>
-        <td>${esc(a.position || '—')}</td>
         <td>${tag}</td>
-        <td style="font-size:12px;">${perms.length ? perms.map(p => `<span class="tag gray" style="margin:2px;">${esc(p)}</span>`).join('') : '<span style="color:var(--text-muted);">без прав</span>'}</td>
         <td class="actions-cell">${!a.is_super_admin ? `<button class="icon-btn" data-perms="${a.user_id}">✏️</button>` : '—'}</td>
       </tr>`;
   }).join('');
@@ -1230,7 +1409,7 @@ async function loadAdmins() {
       </div>
     </div>
     <div class="table-card"><div class="table-wrap"><table>
-      <thead><tr><th>Логин</th><th>ФИО</th><th>Должность</th><th>Роль</th><th>Права</th><th></th></tr></thead>
+      <thead><tr><th>Логин</th><th>ФИО</th><th>Роль</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div></div>`;
   document.querySelectorAll('[data-perms]').forEach(b => b.addEventListener('click', () => openPermEditor(parseInt(b.dataset.perms), admins)));
@@ -1279,33 +1458,21 @@ async function loadRestaurants() {
   const canTu = hasPerm('restaurant_tu');
   const rows = data.restaurants.map(r => `
     <tr>
-      <td><b>${esc(r.name)}</b><br><span style="font-size:11px;color:var(--text-muted);font-family:monospace;">${esc(r.key)}</span></td>
-      <td>${esc(r.address || '—')}</td>
-      <td>${esc(r.phone || '—')}</td>
-      <td>${r.force_status === 'open' ? '<span class="tag green">🟢 Открыто</span>'
-         : r.force_status === 'closed' ? '<span class="tag red">🔴 Закрыто</span>'
+      <td><b>${esc(r.name)}</b></td>
+      <td>${r.force_status === 'open' ? '<span class="tag green">🟢</span>'
+         : r.force_status === 'closed' ? '<span class="tag red">🔴</span>'
          : '<span class="tag gray">—</span>'}</td>
       <td>${esc(r.territory_manager_name || '—')}</td>
       <td class="actions-cell">
         <button class="icon-btn" data-edit="${esc(r.key)}">✏️</button>
         ${canTu ? `<button class="icon-btn" data-tu="${esc(r.key)}" title="Назначить ТУ">👔</button>` : ''}
-        <button class="icon-btn" data-status="${esc(r.key)}" data-cur="${r.force_status || 'auto'}">${r.force_status === 'open' ? '🔴' : '🟢'}</button>
       </td>
     </tr>`).join('');
   $('page-content').innerHTML = `<div class="table-card"><div class="table-wrap"><table>
-    <thead><tr><th>Название</th><th>Адрес</th><th>Телефон</th><th>Статус</th><th>ТУ</th><th></th></tr></thead>
+    <thead><tr><th>Название</th><th>Статус</th><th>ТУ</th><th></th></tr></thead>
     <tbody>${rows}</tbody></table></div></div>`;
   document.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openRestaurantEditor(b.dataset.edit, data.restaurants)));
   document.querySelectorAll('[data-tu]').forEach(b => b.addEventListener('click', () => openTuEditor(b.dataset.tu, data.tu_candidates, data.restaurants)));
-  document.querySelectorAll('[data-status]').forEach(b => b.addEventListener('click', async () => {
-    const cur = b.dataset.cur;
-    const next = cur === 'auto' ? 'closed' : cur === 'closed' ? 'open' : 'auto';
-    try {
-      await api('/api/admin/restaurant/status', { key: b.dataset.status, status: next });
-      toast('Статус обновлён', 'success');
-      loadRestaurants();
-    } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
-  }));
 }
 function openRestaurantEditor(key, rests) {
   const r = rests.find(x => x.key === key);
@@ -1315,7 +1482,7 @@ function openRestaurantEditor(key, rests) {
     <div class="form-group"><label>Название</label><input class="form-input" id="rf-name" value="${esc(r.name)}"></div>
     <div class="form-group"><label>Адрес</label><input class="form-input" id="rf-address" value="${esc(r.address || '')}"></div>
     <div class="form-row">
-      <div class="form-group"><label>Телефон</label><input class="form-input" id="rf-phone" value="${esc(r.phone || '')}"></div>
+      <div class="form-group"><label>Телефон</label><input class="form-input" id="rf-phone" value="${esc(r.phone || '')}" inputmode="tel"></div>
       <div class="form-group"><label>Яндекс Карты</label><input class="form-input" id="rf-org" value="${esc(r.org || '')}"></div>
     </div>
     <div class="form-group"><label>Часы</label><textarea class="form-textarea" id="rf-hours" rows="3">${esc(r.hours || '')}</textarea></div>
@@ -1390,14 +1557,13 @@ async function loadNews() {
   const rows = others.map(n => {
     const lvl = n.level === 'urgent' ? '<span class="tag red">Срочно</span>'
       : n.level === 'important' ? '<span class="tag amber">Важно</span>' : '<span class="tag gray">Обычная</span>';
-    const status = n.status === 'published' ? '<span class="tag green">Опубликована</span>'
-      : n.status === 'scheduled' ? `<span class="tag blue">⏰ ${fmtDate(n.publish_at, true)}</span>` : '<span class="tag amber">На модерации</span>';
+    const status = n.status === 'published' ? '<span class="tag green">✅</span>'
+      : n.status === 'scheduled' ? `<span class="tag blue">⏰ ${fmtDate(n.publish_at, false)}</span>` : '<span class="tag amber">Модерация</span>';
     return `
       <tr>
         <td>${lvl}</td>
-        <td><b>${esc(n.title)}</b><br><span style="font-size:11px;color:var(--text-muted);">${esc((n.body||'').substring(0, 60))}</span></td>
+        <td><b>${esc(n.title)}</b></td>
         <td>${status}</td>
-        <td style="font-size:12px;color:var(--text-muted);">${fmtDate(n.created_at, true)}</td>
         <td class="actions-cell">
           ${canEdit ? `<button class="icon-btn" data-title="${n.id}">✏️</button>` : ''}
           ${canEdit && n.status !== 'pending' ? `<button class="icon-btn danger" data-del="${n.id}">🗑</button>` : ''}
@@ -1407,8 +1573,8 @@ async function loadNews() {
   $('page-content').innerHTML = `
     ${pendingHtml}
     <div class="table-card"><div class="table-wrap"><table>
-      <thead><tr><th>Тип</th><th>Заголовок</th><th>Статус</th><th>Создано</th><th></th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="5"><div class="empty">Новостей нет</div></td></tr>'}</tbody>
+      <thead><tr><th>Тип</th><th>Заголовок</th><th>Статус</th><th></th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="4"><div class="empty">Новостей нет</div></td></tr>'}</tbody>
     </table></div></div>`;
   document.querySelectorAll('[data-approve]').forEach(b => b.addEventListener('click', async () => {
     try {
@@ -1505,13 +1671,12 @@ async function loadStandards() {
     <tr>
       <td><b>${esc(s.title)}</b></td>
       <td>${esc(s.category || '—')}</td>
-      <td style="max-width:400px;font-size:12px;color:var(--text-muted);">${esc((s.description||'').substring(0,120))}</td>
       <td class="actions-cell">
-        ${canEdit ? `<button class="icon-btn" data-edit="${s.id}">✏️</button><button class="icon-btn danger" data-del="${s.id}">🗑</button>` : '<span style="color:var(--text-muted);font-size:12px;">—</span>'}
+        ${canEdit ? `<button class="icon-btn" data-edit="${s.id}">✏️</button><button class="icon-btn danger" data-del="${s.id}">🗑</button>` : '—'}
       </td>
     </tr>`).join('');
   $('page-content').innerHTML = `<div class="table-card"><div class="table-wrap"><table>
-    <thead><tr><th>Название</th><th>Категория</th><th>Описание</th><th></th></tr></thead>
+    <thead><tr><th>Название</th><th>Категория</th><th></th></tr></thead>
     <tbody>${rows}</tbody></table></div></div>`;
   if (canEdit) {
     document.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openStdEdit(parseInt(b.dataset.edit), data.standards)));
@@ -1574,14 +1739,13 @@ async function loadFaq() {
   const rows = data.faq.map(f => `
     <tr>
       <td><b>${esc(f.question)}</b></td>
-      <td style="max-width:400px;font-size:12px;color:var(--text-muted);">${esc((f.answer||'').substring(0,120))}</td>
       <td class="actions-cell">
         <button class="icon-btn" data-edit="${f.id}">✏️</button>
         <button class="icon-btn danger" data-del="${f.id}">🗑</button>
       </td>
     </tr>`).join('');
   $('page-content').innerHTML = `<div class="table-card"><div class="table-wrap"><table>
-    <thead><tr><th>Вопрос</th><th>Ответ</th><th></th></tr></thead>
+    <thead><tr><th>Вопрос</th><th></th></tr></thead>
     <tbody>${rows}</tbody></table></div></div>`;
   document.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openFaqEdit(parseInt(b.dataset.edit), data.faq)));
   document.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
@@ -1633,11 +1797,11 @@ async function loadPositions() {
   const active = data.positions.filter(p => !p.is_archived);
   const arch = data.positions.filter(p => p.is_archived);
   const rows = active.map(p => `
-    <tr><td><b>${esc(p.name)}</b></td><td>${p.sort}</td>
+    <tr><td><b>${esc(p.name)}</b></td>
     <td class="actions-cell"><button class="icon-btn danger" data-arch="${p.id}">📦</button></td></tr>`).join('');
   $('page-content').innerHTML = `
     <div class="table-card"><div class="table-wrap"><table>
-      <thead><tr><th>Активные (${active.length})</th><th>Sort</th><th></th></tr></thead>
+      <thead><tr><th>Активные (${active.length})</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table></div></div>
     ${arch.length ? `<div class="table-card" style="margin-top:20px;"><div class="table-wrap"><table>
       <thead><tr><th>📦 Архив (${arch.length})</th></tr></thead>
@@ -1673,16 +1837,14 @@ async function loadQuestions() {
   const data = await api('/api/admin/questions', {});
   const rows = data.questions.map(q => `
     <tr>
-      <td><code style="font-size:11px;">${q.user_id}</code></td>
       <td><b>${esc(q.full_name || '—')}</b></td>
-      <td style="max-width:400px;">${esc(q.text)}</td>
       <td>${q.replied ? '<span class="tag green">✅</span>' : '<span class="tag amber">❓</span>'}</td>
-      <td style="font-size:12px;color:var(--text-muted);">${fmtDate(q.created_at, true)}</td>
+      <td style="font-size:12px;color:var(--text-muted);">${fmtDate(q.created_at, false)}</td>
       <td class="actions-cell">${!q.replied ? `<button class="icon-btn" data-reply="${q.id}">✍️</button>` : ''}</td>
     </tr>`).join('');
   $('page-content').innerHTML = `<div class="table-card"><div class="table-wrap"><table>
-    <thead><tr><th>ID</th><th>Кто</th><th>Вопрос</th><th>Статус</th><th>Когда</th><th></th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="6"><div class="empty">Вопросов нет</div></td></tr>'}</tbody></table></div></div>`;
+    <thead><tr><th>Кто</th><th>Статус</th><th>Когда</th><th></th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="4"><div class="empty">Вопросов нет</div></td></tr>'}</tbody></table></div></div>`;
   document.querySelectorAll('[data-reply]').forEach(b => b.addEventListener('click', () => openReply(parseInt(b.dataset.reply), data.questions)));
   refreshCounters();
 }
@@ -1723,14 +1885,13 @@ async function loadAudit() {
   const data = await api('/api/admin/audit', {});
   const rows = data.audit.map(a => `
     <tr>
-      <td style="font-size:12px;color:var(--text-muted);white-space:nowrap;">${fmtDate(a.created_at, true)}</td>
+      <td style="font-size:11px;color:var(--text-muted);white-space:nowrap;">${fmtDate(a.created_at, true)}</td>
       <td><code style="font-size:11px;">${esc(a.action)}</code></td>
-      <td>${esc(a.target_type || '')}:${esc(a.target_id || '')}</td>
-      <td style="font-size:12px;">${esc((a.details || '').substring(0, 80))}</td>
+      <td style="font-size:11px;">${esc(a.target_type || '')}:${esc(a.target_id || '')}</td>
     </tr>`).join('');
   $('page-content').innerHTML = `<div class="table-card"><div class="table-wrap"><table>
-    <thead><tr><th>Когда</th><th>Действие</th><th>Цель</th><th>Детали</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="4"><div class="empty">История пуста</div></td></tr>'}</tbody></table></div></div>`;
+    <thead><tr><th>Когда</th><th>Действие</th><th>Цель</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="3"><div class="empty">История пуста</div></td></tr>'}</tbody></table></div></div>`;
 }
 
 /* ================== INIT ================== */

@@ -298,6 +298,12 @@ with get_conn() as conn:
             cur.execute(ddl)
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_login ON users (LOWER(login)) WHERE login IS NOT NULL")
 
+        # === ФИКС: NULL в boolean-колонках не находится через WHERE x = FALSE ===
+        cur.execute("UPDATE users SET is_fired = FALSE WHERE is_fired IS NULL")
+        cur.execute("UPDATE users SET is_admin = FALSE WHERE is_admin IS NULL")
+        cur.execute("UPDATE users SET is_super_admin = FALSE WHERE is_super_admin IS NULL")
+        cur.execute("UPDATE users SET is_certified = FALSE WHERE is_certified IS NULL")
+
         # === МИГРАЦИЯ: гарантируем, что user_id имеет автоинкремент (BIGSERIAL) ===
         cur.execute("""
             DO $$
@@ -494,7 +500,6 @@ with get_conn() as conn:
             cur.execute("SELECT user_id FROM users WHERE LOWER(login) = LOWER(%s)", (ADMIN_LOGIN,))
             existing = cur.fetchone()
             if existing:
-                # Пользователь с таким логином уже есть — повышаем до супер-админа
                 cur.execute("""
                     UPDATE users SET password_hash = %s, is_admin = TRUE, is_super_admin = TRUE,
                            is_fired = FALSE, fired_at = NULL, fired_by = NULL,
@@ -700,19 +705,19 @@ async def handle_admin_me(request):
 def _sync_dashboard_stats():
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM users WHERE is_admin = FALSE AND is_fired = FALSE AND login IS NOT NULL")
+            cur.execute("SELECT COUNT(*) FROM users WHERE COALESCE(is_admin, FALSE) = FALSE AND COALESCE(is_fired, FALSE) = FALSE AND login IS NOT NULL")
             active = cur.fetchone()[0] or 0
             cur.execute("SELECT COUNT(*) FROM users WHERE login IS NOT NULL")
             total = cur.fetchone()[0] or 0
-            cur.execute("SELECT COUNT(*) FROM users WHERE is_fired = TRUE")
+            cur.execute("SELECT COUNT(*) FROM users WHERE COALESCE(is_fired, FALSE) = TRUE")
             fired = cur.fetchone()[0] or 0
             cur.execute("""SELECT COUNT(*) FROM users WHERE created_at::date = NOW()::date
-                           AND is_admin = FALSE AND is_fired = FALSE AND login IS NOT NULL""")
+                           AND COALESCE(is_admin, FALSE) = FALSE AND COALESCE(is_fired, FALSE) = FALSE AND login IS NOT NULL""")
             new_today = cur.fetchone()[0] or 0
             cur.execute("""SELECT COUNT(*) FROM users WHERE created_at >= NOW() - INTERVAL '7 days'
-                           AND is_admin = FALSE AND is_fired = FALSE AND login IS NOT NULL""")
+                           AND COALESCE(is_admin, FALSE) = FALSE AND COALESCE(is_fired, FALSE) = FALSE AND login IS NOT NULL""")
             new7 = cur.fetchone()[0] or 0
-            cur.execute("""SELECT COUNT(*) FROM users WHERE is_admin = FALSE AND is_fired = FALSE
+            cur.execute("""SELECT COUNT(*) FROM users WHERE COALESCE(is_admin, FALSE) = FALSE AND COALESCE(is_fired, FALSE) = FALSE
                            AND login IS NOT NULL AND (last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL '7 days')""")
             inactive7 = cur.fetchone()[0] or 0
             cur.execute("SELECT COUNT(*) FROM questions WHERE replied = FALSE")
@@ -739,9 +744,9 @@ def _sync_list_users(search="", fired=False):
             base = """
                 SELECT u.*, r.name AS restaurant_name
                 FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key
-                WHERE u.is_fired = %s AND u.login IS NOT NULL
+                WHERE COALESCE(u.is_fired, FALSE) = %s AND u.login IS NOT NULL
             """
-            params = [fired]
+            params = [bool(fired)]
             if search:
                 base += """ AND (LOWER(COALESCE(u.full_name,'')) LIKE %s
                               OR LOWER(COALESCE(u.login,'')) LIKE %s
@@ -974,7 +979,7 @@ async def handle_admin_user_delete(request):
 def _sync_list_admins():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT * FROM users WHERE is_admin = TRUE AND is_fired = FALSE ORDER BY user_id")
+            cur.execute("SELECT * FROM users WHERE COALESCE(is_admin, FALSE) = TRUE AND COALESCE(is_fired, FALSE) = FALSE ORDER BY user_id")
             admins = [dict(r) for r in cur.fetchall()]
     for a in admins:
         a.pop("password_hash", None)
@@ -1029,7 +1034,7 @@ def _sync_tu_candidates():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""SELECT user_id, full_name FROM users
-                           WHERE is_fired = FALSE AND LOWER(COALESCE(position,'')) LIKE '%%территориальный%%'
+                           WHERE COALESCE(is_fired, FALSE) = FALSE AND LOWER(COALESCE(position,'')) LIKE '%%территориальный%%'
                            ORDER BY full_name""")
             return [dict(r) for r in cur.fetchall()]
 
@@ -1108,7 +1113,9 @@ def _sync_medbooks_full():
             cur.execute("""
                 SELECT u.user_id, u.full_name, u.position, u.medbook, r.name AS restaurant_name
                 FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key
-                WHERE u.is_admin = FALSE AND u.is_fired = FALSE AND u.login IS NOT NULL
+                WHERE COALESCE(u.is_admin, FALSE) = FALSE
+                  AND COALESCE(u.is_fired, FALSE) = FALSE
+                  AND u.login IS NOT NULL
                 ORDER BY u.full_name
             """)
             users = [dict(r) for r in cur.fetchall()]
@@ -1622,6 +1629,20 @@ async def handle_admin_change_password(request):
                         (hash_password(new), admin["user_id"]))
     return web.json_response({"ok": True})
 
+# ============= ДИАГНОСТИКА =============
+async def handle_admin_debug_users(request):
+    admin, err = await get_admin_user(request)
+    if err:
+        return denied(err)
+    if not admin["is_super_admin"]:
+        return web.json_response({"error": "forbidden"}, status=403)
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""SELECT user_id, login, full_name, is_admin, is_super_admin, is_fired, position
+                           FROM users ORDER BY user_id""")
+            rows = [dict(r) for r in cur.fetchall()]
+    return web.json_response({"count": len(rows), "users": rows})
+
 # ============= API: BOOTSTRAP (для сотрудника) =============
 def _sync_bootstrap(user_id):
     with get_conn() as conn:
@@ -1789,6 +1810,9 @@ app.router.add_post("/api/admin/user/restore", handle_admin_user_restore)
 # ADMINS / PERMISSIONS
 app.router.add_post("/api/admin/admins", handle_admin_admins)
 app.router.add_post("/api/admin/set-permissions", handle_admin_set_permissions)
+
+# DEBUG
+app.router.add_post("/api/admin/debug/users", handle_admin_debug_users)
 
 # RESTAURANTS
 app.router.add_post("/api/admin/restaurants", handle_admin_restaurants)

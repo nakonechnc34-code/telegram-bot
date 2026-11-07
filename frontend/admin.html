@@ -2,300 +2,443 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Wokker · Админ</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wokker</title>
 <style>
   :root {
-    --bg: #F5F5F7; --card-bg: #FFFFFF; --text-main: #1C1C1E;
+    --bg: #F8F9FA; --card-bg: #FFFFFF; --text-main: #1C1C1E;
     --text-muted: #8E8E93; --accent: #FF3B30; --accent-soft: #FFEBEA;
     --green: #34C759; --green-soft: #E8F8EB;
-    --amber: #FF9500; --amber-soft: #FFF4E0;
-    --blue: #007AFF; --blue-soft: #E5F0FF;
-    --border: rgba(0,0,0,0.08); --sidebar: #1C1C1E; --sidebar-hover: #2C2C2E;
-    --shadow: 0 4px 16px rgba(0,0,0,0.06); --shadow-lg: 0 24px 64px rgba(0,0,0,0.14);
+    --beige: #D4B68C; --beige-dark: #8A7B66; --beige-soft: #FDFBF7;
+    --shadow: 0 8px 24px rgba(0, 0, 0, 0.04); --radius: 20px;
   }
   * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    background: var(--bg); color: var(--text-main); font-size: 14px;
-    -webkit-font-smoothing: antialiased; overflow-x: hidden;
+    background: var(--bg); color: var(--text-main); padding-bottom: 90px;
+    -webkit-font-smoothing: antialiased;
   }
-  button, input, select, textarea { font-family: inherit; font-size: inherit; }
+  button, input { font-family: inherit; }
   button { cursor: pointer; }
 
+  /* LOGIN */
   #login-screen {
-    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-    background: linear-gradient(135deg, #1C1C1E 0%, #2C2C2E 100%); z-index: 2000;
+    position: fixed; inset: 0;
+    background: linear-gradient(160deg, #FFF9F5 0%, #FDF2EB 100%);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px; z-index: 1000;
   }
   .login-card {
-    background: #fff; border-radius: 24px; padding: 40px; width: 100%; max-width: 400px;
-    box-shadow: 0 32px 80px rgba(0,0,0,0.4);
+    background: #fff; border-radius: 32px; padding: 36px 24px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.08);
+    width: 100%; max-width: 400px; text-align: center;
   }
-  .login-card h1 { font-size: 26px; font-weight: 800; margin-bottom: 6px; letter-spacing: -0.5px; }
-  .login-card .sub { color: var(--text-muted); margin-bottom: 28px; font-size: 14px; }
-  .login-logo { width: 60px; height: 60px; background: #F8F9FA; border-radius: 18px;
-    display: flex; align-items: center; justify-content: center; font-size: 32px; margin-bottom: 20px; }
+  .login-logo {
+    width: 80px; height: 80px; border-radius: 24px;
+    background: var(--beige-soft); margin: 0 auto 20px;
+    display: flex; align-items: center; justify-content: center; font-size: 40px;
+  }
+  .login-title { font-size: 26px; font-weight: 800; margin-bottom: 6px; letter-spacing: -0.5px; }
+  .login-sub { font-size: 15px; color: var(--text-muted); margin-bottom: 28px; }
   .login-input {
-    width: 100%; border: 1px solid var(--border); border-radius: 12px;
-    padding: 14px 16px; font-size: 15px; background: #F8F9FA; outline: none;
-    transition: border-color 0.2s, background 0.2s; margin-bottom: 12px;
-    font-weight: 600; color: var(--text-main);
+    width: 100%; border: 1px solid rgba(0,0,0,0.06); border-radius: 16px;
+    padding: 16px 18px; font-size: 16px; background: #F8F9FA;
+    color: var(--text-main); outline: none; font-weight: 600;
+    margin-bottom: 12px; text-align: center;
+    transition: border-color 0.2s, background 0.2s;
   }
   .login-input:focus { border-color: var(--accent); background: #fff; }
+  .login-hint { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
   .login-btn {
-    width: 100%; background: var(--accent); color: #fff; border: 0; border-radius: 12px;
-    padding: 14px; font-size: 15px; font-weight: 700; margin-top: 8px;
+    width: 100%; background: var(--accent); color: #fff; border: 0;
+    border-radius: 16px; padding: 16px; font-size: 16px; font-weight: 700;
+    margin-top: 8px;
   }
-  .login-btn:hover { opacity: 0.92; }
   .login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-  .login-hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; margin-bottom: 8px; }
-  .login-error { color: var(--accent); font-size: 13px; min-height: 18px; margin-top: 10px; font-weight: 600; }
-
-  #app { display: none; min-height: 100vh; }
-  .layout { display: flex; min-height: 100vh; }
-  .sidebar {
-    width: 240px; background: var(--sidebar); color: #fff; padding: 20px 12px;
-    display: flex; flex-direction: column; flex-shrink: 0; position: sticky; top: 0; height: 100vh;
+  .login-error {
+    color: var(--accent); font-size: 13px; font-weight: 600;
+    min-height: 18px; margin-top: 10px;
   }
-  .sidebar-logo {
-    display: flex; align-items: center; gap: 12px; padding: 10px 12px 24px; font-weight: 800;
-    font-size: 17px; letter-spacing: -0.3px;
+
+  /* TABS */
+  .tabs {
+    position: fixed; bottom: calc(12px + env(safe-area-inset-bottom));
+    left: 12px; right: 12px; display: flex;
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(24px) saturate(1.8);
+    -webkit-backdrop-filter: blur(24px) saturate(1.8);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    border-radius: 26px; padding: 6px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+    z-index: 100; justify-content: space-between;
   }
-  .sidebar-logo .badge { background: var(--accent); color: #fff; font-size: 10px; padding: 3px 7px;
-    border-radius: 6px; font-weight: 800; text-transform: uppercase; }
-  .sidebar nav { display: flex; flex-direction: column; gap: 2px; flex: 1; overflow-y: auto; }
-  .nav-item {
-    background: none; border: 0; color: rgba(255,255,255,0.7); text-align: left;
-    padding: 10px 14px; border-radius: 10px; font-size: 14px; font-weight: 500;
-    display: flex; align-items: center; gap: 10px; white-space: nowrap;
+  .tabs button {
+    flex: 1; border: 0; background: none; padding: 4px 1px;
+    font-size: 9px; font-weight: 600; color: var(--text-muted);
+    border-radius: 18px; transition: all 0.25s ease;
+    position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px;
   }
-  .nav-item:hover { background: var(--sidebar-hover); color: #fff; }
-  .nav-item.active { background: var(--accent); color: #fff; font-weight: 600; }
-  .nav-item .ico { width: 18px; display: inline-block; text-align: center; }
-  .nav-item .count { margin-left: auto; background: rgba(255,255,255,0.15); padding: 2px 8px;
-    border-radius: 20px; font-size: 11px; font-weight: 700; }
-  .sidebar-footer {
-    padding: 14px; border-top: 1px solid rgba(255,255,255,0.1); margin-top: 12px;
-    font-size: 12px; color: rgba(255,255,255,0.6);
-  }
-  .sidebar-footer .who { color: #fff; font-weight: 600; font-size: 13px; margin-bottom: 2px; }
-  .sidebar-footer .login-line { font-family: monospace; color: rgba(255,255,255,0.8); margin-bottom: 10px; }
-  .sidebar-footer button {
-    background: rgba(255,255,255,0.1); border: 0; color: #fff;
-    padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 600;
-    width: 100%; margin-top: 6px;
-  }
-  .sidebar-footer button:hover { background: rgba(255,255,255,0.2); }
-  .sidebar-footer button.danger:hover { background: rgba(255,59,48,0.7); }
+  .tabs button:active { transform: scale(0.92); }
+  .tabs button.active { color: var(--accent); }
+  .tabs button.active svg { stroke: var(--accent); }
+  .tabs svg { width: 20px; height: 20px; stroke: var(--text-muted); fill: none;
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: stroke 0.2s; }
+  .badge-dot { position: absolute; top: 2px; right: 20%; width: 7px; height: 7px;
+    background: var(--accent); border-radius: 50%; border: 1.5px solid #fff; display: none; }
+  .badge-dot.show { display: block; }
 
-  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .topbar {
-    padding: 20px 32px; background: var(--card-bg); border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; justify-content: space-between; gap: 16px;
-    position: sticky; top: 0; z-index: 50;
-  }
-  .topbar h2 { font-size: 20px; font-weight: 800; letter-spacing: -0.3px; }
-  .topbar .actions { display: flex; gap: 8px; align-items: center; }
-  .content { padding: 24px 32px; flex: 1; }
+  /* SECTIONS */
+  .section { display: none; animation: fadeIn 0.3s ease; }
+  .section.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+  .card { background: var(--card-bg); border-radius: var(--radius);
+    margin: 0 16px 16px; padding: 20px; box-shadow: var(--shadow); }
 
-  .btn { border: 0; border-radius: 10px; padding: 10px 18px; font-size: 13px; font-weight: 600;
-    display: inline-flex; align-items: center; gap: 6px; background: #F2F2F7; color: var(--text-main); }
-  .btn:hover { background: #E5E5EA; }
-  .btn.primary { background: var(--accent); color: #fff; }
-  .btn.primary:hover { background: #E6342A; }
-  .btn.ghost { background: transparent; border: 1px solid var(--border); }
-  .btn.ghost:hover { background: #F8F9FA; }
-  .btn.small { padding: 6px 12px; font-size: 12px; }
-  .btn.danger { background: var(--accent-soft); color: var(--accent); }
-  .btn.danger:hover { background: #FFD9D6; }
-  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  /* PROFILE */
+  .profile-wrapper { margin: 24px 16px 16px; }
+  .profile-card { background: var(--card-bg); border-radius: 28px;
+    box-shadow: var(--shadow); overflow: hidden; position: relative; }
+  .profile-header { padding: 32px 20px 24px; text-align: center;
+    background: linear-gradient(135deg, #FFF9F5 0%, #FDF2EB 100%);
+    border-bottom: 1px solid rgba(0,0,0,0.02); }
+  .avatar-ring { width: 104px; height: 104px; border-radius: 50%;
+    margin: 0 auto 16px; padding: 4px; background: #FFF;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.06); }
+  .avatar-inner { width: 100%; height: 100%; border-radius: 50%;
+    background: var(--beige-soft); display: flex; align-items: center; justify-content: center;
+    font-size: 38px; font-weight: 800; color: var(--beige); }
+  .p-name { font-size: 22px; font-weight: 800; letter-spacing: -0.5px;
+    margin-bottom: 4px; color: #2C2216; }
+  .p-pos { font-size: 15px; color: #8A7B66; font-weight: 500; margin-bottom: 12px; }
+  .status-pill { display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; background: rgba(52, 199, 89, 0.12); color: #1B7A36;
+    border-radius: 20px; font-size: 13px; font-weight: 700;
+    border: 1px solid rgba(52, 199, 89, 0.2); }
+  .status-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: #1B7A36; }
+  .info-section { padding: 20px; }
+  .info-group { background: #F8F9FA; border-radius: 20px; overflow: hidden; }
+  .info-item { display: flex; align-items: center; padding: 16px;
+    border-bottom: 1px solid rgba(0,0,0,0.04); }
+  .info-item:last-child { border-bottom: none; }
+  .info-icon { width: 40px; height: 40px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; margin-right: 14px; flex-shrink: 0; }
+  .icon-rest { background: #E5F0FF; color: #007AFF; }
+  .icon-phone { background: #F2F2F7; color: #1C1C1E; }
+  .icon-birth { background: #FFE5EC; color: #FF2D55; }
+  .icon-cert { background: #FFF3E0; color: #FF9800; }
+  .icon-medbook { background: #E8F5E9; color: #2E7D32; }
+  .info-text { flex: 1; text-align: left; }
+  .info-lbl { font-size: 12px; color: var(--text-muted); font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
+  .info-val { font-size: 16px; font-weight: 600; color: var(--text-main); }
+  .info-val a { color: var(--text-main); text-decoration: none; }
+  .badge-rest { display: inline-block; padding: 4px 10px; border-radius: 8px;
+    font-size: 14px; font-weight: 700; color: #fff; }
+  .badge-rest.office { background: #8E8E93; }
+  .badge-rest.normal { background: var(--green); }
+  .actions-block { margin-top: 16px; }
+  .action-btn { display: flex; align-items: center; justify-content: center;
+    gap: 8px; width: 100%; padding: 16px; border-radius: 20px;
+    font-size: 16px; font-weight: 600; border: none; cursor: pointer;
+    background: var(--card-bg); color: var(--text-main);
+    box-shadow: var(--shadow); margin-bottom: 12px;
+    transition: transform 0.15s ease; }
+  .action-btn:active { transform: scale(0.98); }
+  .action-btn.danger { color: var(--accent); }
 
-  .table-card { background: var(--card-bg); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
-  .table-wrap { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { padding: 14px 18px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; }
-  th { background: #F8F9FA; font-weight: 700; font-size: 11%;
-    text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; white-space: nowrap; }
-  tr:last-child td { border-bottom: none; }
-  tr:hover td { background: #FAFAFA; }
-  .row-clickable { cursor: pointer; }
+  /* TEAM */
+  .manager-title { margin: 24px 16px 12px; font-size: 18px; font-weight: 900;
+    color: var(--text-main); letter-spacing: -0.3px;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .manager-title .mgr-sub { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+  .team-group-title { margin: 16px 16px 8px; font-size: 14px;
+    font-weight: 800; color: var(--beige-dark);
+    display: flex; align-items: center; gap: 6px; }
+  .team-card { background: var(--card-bg); border-radius: 20px;
+    margin: 0 16px 10px; padding: 16px; box-shadow: var(--shadow);
+    display: flex; align-items: center; gap: 16px; }
+  .team-avatar { width: 50px; height: 50px; border-radius: 50%;
+    background: var(--beige-soft); color: var(--beige);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 800; flex-shrink: 0; }
+  .team-info { flex: 1; min-width: 0; }
+  .team-name { font-size: 16px; font-weight: 700; margin-bottom: 2px; }
+  .team-pos { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
+  .team-status { display: flex; gap: 6px; flex-wrap: wrap; }
+  .status-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px; }
+  .status-badge.green { background: var(--green-soft); color: #1B7A36; }
+  .status-badge.red { background: #FFEBEA; color: var(--accent); }
+  .status-badge.gray { background: #F2F2F7; color: var(--text-muted); }
+  .team-actions a { width: 40px; height: 40px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--green-soft); color: #1B7A36;
+    text-decoration: none; font-size: 18px; }
 
-  .tag { display: inline-block; padding: 3px 8px; border-radius: 6px;
-    font-size: 11px; font-weight: 700; white-space: nowrap; }
-  .tag.green { background: var(--green-soft); color: #1B7A36; }
-  .tag.red { background: var(--accent-soft); color: var(--accent); }
-  .tag.gray { background: #F2F2F7; color: var(--text-muted); }
-  .tag.amber { background: var(--amber-soft); color: #C77700; }
-  .tag.blue { background: var(--blue-soft); color: #0055CC; }
-  .tag-stack { display: flex; gap: 4px; flex-wrap: wrap; }
-  .login-cell { font-family: monospace; font-weight: 700; font-size: 12px;
-    background: #F2F2F7; padding: 2px 6px; border-radius: 4px; }
+  /* INPUTS */
+  .q { width: calc(100% - 32px); margin: 0 16px 16px; border: none;
+    border-radius: 16px; padding: 16px; font-size: 16px;
+    background: #F2F2F7; color: var(--text-main); outline: none;
+    transition: box-shadow 0.2s; }
+  .q:focus { box-shadow: 0 0 0 3px var(--accent-soft); background: #fff; }
+  .btn { display: inline-block; background: var(--accent); color: #fff;
+    border: 0; border-radius: 16px; padding: 16px;
+    font-size: 16px; font-weight: 600; width: 100%; text-align: center; }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
-  .actions-cell { display: flex; gap: 6px; justify-content: flex-end; }
-  .icon-btn {
-    background: #F2F2F7; border: 0; border-radius: 8px; width: 30px; height: 30px;
-    display: inline-flex; align-items: center; justify-content: center; font-size: 14px;
-  }
-  .icon-btn:hover { background: #E5E5EA; }
-  .icon-btn.danger { background: var(--accent-soft); color: var(--accent); }
-  .icon-btn.danger:hover { background: #FFD9D6; }
+  /* RESTAURANTS */
+  .rest-tab-header { margin: 24px 16px 16px; }
+  .rest-tab-header .title { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; }
+  .rest-tab-header .sub { font-size: 15px; color: var(--text-muted); margin-top: 4px; }
+  .chips-container { display: flex; gap: 10px; overflow-x: auto;
+    padding: 0 16px 16px; scrollbar-width: none; }
+  .chips-container::-webkit-scrollbar { display: none; }
+  .chip { padding: 10px 18px; background: var(--card-bg);
+    border: 1px solid rgba(0,0,0,0.05); border-radius: 100px;
+    font-size: 14px; font-weight: 600; color: var(--text-main);
+    white-space: nowrap; cursor: pointer; transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
+  .chip.active { background: var(--text-main); color: #fff; border-color: var(--text-main); }
+  .view-toggle-container { display: flex; margin: 0 16px 16px;
+    background: #EAEAEE; border-radius: 16px; padding: 4px; }
+  .view-toggle-btn { flex: 1; border: 0; background: transparent;
+    padding: 10px 0; font-size: 14px; font-weight: 600;
+    color: var(--text-muted); border-radius: 12px;
+    transition: all 0.2s ease; }
+  .view-toggle-btn.active { background: var(--card-bg); color: var(--text-main);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  #restaurants-map { height: 60vh; margin: 0 16px 16px; border-radius: 24px;
+    overflow: hidden; box-shadow: var(--shadow); display: none; z-index: 1; }
+  .rest-card { background: var(--card-bg); border-radius: 20px;
+    margin: 0 16px 16px; padding: 20px; box-shadow: var(--shadow);
+    cursor: pointer; transition: transform 0.15s ease; position: relative; }
+  .rest-card:active { transform: scale(0.98); }
+  .rest-card-header { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
+  .rest-logo { width: 56px; height: 56px; border-radius: 16px;
+    background: var(--beige-soft); display: flex; align-items: center;
+    justify-content: center; font-size: 28px; flex-shrink: 0; }
+  .rest-info { flex: 1; min-width: 0; }
+  .rest-name { font-size: 18px; font-weight: 800; margin-bottom: 4px; }
+  .rest-badge { display: inline-block; padding: 4px 10px;
+    border-radius: 8px; font-size: 12px; font-weight: 700; }
+  .rest-badge.open { background: var(--green-soft); color: #1B7A36; }
+  .rest-badge.closed { background: #FFF0F0; color: #FF3B30; }
+  .rest-address-row { display: flex; align-items: flex-start; gap: 8px;
+    font-size: 14px; color: var(--text-muted); margin-bottom: 12px;
+    line-height: 1.4; }
+  .rest-actions { display: flex; gap: 10px; }
+  .rest-actions a { flex: 1; display: flex; align-items: center;
+    justify-content: center; gap: 6px; padding: 12px;
+    border-radius: 14px; font-size: 14px; font-weight: 700;
+    text-decoration: none; transition: background 0.2s; }
+  .btn-call { background: var(--green-soft); color: #1B7A36; }
+  .btn-route { background: #F2F2F7; color: var(--text-main); }
+  .my-rest-tag { position: absolute; top: 16px; right: 20px;
+    font-size: 12px; background: var(--text-main); color: #fff;
+    padding: 4px 10px; border-radius: 8px; font-weight: 700; }
 
-  .search-bar { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; }
-  .search-bar input {
-    flex: 1; max-width: 360px; border: 1px solid var(--border); border-radius: 10px;
-    padding: 10px 14px; font-size: 14px; outline: none; background: #fff;
-  }
-  .search-bar input:focus { border-color: var(--accent); }
+  /* NEWS */
+  .news-item { background: var(--card-bg); border-radius: 20px;
+    margin: 0 16px 16px; padding: 20px; box-shadow: var(--shadow); }
+  .news-meta { display: flex; justify-content: space-between;
+    align-items: center; margin-bottom: 10px; }
+  .news-date { font-size: 13px; color: var(--text-muted); font-weight: 600; }
+  .news-badge { font-size: 11px; font-weight: 800; padding: 4px 8px;
+    border-radius: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .news-badge.urgent { background: #FFEBEA; color: var(--accent); }
+  .news-badge.important { background: #FFF8E5; color: #D48806; }
+  .news-title { font-size: 19px; font-weight: 800; margin-bottom: 8px; line-height: 1.3; }
+  .news-body { font-size: 15px; color: #48484A; line-height: 1.5; white-space: pre-wrap; }
 
-  .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
-  .stat-card { background: var(--card-bg); border-radius: 14px; padding: 20px; box-shadow: var(--shadow); }
-  .stat-card .label { font-size: 12px; color: var(--text-muted); font-weight: 600; margin-bottom: 8px;
-    text-transform: uppercase; letter-spacing: 0.5px; }
-  .stat-card .value { font-size: 28px; font-weight: 800; letter-spacing: -1px; }
-  .stat-card .hint { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
-  .stat-card.accent .value { color: var(--accent); }
-  .stat-card.green .value { color: var(--green); }
-  .stat-card.amber .value { color: var(--amber); }
+  /* FAQ / STANDARDS */
+  details { background: var(--card-bg); border-radius: 16px;
+    margin: 0 16px 12px; padding: 20px; box-shadow: var(--shadow); }
+  summary { font-weight: 700; font-size: 16px; cursor: pointer;
+    color: var(--text-main); list-style: none; display: flex;
+    justify-content: space-between; align-items: center; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: '+'; font-size: 20px; color: var(--text-muted); font-weight: 400; }
+  details[open] summary::after { content: '-'; }
+  details p { margin-top: 12px; color: var(--text-muted); font-size: 15px; line-height: 1.5; }
+  .checklist-card { background: var(--card-bg); border-radius: 20px;
+    margin: 0 16px 16px; padding: 20px; box-shadow: var(--shadow); }
+  .check-item { display: flex; align-items: center; gap: 14px;
+    padding: 14px 0; border-bottom: 1px solid rgba(0,0,0,0.05); cursor: pointer; }
+  .check-item:last-child { border-bottom: 0; padding-bottom: 0; }
+  .check-box { width: 24px; height: 24px; border-radius: 8px;
+    border: 2px solid #C7C7CC; display: flex; align-items: center;
+    justify-content: center; transition: all 0.2s; }
+  .check-item.checked .check-box { background: var(--green); border-color: var(--green); color: #fff; }
+  .check-item.checked .check-text { text-decoration: line-through; color: var(--text-muted); }
+  .check-text { font-size: 15px; font-weight: 600; color: var(--text-main); }
 
-  .chart-card { background: var(--card-bg); border-radius: 14px; padding: 24px; box-shadow: var(--shadow); margin-bottom: 16px; }
-  .chart-card h3 { font-size: 14px; font-weight: 700; margin-bottom: 20px;
-    text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; }
-  .bar-chart { display: flex; align-items: flex-end; gap: 12px; height: 120px; }
-  .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
-  .bar { width: 100%; background: var(--accent); border-radius: 6px 6px 0 0; min-height: 4px; }
-  .bar-label { font-size: 11px; color: var(--text-muted); font-weight: 600; }
-  .bar-value { font-size: 12px; font-weight: 700; }
+  /* DETAIL */
+  .no-results { text-align: center; color: var(--text-muted);
+    padding: 40px 16px; font-size: 15px; }
+  .detail-hero { text-align: center; margin: 24px 16px; }
+  .detail-hero .emoji { width: 80px; height: 80px; margin: 0 auto 16px;
+    background: var(--beige-soft); border-radius: 24px;
+    display: flex; align-items: center; justify-content: center; font-size: 40px; }
+  .detail-hero .name { font-size: 24px; font-weight: 800; margin-bottom: 8px; }
+  .detail-status { display: inline-block; padding: 6px 16px;
+    border-radius: 100px; font-size: 14px; font-weight: 700; }
+  .detail-status.open { background: var(--green-soft); color: #1B7A36; }
+  .detail-status.closed { background: #FFF0F0; color: var(--accent); }
+  .detail-card { background: var(--card-bg); border-radius: 20px;
+    margin: 0 16px 16px; padding: 20px; box-shadow: var(--shadow); }
+  .detail-card .row { padding: 16px 0;
+    border-bottom: 1px solid rgba(0,0,0,0.05); font-size: 16px; }
+  .detail-card .row:last-child { border-bottom: 0; }
+  .detail-card .row .lbl { color: var(--text-muted); font-size: 13px;
+    margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .btn-back { display: block; margin: 0 16px 24px; padding: 16px;
+    background: #F2F2F7; color: var(--text-main); border: none;
+    border-radius: 16px; font-size: 16px; font-weight: 600;
+    text-align: center; width: calc(100% - 32px); }
 
-  .empty { text-align: center; padding: 60px 20px; color: var(--text-muted);
-    background: var(--card-bg); border-radius: 14px; box-shadow: var(--shadow); }
-  .empty .emoji { font-size: 48px; margin-bottom: 12px; display: block; }
+  /* TOAST */
+  .toast { position: fixed; bottom: calc(100px + env(safe-area-inset-bottom));
+    left: 50%; transform: translateX(-50%) translateY(20px);
+    background: rgba(28, 28, 30, 0.95); color: #fff;
+    padding: 12px 20px; border-radius: 16px; font-size: 14px;
+    font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    z-index: 2000; opacity: 0; pointer-events: none;
+    transition: all 0.3s ease; max-width: 88vw; text-align: center; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.error { background: rgba(255, 59, 48, 0.95); }
 
-  .modal-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
-    display: none; align-items: center; justify-content: center; z-index: 1000;
-    padding: 20px; backdrop-filter: blur(4px);
-  }
-  .modal-overlay.show { display: flex; }
-  .modal { background: #fff; border-radius: 16px; width: 100%; max-width: 620px;
-    max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lg); }
-  .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border);
-    display: flex; justify-content: space-between; align-items: center;
-    position: sticky; top: 0; background: #fff; z-index: 1; }
-  .modal-header h3 { font-size: 18px; font-weight: 800; letter-spacing: -0.3px; }
-  .modal-close { background: #F2F2F7; border: 0; width: 32px; height: 32px; border-radius: 8px;
-    font-size: 18px; display: flex; align-items: center; justify-content: center; }
-  .modal-body { padding: 24px; }
-  .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border);
-    display: flex; justify-content: flex-end; gap: 8px; position: sticky; bottom: 0; background: #fff; }
-  .form-group { margin-bottom: 16px; }
-  .form-group label { display: block; font-size: 12px; font-weight: 700; color: var(--text-muted);
-    margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
-  .form-input, .form-select, .form-textarea {
-    width: 100%; border: 1px solid var(--border); border-radius: 10px;
-    padding: 11px 14px; font-size: 14px; outline: none; background: #fff; color: var(--text-main);
-  }
-  .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--accent); }
-  .form-textarea { resize: vertical; min-height: 100px; font-family: inherit; }
-  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .form-hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
-  .form-hint.error { color: var(--accent); font-weight: 600; }
-  .checkbox-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; }
-  .checkbox-row input { width: 18px; height: 18px; accent-color: var(--accent); }
-  .checkbox-row label { font-size: 14px; font-weight: 500; cursor: pointer;
-    text-transform: none; letter-spacing: 0; color: var(--text-main); margin: 0; }
-
-  .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 3000;
-    display: flex; flex-direction: column; gap: 10px; }
-  .toast { background: rgba(28, 28, 30, 0.96); color: #fff; padding: 14px 20px;
-    border-radius: 12px; font-size: 13px; font-weight: 600; max-width: 380px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.2); animation: slideIn 0.25s ease; }
-  .toast.error { background: rgba(255, 59, 48, 0.96); }
-  .toast.success { background: rgba(52, 199, 89, 0.96); }
-  @keyframes slideIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-
-  .page-loading { text-align: center; padding: 60px; color: var(--text-muted); }
-  .loader { display: inline-block; width: 16px; height: 16px;
-    border: 2px solid rgba(0,0,0,0.15); border-top-color: var(--text-main);
-    border-radius: 50%; animation: spin 0.6s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  .subtabs { display: flex; gap: 6px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
-  .subtab { background: none; border: 0; padding: 10px 16px; font-size: 13px; font-weight: 600;
-    color: var(--text-muted); border-bottom: 2px solid transparent; }
-  .subtab.active { color: var(--accent); border-bottom-color: var(--accent); }
-  .subtab:hover { color: var(--text-main); }
+  .loading { text-align: center; padding: 40px 16px; color: var(--text-muted); }
 </style>
 </head>
 <body>
 
+<!-- ===== LOGIN ===== -->
 <div id="login-screen">
   <div class="login-card">
-    <div class="login-logo">🛠</div>
-    <h1>Wokker Admin</h1>
-    <div class="sub">Вход в панель управления</div>
-    <input class="login-input" id="login-login" type="text" placeholder="Логин (напр. adm01)"
-           autocomplete="username" maxlength="5" style="text-transform: lowercase;">
+    <div class="login-logo">🍜</div>
+    <div class="login-title">Wokker</div>
+    <div class="login-sub">Вход в приложение</div>
+    <input class="login-input" id="login-login" type="text" placeholder="Логин" maxlength="5"
+           autocomplete="username" style="text-transform: lowercase;">
     <input class="login-input" id="login-password" type="password" placeholder="Пароль"
            autocomplete="current-password">
-    <div class="login-hint">Логин: 3 латинские буквы + 2 цифры (например, adm01)</div>
+    <div class="login-hint">Логин выдаёт администратор: 3 буквы + 2 цифры</div>
     <button class="login-btn" id="login-btn">Войти</button>
     <div class="login-error" id="login-error"></div>
   </div>
 </div>
 
-<div id="app">
-  <div class="layout">
-    <aside class="sidebar">
-      <div class="sidebar-logo">🍜 Wokker <span class="badge">Admin</span></div>
-      <nav id="nav">
-        <button class="nav-item" data-sec="dashboard"><span class="ico">📊</span> Дашборд</button>
-        <button class="nav-item" data-sec="users"><span class="ico">👥</span> Сотрудники</button>
-        <button class="nav-item" data-sec="restaurants"><span class="ico">🏪</span> Рестораны</button>
-        <button class="nav-item" data-sec="news"><span class="ico">📰</span> Новости</button>
-        <button class="nav-item" data-sec="standards"><span class="ico">📚</span> Стандарты</button>
-        <button class="nav-item" data-sec="faq"><span class="ico">❓</span> FAQ</button>
-        <button class="nav-item" data-sec="positions"><span class="ico">💼</span> Должности</button>
-        <button class="nav-item" data-sec="questions"><span class="ico">💬</span> Вопросы <span class="count" id="q-count" style="display:none;">0</span></button>
-        <button class="nav-item" data-sec="reports"><span class="ico">📈</span> Отчёты</button>
-        <button class="nav-item" data-sec="audit"><span class="ico">📜</span> История</button>
-      </nav>
-      <div class="sidebar-footer">
-        <div class="who" id="admin-name">—</div>
-        <div class="login-line" id="admin-login">—</div>
-        <button id="change-password-btn">🔐 Сменить пароль</button>
-        <button id="logout-btn" class="danger">🚪 Выйти</button>
-      </div>
-    </aside>
+<!-- ===== APP ===== -->
+<div id="main-app" style="display:none;">
+  <div class="section active" id="sec-profile"><div id="profile-box"></div></div>
 
-    <div class="main">
-      <div class="topbar">
-        <h2 id="page-title">Дашборд</h2>
-        <div class="actions" id="page-actions"></div>
-      </div>
-      <div class="content" id="page-content"></div>
+  <div class="section" id="sec-team">
+    <div class="rest-tab-header">
+      <div class="title">Моя команда</div>
+      <div class="sub">Управляющие и их рестораны</div>
+    </div>
+    <div id="team-list"></div>
+  </div>
+
+  <div class="section" id="sec-restaurants">
+    <div class="rest-tab-header">
+      <div class="title">Рестораны</div>
+      <div class="sub">Выберите точку на карте или в списке</div>
+    </div>
+    <div class="chips-container" id="rest-filters">
+      <div class="chip active" data-filter="all">Все</div>
+      <div class="chip" data-filter="open">Открыто</div>
+    </div>
+    <div class="view-toggle-container">
+      <button class="view-toggle-btn active" id="btn-view-list">Список</button>
+      <button class="view-toggle-btn" id="btn-view-map">Карта</button>
+    </div>
+    <div id="rest-list-wrapper">
+      <input class="q" id="rest-search" placeholder="Поиск по названию или адресу">
+      <div id="restaurants-list"></div>
+    </div>
+    <div id="restaurants-map"></div>
+  </div>
+
+  <div class="section" id="sec-news">
+    <div class="rest-tab-header"><div class="title">Новости</div></div>
+    <div id="news-list"></div>
+  </div>
+
+  <div class="section" id="sec-standards">
+    <div class="rest-tab-header"><div class="title">Стандарты</div></div>
+    <input class="q" id="standard-search" placeholder="Поиск по стандартам">
+    <div class="chips-container" id="standards-chips">
+      <div class="chip active" data-cat="all">Все</div>
+      <div class="chip" data-cat="shift_checklist">📋 Смена</div>
+    </div>
+    <div id="standards-list"></div>
+  </div>
+
+  <div class="section" id="sec-faq">
+    <div class="rest-tab-header"><div class="title">Вопросы</div></div>
+    <div id="faq-list"></div>
+    <div class="card" style="margin-top: 16px;">
+      <b style="font-size: 18px; margin-bottom: 12px; display: block;">Задать свой вопрос</b>
+      <input class="q" id="question-input" style="margin-left:0; margin-right:0; width:100%;"
+             maxlength="1000" placeholder="Опишите вопрос...">
+      <button class="btn" id="send-question" style="margin-top: 12px;">Отправить</button>
     </div>
   </div>
-</div>
 
-<div class="toast-container" id="toasts"></div>
-
-<div class="modal-overlay" id="modal-overlay">
-  <div class="modal">
-    <div class="modal-header">
-      <h3 id="modal-title">—</h3>
-      <button class="modal-close" id="modal-close">✕</button>
-    </div>
-    <div class="modal-body" id="modal-body"></div>
-    <div class="modal-footer" id="modal-footer"></div>
+  <div class="section" id="sec-detail">
+    <div id="detail-box"></div>
+    <button class="btn-back" id="detail-back">← Назад к списку</button>
   </div>
+
+  <nav class="tabs" id="main-tabs">
+    <button data-sec="sec-profile" class="active">
+      <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      Профиль
+    </button>
+    <button data-sec="sec-team" id="tab-team" style="display: none;">
+      <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Команда
+    </button>
+    <button data-sec="sec-restaurants">
+      <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      Рестораны
+    </button>
+    <button data-sec="sec-news">
+      <svg viewBox="0 0 24 24"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></svg>
+      Новости
+      <span class="badge-dot" id="news-badge"></span>
+    </button>
+    <button data-sec="sec-standards">
+      <svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+      Стандарты
+    </button>
+    <button data-sec="sec-faq">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      Вопросы
+    </button>
+  </nav>
 </div>
+
+<div class="toast" id="toast"></div>
 
 <script>
 /* ================== CONFIG ================== */
-const TOKEN_KEY = 'wokker_admin_token';
+const TOKEN_KEY = 'wokker_web_token';
+const SEEN_NEWS_KEY = 'wokker_seen_news';
+const CHECKLIST_KEY = 'wokker_checklist';
+const YANDEX_MAPS_API_KEY = 'f35e1fb6-2431-4c95-98c8-4b99f54d97c1';
 const LOGIN_RE = /^[a-z]{3}\d{2}$/;
-let ME = null;
 
+let BOOT = null;
+let IS_ADMIN = false;
+let currentStandardCat = 'all';
+let currentRestFilter = 'all';
+let yandexMap = null;
+let yandexClusterer = null;
+let _yandexMapsPromise = null;
+
+/* ================== UTILS ================== */
 const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $ = id => document.getElementById(id);
 
@@ -303,13 +446,15 @@ function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
 function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
 function clearToken() { localStorage.removeItem(TOKEN_KEY); }
 
-function toast(text, type) {
-  const el = document.createElement('div');
-  el.className = 'toast' + (type ? ' ' + type : '');
+let _toastTimer = null;
+function showToast(text, type) {
+  const el = $('toast');
   el.textContent = text;
-  $('toasts').appendChild(el);
-  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity 0.3s'; }, 2600);
-  setTimeout(() => el.remove(), 3000);
+  el.classList.remove('error');
+  if (type === 'error') el.classList.add('error');
+  el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
 }
 
 async function api(path, body) {
@@ -333,28 +478,17 @@ async function api(path, body) {
   return res.json();
 }
 
-function fmtDate(iso, withTime) {
-  if (!iso) return '—';
-  try {
-    const d = new Date(iso);
-    const pad = n => String(n).padStart(2, '0');
-    const date = `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`;
-    if (!withTime) return date;
-    return `${date} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  } catch (e) { return iso; }
-}
-
 /* ================== LOGIN ================== */
 function showLogin() {
-  $('app').style.display = 'none';
+  $('main-app').style.display = 'none';
   $('login-screen').style.display = 'flex';
   $('login-error').textContent = '';
   $('login-login').value = '';
   $('login-password').value = '';
 }
-function showApp() {
+function showMainApp() {
   $('login-screen').style.display = 'none';
-  $('app').style.display = 'block';
+  $('main-app').style.display = 'block';
 }
 
 $('login-login').addEventListener('input', e => {
@@ -370,10 +504,7 @@ async function doLogin() {
     errEl.textContent = 'Логин: 3 латинские буквы + 2 цифры';
     return;
   }
-  if (!password) {
-    errEl.textContent = 'Введите пароль';
-    return;
-  }
+  if (!password) { errEl.textContent = 'Введите пароль'; return; }
   const btn = $('login-btn');
   btn.disabled = true; btn.textContent = 'Проверяем…';
   try {
@@ -381,17 +512,15 @@ async function doLogin() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ login, password }),
     });
-    if (res.status === 429) { errEl.textContent = 'Слишком много попыток. Подождите минуту.'; return; }
+    if (res.status === 429) { errEl.textContent = 'Слишком много попыток. Подождите.'; return; }
     if (res.status === 401) { errEl.textContent = 'Неверный логин или пароль'; return; }
     if (res.status === 403) { errEl.textContent = 'Аккаунт заблокирован'; return; }
     if (!res.ok) { errEl.textContent = 'Ошибка сервера'; return; }
     const data = await res.json();
-    if (!data.is_admin) {
-      errEl.textContent = 'Этот аккаунт не является администратором';
-      return;
-    }
+    if (!data.token) { errEl.textContent = 'Ошибка'; return; }
     setToken(data.token);
-    await checkAdminAndLoad();
+    IS_ADMIN = !!data.is_admin;
+    await loadAndRender();
   } catch (e) {
     errEl.textContent = 'Сеть недоступна';
   } finally {
@@ -403,1047 +532,488 @@ $('login-btn').addEventListener('click', doLogin);
 $('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 $('login-login').addEventListener('keydown', e => { if (e.key === 'Enter') $('login-password').focus(); });
 
-async function checkAdminAndLoad() {
+/* ================== BOOTSTRAP ================== */
+async function loadAndRender() {
   try {
-    const res = await api('/api/admin/me', {});
-    ME = res.profile;
-    $('admin-name').textContent = ME.full_name || '—';
-    $('admin-login').textContent = '@' + (ME.login || '—');
-    showApp();
-    navigate('dashboard');
-    refreshQuestionCount();
+    const data = await api('/api/bootstrap', {});
+    BOOT = data;
+    if (!BOOT.profile) { showToast('Профиль не найден', 'error'); showLogin(); return; }
+    showMainApp();
+    checkTeamTabVisibility();
+    updateNewsBadge();
+    renderProfileFromBoot();
+    renderNewsFromBoot();
+    renderRestaurants();
+    renderStandardsFromBoot();
+    renderFaqFromBoot();
+    renderTeamFromBoot();
   } catch (e) {
-    if (e.message === 'forbidden') {
-      clearToken();
-      showLogin();
-      $('login-error').textContent = 'Доступ только для администратора';
-    } else if (e.message !== 'unauthorized') {
-      toast('Ошибка загрузки', 'error');
-    }
+    if (e.message !== 'unauthorized') showToast('Ошибка загрузки', 'error');
   }
 }
 
-$('logout-btn').addEventListener('click', async () => {
+function checkTeamTabVisibility() {
+  const pos = (BOOT.profile.position || '').toLowerCase();
+  const canSee = pos.includes('управляющий') || pos.includes('hr');
+  $('tab-team').style.display = canSee ? 'flex' : 'none';
+}
+
+/* ================== TABS ================== */
+const sectionLoaders = {
+  'sec-profile': () => renderProfileFromBoot(),
+  'sec-team': () => renderTeamFromBoot(),
+  'sec-restaurants': () => {
+    renderRestaurants();
+    if ($('btn-view-map').classList.contains('active') && yandexMap) {
+      setTimeout(() => { try { yandexMap.container.fitToViewport(); } catch (e) {} }, 100);
+    }
+  },
+  'sec-news': () => { renderNewsFromBoot(); markNewsSeen(); },
+  'sec-standards': () => renderStandardsFromBoot(),
+  'sec-faq': () => renderFaqFromBoot(),
+};
+
+document.querySelectorAll('.tabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    exitDetailView();
+    document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    btn.classList.add('active');
+    $(btn.dataset.sec).classList.add('active');
+    window.scrollTo(0, 0);
+    const loader = sectionLoaders[btn.dataset.sec];
+    if (loader) loader();
+  });
+});
+
+/* ================== NEWS BADGE ================== */
+function updateNewsBadge() {
+  const news = (BOOT && BOOT.news) || [];
+  let seen = [];
+  try { seen = JSON.parse(localStorage.getItem(SEEN_NEWS_KEY) || '[]'); } catch (e) {}
+  const hasUnread = news.some(n => !seen.includes(n.id));
+  const badge = $('news-badge');
+  if (badge) badge.classList.toggle('show', hasUnread);
+}
+function markNewsSeen() {
+  const news = (BOOT && BOOT.news) || [];
+  try { localStorage.setItem(SEEN_NEWS_KEY, JSON.stringify(news.map(n => n.id))); } catch (e) {}
+  const badge = $('news-badge');
+  if (badge) badge.classList.remove('show');
+}
+
+/* ================== PROFILE ================== */
+function renderProfileFromBoot() {
+  const box = $('profile-box');
+  if (!BOOT || !BOOT.profile) { box.innerHTML = '<div class="no-results">Профиль недоступен</div>'; return; }
+  const p = BOOT.profile;
+  const restBadge = p.restaurant_key === 'office' ? 'office' : 'normal';
+  const avatarLetter = (p.full_name || p.first_name || '?').charAt(0).toUpperCase();
+  const phoneClean = (p.phone || '').replace(/[^\d+]/g, '');
+
+  box.innerHTML = `
+    <div class="profile-wrapper">
+      <div class="profile-card">
+        <div class="profile-header">
+          <div class="avatar-ring"><div class="avatar-inner">${esc(avatarLetter)}</div></div>
+          <div class="p-name">${esc(p.full_name || '—')}</div>
+          <div class="p-pos">${esc(p.position || '—')}</div>
+          <div class="status-pill"><span class="dot"></span> Активен</div>
+        </div>
+        <div class="info-section">
+          <div class="info-group">
+            <div class="info-item"><div class="info-icon icon-rest">📍</div><div class="info-text"><div class="info-lbl">Ресторан</div><div class="info-val"><span class="badge-rest ${restBadge}">${esc(p.restaurant || '—')}</span></div></div></div>
+            <div class="info-item"><div class="info-icon icon-phone">📞</div><div class="info-text"><div class="info-lbl">Телефон</div><div class="info-val">${phoneClean ? `<a href="tel:${esc(phoneClean)}">${esc(p.phone)}</a>` : '—'}</div></div></div>
+            <div class="info-item"><div class="info-icon icon-birth">🎂</div><div class="info-text"><div class="info-lbl">Дата рождения</div><div class="info-val">${esc(p.birth_date || '—')}</div></div></div>
+            <div class="info-item"><div class="info-icon icon-cert">📜</div><div class="info-text"><div class="info-lbl">Сертификация</div><div class="info-val">${p.is_certified ? '<span style="color:var(--green);">✅ Сертифицирован</span>' : '<span style="color:var(--text-muted);">❌ Не сертифицирован</span>'}</div></div></div>
+            <div class="info-item"><div class="info-icon icon-medbook">🩺</div><div class="info-text"><div class="info-lbl">Мед. книжка</div><div class="info-val">${p.is_medbook_valid ? '<span style="color:var(--green);">✅ Действительна</span>' : '<span style="color:var(--accent);">❌ Не действительна</span>'}</div></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="actions-block">
+        ${IS_ADMIN ? `<button class="action-btn" id="open-admin-btn">🛠 Открыть админ-панель</button>` : ''}
+        <button class="action-btn" id="report-bug-btn">⚠️ Сообщить об ошибке</button>
+        <button class="action-btn danger" id="logout-btn">🚪 Выйти из аккаунта</button>
+      </div>
+    </div>
+  `;
+
+  $('logout-btn').addEventListener('click', logout);
+  $('report-bug-btn').addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.querySelector('.tabs button[data-sec="sec-faq"]').classList.add('active');
+    $('sec-faq').classList.add('active');
+    window.scrollTo(0, 0);
+    setTimeout(() => { const inp = $('question-input'); if (inp) inp.focus(); }, 300);
+  });
+  const adminBtn = $('open-admin-btn');
+  if (adminBtn) adminBtn.addEventListener('click', () => { window.location.href = '/admin'; });
+}
+
+async function logout() {
   if (!confirm('Выйти из аккаунта?')) return;
   try { await api('/api/auth/logout', {}); } catch (e) {}
   clearToken();
-  ME = null;
+  BOOT = null;
   showLogin();
-});
+}
 
-$('change-password-btn').addEventListener('click', openChangePasswordModal);
+/* ================== TEAM ================== */
+function renderTeamFromBoot() {
+  const box = $('team-list');
+  const list = (BOOT && BOOT.team) || [];
+  if (!list.length) { box.innerHTML = '<div class="no-results">Список сотрудников пуст</div>'; return; }
 
-/* ================== CHANGE PASSWORD ================== */
-function openChangePasswordModal() {
-  openModal('🔐 Сменить пароль', `
-    <div class="form-group">
-      <label>Текущий пароль</label>
-      <input class="form-input" id="cp-old" type="password" autocomplete="current-password">
-    </div>
-    <div class="form-group">
-      <label>Новый пароль</label>
-      <input class="form-input" id="cp-new" type="password" autocomplete="new-password">
-      <div class="form-hint">Минимум 6 символов</div>
-    </div>
-    <div class="form-group">
-      <label>Повторите новый пароль</label>
-      <input class="form-input" id="cp-new2" type="password" autocomplete="new-password">
-    </div>
-    <div class="form-hint error" id="cp-error"></div>
-  `, `
-    <button class="btn ghost" onclick="closeModal()">Отмена</button>
-    <button class="btn primary" id="cp-save">Сохранить</button>
-  `);
-  $('cp-save').addEventListener('click', async () => {
-    const oldPass = $('cp-old').value;
-    const newPass = $('cp-new').value;
-    const newPass2 = $('cp-new2').value;
-    const errEl = $('cp-error');
-    errEl.textContent = '';
-    if (!oldPass) { errEl.textContent = 'Введите текущий пароль'; return; }
-    if (!newPass || newPass.length < 6) { errEl.textContent = 'Новый пароль минимум 6 символов'; return; }
-    if (newPass !== newPass2) { errEl.textContent = 'Пароли не совпадают'; return; }
-    try {
-      await api('/api/admin/change-password', { old_password: oldPass, new_password: newPass });
-      toast('Пароль изменён', 'success');
-      closeModal();
-    } catch (e) {
-      if (e.message === 'wrong_password') errEl.textContent = 'Текущий пароль неверный';
-      else errEl.textContent = 'Не удалось изменить пароль';
+  const positionPriority = {
+    'Управляющий сменой': 1,
+    'Повар горячего цеха': 2,
+    'Повар холодного цеха': 3,
+  };
+  const userPos = (BOOT.profile.position || '').toLowerCase();
+  const isHR = userPos === 'hr' || userPos.includes('hr');
+  const isTU = userPos.includes('территориальный');
+  let html = '';
+
+  if (isHR) {
+    const groupedByManager = {};
+    list.forEach(t => {
+      const mgr = t.manager_name || 'Без ТУ';
+      const rest = t.restaurant_name || 'Без ресторана';
+      if (!groupedByManager[mgr]) groupedByManager[mgr] = {};
+      if (!groupedByManager[mgr][rest]) groupedByManager[mgr][rest] = [];
+      groupedByManager[mgr][rest].push(t);
+    });
+    const sortedMgrs = Object.keys(groupedByManager).sort((a, b) => a.localeCompare(b));
+    for (const mgrName of sortedMgrs) {
+      html += `<div class="manager-title">👤 ${esc(mgrName)}<span class="mgr-sub">(Территориальный управляющий)</span></div>`;
+      const rests = groupedByManager[mgrName];
+      const sortedRests = Object.keys(rests).sort((a, b) => a.localeCompare(b));
+      for (const restName of sortedRests) {
+        html += `<div class="team-group-title">📍 ${esc(restName)}</div>`;
+        const employees = rests[restName].slice().sort((a, b) => {
+          const pA = positionPriority[a.position] || 99;
+          const pB = positionPriority[b.position] || 99;
+          return pA !== pB ? pA - pB : (a.full_name || '').localeCompare(b.full_name || '');
+        });
+        html += employees.map(renderTeamCard).join('');
+      }
     }
-  });
-}
-
-/* ================== MODAL ================== */
-function openModal(title, bodyHtml, footerHtml) {
-  $('modal-title').textContent = title;
-  $('modal-body').innerHTML = bodyHtml;
-  $('modal-footer').innerHTML = footerHtml || '';
-  $('modal-overlay').classList.add('show');
-}
-function closeModal() { $('modal-overlay').classList.remove('show'); }
-$('modal-close').addEventListener('click', closeModal);
-$('modal-overlay').addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
-
-/* ================== NAV ================== */
-const SECTION_TITLES = {
-  dashboard: 'Дашборд', users: 'Сотрудники', restaurants: 'Рестораны',
-  news: 'Новости', standards: 'Стандарты', faq: 'FAQ', positions: 'Должности',
-  questions: 'Вопросы', reports: 'Отчёты', audit: 'История действий',
-};
-const SECTION_LOADERS = {
-  dashboard: loadDashboard, users: loadUsers, restaurants: loadRestaurants,
-  news: loadNews, standards: loadStandards, faq: loadFaq, positions: loadPositions,
-  questions: loadQuestions, reports: loadReports, audit: loadAudit,
-};
-
-document.querySelectorAll('.nav-item').forEach(btn => {
-  btn.addEventListener('click', () => navigate(btn.dataset.sec));
-});
-
-function navigate(sec) {
-  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.sec === sec));
-  $('page-title').textContent = SECTION_TITLES[sec] || '—';
-  $('page-actions').innerHTML = '';
-  $('page-content').innerHTML = '<div class="page-loading"><div class="loader"></div><div style="margin-top:12px;">Загрузка…</div></div>';
-  const loader = SECTION_LOADERS[sec];
-  if (loader) loader();
-}
-
-async function refreshQuestionCount() {
-  try {
-    const data = await api('/api/admin/questions', {});
-    const open = (data.questions || []).filter(q => !q.replied).length;
-    const el = $('q-count');
-    if (open > 0) { el.textContent = open; el.style.display = 'inline-block'; }
-    else el.style.display = 'none';
-  } catch (e) {}
-}
-
-/* ================== DASHBOARD ================== */
-async function loadDashboard() {
-  $('page-actions').innerHTML = '<button class="btn ghost small" id="dash-refresh">↻ Обновить</button>';
-  $('dash-refresh').addEventListener('click', loadDashboard);
-  try {
-    const { stats, report } = await api('/api/admin/dashboard', {});
-    const chart = stats.chart || [];
-    const maxVal = Math.max(...chart, 1);
-    const days = ['-6д','-5д','-4д','-3д','-2д','-1д','Сегодня'];
-    const barsHtml = chart.map((v, i) => `
-      <div class="bar-col">
-        <div class="bar-value">${v}</div>
-        <div class="bar" style="height:${Math.max(6, (v/maxVal)*80)}px; background:${i === chart.length-1 ? 'var(--green)' : 'var(--accent)'};"></div>
-        <div class="bar-label">${days[i]}</div>
-      </div>
-    `).join('');
-
-    $('page-content').innerHTML = `
-      <div class="stats-grid">
-        <div class="stat-card accent">
-          <div class="label">Сегодня</div>
-          <div class="value">+${stats.new_today}</div>
-          <div class="hint">новых сотрудников</div>
-        </div>
-        <div class="stat-card green">
-          <div class="label">Активных</div>
-          <div class="value">${report.active}</div>
-          <div class="hint">из ${report.total}</div>
-        </div>
-        <div class="stat-card">
-          <div class="label">Новых за 7 дней</div>
-          <div class="value">${report.new7}</div>
-        </div>
-        <div class="stat-card amber">
-          <div class="label">Не заходили 7+</div>
-          <div class="value">${report.inactive7}</div>
-        </div>
-      </div>
-      <div class="chart-card">
-        <h3>Новые сотрудники за 7 дней</h3>
-        <div class="bar-chart">${barsHtml}</div>
-      </div>
-      ${stats.questions_open > 0 ? `
-        <div class="chart-card">
-          <h3>Требует внимания</h3>
-          <div style="padding:12px;background:#FFF4E0;border-radius:10px;color:#C77700;font-weight:600;">
-            ❓ ${stats.questions_open} вопросов без ответа →
-            <a href="#" onclick="navigate('questions');return false;" style="color:inherit;text-decoration:underline;">открыть</a>
-          </div>
-        </div>
-      ` : ''}
-    `;
-  } catch (e) {
-    $('page-content').innerHTML = '<div class="empty"><span class="emoji">⚠️</span>Не удалось загрузить дашборд</div>';
+  } else {
+    const groupedByRest = {};
+    list.forEach(t => {
+      const rest = t.restaurant_name || 'Без ресторана';
+      if (!groupedByRest[rest]) groupedByRest[rest] = [];
+      groupedByRest[rest].push(t);
+    });
+    const isMultiRest = Object.keys(groupedByRest).length > 1;
+    const sortedRests = Object.keys(groupedByRest).sort((a, b) => a.localeCompare(b));
+    for (const restName of sortedRests) {
+      if (isMultiRest || isTU) html += `<div class="team-group-title">📍 ${esc(restName)}</div>`;
+      const employees = groupedByRest[restName].slice().sort((a, b) => {
+        const pA = positionPriority[a.position] || 99;
+        const pB = positionPriority[b.position] || 99;
+        return pA !== pB ? pA - pB : (a.full_name || '').localeCompare(b.full_name || '');
+      });
+      html += employees.map(renderTeamCard).join('');
+    }
   }
+  box.innerHTML = html;
 }
 
-/* ================== USERS ================== */
-async function loadUsers(search) {
-  $('page-actions').innerHTML = `
-    <button class="btn ghost small" id="users-export">📤 Экспорт CSV</button>
-    <button class="btn primary small" id="users-create">+ Создать сотрудника</button>
+function renderTeamCard(t) {
+  const initial = (t.full_name || '?').charAt(0).toUpperCase();
+  const medbookHtml = t.is_medbook_valid
+    ? '<span class="status-badge green">🩺 Мед. книжка</span>'
+    : '<span class="status-badge red">🩺 Просрочена</span>';
+  const certHtml = t.is_certified
+    ? '<span class="status-badge green">📜 Сертификат</span>'
+    : '<span class="status-badge gray">📜 Нет сертификата</span>';
+  const phoneClean = (t.phone || '').replace(/[^\d+]/g, '');
+  return `
+    <div class="team-card">
+      <div class="team-avatar">${esc(initial)}</div>
+      <div class="team-info">
+        <div class="team-name">${esc(t.full_name)}</div>
+        <div class="team-pos">${esc(t.position)}</div>
+        <div class="team-status">${medbookHtml}${certHtml}</div>
+      </div>
+      ${phoneClean ? `<div class="team-actions"><a href="tel:${esc(phoneClean)}" aria-label="Позвонить">📞</a></div>` : ''}
+    </div>
   `;
-  $('users-export').addEventListener('click', exportUsers);
-  $('users-create').addEventListener('click', openUserCreate);
-  try {
-    const data = await api('/api/admin/users', { search: search || '' });
-    const users = data.users || [];
-    const searchBar = `
-      <div class="search-bar">
-        <input id="users-search" placeholder="Поиск по логину, ФИО, телефону, ID…" value="${esc(search||'')}">
-      </div>
-    `;
-    const rows = users.map(u => {
-      const tags = [];
-      if (u.is_admin) tags.push('<span class="tag blue">👑 Админ</span>');
-      if (u.is_blocked) tags.push('<span class="tag red">🚫 Блок</span>');
-      if (u.is_certified) tags.push('<span class="tag green">📜 Сертификат</span>');
-      else tags.push('<span class="tag gray">📜 Нет</span>');
-      if (u.is_medbook_valid) tags.push('<span class="tag green">🩺 Медкнижка</span>');
-      else tags.push('<span class="tag red">🩺 Просрочена</span>');
-      return `
-        <tr class="row-clickable" data-uid="${u.user_id}">
-          <td>${u.login ? `<span class="login-cell">${esc(u.login)}</span>` : '<span class="tag gray">нет</span>'}</td>
-          <td><b>${esc(u.full_name || '—')}</b></td>
-          <td>${esc(u.phone || '—')}</td>
-          <td>${esc(u.position || '—')}</td>
-          <td>${esc(u.restaurant_name || '—')}</td>
-          <td><div class="tag-stack">${tags.join('')}</div></td>
-          <td style="font-size:12px;color:var(--text-muted);">${fmtDate(u.last_seen_at, false)}</td>
-          <td class="actions-cell">
-            <button class="icon-btn" data-edit="${u.user_id}" title="Редактировать">✏️</button>
-            <button class="icon-btn danger" data-del="${u.user_id}" title="Удалить">🗑</button>
-          </td>
-        </tr>
-      `;
-    }).join('');
-
-    $('page-content').innerHTML = searchBar + `
-      <div class="table-card">
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr><th>Логин</th><th>ФИО</th><th>Телефон</th><th>Должность</th>
-                  <th>Ресторан</th><th>Статусы</th><th>Был(а)</th><th></th></tr>
-            </thead>
-            <tbody>${rows || '<tr><td colspan="8"><div class="empty">Нет сотрудников</div></td></tr>'}</tbody>
-          </table>
-        </div>
-      </div>
-    `;
-
-    const searchInput = $('users-search');
-    let timer;
-    searchInput.addEventListener('input', () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => loadUsers(searchInput.value.trim()), 400);
-    });
-    document.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', e => {
-      e.stopPropagation();
-      openUserEditor(parseInt(b.dataset.edit));
-    }));
-    document.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', e => {
-      e.stopPropagation();
-      deleteUser(parseInt(b.dataset.del));
-    }));
-    document.querySelectorAll('tr[data-uid]').forEach(tr => tr.addEventListener('click', () => openUserEditor(parseInt(tr.dataset.uid))));
-  } catch (e) {
-    $('page-content').innerHTML = '<div class="empty">Ошибка загрузки пользователей</div>';
-  }
-}
-
-function openUserCreate() {
-  openModal('Создать сотрудника', `
-    <div class="form-group">
-      <label>Логин</label>
-      <input class="form-input" id="nc-login" placeholder="abc12" maxlength="5"
-             style="text-transform: lowercase; font-family: monospace;">
-      <div class="form-hint" id="nc-login-hint">3 латинские буквы + 2 цифры (например, adm01)</div>
-    </div>
-    <div class="form-group">
-      <label>Пароль</label>
-      <input class="form-input" id="nc-password" placeholder="Минимум 6 символов">
-      <div class="form-hint">Сотрудник сможет сменить пароль после входа</div>
-    </div>
-    <div class="form-group">
-      <label>ФИО</label>
-      <input class="form-input" id="nc-name" placeholder="Иванов Иван Иванович">
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Телефон</label>
-        <input class="form-input" id="nc-phone" placeholder="+7 (900) 000-00-00">
-      </div>
-      <div class="form-group">
-        <label>Дата рождения</label>
-        <input class="form-input" id="nc-birth" placeholder="ДД.ММ.ГГГГ">
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Должность</label>
-        <input class="form-input" id="nc-position" placeholder="Повар холодного цеха">
-      </div>
-      <div class="form-group">
-        <label>Ресторан (key)</label>
-        <input class="form-input" id="nc-restaurant" placeholder="belyaevo">
-        <div class="form-hint"><a href="#" onclick="navigate('restaurants');closeModal();return false;">Посмотреть все key →</a></div>
-      </div>
-    </div>
-    <div class="form-group">
-      <div class="checkbox-row"><input type="checkbox" id="nc-cert"><label for="nc-cert">Сертификация пройдена</label></div>
-      <div class="checkbox-row"><input type="checkbox" id="nc-medbook"><label for="nc-medbook">Мед. книжка действительна</label></div>
-      <div class="checkbox-row"><input type="checkbox" id="nc-admin"><label for="nc-admin">Права администратора</label></div>
-    </div>
-    <div class="form-hint error" id="nc-error"></div>
-  `, `
-    <button class="btn ghost" onclick="closeModal()">Отмена</button>
-    <button class="btn primary" id="nc-save">Создать</button>
-  `);
-  $('nc-login').addEventListener('input', e => {
-    e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5);
-  });
-  $('nc-save').addEventListener('click', async () => {
-    const errEl = $('nc-error');
-    errEl.textContent = '';
-    const body = {
-      login: $('nc-login').value.trim().toLowerCase(),
-      password: $('nc-password').value,
-      full_name: $('nc-name').value.trim(),
-      phone: $('nc-phone').value.trim(),
-      birth_date: $('nc-birth').value.trim(),
-      position: $('nc-position').value.trim(),
-      restaurant: $('nc-restaurant').value.trim(),
-      is_certified: $('nc-cert').checked,
-      is_medbook_valid: $('nc-medbook').checked,
-      is_admin: $('nc-admin').checked,
-    };
-    if (!LOGIN_RE.test(body.login)) { errEl.textContent = 'Логин: 3 буквы + 2 цифры'; return; }
-    if (!body.password || body.password.length < 6) { errEl.textContent = 'Пароль минимум 6 символов'; return; }
-    if (!body.full_name) { errEl.textContent = 'Введите ФИО'; return; }
-    try {
-      await api('/api/admin/user/create', body);
-      toast('Сотрудник создан', 'success');
-      closeModal();
-      loadUsers();
-    } catch (e) {
-      const errMap = {
-        invalid_login: 'Логин: 3 латинские буквы + 2 цифры',
-        invalid_password: 'Пароль минимум 6 символов',
-        invalid_full_name: 'Некорректное ФИО',
-        invalid_birth_date: 'Дата в формате ДД.ММ.ГГГГ',
-        login_taken: 'Этот логин уже занят',
-      };
-      errEl.textContent = errMap[e.message] || 'Ошибка создания';
-    }
-  });
-}
-
-async function openUserEditor(uid) {
-  try {
-    const data = await api('/api/admin/user/get', { user_id: uid });
-    const u = data.user;
-    openModal('Редактирование сотрудника', `
-      <div class="form-group">
-        <label>Логин</label>
-        <input class="form-input" id="eu-login" value="${esc(u.login)}" maxlength="5"
-               style="text-transform: lowercase; font-family: monospace;">
-        <div class="form-hint" id="eu-login-hint">3 латинские буквы + 2 цифры</div>
-      </div>
-      <div class="form-group">
-        <label>Новый пароль</label>
-        <input class="form-input" id="eu-password" placeholder="Оставьте пустым, чтобы не менять">
-        <div class="form-hint">Минимум 6 символов</div>
-      </div>
-      <div class="form-group">
-        <label>ФИО</label>
-        <input class="form-input" id="eu-name" value="${esc(u.full_name)}">
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Телефон</label><input class="form-input" id="eu-phone" value="${esc(u.phone)}"></div>
-        <div class="form-group"><label>Дата рождения</label><input class="form-input" id="eu-birth" value="${esc(u.birth_date)}" placeholder="ДД.ММ.ГГГГ"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Должность</label><input class="form-input" id="eu-position" value="${esc(u.position)}"></div>
-        <div class="form-group"><label>Ресторан (key)</label><input class="form-input" id="eu-restaurant" value="${esc(u.restaurant_key)}"></div>
-      </div>
-      <div class="form-group">
-        <div class="checkbox-row"><input type="checkbox" id="eu-cert" ${u.is_certified ? 'checked' : ''}><label for="eu-cert">Сертификация пройдена</label></div>
-        <div class="checkbox-row"><input type="checkbox" id="eu-medbook" ${u.is_medbook_valid ? 'checked' : ''}><label for="eu-medbook">Мед. книжка действительна</label></div>
-        <div class="checkbox-row"><input type="checkbox" id="eu-blocked" ${u.is_blocked ? 'checked' : ''}><label for="eu-blocked">Заблокирован</label></div>
-        <div class="checkbox-row"><input type="checkbox" id="eu-admin" ${u.is_admin ? 'checked' : ''}><label for="eu-admin">Права администратора</label></div>
-      </div>
-      <div class="form-hint error" id="eu-error"></div>
-    `, `
-      <button class="btn ghost" onclick="closeModal()">Отмена</button>
-      <button class="btn primary" id="eu-save">Сохранить</button>
-    `);
-    $('eu-login').addEventListener('input', e => {
-      e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5);
-    });
-    $('eu-save').addEventListener('click', async () => {
-      const errEl = $('eu-error');
-      errEl.textContent = '';
-      const updates = {};
-      const newLogin = $('eu-login').value.trim().toLowerCase();
-      if (newLogin && newLogin !== u.login) {
-        if (!LOGIN_RE.test(newLogin)) { errEl.textContent = 'Логин: 3 буквы + 2 цифры'; return; }
-        updates.login = newLogin;
-      }
-      const newPassword = $('eu-password').value;
-      if (newPassword) {
-        if (newPassword.length < 6) { errEl.textContent = 'Пароль минимум 6 символов'; return; }
-        updates.password = newPassword;
-      }
-      updates.full_name = $('eu-name').value.trim();
-      updates.phone = $('eu-phone').value.trim();
-      updates.birth_date = $('eu-birth').value.trim();
-      updates.position = $('eu-position').value.trim();
-      updates.restaurant = $('eu-restaurant').value.trim();
-      updates.is_certified = $('eu-cert').checked;
-      updates.is_medbook_valid = $('eu-medbook').checked;
-      updates.is_blocked = $('eu-blocked').checked;
-      updates.is_admin = $('eu-admin').checked;
-      try {
-        const res = await api('/api/admin/user/update', { user_id: uid, updates });
-        if (res.errors && Object.keys(res.errors).length) {
-          errEl.textContent = 'Некоторые поля не сохранены: ' + Object.keys(res.errors).join(', ');
-          return;
-        }
-        toast('Сохранено', 'success');
-        closeModal();
-        loadUsers();
-      } catch (e) {
-        errEl.textContent = 'Ошибка сохранения';
-      }
-    });
-  } catch (e) { toast('Не удалось загрузить', 'error'); }
-}
-
-async function deleteUser(uid) {
-  if (!confirm('Удалить сотрудника? Он больше не сможет войти.')) return;
-  try {
-    await api('/api/admin/user/delete', { user_id: uid });
-    toast('Удалён', 'success');
-    loadUsers();
-  } catch (e) { toast('Ошибка', 'error'); }
-}
-
-async function exportUsers() {
-  try {
-    const { csv } = await api('/api/admin/export/users', {});
-    downloadCsv(csv, 'users.csv');
-  } catch (e) { toast('Ошибка экспорта', 'error'); }
-}
-
-function downloadCsv(csv, filename) {
-  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
 }
 
 /* ================== RESTAURANTS ================== */
-async function loadRestaurants() {
-  $('page-actions').innerHTML = '<button class="btn primary small" id="rest-add-btn">+ Добавить</button>';
-  $('rest-add-btn').addEventListener('click', openRestaurantAdd);
-  try {
-    const data = await api('/api/admin/restaurants', {});
-    const rests = data.restaurants || [];
-    const rows = rests.map(r => `
-      <tr>
-        <td><b>${esc(r.name)}</b><br><span style="font-size:11px;color:var(--text-muted);font-family:monospace;">${esc(r.key)}</span></td>
-        <td>${esc(r.address || '—')}</td>
-        <td>${esc(r.phone || '—')}</td>
-        <td>${r.status === 'open' ? '<span class="tag green">🟢 Открыто</span>' : '<span class="tag red">🔴 Закрыто</span>'}
-            ${r.force_status ? '<span class="tag amber" style="margin-left:4px;">вручную</span>' : ''}</td>
-        <td>${esc(r.territory_manager_name || '—')}</td>
-        <td class="actions-cell">
-          <button class="icon-btn" data-edit="${esc(r.key)}" title="Редактировать">✏️</button>
-          <button class="icon-btn" data-tu="${esc(r.key)}" title="Назначить ТУ">👔</button>
-          <button class="icon-btn" data-status="${esc(r.key)}" data-cur="${r.force_status || 'auto'}" title="Статус">${r.status === 'open' ? '🔴' : '🟢'}</button>
-          ${r.key !== 'office' ? `<button class="icon-btn danger" data-del="${esc(r.key)}" title="Удалить">🗑</button>` : ''}
-        </td>
-      </tr>
-    `).join('');
-    $('page-content').innerHTML = `
-      <div class="table-card">
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Название</th><th>Адрес</th><th>Телефон</th><th>Статус</th><th>ТУ</th><th></th></tr></thead>
-            <tbody>${rows || '<tr><td colspan="6"><div class="empty">Ресторанов нет</div></td></tr>'}</tbody>
-          </table>
+function renderRestaurantsList(list, query) {
+  const box = $('restaurants-list');
+  const q = (query || '').trim().toLowerCase();
+  const myKey = (BOOT && BOOT.profile && BOOT.profile.restaurant_key) || '';
+  let filtered = list.filter(r => ((r.name || '') + ' ' + (r.address || '')).toLowerCase().indexOf(q) !== -1);
+  if (currentRestFilter === 'open') filtered = filtered.filter(r => r.status === 'open');
+  filtered.sort((a, b) => {
+    const aIsMy = a.key === myKey;
+    const bIsMy = b.key === myKey;
+    if (aIsMy && !bIsMy) return -1;
+    if (!aIsMy && bIsMy) return 1;
+    if (a.status === 'open' && b.status !== 'open') return -1;
+    if (a.status !== 'open' && b.status === 'open') return 1;
+    return (a.name || '').localeCompare(b.name || '');
+  });
+  if (!filtered.length) { box.innerHTML = '<div class="no-results">Ничего не нашлось</div>'; return; }
+  box.innerHTML = filtered.map(r => {
+    const isMy = r.key === myKey;
+    const routeUrl = r.org
+      ? 'https://yandex.ru/maps/org/' + encodeURIComponent(r.org)
+      : 'https://yandex.ru/maps/?text=' + encodeURIComponent(r.address || '');
+    const phoneClean = (r.phone || '').replace(/[^\d+]/g, '');
+    return `
+      <div class="rest-card" data-key="${esc(r.key)}">
+        ${isMy ? '<div class="my-rest-tag">Мой ресторан</div>' : ''}
+        <div class="rest-card-header">
+          <div class="rest-logo">🍜</div>
+          <div class="rest-info">
+            <div class="rest-name">${esc(r.name)}</div>
+            <span class="rest-badge ${r.status === 'open' ? 'open' : 'closed'}">${esc(r.status_text || '')}</span>
+          </div>
+        </div>
+        <div class="rest-address-row"><span>📍</span> ${esc(r.address || '')}</div>
+        <div class="rest-actions">
+          ${phoneClean ? `<a href="tel:${esc(phoneClean)}" class="btn-call" onclick="event.stopPropagation()">Позвонить</a>` : ''}
+          <a href="${routeUrl}" target="_blank" rel="noopener" class="btn-route" onclick="event.stopPropagation()">Маршрут</a>
         </div>
       </div>
     `;
-    document.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openRestaurantEditor(b.dataset.edit, rests)));
-    document.querySelectorAll('[data-tu]').forEach(b => b.addEventListener('click', () => openTuEditor(b.dataset.tu, data.tu_candidates, rests)));
-    document.querySelectorAll('[data-status]').forEach(b => b.addEventListener('click', async () => {
-      const cur = b.dataset.cur;
-      const next = cur === 'auto' ? 'closed' : cur === 'closed' ? 'open' : 'auto';
-      try {
-        await api('/api/admin/restaurant/status', { key: b.dataset.status, status: next });
-        toast('Статус обновлён', 'success');
-        loadRestaurants();
-      } catch (e) { toast('Ошибка', 'error'); }
-    }));
-    document.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
-      if (!confirm('Удалить ресторан?')) return;
-      try {
-        const res = await api('/api/admin/restaurant/delete', { key: b.dataset.del });
-        if (res.ok) { toast('Удалён', 'success'); loadRestaurants(); }
-        else if (res.reason === 'users_attached') toast('Есть привязанные сотрудники', 'error');
-        else toast('Ошибка', 'error');
-      } catch (e) { toast('Ошибка', 'error'); }
-    }));
-  } catch (e) {
-    $('page-content').innerHTML = '<div class="empty">Ошибка загрузки ресторанов</div>';
+  }).join('');
+}
+
+function renderRestaurants() {
+  if (!BOOT) return;
+  const query = $('rest-search').value;
+  renderRestaurantsList(BOOT.restaurants || [], query);
+  if ($('btn-view-map').classList.contains('active') && window.ymaps) {
+    initInteractiveMap(BOOT.restaurants || []);
   }
 }
 
-function openRestaurantEditor(key, rests) {
-  const r = rests.find(x => x.key === key);
-  if (!r) return;
-  openModal('Редактирование ресторана', `
-    <div class="form-group"><label>Key</label><div style="font-family:monospace;">${esc(r.key)}</div></div>
-    <div class="form-group"><label>Название</label><input class="form-input" id="rf-name" value="${esc(r.name)}"></div>
-    <div class="form-group"><label>Адрес</label><input class="form-input" id="rf-address" value="${esc(r.address)}"></div>
-    <div class="form-row">
-      <div class="form-group"><label>Телефон</label><input class="form-input" id="rf-phone" value="${esc(r.phone)}"></div>
-      <div class="form-group"><label>Яндекс Карты (org)</label><input class="form-input" id="rf-org" value="${esc(r.org)}"></div>
-    </div>
-    <div class="form-group"><label>Часы работы</label><textarea class="form-textarea" id="rf-hours" rows="3">${esc(r.hours)}</textarea></div>
-    <div class="form-row">
-      <div class="form-group"><label>Широта</label><input class="form-input" id="rf-lat" type="number" step="0.000001" value="${r.lat || ''}"></div>
-      <div class="form-group"><label>Долгота</label><input class="form-input" id="rf-lon" type="number" step="0.000001" value="${r.lon || ''}"></div>
-    </div>
-  `, `
-    <button class="btn ghost" onclick="closeModal()">Отмена</button>
-    <button class="btn primary" id="save-rest-btn">Сохранить</button>
-  `);
-  $('save-rest-btn').addEventListener('click', async () => {
-    const updates = {
-      name: $('rf-name').value.trim(),
-      address: $('rf-address').value.trim(),
-      phone: $('rf-phone').value.trim(),
-      org: $('rf-org').value.trim(),
-      hours: $('rf-hours').value.trim(),
-    };
-    const lat = parseFloat($('rf-lat').value);
-    const lon = parseFloat($('rf-lon').value);
-    if (!isNaN(lat) && !isNaN(lon)) updates.coords = { lat, lon };
-    try {
-      await api('/api/admin/restaurant/update', { key, updates });
-      toast('Сохранено', 'success'); closeModal(); loadRestaurants();
-    } catch (e) { toast('Ошибка', 'error'); }
+document.querySelectorAll('#rest-filters .chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('#rest-filters .chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    currentRestFilter = chip.dataset.filter;
+    renderRestaurants();
   });
+});
+
+$('btn-view-list').addEventListener('click', function() {
+  $('btn-view-map').classList.remove('active');
+  this.classList.add('active');
+  $('restaurants-map').style.display = 'none';
+  $('rest-list-wrapper').style.display = 'block';
+});
+
+function loadYandexMaps() {
+  if (window.ymaps) return Promise.resolve();
+  if (_yandexMapsPromise) return _yandexMapsPromise;
+  _yandexMapsPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://api-maps.yandex.ru/2.1/?apikey=' + encodeURIComponent(YANDEX_MAPS_API_KEY) + '&lang=ru_RU';
+    s.onload = () => ymaps.ready(resolve);
+    s.onerror = reject;
+    document.head.appendChild(s);
+  }).finally(() => { _yandexMapsPromise = null; });
+  return _yandexMapsPromise;
 }
 
-function openRestaurantAdd() {
-  openModal('Новый ресторан', `
-    <div class="form-group"><label>Название</label><input class="form-input" id="ra-name" placeholder="Мега Химки"></div>
-    <div class="form-group"><label>Адрес</label><input class="form-input" id="ra-address" placeholder="Москва, ул. Ленина, 5"></div>
-    <div class="form-group"><label>Часы работы</label><textarea class="form-textarea" id="ra-hours" rows="3" placeholder="Пн–вс: 10:00–22:00"></textarea></div>
-    <div class="form-row">
-      <div class="form-group"><label>Телефон</label><input class="form-input" id="ra-phone" placeholder="+7…"></div>
-      <div class="form-group"><label>Яндекс.Карты</label><input class="form-input" id="ra-org" placeholder="vokker/…"></div>
-    </div>
-  `, `
-    <button class="btn ghost" onclick="closeModal()">Отмена</button>
-    <button class="btn primary" id="create-rest-btn">Создать</button>
-  `);
-  $('create-rest-btn').addEventListener('click', async () => {
-    const body = {
-      name: $('ra-name').value.trim(),
-      address: $('ra-address').value.trim(),
-      hours: $('ra-hours').value.trim(),
-      phone: $('ra-phone').value.trim(),
-      org: $('ra-org').value.trim(),
-    };
-    if (!body.name || !body.hours) { toast('Заполните имя и часы', 'error'); return; }
-    try {
-      const res = await api('/api/admin/restaurant/add', body);
-      if (res.ok) { toast('Создан', 'success'); closeModal(); loadRestaurants(); }
-      else toast('Ошибка (key уже есть?)', 'error');
-    } catch (e) { toast('Ошибка', 'error'); }
-  });
+function initInteractiveMap(restaurants) {
+  const mapContainer = $('restaurants-map');
+  if (!window.ymaps) return;
+  if (!yandexMap) {
+    yandexMap = new ymaps.Map(mapContainer, { center: [55.7558, 37.6173], zoom: 10, controls: ['zoomControl'] });
+    yandexClusterer = new ymaps.Clusterer({ preset: 'islands#invertedVioletClusterIcons' });
+    yandexMap.geoObjects.add(yandexClusterer);
+  }
+  yandexClusterer.removeAll();
+  const placemarks = restaurants.filter(r => r.lat && r.lon).map(r => new ymaps.Placemark(
+    [r.lat, r.lon],
+    { hintContent: r.name, balloonContent: r.name },
+    { preset: r.status === 'open' ? 'islands#greenIcon' : 'islands#redIcon' }
+  ));
+  yandexClusterer.add(placemarks);
+  if (placemarks.length > 0) {
+    try { yandexMap.setBounds(yandexClusterer.getBounds(), { checkZoomRange: true, zoomMargin: 30 }); } catch (e) {}
+  }
+  setTimeout(() => { try { if (yandexMap) yandexMap.container.fitToViewport(); } catch (e) {} }, 200);
 }
 
-function openTuEditor(key, candidates, rests) {
-  const r = rests.find(x => x.key === key);
-  const opts = (candidates || []).map(c =>
-    `<option value="${c.user_id}" ${r.territory_manager_id === c.user_id ? 'selected' : ''}>${esc(c.full_name)} (ID ${c.user_id})</option>`
-  ).join('');
-  openModal('Назначить ТУ', `
-    <div class="form-group">
-      <label>Территориальный управляющий</label>
-      <select class="form-select" id="tu-select">
-        <option value="">— не назначен —</option>
-        ${opts}
-      </select>
-      <div class="form-hint">${candidates.length ? '' : 'Нет сотрудников с должностью «Территориальный управляющий». Сначала назначь её в карточке сотрудника.'}</div>
-    </div>
-  `, `
-    <button class="btn ghost" onclick="closeModal()">Отмена</button>
-    <button class="btn primary" id="save-tu-btn">Сохранить</button>
-  `);
-  $('save-tu-btn').addEventListener('click', async () => {
-    const val = $('tu-select').value;
-    try {
-      await api('/api/admin/restaurant/tu', { key, territory_manager_id: val ? parseInt(val) : null });
-      toast('Сохранено', 'success'); closeModal(); loadRestaurants();
-    } catch (e) { toast('Ошибка', 'error'); }
-  });
+$('btn-view-map').addEventListener('click', async function() {
+  $('btn-view-list').classList.remove('active');
+  this.classList.add('active');
+  $('rest-list-wrapper').style.display = 'none';
+  const mapContainer = $('restaurants-map');
+  mapContainer.style.display = 'block';
+  mapContainer.innerHTML = '<div class="loading">Загрузка карты…</div>';
+  try {
+    await loadYandexMaps();
+    mapContainer.innerHTML = '';
+    initInteractiveMap((BOOT && BOOT.restaurants) || []);
+  } catch (e) {
+    mapContainer.innerHTML = '<div class="loading">Не удалось загрузить карту</div>';
+  }
+});
+
+$('rest-search').addEventListener('input', () => renderRestaurants());
+
+$('restaurants-list').addEventListener('click', function(e) {
+  const card = e.target.closest('.rest-card');
+  if (card && card.dataset.key) showDetail(card.dataset.key);
+});
+
+function showDetail(key) {
+  const section = $('sec-detail');
+  const box = $('detail-box');
+  const r = (BOOT.restaurants || []).find(x => x.key === key);
+  if (r) {
+    const routeUrl = r.org
+      ? 'https://yandex.ru/maps/org/' + encodeURIComponent(r.org)
+      : 'https://yandex.ru/maps/?text=' + encodeURIComponent(r.address || '');
+    const phoneClean = (r.phone || '').replace(/[^\d+]/g, '');
+    box.innerHTML = `
+      <div class="detail-hero"><div class="emoji">🍜</div><div class="name">${esc(r.name)}</div><span class="detail-status ${r.status === 'open' ? 'open' : 'closed'}">${esc(r.status_text || '')}</span></div>
+      <div class="detail-card">
+        <div class="row"><div class="lbl">Адрес</div>${esc(r.address || '—')}</div>
+        ${phoneClean ? `<div class="row"><div class="lbl">Телефон</div><a href="tel:${esc(phoneClean)}" style="color:var(--accent);font-weight:700;text-decoration:none;">${esc(r.phone)}</a></div>` : ''}
+        <div class="row"><div class="lbl">Часы работы</div>${esc((r.hours || '—').replace(/\n/g, ' · '))}</div>
+      </div>
+      <a href="${routeUrl}" target="_blank" rel="noopener" class="btn" style="display:block; width:calc(100% - 32px); margin: 0 16px; text-decoration:none;">Открыть в Яндекс Картах</a>
+    `;
+  }
+  document.querySelector('.tabs').style.display = 'none';
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  section.classList.add('active');
+  window.scrollTo(0, 0);
 }
+
+function exitDetailView() {
+  const tabs = document.querySelector('.tabs');
+  if (tabs) tabs.style.display = 'flex';
+}
+
+$('detail-back').addEventListener('click', () => {
+  exitDetailView();
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+  document.querySelector('.tabs button[data-sec="sec-restaurants"]').classList.add('active');
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  $('sec-restaurants').classList.add('active');
+  renderRestaurants();
+});
 
 /* ================== NEWS ================== */
-async function loadNews() {
-  $('page-actions').innerHTML = '<button class="btn primary small" id="news-add-btn">+ Добавить</button>';
-  $('news-add-btn').addEventListener('click', openNewsAdd);
-  try {
-    const data = await api('/api/admin/news', {});
-    const news = data.news || [];
-    const rows = news.map(n => {
-      const lvl = n.level === 'urgent' ? '<span class="tag red">Срочно</span>'
-        : n.level === 'important' ? '<span class="tag amber">Важно</span>'
-        : '<span class="tag gray">Обычная</span>';
-      const status = n.published ? '<span class="tag green">Опубликована</span>'
-        : `<span class="tag blue">⏰ ${fmtDate(n.publish_at, true)}</span>`;
-      return `
-        <tr>
-          <td>${lvl}</td>
-          <td><b>${esc(n.title)}</b><br><span style="font-size:11px;color:var(--text-muted);">${esc((n.body||'').substring(0, 60))}${(n.body||'').length>60?'…':''}</span></td>
-          <td>${status}</td>
-          <td style="font-size:12px;color:var(--text-muted);">${fmtDate(n.created_at, true)}</td>
-          <td class="actions-cell">
-            <button class="icon-btn" data-title="${n.id}" title="Изменить заголовок">✏️</button>
-            ${n.published ? `<button class="icon-btn danger" data-del="${n.id}" title="Удалить">🗑</button>` : ''}
-          </td>
-        </tr>
-      `;
-    }).join('');
-    $('page-content').innerHTML = `
-      <div class="table-card">
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Тип</th><th>Заголовок</th><th>Статус</th><th>Создано</th><th></th></tr></thead>
-            <tbody>${rows || '<tr><td colspan="5"><div class="empty">Новостей нет</div></td></tr>'}</tbody>
-          </table>
-        </div>
-      </div>
-    `;
-    document.querySelectorAll('[data-title]').forEach(b => b.addEventListener('click', () => openNewsEditTitle(parseInt(b.dataset.title), news)));
-    document.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
-      if (!confirm('Удалить новость?')) return;
-      try { await api('/api/admin/news/delete', { id: parseInt(b.dataset.del) }); toast('Удалена', 'success'); loadNews(); }
-      catch (e) { toast('Ошибка', 'error'); }
-    }));
-  } catch (e) {
-    $('page-content').innerHTML = '<div class="empty">Ошибка загрузки</div>';
-  }
-}
-
-function openNewsAdd() {
-  openModal('Новая новость', `
-    <div class="form-group"><label>Заголовок</label><input class="form-input" id="n-title" maxlength="100"></div>
-    <div class="form-group"><label>Текст</label><textarea class="form-textarea" id="n-body" maxlength="2000"></textarea></div>
-    <div class="form-group">
-      <label>Уровень</label>
-      <select class="form-select" id="n-level">
-        <option value="normal">🔵 Обычная</option>
-        <option value="important">🟡 Важная</option>
-        <option value="urgent">🔴 Срочная</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label>Публикация</label>
-      <select class="form-select" id="n-sched">
-        <option value="now">📤 Сейчас</option>
-        <option value="later">⏰ Отложить</option>
-      </select>
-    </div>
-    <div class="form-group" id="n-sched-time" style="display:none;">
-      <label>Дата и время</label>
-      <input class="form-input" type="datetime-local" id="n-publish-at">
-    </div>
-  `, `
-    <button class="btn ghost" onclick="closeModal()">Отмена</button>
-    <button class="btn primary" id="create-news-btn">Создать</button>
-  `);
-  $('n-sched').addEventListener('change', e => {
-    $('n-sched-time').style.display = e.target.value === 'later' ? 'block' : 'none';
-  });
-  $('create-news-btn').addEventListener('click', async () => {
-    const body = {
-      title: $('n-title').value.trim(),
-      body: $('n-body').value.trim(),
-      level: $('n-level').value,
-    };
-    if (!body.title || !body.body) { toast('Заполните поля', 'error'); return; }
-    if ($('n-sched').value === 'later') {
-      const dt = $('n-publish-at').value;
-      if (!dt) { toast('Укажите дату и время', 'error'); return; }
-      body.publish_at = new Date(dt).toISOString();
-    }
-    try {
-      await api('/api/admin/news/add', body);
-      toast('Создана', 'success'); closeModal(); loadNews();
-    } catch (e) { toast('Ошибка', 'error'); }
-  });
-}
-
-function openNewsEditTitle(id, news) {
-  const n = news.find(x => x.id === id);
-  if (!n) return;
-  openModal('Изменить заголовок', `
-    <div class="form-group"><label>Заголовок</label><input class="form-input" id="edit-n-title" value="${esc(n.title)}" maxlength="100"></div>
-  `, `
-    <button class="btn ghost" onclick="closeModal()">Отмена</button>
-    <button class="btn primary" id="save-title-btn">Сохранить</button>
-  `);
-  $('save-title-btn').addEventListener('click', async () => {
-    try {
-      await api('/api/admin/news/update', { id, title: $('edit-n-title').value.trim() });
-      toast('Сохранено', 'success'); closeModal(); loadNews();
-    } catch (e) { toast('Ошибка', 'error'); }
-  });
+function renderNewsFromBoot() {
+  const box = $('news-list');
+  const list = (BOOT && BOOT.news) || [];
+  if (!list.length) { box.innerHTML = '<div class="no-results">Пока новостей нет</div>'; return; }
+  box.innerHTML = list.map(n => {
+    const lvl = ['urgent', 'important'].includes(n.level) ? n.level : 'normal';
+    let badgeHtml = '';
+    if (lvl === 'urgent') badgeHtml = '<span class="news-badge urgent">Срочно</span>';
+    else if (lvl === 'important') badgeHtml = '<span class="news-badge important">Важно</span>';
+    return `<div class="news-item"><div class="news-meta"><div class="news-date">${esc(n.date)}</div>${badgeHtml}</div><div class="news-title">${esc(n.title)}</div><div class="news-body">${esc(n.text)}</div></div>`;
+  }).join('');
 }
 
 /* ================== STANDARDS ================== */
-async function loadStandards() {
-  $('page-actions').innerHTML = '<button class="btn primary small" id="std-add-btn">+ Добавить</button>';
-  $('std-add-btn').addEventListener('click', openStandardAdd);
-  try {
-    const data = await api('/api/admin/standards', {});
-    const list = data.standards || [];
-    const rows = list.map(s => `
-      <tr>
-        <td><b>${esc(s.title)}</b></td>
-        <td>${esc(s.category || '—')}</td>
-        <td style="max-width:400px;font-size:12px;color:var(--text-muted);">${esc((s.description||'').substring(0,120))}${s.description.length>120?'…':''}</td>
-        <td class="actions-cell">
-          <button class="icon-btn" data-edit="${s.id}" title="Редактировать">✏️</button>
-          <button class="icon-btn danger" data-del="${s.id}" title="Удалить">🗑</button>
-        </td>
-      </tr>
-    `).join('');
-    $('page-content').innerHTML = `
-      <div class="table-card">
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Название</th><th>Категория</th><th>Описание</th><th></th></tr></thead>
-            <tbody>${rows || '<tr><td colspan="4"><div class="empty">Стандартов нет</div></td></tr>'}</tbody>
-          </table>
-        </div>
-      </div>
-    `;
-    document.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openStandardEdit(parseInt(b.dataset.edit), list)));
-    document.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
-      if (!confirm('Удалить?')) return;
-      try { await api('/api/admin/standard/delete', { id: parseInt(b.dataset.del) }); toast('Удалено', 'success'); loadStandards(); }
-      catch (e) { toast('Ошибка', 'error'); }
-    }));
-  } catch (e) { $('page-content').innerHTML = '<div class="empty">Ошибка</div>'; }
+function renderStandardsFromBoot() {
+  const box = $('standards-list');
+  const list = (BOOT && BOOT.standards) || [];
+  const container = $('standards-chips');
+  const cats = ['all', 'shift_checklist', ...new Set(list.map(s => s.category).filter(Boolean))];
+  container.innerHTML = cats.map(cat => {
+    const label = cat === 'all' ? 'Все' : cat === 'shift_checklist' ? '📋 Смена' : cat;
+    return `<div class="chip ${currentStandardCat === cat ? 'active' : ''}" data-cat="${esc(cat)}">${esc(label)}</div>`;
+  }).join('');
+  container.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      currentStandardCat = chip.dataset.cat;
+      $('standard-search').value = '';
+      renderStandardsFromBoot();
+    });
+  });
+  const query = ($('standard-search').value || '').trim().toLowerCase();
+  let htmlContent = '';
+  if ((currentStandardCat === 'shift_checklist' || currentStandardCat === 'all') && (!query || 'чек-лист'.includes(query))) {
+    htmlContent += '<div class="checklist-card"><b style="margin-bottom:16px; font-size:18px; display:block;">📋 Чек-лист открытия</b><div id="shift-checklist"></div></div>';
+  }
+  const filtered = list.filter(s => {
+    const matchCat = currentStandardCat === 'all' || s.category === currentStandardCat;
+    const hay = ((s.title || '') + ' ' + (s.description || '')).toLowerCase();
+    const matchQuery = !query || hay.indexOf(query) !== -1;
+    return matchCat && matchQuery;
+  });
+  htmlContent += filtered.map(s => `<div class="card" style="padding: 20px;"><b style="font-size: 18px; margin-bottom: 4px; display: block;">${esc(s.title)}</b><div style="font-size: 13px; color: var(--accent); font-weight: 700; text-transform: uppercase; margin-bottom: 8px;">${esc(s.category || '')}</div><div style="color: var(--text-muted); font-size: 15px; line-height: 1.5;">${esc(s.description || '')}</div>${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener" style="display:inline-block;margin-top:10px;color:var(--accent);font-weight:700;text-decoration:none;font-size:14px;">Открыть →</a>` : ''}</div>`).join('');
+  box.innerHTML = htmlContent || '<div class="no-results">Ничего не найдено</div>';
+  if ($('shift-checklist')) initShiftChecklist();
 }
 
-function openStandardAdd() {
-  openModal('Новый стандарт', `
-    <div class="form-group"><label>Название</label><input class="form-input" id="s-title"></div>
-    <div class="form-group"><label>Категория</label><input class="form-input" id="s-cat" placeholder="Технология"></div>
-    <div class="form-group"><label>Описание</label><textarea class="form-textarea" id="s-desc"></textarea></div>
-    <div class="form-group"><label>Ссылка</label><input class="form-input" id="s-url" placeholder="https://…"></div>
-  `, `
-    <button class="btn ghost" onclick="closeModal()">Отмена</button>
-    <button class="btn primary" id="create-std-btn">Создать</button>
-  `);
-  $('create-std-btn').addEventListener('click', async () => {
-    try {
-      await api('/api/admin/standard/add', {
-        title: $('s-title').value.trim(),
-        category: $('s-cat').value.trim(),
-        description: $('s-desc').value.trim(),
-        url: $('s-url').value.trim(),
-      });
-      toast('Создан', 'success'); closeModal(); loadStandards();
-    } catch (e) { toast('Ошибка', 'error'); }
+function initShiftChecklist() {
+  const container = $('shift-checklist');
+  const tasks = [
+    { id: 't1', text: 'Проверить чистоту рабочей зоны' },
+    { id: 't2', text: 'Убедиться в корректности цен и меню' },
+    { id: 't3', text: 'Проверить наличие упаковок и сырья' },
+    { id: 't4', text: 'Синхронизироваться с командой' },
+  ];
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(CHECKLIST_KEY) || '{}'); } catch (e) {}
+  container.innerHTML = tasks.map(t => {
+    const isDone = !!saved[t.id];
+    return `<div class="check-item ${isDone ? 'checked' : ''}" data-id="${t.id}"><div class="check-box">${isDone ? '✓' : ''}</div><div class="check-text">${esc(t.text)}</div></div>`;
+  }).join('');
+  container.querySelectorAll('.check-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const id = item.dataset.id;
+      saved[id] = !saved[id];
+      try { localStorage.setItem(CHECKLIST_KEY, JSON.stringify(saved)); } catch (e) {}
+      item.classList.toggle('checked', !!saved[id]);
+      item.querySelector('.check-box').textContent = saved[id] ? '✓' : '';
+    });
   });
 }
 
-function openStandardEdit(id, list) {
-  const s = list.find(x => x.id === id);
-  if (!s) return;
-  openModal('Редактирование', `
-    <div class="form-group"><label>Название</label><input class="form-input" id="se-title" value="${esc(s.title)}"></div>
-    <div class="form-group"><label>Категория</label><input class="form-input" id="se-cat" value="${esc(s.category)}"></div>
-    <div class="form-group"><label>Описание</label><textarea class="form-textarea" id="se-desc">${esc(s.description)}</textarea></div>
-    <div class="form-group"><label>Ссылка</label><input class="form-input" id="se-url" value="${esc(s.url)}"></div>
-  `, `
-    <button class="btn ghost" onclick="closeModal()">Отмена</button>
-    <button class="btn primary" id="save-std-btn">Сохранить</button>
-  `);
-  $('save-std-btn').addEventListener('click', async () => {
-    const upd = [
-      ['title', $('se-title').value.trim()],
-      ['category', $('se-cat').value.trim()],
-      ['description', $('se-desc').value.trim()],
-      ['url', $('se-url').value.trim()],
-    ];
-    try {
-      for (const [field, value] of upd) {
-        await api('/api/admin/standard/update', { id, field, value });
-      }
-      toast('Сохранено', 'success'); closeModal(); loadStandards();
-    } catch (e) { toast('Ошибка', 'error'); }
-  });
-}
+$('standard-search').addEventListener('input', () => renderStandardsFromBoot());
 
 /* ================== FAQ ================== */
-async function loadFaq() {
-  $('page-actions').innerHTML = '<button class="btn primary small" id="faq-add-btn">+ Добавить</button>';
-  $('faq-add-btn').addEventListener('click', openFaqAdd);
+function renderFaqFromBoot() {
+  const box = $('faq-list');
+  const list = (BOOT && BOOT.faq) || [];
+  if (!list.length) { box.innerHTML = '<div class="no-results">Нет вопросов</div>'; return; }
+  box.innerHTML = list.map(f => `<details><summary>${esc(f.question)}</summary><p>${esc(f.answer)}</p></details>`).join('');
+}
+
+$('send-question').addEventListener('click', async function() {
+  const btn = this;
+  const input = $('question-input');
+  const text = (input.value || '').trim();
+  if (!text) { showToast('Введите вопрос'); return; }
+  btn.disabled = true;
+  const oldLabel = btn.textContent;
+  btn.textContent = 'Отправляем…';
   try {
-    const data = await api('/api/admin/faq', {});
-    const list = data.faq || [];
-    const rows = list.map(f => `
-      <tr>
-        <td><b>${esc(f.question)}</b></td>
-        <td style="max-width:400px;font-size:12px;color:var(--text-muted);">${esc((f.answer||'').substring(0,120))}${f.answer.length>120?'…':''}</td>
-        <td class="actions-cell">
-          <button class="icon-btn" data-edit="${f.id}" title="Редактировать">✏️</button>
-          <button class="icon-btn danger" data-del="${f.id}" title="Удалить">🗑</button>
-        </td>
-      </tr>
-    `).join('');
-    $('page-content').innerHTML = `
-      <div class="table-card">
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Вопрос</th><th>Ответ</th><th></th></tr></thead>
-            <tbody>${rows || '<tr><td colspan="3"><div class="empty">Вопросов нет</div></td></tr>'}</tbody>
-          </table>
-        </div>
-      </div>
-    `;
-    document.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openFaqEdit(parseInt(b.dataset.edit), list)));
-    document.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
-      if (!confirm('Удалить?')) return;
-      try { await api('/api/admin/faq/delete', { id: parseInt(b.dataset.del) }); toast('Удалено', 'success'); loadFaq(); }
-      catch (e) { toast('Ошибка', 'error'); }
-    }));
-  } catch (e) { $('page-content').innerHTML = '<div class="empty">Ошибка</div>'; }
-}
-
-function openFaqAdd() {
-  openModal('Новый вопрос', `
-    <div class="form-group"><label>Вопрос</label><textarea class="form-textarea" id="f-q" rows="2"></textarea></div>
-    <div class="form-group"><label>Ответ</label><textarea class="form-textarea" id="f-a" rows="4"></textarea></div>
-    <div class="form-group"><label>Категория</label><input class="form-input" id="f-cat"></div>
-  `, `
-    <button class="btn ghost" onclick="closeModal()">Отмена</button>
-    <button class="btn primary" id="create-faq-btn">Создать</button>
-  `);
-  $('create-faq-btn').addEventListener('click', async () => {
-    try {
-      await api('/api/admin/faq/add', {
-        question: $('f-q').value.trim(),
-        answer: $('f-a').value.trim(),
-        category: $('f-cat').value.trim(),
-      });
-      toast('Создан', 'success'); closeModal(); loadFaq();
-    } catch (e) { toast('Ошибка', 'error'); }
-  });
-}
-
-function openFaqEdit(id, list) {
-  const f = list.find(x => x.id === id);
-  if (!f) return;
-  openModal('Редактирование', `
-    <div class="form-group"><label>Вопрос</label><textarea class="form-textarea" id="fe-q" rows="2">${esc(f.question)}</textarea></div>
-    <div class="form-group"><label>Ответ</label><textarea class="form-textarea" id="fe-a" rows="4">${esc(f.answer)}</textarea></div>
-  `, `
-    <button class="btn ghost" onclick="closeModal()">Отмена</button>
-    <button class="btn primary" id="save-faq-btn">Сохранить</button>
-  `);
-  $('save-faq-btn').addEventListener('click', async () => {
-    try {
-      await api('/api/admin/faq/update', { id, field: 'question', value: $('fe-q').value.trim() });
-      await api('/api/admin/faq/update', { id, field: 'answer', value: $('fe-a').value.trim() });
-      toast('Сохранено', 'success'); closeModal(); loadFaq();
-    } catch (e) { toast('Ошибка', 'error'); }
-  });
-}
-
-/* ================== POSITIONS ================== */
-async function loadPositions() {
-  $('page-actions').innerHTML = '<button class="btn primary small" id="pos-add-btn">+ Добавить</button>';
-  $('pos-add-btn').addEventListener('click', openPositionAdd);
-  try {
-    const data = await api('/api/admin/positions', {});
-    const list = data.positions || [];
-    const active = list.filter(p => !p.is_archived);
-    const arch = list.filter(p => p.is_archived);
-    const rows = active.map(p => `
-      <tr>
-        <td><b>${esc(p.name)}</b></td>
-        <td>${p.sort}</td>
-        <td class="actions-cell">
-          <button class="icon-btn danger" data-arch="${p.id}" title="Архивировать">📦</button>
-        </td>
-      </tr>
-    `).join('');
-    $('page-content').innerHTML = `
-      <div class="table-card">
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Активные (${active.length})</th><th>Sort</th><th></th></tr></thead>
-            <tbody>${rows || '<tr><td colspan="3"><div class="empty">Нет должностей</div></td></tr>'}</tbody>
-          </table>
-        </div>
-      </div>
-      ${arch.length ? `
-        <div class="table-card" style="margin-top:20px;">
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>📦 Архив (${arch.length})</th></tr></thead>
-              <tbody>${arch.map(p => `<tr><td style="color:var(--text-muted);text-decoration:line-through;">${esc(p.name)}</td></tr>`).join('')}</tbody>
-            </table>
-          </div>
-        </div>
-      ` : ''}
-    `;
-    document.querySelectorAll('[data-arch]').forEach(b => b.addEventListener('click', async () => {
-      if (!confirm('В архив?')) return;
-      try { await api('/api/admin/position/archive', { id: parseInt(b.dataset.arch) }); toast('В архиве', 'success'); loadPositions(); }
-      catch (e) { toast('Ошибка', 'error'); }
-    }));
-  } catch (e) { $('page-content').innerHTML = '<div class="empty">Ошибка</div>'; }
-}
-
-function openPositionAdd() {
-  openModal('Новая должность', `
-    <div class="form-group"><label>Название</label><input class="form-input" id="p-name" placeholder="Например: Стажёр"></div>
-  `, `
-    <button class="btn ghost" onclick="closeModal()">Отмена</button>
-    <button class="btn primary" id="create-pos-btn">Создать</button>
-  `);
-  $('create-pos-btn').addEventListener('click', async () => {
-    try {
-      const res = await api('/api/admin/position/add', { name: $('p-name').value.trim() });
-      if (res.ok) { toast('Создана', 'success'); closeModal(); loadPositions(); }
-      else toast('Уже существует', 'error');
-    } catch (e) { toast('Ошибка', 'error'); }
-  });
-}
-
-/* ================== QUESTIONS ================== */
-async function loadQuestions() {
-  try {
-    const data = await api('/api/admin/questions', {});
-    const list = data.questions || [];
-    const rows = list.map(q => `
-      <tr>
-        <td><code style="font-size:11px;">${q.user_id}</code></td>
-        <td><b>${esc(q.full_name || '—')}</b></td>
-        <td style="max-width:400px;">${esc(q.text)}</td>
-        <td>${q.replied ? '<span class="tag green">✅ Отвечен</span>' : '<span class="tag amber">❓ Открыт</span>'}</td>
-        <td style="font-size:12px;color:var(--text-muted);">${fmtDate(q.created_at, true)}</td>
-        <td class="actions-cell">
-          ${!q.replied ? `<button class="icon-btn" data-reply="${q.id}" title="Ответить">✍️</button>` : ''}
-        </td>
-      </tr>
-    `).join('');
-    $('page-content').innerHTML = `
-      <div class="table-card">
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>ID</th><th>Кто</th><th>Вопрос</th><th>Статус</th><th>Когда</th><th></th></tr></thead>
-            <tbody>${rows || '<tr><td colspan="6"><div class="empty">Вопросов нет</div></td></tr>'}</tbody>
-          </table>
-        </div>
-      </div>
-    `;
-    document.querySelectorAll('[data-reply]').forEach(b => b.addEventListener('click', () => openReply(parseInt(b.dataset.reply), list)));
-    refreshQuestionCount();
-  } catch (e) { $('page-content').innerHTML = '<div class="empty">Ошибка</div>'; }
-}
-
-function openReply(id, list) {
-  const q = list.find(x => x.id === id);
-  if (!q) return;
-  openModal('Ответ на вопрос', `
-    <div class="form-group"><label>Вопрос</label><div style="background:#F8F9FA;padding:12px;border-radius:10px;font-size:14px;">${esc(q.text)}</div></div>
-    <div class="form-group"><label>Ответ</label><textarea class="form-textarea" id="reply-text" rows="4"></textarea></div>
-  `, `
-    <button class="btn ghost" onclick="closeModal()">Отмена</button>
-    <button class="btn primary" id="send-reply-btn">Сохранить</button>
-  `);
-  $('send-reply-btn').addEventListener('click', async () => {
-    const text = $('reply-text').value.trim();
-    if (!text) { toast('Введите текст', 'error'); return; }
-    try {
-      await api('/api/admin/question/reply', { id, text });
-      toast('Сохранено', 'success');
-      closeModal(); loadQuestions();
-    } catch (e) { toast('Ошибка', 'error'); }
-  });
-}
-
-/* ================== REPORTS ================== */
-async function loadReports() {
-  $('page-actions').innerHTML = `
-    <button class="btn ghost small" id="exp-users">📤 CSV сотрудников</button>
-    <button class="btn ghost small" id="exp-news">📤 CSV новостей</button>
-  `;
-  $('exp-users').addEventListener('click', exportUsers);
-  $('exp-news').addEventListener('click', async () => {
-    try { const { csv } = await api('/api/admin/export/news', {}); downloadCsv(csv, 'news.csv'); }
-    catch (e) { toast('Ошибка', 'error'); }
-  });
-  try {
-    const { report } = await api('/api/admin/reports', {});
-    $('page-content').innerHTML = `
-      <div class="stats-grid">
-        <div class="stat-card"><div class="label">Всего</div><div class="value">${report.total}</div></div>
-        <div class="stat-card green"><div class="label">Активных</div><div class="value">${report.active}</div></div>
-        <div class="stat-card accent"><div class="label">Заблокировано</div><div class="value">${report.blocked}</div></div>
-        <div class="stat-card"><div class="label">Новых за 7д</div><div class="value">${report.new7}</div></div>
-        <div class="stat-card amber"><div class="label">Неактивных 7+</div><div class="value">${report.inactive7}</div></div>
-      </div>
-    `;
-  } catch (e) { $('page-content').innerHTML = '<div class="empty">Ошибка</div>'; }
-}
-
-/* ================== AUDIT ================== */
-async function loadAudit() {
-  try {
-    const data = await api('/api/admin/audit', {});
-    const list = data.audit || [];
-    const rows = list.map(a => `
-      <tr>
-        <td style="font-size:12px;color:var(--text-muted);white-space:nowrap;">${fmtDate(a.created_at, true)}</td>
-        <td><code style="font-size:11px;">${esc(a.action)}</code></td>
-        <td>${esc(a.target_type)}:${esc(a.target_id)}</td>
-        <td style="font-size:12px;">${esc((a.details || '').substring(0, 80))}</td>
-      </tr>
-    `).join('');
-    $('page-content').innerHTML = `
-      <div class="table-card">
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Когда</th><th>Действие</th><th>Цель</th><th>Детали</th></tr></thead>
-            <tbody>${rows || '<tr><td colspan="4"><div class="empty">История пуста</div></td></tr>'}</tbody>
-          </table>
-        </div>
-      </div>
-    `;
-  } catch (e) { $('page-content').innerHTML = '<div class="empty">Ошибка</div>'; }
-}
+    await api('/api/questions', { question: text });
+    input.value = '';
+    showToast('✅ Вопрос отправлен');
+  } catch (e) {
+    if (e.message === 'too_fast') showToast('Подождите минуту перед новым вопросом', 'error');
+    else if (e.message !== 'unauthorized') showToast('Не удалось отправить', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = oldLabel;
+  }
+});
 
 /* ================== INIT ================== */
 (async function init() {
   if (!getToken()) { showLogin(); return; }
-  await checkAdminAndLoad();
+  await loadAndRender();
 })();
 </script>
 </body>

@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Wokker</title>
+<title>Wokker · Сотрудник</title>
+<!-- ИКОНКА САЙТА (ЗЕЛЕНАЯ) -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23DEFF8F'/%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%23000' stroke-width='8'/%3E%3Cpath d='M25 50 A 25 25 0 0 0 75 50' fill='none' stroke='%23000' stroke-width='12' stroke-linecap='round'/%3E%3Cpath d='M38 25 C45 15 35 10 40 5 C42 15 50 20 45 30 C42 35 35 35 32 30 C38 28 38 25 38 25 Z' fill='%23000'/%3E%3Cpath d='M62 25 C69 15 59 10 64 5 C66 15 74 20 69 30 C66 35 59 35 56 30 C62 28 62 25 62 25 Z' fill='%23000'/%3E%3C/svg%3E">
+
 <style>
   :root {
     --bg: #F8F9FA; --card-bg: #FFFFFF; --text-main: #1C1C1E;
@@ -91,6 +94,7 @@
   .card { background: var(--card-bg); border-radius: var(--radius);
     margin: 0 16px 16px; padding: 20px; box-shadow: var(--shadow); }
 
+  /* PROFILE */
   .profile-wrapper { margin: 24px 16px 16px; }
   .profile-card { background: var(--card-bg); border-radius: 28px;
     box-shadow: var(--shadow); overflow: hidden; position: relative; }
@@ -671,7 +675,6 @@ function renderProfileFromBoot() {
   const avatarLetter = (p.full_name || p.first_name || '?').charAt(0).toUpperCase();
   const phoneClean = (p.phone || '').replace(/[^\d+]/g, '');
 
-  // Медкнижка
   let medbookHtml = '';
   if (mb && !p.is_admin) {
     let statusClass = 'invalid', statusText = '❌ Недействительна';
@@ -842,7 +845,6 @@ function renderTeamFromBoot() {
   const isTU = pos.includes("территориальный");
   const isUS = pos.includes("управляющий сменой");
 
-  // Подзаголовок
   const subtitle = $('team-subtitle');
   if (subtitle) {
     if (isHR) subtitle.textContent = "Все сотрудники по территориям";
@@ -855,7 +857,6 @@ function renderTeamFromBoot() {
     return;
   }
 
-  // === HR: группировка по ТУ → ресторан ===
   if (isHR) {
     const byMgr = {};
     for (const t of team) {
@@ -879,7 +880,6 @@ function renderTeamFromBoot() {
     return;
   }
 
-  // === ТУ: группировка по ресторанам ===
   if (isTU) {
     const byRest = {};
     for (const t of team) {
@@ -897,7 +897,6 @@ function renderTeamFromBoot() {
     return;
   }
 
-  // === УС: просто список, один ресторан ===
   box.innerHTML = sortByPosition(team).map(renderTeamCard).join("");
 }
 

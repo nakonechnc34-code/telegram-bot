@@ -4,35 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Wokker</title>
-
 <style>
   :root {
-    --bg: #F8F9FA;
-    --card-bg: #FFFFFF;
-    --text-main: #1C1C1E;
-    --text-muted: #8E8E93;
-    --accent: #FF3B30;
-    --accent-soft: #FFEBEA;
-    --green: #34C759;
-    --green-soft: #E8F8EB;
-    --beige: #D4B68C;
-    --beige-dark: #8A7B66;
-    --beige-soft: #FDFBF7;
-    --shadow: 0 8px 24px rgba(0, 0, 0, 0.04);
-    --radius: 20px;
+    --bg: #F8F9FA; --card-bg: #FFFFFF; --text-main: #1C1C1E;
+    --text-muted: #8E8E93; --accent: #FF3B30; --accent-soft: #FFEBEA;
+    --green: #34C759; --green-soft: #E8F8EB;
+    --amber: #FF9500; --amber-soft: #FFF4E0;
+    --beige: #D4B68C; --beige-dark: #8A7B66; --beige-soft: #FDFBF7;
+    --shadow: 0 8px 24px rgba(0, 0, 0, 0.04); --radius: 20px;
   }
-
   * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
-
   body {
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    background: var(--bg);
-    color: var(--text-main);
-    padding-bottom: 90px;
+    background: var(--bg); color: var(--text-main); padding-bottom: 90px;
     -webkit-font-smoothing: antialiased;
   }
+  button, input { font-family: inherit; }
+  button { cursor: pointer; }
 
-  /* ===== LOGIN ===== */
   #login-screen {
     position: fixed; inset: 0;
     background: linear-gradient(160deg, #FFF9F5 0%, #FDF2EB 100%);
@@ -47,32 +36,30 @@
   .login-logo {
     width: 80px; height: 80px; border-radius: 24px;
     background: var(--beige-soft); margin: 0 auto 20px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 40px;
+    display: flex; align-items: center; justify-content: center; font-size: 40px;
   }
   .login-title { font-size: 26px; font-weight: 800; margin-bottom: 6px; letter-spacing: -0.5px; }
   .login-sub { font-size: 15px; color: var(--text-muted); margin-bottom: 28px; }
   .login-input {
-    width: 100%; border: 1px solid rgba(0,0,0,0.06);
-    border-radius: 16px; padding: 16px 18px; font-size: 16px;
-    background: #F8F9FA; color: var(--text-main); outline: none;
+    width: 100%; border: 1px solid rgba(0,0,0,0.06); border-radius: 16px;
+    padding: 16px 18px; font-size: 16px; background: #F8F9FA;
+    color: var(--text-main); outline: none; font-weight: 600;
+    margin-bottom: 12px; text-align: center;
     transition: border-color 0.2s, background 0.2s;
-    text-align: center; font-weight: 600;
-    margin-bottom: 14px;
   }
   .login-input:focus { border-color: var(--accent); background: #fff; }
-  .login-hint { font-size: 13px; color: var(--text-muted); margin-bottom: 14px; line-height: 1.5; }
-  .login-back {
-    background: none; border: none; color: var(--text-muted);
-    font-size: 14px; font-weight: 600; padding: 14px; cursor: pointer;
-    width: 100%;
+  .login-hint { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+  .login-btn {
+    width: 100%; background: var(--accent); color: #fff; border: 0;
+    border-radius: 16px; padding: 16px; font-size: 16px; font-weight: 700;
+    margin-top: 8px;
   }
+  .login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
   .login-error {
     color: var(--accent); font-size: 13px; font-weight: 600;
     min-height: 18px; margin-top: 10px;
   }
 
-  /* ===== TABS ===== */
   .tabs {
     position: fixed; bottom: calc(12px + env(safe-area-inset-bottom));
     left: 12px; right: 12px; display: flex;
@@ -88,155 +75,200 @@
     font-size: 9px; font-weight: 600; color: var(--text-muted);
     border-radius: 18px; transition: all 0.25s ease;
     position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px;
-    cursor: pointer;
   }
   .tabs button:active { transform: scale(0.92); }
   .tabs button.active { color: var(--accent); }
   .tabs button.active svg { stroke: var(--accent); }
-  .tabs svg { width: 20px; height: 20px; stroke: var(--text-muted); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: stroke 0.2s; }
-  .badge-dot { position: absolute; top: 2px; right: 20%; width: 7px; height: 7px; background: var(--accent); border-radius: 50%; border: 1.5px solid #fff; display: none; }
+  .tabs svg { width: 20px; height: 20px; stroke: var(--text-muted); fill: none;
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: stroke 0.2s; }
+  .badge-dot { position: absolute; top: 2px; right: 20%; width: 7px; height: 7px;
+    background: var(--accent); border-radius: 50%; border: 1.5px solid #fff; display: none; }
   .badge-dot.show { display: block; }
 
-  /* ===== SECTIONS ===== */
   .section { display: none; animation: fadeIn 0.3s ease; }
   .section.active { display: block; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+  .card { background: var(--card-bg); border-radius: var(--radius);
+    margin: 0 16px 16px; padding: 20px; box-shadow: var(--shadow); }
 
-  .card { background: var(--card-bg); border-radius: var(--radius); margin: 0 16px 16px; padding: 20px; box-shadow: var(--shadow); }
-
-  /* ===== PROFILE ===== */
+  /* PROFILE */
   .profile-wrapper { margin: 24px 16px 16px; }
-  .profile-card { background: var(--card-bg); border-radius: 28px; box-shadow: var(--shadow); overflow: hidden; position: relative; }
-  .profile-header { padding: 32px 20px 24px; text-align: center; background: linear-gradient(135deg, #FFF9F5 0%, #FDF2EB 100%); border-bottom: 1px solid rgba(0,0,0,0.02); }
-  .avatar-ring { width: 104px; height: 104px; border-radius: 50%; margin: 0 auto 16px; padding: 4px; background: #FFFFFF; box-shadow: 0 8px 24px rgba(0,0,0,0.06); }
-  .avatar-inner { width: 100%; height: 100%; border-radius: 50%; background: var(--beige-soft); display: flex; align-items: center; justify-content: center; font-size: 38px; font-weight: 800; color: var(--beige); }
-  .p-name { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 4px; color: #2C2216; }
+  .profile-card { background: var(--card-bg); border-radius: 28px;
+    box-shadow: var(--shadow); overflow: hidden; position: relative; }
+  .profile-header { padding: 32px 20px 24px; text-align: center;
+    background: linear-gradient(135deg, #FFF9F5 0%, #FDF2EB 100%);
+    border-bottom: 1px solid rgba(0,0,0,0.02); }
+  .avatar-ring { width: 104px; height: 104px; border-radius: 50%;
+    margin: 0 auto 16px; padding: 4px; background: #FFF;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.06); }
+  .avatar-inner { width: 100%; height: 100%; border-radius: 50%;
+    background: var(--beige-soft); display: flex; align-items: center; justify-content: center;
+    font-size: 38px; font-weight: 800; color: var(--beige); }
+  .p-name { font-size: 22px; font-weight: 800; letter-spacing: -0.5px;
+    margin-bottom: 4px; color: #2C2216; }
   .p-pos { font-size: 15px; color: #8A7B66; font-weight: 500; margin-bottom: 12px; }
-  .status-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; background: rgba(52, 199, 89, 0.12); color: #1B7A36; border-radius: 20px; font-size: 13px; font-weight: 700; border: 1px solid rgba(52, 199, 89, 0.2); }
+  .status-pill { display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; background: rgba(52, 199, 89, 0.12); color: #1B7A36;
+    border-radius: 20px; font-size: 13px; font-weight: 700;
+    border: 1px solid rgba(52, 199, 89, 0.2); }
   .status-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: #1B7A36; }
   .info-section { padding: 20px; }
   .info-group { background: #F8F9FA; border-radius: 20px; overflow: hidden; }
-  .info-item { display: flex; align-items: center; padding: 16px; border-bottom: 1px solid rgba(0,0,0,0.04); }
+  .info-item { display: flex; align-items: center; padding: 16px;
+    border-bottom: 1px solid rgba(0,0,0,0.04); }
   .info-item:last-child { border-bottom: none; }
-  .info-icon { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px; margin-right: 14px; flex-shrink: 0; }
+  .info-icon { width: 40px; height: 40px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; margin-right: 14px; flex-shrink: 0; }
   .icon-rest { background: #E5F0FF; color: #007AFF; }
   .icon-phone { background: #F2F2F7; color: #1C1C1E; }
   .icon-birth { background: #FFE5EC; color: #FF2D55; }
   .icon-cert { background: #FFF3E0; color: #FF9800; }
-  .icon-medbook { background: #E8F5E9; color: #2E7D32; }
   .info-text { flex: 1; text-align: left; }
-  .info-lbl { font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
+  .info-lbl { font-size: 12px; color: var(--text-muted); font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
   .info-val { font-size: 16px; font-weight: 600; color: var(--text-main); }
   .info-val a { color: var(--text-main); text-decoration: none; }
-  .badge-rest { display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 14px; font-weight: 700; color: #fff; }
+  .badge-rest { display: inline-block; padding: 4px 10px; border-radius: 8px;
+    font-size: 14px; font-weight: 700; color: #fff; }
   .badge-rest.office { background: #8E8E93; }
   .badge-rest.normal { background: var(--green); }
   .actions-block { margin-top: 16px; }
-  .action-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 16px; border-radius: 20px; font-size: 16px; font-weight: 600; border: none; cursor: pointer; background: var(--card-bg); color: var(--text-main); box-shadow: var(--shadow); margin-bottom: 12px; transition: transform 0.15s ease; }
+  .action-btn { display: flex; align-items: center; justify-content: center;
+    gap: 8px; width: 100%; padding: 16px; border-radius: 20px;
+    font-size: 16px; font-weight: 600; border: none; cursor: pointer;
+    background: var(--card-bg); color: var(--text-main);
+    box-shadow: var(--shadow); margin-bottom: 12px;
+    transition: transform 0.15s ease; }
   .action-btn:active { transform: scale(0.98); }
   .action-btn.danger { color: var(--accent); }
+  .action-btn.admin { background: linear-gradient(135deg, #AF52DE 0%, #8E44AD 100%); color: #fff; }
 
-  /* ===== TEAM ===== */
-  .manager-title { margin: 24px 16px 12px; font-size: 18px; font-weight: 900; color: var(--text-main); letter-spacing: -0.3px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .manager-title .mgr-sub { font-size: 12px; font-weight: 600; color: var(--text-muted); }
-  .team-group-title { margin: 16px 16px 8px; font-size: 14px; font-weight: 800; color: var(--beige-dark); display: flex; align-items: center; gap: 6px; }
-  .team-card { background: var(--card-bg); border-radius: 20px; margin: 0 16px 10px; padding: 16px; box-shadow: var(--shadow); display: flex; align-items: center; gap: 16px; }
-  .team-avatar { width: 50px; height: 50px; border-radius: 50%; background: var(--beige-soft); color: var(--beige); display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 800; flex-shrink: 0; }
-  .team-info { flex: 1; min-width: 0; }
-  .team-name { font-size: 16px; font-weight: 700; margin-bottom: 2px; }
-  .team-pos { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
-  .team-status { display: flex; gap: 6px; flex-wrap: wrap; }
-  .status-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px; }
-  .status-badge.green { background: var(--green-soft); color: #1B7A36; }
-  .status-badge.red { background: #FFEBEA; color: var(--accent); }
-  .status-badge.gray { background: #F2F2F7; color: var(--text-muted); }
-  .team-actions { display: flex; gap: 8px; }
-  .team-actions a { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--green-soft); color: #1B7A36; text-decoration: none; font-size: 18px; }
-
-  /* ===== INPUTS ===== */
-  .q { width: calc(100% - 32px); margin: 0 16px 16px; border: none; border-radius: 16px; padding: 16px; font-size: 16px; background: #F2F2F7; color: var(--text-main); outline: none; transition: box-shadow 0.2s; }
+  .q { width: calc(100% - 32px); margin: 0 16px 16px; border: none;
+    border-radius: 16px; padding: 16px; font-size: 16px;
+    background: #F2F2F7; color: var(--text-main); outline: none;
+    transition: box-shadow 0.2s; }
   .q:focus { box-shadow: 0 0 0 3px var(--accent-soft); background: #fff; }
-  .btn { display: inline-block; background: var(--accent); color: #fff; border: 0; border-radius: 16px; padding: 16px; font-size: 16px; font-weight: 600; cursor: pointer; transition: transform 0.15s ease; width: 100%; text-align: center; }
+  .btn { display: inline-block; background: var(--accent); color: #fff;
+    border: 0; border-radius: 16px; padding: 16px;
+    font-size: 16px; font-weight: 600; width: 100%; text-align: center; }
   .btn:active { transform: scale(0.97); }
   .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
-  /* ===== RESTAURANTS ===== */
   .rest-tab-header { margin: 24px 16px 16px; }
   .rest-tab-header .title { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; }
   .rest-tab-header .sub { font-size: 15px; color: var(--text-muted); margin-top: 4px; }
-  .chips-container { display: flex; gap: 10px; overflow-x: auto; padding: 0 16px 16px; scrollbar-width: none; }
+  .chips-container { display: flex; gap: 10px; overflow-x: auto;
+    padding: 0 16px 16px; scrollbar-width: none; }
   .chips-container::-webkit-scrollbar { display: none; }
-  .chip { padding: 10px 18px; background: var(--card-bg); border: 1px solid rgba(0,0,0,0.05); border-radius: 100px; font-size: 14px; font-weight: 600; color: var(--text-main); white-space: nowrap; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
+  .chip { padding: 10px 18px; background: var(--card-bg);
+    border: 1px solid rgba(0,0,0,0.05); border-radius: 100px;
+    font-size: 14px; font-weight: 600; color: var(--text-main);
+    white-space: nowrap; cursor: pointer; transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
   .chip.active { background: var(--text-main); color: #fff; border-color: var(--text-main); }
-  .view-toggle-container { display: flex; margin: 0 16px 16px; background: #EAEAEE; border-radius: 16px; padding: 4px; }
-  .view-toggle-btn { flex: 1; border: 0; background: transparent; padding: 10px 0; font-size: 14px; font-weight: 600; color: var(--text-muted); border-radius: 12px; cursor: pointer; transition: all 0.2s ease; }
-  .view-toggle-btn.active { background: var(--card-bg); color: var(--text-main); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-  #restaurants-map { height: 60vh; margin: 0 16px 16px; border-radius: 24px; overflow: hidden; box-shadow: var(--shadow); display: none; z-index: 1; }
-  .rest-card { background: var(--card-bg); border-radius: 20px; margin: 0 16px 16px; padding: 20px; box-shadow: var(--shadow); cursor: pointer; transition: transform 0.15s ease; position: relative; }
+  .view-toggle-container { display: flex; margin: 0 16px 16px;
+    background: #EAEAEE; border-radius: 16px; padding: 4px; }
+  .view-toggle-btn { flex: 1; border: 0; background: transparent;
+    padding: 10px 0; font-size: 14px; font-weight: 600;
+    color: var(--text-muted); border-radius: 12px;
+    transition: all 0.2s ease; }
+  .view-toggle-btn.active { background: var(--card-bg); color: var(--text-main);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  #restaurants-map { height: 60vh; margin: 0 16px 16px; border-radius: 24px;
+    overflow: hidden; box-shadow: var(--shadow); display: none; z-index: 1; }
+  .rest-card { background: var(--card-bg); border-radius: 20px;
+    margin: 0 16px 16px; padding: 20px; box-shadow: var(--shadow);
+    cursor: pointer; transition: transform 0.15s ease; position: relative; }
   .rest-card:active { transform: scale(0.98); }
   .rest-card-header { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
-  .rest-logo { width: 56px; height: 56px; border-radius: 16px; background: var(--beige-soft); display: flex; align-items: center; justify-content: center; font-size: 28px; flex-shrink: 0; }
+  .rest-logo { width: 56px; height: 56px; border-radius: 16px;
+    background: var(--beige-soft); display: flex; align-items: center;
+    justify-content: center; font-size: 28px; flex-shrink: 0; }
   .rest-info { flex: 1; min-width: 0; }
   .rest-name { font-size: 18px; font-weight: 800; margin-bottom: 4px; }
-  .rest-badge { display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 12px; font-weight: 700; }
+  .rest-badge { display: inline-block; padding: 4px 10px;
+    border-radius: 8px; font-size: 12px; font-weight: 700; }
   .rest-badge.open { background: var(--green-soft); color: #1B7A36; }
   .rest-badge.closed { background: #FFF0F0; color: #FF3B30; }
-  .rest-address-row { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.4; }
+  .rest-address-row { display: flex; align-items: flex-start; gap: 8px;
+    font-size: 14px; color: var(--text-muted); margin-bottom: 12px;
+    line-height: 1.4; }
   .rest-actions { display: flex; gap: 10px; }
-  .rest-actions a { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 12px; border-radius: 14px; font-size: 14px; font-weight: 700; text-decoration: none; transition: background 0.2s; }
+  .rest-actions a { flex: 1; display: flex; align-items: center;
+    justify-content: center; gap: 6px; padding: 12px;
+    border-radius: 14px; font-size: 14px; font-weight: 700;
+    text-decoration: none; transition: background 0.2s; }
   .btn-call { background: var(--green-soft); color: #1B7A36; }
   .btn-route { background: #F2F2F7; color: var(--text-main); }
-  .my-rest-tag { position: absolute; top: 16px; right: 20px; font-size: 12px; background: var(--text-main); color: #fff; padding: 4px 10px; border-radius: 8px; font-weight: 700; }
+  .my-rest-tag { position: absolute; top: 16px; right: 20px;
+    font-size: 12px; background: var(--text-main); color: #fff;
+    padding: 4px 10px; border-radius: 8px; font-weight: 700; }
 
-  /* ===== NEWS ===== */
-  .news-item { background: var(--card-bg); border-radius: 20px; margin: 0 16px 16px; padding: 20px; box-shadow: var(--shadow); position: relative; }
-  .news-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .news-item { background: var(--card-bg); border-radius: 20px;
+    margin: 0 16px 16px; padding: 20px; box-shadow: var(--shadow); }
+  .news-meta { display: flex; justify-content: space-between;
+    align-items: center; margin-bottom: 10px; }
   .news-date { font-size: 13px; color: var(--text-muted); font-weight: 600; }
-  .news-badge { font-size: 11px; font-weight: 800; padding: 4px 8px; border-radius: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .news-badge { font-size: 11px; font-weight: 800; padding: 4px 8px;
+    border-radius: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
   .news-badge.urgent { background: #FFEBEA; color: var(--accent); }
   .news-badge.important { background: #FFF8E5; color: #D48806; }
   .news-title { font-size: 19px; font-weight: 800; margin-bottom: 8px; line-height: 1.3; }
   .news-body { font-size: 15px; color: #48484A; line-height: 1.5; white-space: pre-wrap; }
 
-  /* ===== FAQ / STANDARDS ===== */
-  details { background: var(--card-bg); border-radius: 16px; margin: 0 16px 12px; padding: 20px; box-shadow: var(--shadow); }
-  summary { font-weight: 700; font-size: 16px; cursor: pointer; color: var(--text-main); list-style: none; display: flex; justify-content: space-between; align-items: center; }
+  details { background: var(--card-bg); border-radius: 16px;
+    margin: 0 16px 12px; padding: 20px; box-shadow: var(--shadow); }
+  summary { font-weight: 700; font-size: 16px; cursor: pointer;
+    color: var(--text-main); list-style: none; display: flex;
+    justify-content: space-between; align-items: center; }
   summary::-webkit-details-marker { display: none; }
   summary::after { content: '+'; font-size: 20px; color: var(--text-muted); font-weight: 400; }
   details[open] summary::after { content: '-'; }
   details p { margin-top: 12px; color: var(--text-muted); font-size: 15px; line-height: 1.5; }
-  .checklist-card { background: var(--card-bg); border-radius: 20px; margin: 0 16px 16px; padding: 20px; box-shadow: var(--shadow); }
-  .check-item { display: flex; align-items: center; gap: 14px; padding: 14px 0; border-bottom: 1px solid rgba(0,0,0,0.05); cursor: pointer; }
+
+  .checklist-card { background: var(--card-bg); border-radius: 20px;
+    margin: 0 16px 16px; padding: 20px; box-shadow: var(--shadow); }
+  .check-item { display: flex; align-items: center; gap: 14px;
+    padding: 14px 0; border-bottom: 1px solid rgba(0,0,0,0.05); cursor: pointer; }
   .check-item:last-child { border-bottom: 0; padding-bottom: 0; }
-  .check-box { width: 24px; height: 24px; border-radius: 8px; border: 2px solid #C7C7CC; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+  .check-box { width: 24px; height: 24px; border-radius: 8px;
+    border: 2px solid #C7C7CC; display: flex; align-items: center;
+    justify-content: center; transition: all 0.2s; }
   .check-item.checked .check-box { background: var(--green); border-color: var(--green); color: #fff; }
   .check-item.checked .check-text { text-decoration: line-through; color: var(--text-muted); }
   .check-text { font-size: 15px; font-weight: 600; color: var(--text-main); }
 
-  /* ===== DETAIL ===== */
-  .no-results { text-align: center; color: var(--text-muted); padding: 40px 16px; font-size: 15px; }
+  .no-results { text-align: center; color: var(--text-muted);
+    padding: 40px 16px; font-size: 15px; }
   .detail-hero { text-align: center; margin: 24px 16px; }
-  .detail-hero .emoji { width: 80px; height: 80px; margin: 0 auto 16px; background: var(--beige-soft); border-radius: 24px; display: flex; align-items: center; justify-content: center; font-size: 40px; }
+  .detail-hero .emoji { width: 80px; height: 80px; margin: 0 auto 16px;
+    background: var(--beige-soft); border-radius: 24px;
+    display: flex; align-items: center; justify-content: center; font-size: 40px; }
   .detail-hero .name { font-size: 24px; font-weight: 800; margin-bottom: 8px; }
-  .detail-status { display: inline-block; padding: 6px 16px; border-radius: 100px; font-size: 14px; font-weight: 700; }
+  .detail-status { display: inline-block; padding: 6px 16px;
+    border-radius: 100px; font-size: 14px; font-weight: 700; }
   .detail-status.open { background: var(--green-soft); color: #1B7A36; }
   .detail-status.closed { background: #FFF0F0; color: var(--accent); }
-  .detail-card { background: var(--card-bg); border-radius: 20px; margin: 0 16px 16px; padding: 20px; box-shadow: var(--shadow); }
-  .detail-card .row { padding: 16px 0; border-bottom: 1px solid rgba(0,0,0,0.05); font-size: 16px; }
+  .detail-card { background: var(--card-bg); border-radius: 20px;
+    margin: 0 16px 16px; padding: 20px; box-shadow: var(--shadow); }
+  .detail-card .row { padding: 16px 0;
+    border-bottom: 1px solid rgba(0,0,0,0.05); font-size: 16px; }
   .detail-card .row:last-child { border-bottom: 0; }
-  .detail-card .row .lbl { color: var(--text-muted); font-size: 13px; margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-  .btn-back { display: block; margin: 0 16px 24px; padding: 16px; background: #F2F2F7; color: var(--text-main); border: none; border-radius: 16px; font-size: 16px; font-weight: 600; text-align: center; cursor: pointer; width: calc(100% - 32px); }
+  .detail-card .row .lbl { color: var(--text-muted); font-size: 13px;
+    margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .btn-back { display: block; margin: 0 16px 24px; padding: 16px;
+    background: #F2F2F7; color: var(--text-main); border: none;
+    border-radius: 16px; font-size: 16px; font-weight: 600;
+    text-align: center; width: calc(100% - 32px); }
 
-  /* ===== TOAST ===== */
-  .toast {
-    position: fixed; bottom: calc(100px + env(safe-area-inset-bottom));
+  .toast { position: fixed; bottom: calc(100px + env(safe-area-inset-bottom));
     left: 50%; transform: translateX(-50%) translateY(20px);
     background: rgba(28, 28, 30, 0.95); color: #fff;
-    padding: 12px 20px; border-radius: 16px; font-size: 14px; font-weight: 600;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.2); z-index: 2000;
-    opacity: 0; pointer-events: none; transition: all 0.3s ease;
-    max-width: 88vw; text-align: center;
-  }
+    padding: 12px 20px; border-radius: 16px; font-size: 14px;
+    font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    z-index: 2000; opacity: 0; pointer-events: none;
+    transition: all 0.3s ease; max-width: 88vw; text-align: center; }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   .toast.error { background: rgba(255, 59, 48, 0.95); }
 
@@ -245,46 +277,42 @@
 </head>
 <body>
 
-<!-- ===== LOGIN SCREEN ===== -->
 <div id="login-screen">
   <div class="login-card">
     <div class="login-logo">🍜</div>
     <div class="login-title">Wokker</div>
     <div class="login-sub">Вход в приложение</div>
-
-    <div id="login-step-phone">
-      <input class="login-input" id="login-phone" type="tel" placeholder="+7 (900) 000-00-00" autocomplete="tel">
-      <button class="btn" id="login-phone-btn">Получить код</button>
-    </div>
-
-    <div id="login-step-code" style="display:none;">
-      <div class="login-hint">Код отправлен в Telegram-бот.<br>Проверьте чат с ботом Wokker.</div>
-      <input class="login-input" id="login-code" type="text" inputmode="numeric" maxlength="6" placeholder="— — — — — —" autocomplete="one-time-code">
-      <button class="btn" id="login-code-btn">Войти</button>
-      <button class="login-back" id="login-back-btn">← Другой номер</button>
-    </div>
-
+    <input class="login-input" id="login-login" type="text" placeholder="Логин" maxlength="5"
+           autocomplete="username" style="text-transform: lowercase;">
+    <input class="login-input" id="login-password" type="password" placeholder="Пароль"
+           autocomplete="current-password">
+    <div class="login-hint">Логин выдаёт администратор: 3 буквы + 2 цифры</div>
+    <button class="login-btn" id="login-btn">Войти</button>
     <div class="login-error" id="login-error"></div>
   </div>
 </div>
 
-<!-- ===== MAIN APP ===== -->
 <div id="main-app" style="display:none;">
   <div class="section active" id="sec-profile"><div id="profile-box"></div></div>
 
-  <div class="section" id="sec-team">
-    <div class="rest-tab-header">
-      <div class="title">Моя команда</div>
-      <div class="sub">Управляющие и их рестораны</div>
-    </div>
-    <div id="team-list"></div>
-  </div>
-
   <div class="section" id="sec-restaurants">
-    <div class="rest-tab-header"><div class="title">Рестораны</div><div class="sub">Выберите точку на карте или в списке</div></div>
-    <div class="chips-container" id="rest-filters"><div class="chip active" data-filter="all">Все</div><div class="chip" data-filter="open">Открыто</div></div>
-    <div class="view-toggle-container"><button class="view-toggle-btn active" id="btn-view-list">Список</button><button class="view-toggle-btn" id="btn-view-map">Карта</button></div>
-    <div id="rest-list-wrapper"><input class="q" id="rest-search" placeholder="Поиск по названию или адресу"><div id="restaurants-list"></div></div>
+    <div class="rest-tab-header">
+      <div class="title">Рестораны</div>
+      <div class="sub">Выберите точку на карте или в списке</div>
+    </div>
+    <div class="chips-container" id="rest-filters">
+      <div class="chip active" data-filter="all">Все</div>
+      <div class="chip" data-filter="open">Открыто</div>
+      <div class="chip" data-filter="my">Мой ресторан</div>
+    </div>
+    <div class="view-toggle-container">
+      <button class="view-toggle-btn active" id="btn-view-list">Список</button>
+      <button class="view-toggle-btn" id="btn-view-map">Карта</button>
+    </div>
+    <div id="rest-list-wrapper">
+      <input class="q" id="rest-search" placeholder="Поиск по названию или адресу">
+      <div id="restaurants-list"></div>
+    </div>
     <div id="restaurants-map"></div>
   </div>
 
@@ -296,26 +324,32 @@
   <div class="section" id="sec-standards">
     <div class="rest-tab-header"><div class="title">Стандарты</div></div>
     <input class="q" id="standard-search" placeholder="Поиск по стандартам">
-    <div class="chips-container" id="standards-chips"><div class="chip active" data-cat="all">Все</div><div class="chip" data-cat="shift_checklist">📋 Смена</div></div>
+    <div class="chips-container" id="standards-chips">
+      <div class="chip active" data-cat="all">Все</div>
+    </div>
     <div id="standards-list"></div>
   </div>
 
   <div class="section" id="sec-faq">
     <div class="rest-tab-header"><div class="title">Вопросы</div></div>
     <div id="faq-list"></div>
-    <div class="card" style="margin-top: 16px;"><b style="font-size: 18px; margin-bottom: 12px; display: block;">Задать свой вопрос</b><input class="q" id="question-input" style="margin-left:0; margin-right:0; width:100%;" maxlength="1000" placeholder="Опишите вопрос..."><button class="btn" id="send-question" style="margin-top: 12px;">Отправить</button></div>
+    <div class="card" style="margin-top: 16px;">
+      <b style="font-size: 18px; margin-bottom: 12px; display: block;">Задать свой вопрос</b>
+      <input class="q" id="question-input" style="margin-left:0; margin-right:0; width:100%;"
+             maxlength="1000" placeholder="Опишите вопрос...">
+      <button class="btn" id="send-question" style="margin-top: 12px;">Отправить</button>
+    </div>
   </div>
 
-  <div class="section" id="sec-detail"><div id="detail-box"></div><button class="btn-back" id="detail-back">← Назад к списку</button></div>
+  <div class="section" id="sec-detail">
+    <div id="detail-box"></div>
+    <button class="btn-back" id="detail-back">← Назад к списку</button>
+  </div>
 
   <nav class="tabs" id="main-tabs">
     <button data-sec="sec-profile" class="active">
       <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       Профиль
-    </button>
-    <button data-sec="sec-team" id="tab-team" style="display: none;">
-      <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-      Команда
     </button>
     <button data-sec="sec-restaurants">
       <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
@@ -341,10 +375,11 @@
 
 <script>
 /* ================== CONFIG ================== */
-const TOKEN_KEY = 'wokker_web_token';
+const TOKEN_KEY = 'wokker_staff_token';
 const SEEN_NEWS_KEY = 'wokker_seen_news';
 const CHECKLIST_KEY = 'wokker_checklist';
 const YANDEX_MAPS_API_KEY = 'f35e1fb6-2431-4c95-98c8-4b99f54d97c1';
+const LOGIN_RE = /^[a-z]{3}\d{2}$/;
 
 let BOOT = null;
 let currentStandardCat = 'all';
@@ -352,10 +387,10 @@ let currentRestFilter = 'all';
 let yandexMap = null;
 let yandexClusterer = null;
 let _yandexMapsPromise = null;
-let _loginPhone = '';
 
 /* ================== UTILS ================== */
 const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $ = id => document.getElementById(id);
 
 function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
 function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
@@ -363,7 +398,7 @@ function clearToken() { localStorage.removeItem(TOKEN_KEY); }
 
 let _toastTimer = null;
 function showToast(text, type) {
-  const el = document.getElementById('toast');
+  const el = $('toast');
   el.textContent = text;
   el.classList.remove('error');
   if (type === 'error') el.classList.add('error');
@@ -386,175 +421,96 @@ async function api(path, body) {
     throw new Error('unauthorized');
   }
   if (!res.ok) {
-    let msg = 'request_failed';
+    let msg = 'error';
     try { const j = await res.json(); msg = j.error || msg; } catch (e) {}
     throw new Error(msg);
   }
   return res.json();
 }
 
+function fmtDate(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`;
+  } catch (e) { return iso; }
+}
+
 /* ================== LOGIN ================== */
 function showLogin() {
-  document.getElementById('main-app').style.display = 'none';
-  document.getElementById('login-screen').style.display = 'flex';
-  document.getElementById('login-step-phone').style.display = 'block';
-  document.getElementById('login-step-code').style.display = 'none';
-  document.getElementById('login-error').textContent = '';
-  document.getElementById('login-code').value = '';
+  $('main-app').style.display = 'none';
+  $('login-screen').style.display = 'flex';
+  $('login-error').textContent = '';
+  $('login-login').value = '';
+  $('login-password').value = '';
 }
-
 function showMainApp() {
-  document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('main-app').style.display = 'block';
-  document.querySelector('.tabs').style.display = 'flex';
+  $('login-screen').style.display = 'none';
+  $('main-app').style.display = 'block';
 }
 
-function normalizePhone(raw) {
-  const digits = (raw || '').replace(/\D/g, '');
-  if (!digits) return '';
-  if (digits.length === 11 && digits.startsWith('8')) return '+7' + digits.slice(1);
-  if (digits.length === 11 && digits.startsWith('7')) return '+' + digits;
-  if (digits.length === 10) return '+7' + digits;
-  return raw.trim();
-}
+$('login-login').addEventListener('input', e => {
+  e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5);
+});
 
-async function requestCode() {
-  const input = document.getElementById('login-phone');
-  const errEl = document.getElementById('login-error');
-  const btn = document.getElementById('login-phone-btn');
-  const phone = normalizePhone(input.value);
+async function doLogin() {
+  const login = $('login-login').value.trim().toLowerCase();
+  const password = $('login-password').value;
+  const errEl = $('login-error');
   errEl.textContent = '';
-  if (!phone || phone.replace(/\D/g, '').length < 10) {
-    errEl.textContent = 'Введите номер телефона';
-    return;
-  }
-  btn.disabled = true;
-  btn.textContent = 'Отправляем...';
+  if (!LOGIN_RE.test(login)) { errEl.textContent = 'Логин: 3 латинские буквы + 2 цифры'; return; }
+  if (!password) { errEl.textContent = 'Введите пароль'; return; }
+  const btn = $('login-btn');
+  btn.disabled = true; btn.textContent = 'Проверяем…';
   try {
-    const res = await fetch('/api/auth/request-code', {
+    const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone }),
+      body: JSON.stringify({ login, password }),
     });
-    if (res.status === 404) {
-      errEl.textContent = 'Номер не найден. Сначала зарегистрируйтесь в боте.';
-      return;
-    }
-    if (res.status === 429) {
-      errEl.textContent = 'Слишком часто. Подождите минуту.';
-      return;
-    }
-    if (!res.ok) {
-      errEl.textContent = 'Ошибка. Попробуйте позже.';
-      return;
-    }
-    _loginPhone = phone;
-    document.getElementById('login-step-phone').style.display = 'none';
-    document.getElementById('login-step-code').style.display = 'block';
-    document.getElementById('login-code').focus();
-  } catch (e) {
-    errEl.textContent = 'Сеть недоступна. Попробуйте позже.';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Получить код';
-  }
-}
-
-async function verifyCode() {
-  const codeEl = document.getElementById('login-code');
-  const errEl = document.getElementById('login-error');
-  const btn = document.getElementById('login-code-btn');
-  const code = (codeEl.value || '').trim();
-  errEl.textContent = '';
-  if (!/^\d{4,6}$/.test(code)) {
-    errEl.textContent = 'Введите код из 6 цифр';
-    return;
-  }
-  btn.disabled = true;
-  btn.textContent = 'Проверяем...';
-  try {
-    const res = await fetch('/api/auth/verify-code', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: _loginPhone, code }),
-    });
-    if (res.status === 401) {
-      errEl.textContent = 'Неверный код. Попробуйте ещё раз.';
-      return;
-    }
-    if (!res.ok) {
-      errEl.textContent = 'Ошибка. Попробуйте позже.';
-      return;
-    }
+    if (res.status === 401) { errEl.textContent = '❌ Неверный логин или пароль'; return; }
+    if (res.status === 403) { errEl.textContent = '❌ Аккаунт уволен'; return; }
+    if (!res.ok) { errEl.textContent = 'Ошибка сервера'; return; }
     const data = await res.json();
-    if (!data.token) {
-      errEl.textContent = 'Ошибка. Попробуйте позже.';
-      return;
-    }
+    if (!data.token) { errEl.textContent = 'Ошибка'; return; }
     setToken(data.token);
     await loadAndRender();
   } catch (e) {
-    errEl.textContent = 'Сеть недоступна. Попробуйте позже.';
+    errEl.textContent = 'Сеть недоступна';
   } finally {
-    btn.disabled = false;
-    btn.textContent = 'Войти';
+    btn.disabled = false; btn.textContent = 'Войти';
   }
 }
 
-document.getElementById('login-phone-btn').addEventListener('click', requestCode);
-document.getElementById('login-phone').addEventListener('keydown', e => {
-  if (e.key === 'Enter') requestCode();
-});
-document.getElementById('login-code-btn').addEventListener('click', verifyCode);
-document.getElementById('login-code').addEventListener('keydown', e => {
-  if (e.key === 'Enter') verifyCode();
-});
-document.getElementById('login-back-btn').addEventListener('click', () => {
-  document.getElementById('login-step-phone').style.display = 'block';
-  document.getElementById('login-step-code').style.display = 'none';
-  document.getElementById('login-error').textContent = '';
-});
+$('login-btn').addEventListener('click', doLogin);
+$('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+$('login-login').addEventListener('keydown', e => { if (e.key === 'Enter') $('login-password').focus(); });
 
 /* ================== BOOTSTRAP ================== */
 async function loadAndRender() {
   try {
     const data = await api('/api/bootstrap', {});
     BOOT = data;
-    if (!BOOT.profile) {
-      showToast('Профиль не найден', 'error');
-      showLogin();
-      return;
-    }
+    if (!BOOT.profile) { showToast('Профиль не найден', 'error'); showLogin(); return; }
     showMainApp();
-    checkTeamTabVisibility();
     updateNewsBadge();
     renderProfileFromBoot();
     renderNewsFromBoot();
     renderRestaurants();
     renderStandardsFromBoot();
     renderFaqFromBoot();
-    renderTeamFromBoot();
   } catch (e) {
-    if (e.message !== 'unauthorized') {
-      showToast('Ошибка загрузки данных', 'error');
-    }
+    if (e.message !== 'unauthorized') showToast('Ошибка загрузки', 'error');
   }
-}
-
-/* ================== TAB VISIBILITY ================== */
-function checkTeamTabVisibility() {
-  const pos = (BOOT.profile.position || '').toLowerCase();
-  const canSee = pos.includes('управляющий') || pos.includes('hr');
-  document.getElementById('tab-team').style.display = canSee ? 'flex' : 'none';
 }
 
 /* ================== TABS ================== */
 const sectionLoaders = {
   'sec-profile': () => renderProfileFromBoot(),
-  'sec-team': () => renderTeamFromBoot(),
   'sec-restaurants': () => {
     renderRestaurants();
-    if (document.getElementById('btn-view-map').classList.contains('active') && yandexMap) {
+    if ($('btn-view-map').classList.contains('active') && yandexMap) {
       setTimeout(() => { try { yandexMap.container.fitToViewport(); } catch (e) {} }, 100);
     }
   },
@@ -569,7 +525,7 @@ document.querySelectorAll('.tabs button').forEach(btn => {
     document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
     btn.classList.add('active');
-    document.getElementById(btn.dataset.sec).classList.add('active');
+    $(btn.dataset.sec).classList.add('active');
     window.scrollTo(0, 0);
     const loader = sectionLoaders[btn.dataset.sec];
     if (loader) loader();
@@ -582,20 +538,19 @@ function updateNewsBadge() {
   let seen = [];
   try { seen = JSON.parse(localStorage.getItem(SEEN_NEWS_KEY) || '[]'); } catch (e) {}
   const hasUnread = news.some(n => !seen.includes(n.id));
-  const badge = document.getElementById('news-badge');
+  const badge = $('news-badge');
   if (badge) badge.classList.toggle('show', hasUnread);
 }
-
 function markNewsSeen() {
   const news = (BOOT && BOOT.news) || [];
   try { localStorage.setItem(SEEN_NEWS_KEY, JSON.stringify(news.map(n => n.id))); } catch (e) {}
-  const badge = document.getElementById('news-badge');
+  const badge = $('news-badge');
   if (badge) badge.classList.remove('show');
 }
 
 /* ================== PROFILE ================== */
 function renderProfileFromBoot() {
-  const box = document.getElementById('profile-box');
+  const box = $('profile-box');
   if (!BOOT || !BOOT.profile) { box.innerHTML = '<div class="no-results">Профиль недоступен</div>'; return; }
   const p = BOOT.profile;
   const restBadge = p.restaurant_key === 'office' ? 'office' : 'normal';
@@ -613,145 +568,79 @@ function renderProfileFromBoot() {
         </div>
         <div class="info-section">
           <div class="info-group">
-            <div class="info-item"><div class="info-icon icon-rest">📍</div><div class="info-text"><div class="info-lbl">Ресторан</div><div class="info-val"><span class="badge-rest ${restBadge}">${esc(p.restaurant || '—')}</span></div></div></div>
-            <div class="info-item"><div class="info-icon icon-phone">📞</div><div class="info-text"><div class="info-lbl">Телефон</div><div class="info-val">${phoneClean ? `<a href="tel:${esc(phoneClean)}">${esc(p.phone)}</a>` : '—'}</div></div></div>
-            <div class="info-item"><div class="info-icon icon-birth">🎂</div><div class="info-text"><div class="info-lbl">Дата рождения</div><div class="info-val">${esc(p.birth_date || '—')}</div></div></div>
-            <div class="info-item"><div class="info-icon icon-cert">📜</div><div class="info-text"><div class="info-lbl">Сертификация</div><div class="info-val">${p.is_certified ? '<span style="color:var(--green);">✅ Сертифицирован</span>' : '<span style="color:var(--text-muted);">❌ Не сертифицирован</span>'}</div></div></div>
-            <div class="info-item"><div class="info-icon icon-medbook">🩺</div><div class="info-text"><div class="info-lbl">Мед. книжка</div><div class="info-val">${p.is_medbook_valid ? '<span style="color:var(--green);">✅ Действительна</span>' : '<span style="color:var(--accent);">❌ Не действительна</span>'}</div></div></div>
+            <div class="info-item">
+              <div class="info-icon icon-rest">📍</div>
+              <div class="info-text">
+                <div class="info-lbl">Ресторан</div>
+                <div class="info-val"><span class="badge-rest ${restBadge}">${esc(p.restaurant || '—')}</span></div>
+              </div>
+            </div>
+            <div class="info-item">
+              <div class="info-icon icon-phone">📞</div>
+              <div class="info-text">
+                <div class="info-lbl">Телефон</div>
+                <div class="info-val">${phoneClean ? `<a href="tel:${esc(phoneClean)}">${esc(p.phone)}</a>` : '—'}</div>
+              </div>
+            </div>
+            <div class="info-item">
+              <div class="info-icon icon-birth">🎂</div>
+              <div class="info-text">
+                <div class="info-lbl">Дата рождения</div>
+                <div class="info-val">${esc(p.birth_date || '—')}</div>
+              </div>
+            </div>
+            <div class="info-item">
+              <div class="info-icon icon-cert">📜</div>
+              <div class="info-text">
+                <div class="info-lbl">Сертификация</div>
+                <div class="info-val">${p.is_certified ? '<span style="color:var(--green);">✅ Пройдена</span>' : '<span style="color:var(--text-muted);">❌ Не пройдена</span>'}</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
       <div class="actions-block">
+        ${p.is_admin ? `<button class="action-btn admin" id="open-admin-btn">🛠 Открыть админ-панель</button>` : ''}
         <button class="action-btn" id="report-bug-btn">⚠️ Сообщить об ошибке</button>
         <button class="action-btn danger" id="logout-btn">🚪 Выйти из аккаунта</button>
       </div>
     </div>
   `;
 
-  document.getElementById('logout-btn').addEventListener('click', logout);
-  document.getElementById('report-bug-btn').addEventListener('click', () => {
+  $('logout-btn').addEventListener('click', logout);
+  $('report-bug-btn').addEventListener('click', () => {
     document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
     document.querySelector('.tabs button[data-sec="sec-faq"]').classList.add('active');
-    document.getElementById('sec-faq').classList.add('active');
+    $('sec-faq').classList.add('active');
     window.scrollTo(0, 0);
-    setTimeout(() => {
-      const inp = document.getElementById('question-input');
-      if (inp) inp.focus();
-    }, 300);
+    setTimeout(() => { const inp = $('question-input'); if (inp) inp.focus(); }, 300);
   });
+  const adminBtn = $('open-admin-btn');
+  if (adminBtn) adminBtn.addEventListener('click', () => { window.location.href = '/admin'; });
 }
 
-function logout() {
+async function logout() {
   if (!confirm('Выйти из аккаунта?')) return;
+  try { await api('/api/auth/logout', {}); } catch (e) {}
   clearToken();
   BOOT = null;
   showLogin();
 }
 
-/* ================== TEAM ================== */
-function renderTeamFromBoot() {
-  const box = document.getElementById('team-list');
-  const list = (BOOT && BOOT.team) || [];
-  if (!list.length) {
-    box.innerHTML = '<div class="no-results">Список сотрудников пуст</div>';
-    return;
-  }
-
-  const positionPriority = {
-    'Управляющий сменой': 1,
-    'Повар горячего цеха': 2,
-    'Повар холодного цеха': 3,
-  };
-  const userPos = (BOOT.profile.position || '').toLowerCase();
-  const isHR = userPos === 'hr' || userPos.includes('hr');
-  const isTU = userPos.includes('территориальный');
-  let html = '';
-
-  if (isHR) {
-    // HR: группируем по ТУ → ресторану → сотруднику
-    const groupedByManager = {};
-    list.forEach(t => {
-      const mgr = t.manager_name || 'Без ТУ';
-      const rest = t.restaurant_name || 'Без ресторана';
-      if (!groupedByManager[mgr]) groupedByManager[mgr] = {};
-      if (!groupedByManager[mgr][rest]) groupedByManager[mgr][rest] = [];
-      groupedByManager[mgr][rest].push(t);
-    });
-    const sortedMgrs = Object.keys(groupedByManager).sort((a, b) => a.localeCompare(b));
-    for (const mgrName of sortedMgrs) {
-      html += `<div class="manager-title">👤 ${esc(mgrName)}<span class="mgr-sub">(Территориальный управляющий)</span></div>`;
-      const rests = groupedByManager[mgrName];
-      const sortedRests = Object.keys(rests).sort((a, b) => a.localeCompare(b));
-      for (const restName of sortedRests) {
-        html += `<div class="team-group-title">📍 ${esc(restName)}</div>`;
-        const employees = rests[restName].slice().sort((a, b) => {
-          const pA = positionPriority[a.position] || 99;
-          const pB = positionPriority[b.position] || 99;
-          return pA !== pB ? pA - pB : (a.full_name || '').localeCompare(b.full_name || '');
-        });
-        html += employees.map(renderTeamCard).join('');
-      }
-    }
-  } else {
-    // US / TU: группируем по ресторану
-    const groupedByRest = {};
-    list.forEach(t => {
-      const rest = t.restaurant_name || 'Без ресторана';
-      if (!groupedByRest[rest]) groupedByRest[rest] = [];
-      groupedByRest[rest].push(t);
-    });
-    const isMultiRest = Object.keys(groupedByRest).length > 1;
-    const sortedRests = Object.keys(groupedByRest).sort((a, b) => a.localeCompare(b));
-    for (const restName of sortedRests) {
-      if (isMultiRest || isTU) html += `<div class="team-group-title">📍 ${esc(restName)}</div>`;
-      const employees = groupedByRest[restName].slice().sort((a, b) => {
-        const pA = positionPriority[a.position] || 99;
-        const pB = positionPriority[b.position] || 99;
-        return pA !== pB ? pA - pB : (a.full_name || '').localeCompare(b.full_name || '');
-      });
-      html += employees.map(renderTeamCard).join('');
-    }
-  }
-  box.innerHTML = html;
-}
-
-function renderTeamCard(t) {
-  const initial = (t.full_name || '?').charAt(0).toUpperCase();
-  const medbookHtml = t.is_medbook_valid
-    ? '<span class="status-badge green">🩺 Мед. книжка</span>'
-    : '<span class="status-badge red">🩺 Просрочена</span>';
-  const certHtml = t.is_certified
-    ? '<span class="status-badge green">📜 Сертификат</span>'
-    : '<span class="status-badge gray">📜 Нет сертификата</span>';
-  const phoneClean = (t.phone || '').replace(/[^\d+]/g, '');
-  return `
-    <div class="team-card">
-      <div class="team-avatar">${esc(initial)}</div>
-      <div class="team-info">
-        <div class="team-name">${esc(t.full_name)}</div>
-        <div class="team-pos">${esc(t.position)}</div>
-        <div class="team-status">${medbookHtml}${certHtml}</div>
-      </div>
-      ${phoneClean ? `<div class="team-actions"><a href="tel:${esc(phoneClean)}" aria-label="Позвонить">📞</a></div>` : ''}
-    </div>
-  `;
-}
-
 /* ================== RESTAURANTS ================== */
 function renderRestaurantsList(list, query) {
-  const box = document.getElementById('restaurants-list');
+  const box = $('restaurants-list');
   const q = (query || '').trim().toLowerCase();
   const myKey = (BOOT && BOOT.profile && BOOT.profile.restaurant_key) || '';
   let filtered = list.filter(r => ((r.name || '') + ' ' + (r.address || '')).toLowerCase().indexOf(q) !== -1);
-  if (currentRestFilter === 'open') filtered = filtered.filter(r => r.status === 'open');
+  if (currentRestFilter === 'open') filtered = filtered.filter(r => r.force_status === 'open');
+  if (currentRestFilter === 'my') filtered = filtered.filter(r => r.key === myKey);
   filtered.sort((a, b) => {
     const aIsMy = a.key === myKey;
     const bIsMy = b.key === myKey;
     if (aIsMy && !bIsMy) return -1;
     if (!aIsMy && bIsMy) return 1;
-    if (a.status === 'open' && b.status !== 'open') return -1;
-    if (a.status !== 'open' && b.status === 'open') return 1;
     return (a.name || '').localeCompare(b.name || '');
   });
   if (!filtered.length) { box.innerHTML = '<div class="no-results">Ничего не нашлось</div>'; return; }
@@ -761,6 +650,7 @@ function renderRestaurantsList(list, query) {
       ? 'https://yandex.ru/maps/org/' + encodeURIComponent(r.org)
       : 'https://yandex.ru/maps/?text=' + encodeURIComponent(r.address || '');
     const phoneClean = (r.phone || '').replace(/[^\d+]/g, '');
+    const isOpen = r.force_status === 'open';
     return `
       <div class="rest-card" data-key="${esc(r.key)}">
         ${isMy ? '<div class="my-rest-tag">Мой ресторан</div>' : ''}
@@ -768,7 +658,7 @@ function renderRestaurantsList(list, query) {
           <div class="rest-logo">🍜</div>
           <div class="rest-info">
             <div class="rest-name">${esc(r.name)}</div>
-            <span class="rest-badge ${r.status === 'open' ? 'open' : 'closed'}">${esc(r.status_text || '')}</span>
+            <span class="rest-badge ${isOpen ? 'open' : 'closed'}">${isOpen ? 'Открыто' : 'Закрыто'}</span>
           </div>
         </div>
         <div class="rest-address-row"><span>📍</span> ${esc(r.address || '')}</div>
@@ -783,9 +673,9 @@ function renderRestaurantsList(list, query) {
 
 function renderRestaurants() {
   if (!BOOT) return;
-  const query = document.getElementById('rest-search').value;
+  const query = $('rest-search').value;
   renderRestaurantsList(BOOT.restaurants || [], query);
-  if (document.getElementById('btn-view-map').classList.contains('active') && window.ymaps) {
+  if ($('btn-view-map').classList.contains('active') && window.ymaps) {
     initInteractiveMap(BOOT.restaurants || []);
   }
 }
@@ -799,11 +689,11 @@ document.querySelectorAll('#rest-filters .chip').forEach(chip => {
   });
 });
 
-document.getElementById('btn-view-list').addEventListener('click', function() {
-  document.getElementById('btn-view-map').classList.remove('active');
+$('btn-view-list').addEventListener('click', function() {
+  $('btn-view-map').classList.remove('active');
   this.classList.add('active');
-  document.getElementById('restaurants-map').style.display = 'none';
-  document.getElementById('rest-list-wrapper').style.display = 'block';
+  $('restaurants-map').style.display = 'none';
+  $('rest-list-wrapper').style.display = 'block';
 });
 
 function loadYandexMaps() {
@@ -820,7 +710,7 @@ function loadYandexMaps() {
 }
 
 function initInteractiveMap(restaurants) {
-  const mapContainer = document.getElementById('restaurants-map');
+  const mapContainer = $('restaurants-map');
   if (!window.ymaps) return;
   if (!yandexMap) {
     yandexMap = new ymaps.Map(mapContainer, { center: [55.7558, 37.6173], zoom: 10, controls: ['zoomControl'] });
@@ -831,7 +721,7 @@ function initInteractiveMap(restaurants) {
   const placemarks = restaurants.filter(r => r.lat && r.lon).map(r => new ymaps.Placemark(
     [r.lat, r.lon],
     { hintContent: r.name, balloonContent: r.name },
-    { preset: r.status === 'open' ? 'islands#greenIcon' : 'islands#redIcon' }
+    { preset: r.force_status === 'open' ? 'islands#greenIcon' : 'islands#redIcon' }
   ));
   yandexClusterer.add(placemarks);
   if (placemarks.length > 0) {
@@ -840,11 +730,11 @@ function initInteractiveMap(restaurants) {
   setTimeout(() => { try { if (yandexMap) yandexMap.container.fitToViewport(); } catch (e) {} }, 200);
 }
 
-document.getElementById('btn-view-map').addEventListener('click', async function() {
-  document.getElementById('btn-view-list').classList.remove('active');
+$('btn-view-map').addEventListener('click', async function() {
+  $('btn-view-list').classList.remove('active');
   this.classList.add('active');
-  document.getElementById('rest-list-wrapper').style.display = 'none';
-  const mapContainer = document.getElementById('restaurants-map');
+  $('rest-list-wrapper').style.display = 'none';
+  const mapContainer = $('restaurants-map');
   mapContainer.style.display = 'block';
   mapContainer.innerHTML = '<div class="loading">Загрузка карты…</div>';
   try {
@@ -856,24 +746,29 @@ document.getElementById('btn-view-map').addEventListener('click', async function
   }
 });
 
-document.getElementById('rest-search').addEventListener('input', () => renderRestaurants());
+$('rest-search').addEventListener('input', () => renderRestaurants());
 
-document.getElementById('restaurants-list').addEventListener('click', function(e) {
+$('restaurants-list').addEventListener('click', function(e) {
   const card = e.target.closest('.rest-card');
   if (card && card.dataset.key) showDetail(card.dataset.key);
 });
 
 function showDetail(key) {
-  const section = document.getElementById('sec-detail');
-  const box = document.getElementById('detail-box');
+  const section = $('sec-detail');
+  const box = $('detail-box');
   const r = (BOOT.restaurants || []).find(x => x.key === key);
   if (r) {
     const routeUrl = r.org
       ? 'https://yandex.ru/maps/org/' + encodeURIComponent(r.org)
       : 'https://yandex.ru/maps/?text=' + encodeURIComponent(r.address || '');
     const phoneClean = (r.phone || '').replace(/[^\d+]/g, '');
+    const isOpen = r.force_status === 'open';
     box.innerHTML = `
-      <div class="detail-hero"><div class="emoji">🍜</div><div class="name">${esc(r.name)}</div><span class="detail-status ${r.status === 'open' ? 'open' : 'closed'}">${esc(r.status_text || '')}</span></div>
+      <div class="detail-hero">
+        <div class="emoji">🍜</div>
+        <div class="name">${esc(r.name)}</div>
+        <span class="detail-status ${isOpen ? 'open' : 'closed'}">${isOpen ? 'Открыто' : 'Закрыто'}</span>
+      </div>
       <div class="detail-card">
         <div class="row"><div class="lbl">Адрес</div>${esc(r.address || '—')}</div>
         ${phoneClean ? `<div class="row"><div class="lbl">Телефон</div><a href="tel:${esc(phoneClean)}" style="color:var(--accent);font-weight:700;text-decoration:none;">${esc(r.phone)}</a></div>` : ''}
@@ -893,34 +788,45 @@ function exitDetailView() {
   if (tabs) tabs.style.display = 'flex';
 }
 
-document.getElementById('detail-back').addEventListener('click', () => {
+$('detail-back').addEventListener('click', () => {
   exitDetailView();
   document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
   document.querySelector('.tabs button[data-sec="sec-restaurants"]').classList.add('active');
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.getElementById('sec-restaurants').classList.add('active');
+  $('sec-restaurants').classList.add('active');
   renderRestaurants();
 });
 
 /* ================== NEWS ================== */
 function renderNewsFromBoot() {
-  const box = document.getElementById('news-list');
+  const box = $('news-list');
   const list = (BOOT && BOOT.news) || [];
-  if (!list.length) { box.innerHTML = '<div class="no-results">Пока новостей нет</div>'; return; }
-  box.innerHTML = list.map(n => {
+  const published = list.filter(n => n.status === 'published');
+  if (!published.length) { box.innerHTML = '<div class="no-results">Пока новостей нет</div>'; return; }
+  box.innerHTML = published.map(n => {
     const lvl = ['urgent', 'important'].includes(n.level) ? n.level : 'normal';
     let badgeHtml = '';
     if (lvl === 'urgent') badgeHtml = '<span class="news-badge urgent">Срочно</span>';
     else if (lvl === 'important') badgeHtml = '<span class="news-badge important">Важно</span>';
-    return `<div class="news-item"><div class="news-meta"><div class="news-date">${esc(n.date)}</div>${badgeHtml}</div><div class="news-title">${esc(n.title)}</div><div class="news-body">${esc(n.text)}</div></div>`;
+    const dateStr = fmtDate(n.created_at);
+    return `
+      <div class="news-item">
+        <div class="news-meta">
+          <div class="news-date">${esc(dateStr)}</div>
+          ${badgeHtml}
+        </div>
+        <div class="news-title">${esc(n.title)}</div>
+        <div class="news-body">${esc(n.body)}</div>
+      </div>
+    `;
   }).join('');
 }
 
 /* ================== STANDARDS ================== */
 function renderStandardsFromBoot() {
-  const box = document.getElementById('standards-list');
+  const box = $('standards-list');
   const list = (BOOT && BOOT.standards) || [];
-  const container = document.getElementById('standards-chips');
+  const container = $('standards-chips');
   const cats = ['all', 'shift_checklist', ...new Set(list.map(s => s.category).filter(Boolean))];
   container.innerHTML = cats.map(cat => {
     const label = cat === 'all' ? 'Все' : cat === 'shift_checklist' ? '📋 Смена' : cat;
@@ -929,11 +835,11 @@ function renderStandardsFromBoot() {
   container.querySelectorAll('.chip').forEach(chip => {
     chip.addEventListener('click', () => {
       currentStandardCat = chip.dataset.cat;
-      document.getElementById('standard-search').value = '';
+      $('standard-search').value = '';
       renderStandardsFromBoot();
     });
   });
-  const query = (document.getElementById('standard-search').value || '').trim().toLowerCase();
+  const query = ($('standard-search').value || '').trim().toLowerCase();
   let htmlContent = '';
   if ((currentStandardCat === 'shift_checklist' || currentStandardCat === 'all') && (!query || 'чек-лист'.includes(query))) {
     htmlContent += '<div class="checklist-card"><b style="margin-bottom:16px; font-size:18px; display:block;">📋 Чек-лист открытия</b><div id="shift-checklist"></div></div>';
@@ -944,13 +850,20 @@ function renderStandardsFromBoot() {
     const matchQuery = !query || hay.indexOf(query) !== -1;
     return matchCat && matchQuery;
   });
-  htmlContent += filtered.map(s => `<div class="card" style="padding: 20px;"><b style="font-size: 18px; margin-bottom: 4px; display: block;">${esc(s.title)}</b><div style="font-size: 13px; color: var(--accent); font-weight: 700; text-transform: uppercase; margin-bottom: 8px;">${esc(s.category || '')}</div><div style="color: var(--text-muted); font-size: 15px; line-height: 1.5;">${esc(s.description || '')}</div>${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener" style="display:inline-block;margin-top:10px;color:var(--accent);font-weight:700;text-decoration:none;font-size:14px;">Открыть →</a>` : ''}</div>`).join('');
+  htmlContent += filtered.map(s => `
+    <div class="card" style="padding: 20px;">
+      <b style="font-size: 18px; margin-bottom: 4px; display: block;">${esc(s.title)}</b>
+      <div style="font-size: 13px; color: var(--accent); font-weight: 700; text-transform: uppercase; margin-bottom: 8px;">${esc(s.category || '')}</div>
+      <div style="color: var(--text-muted); font-size: 15px; line-height: 1.5;">${esc(s.description || '')}</div>
+      ${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener" style="display:inline-block;margin-top:10px;color:var(--accent);font-weight:700;text-decoration:none;font-size:14px;">Открыть →</a>` : ''}
+    </div>
+  `).join('');
   box.innerHTML = htmlContent || '<div class="no-results">Ничего не найдено</div>';
-  if (document.getElementById('shift-checklist')) initShiftChecklist();
+  if ($('shift-checklist')) initShiftChecklist();
 }
 
 function initShiftChecklist() {
-  const container = document.getElementById('shift-checklist');
+  const container = $('shift-checklist');
   const tasks = [
     { id: 't1', text: 'Проверить чистоту рабочей зоны' },
     { id: 't2', text: 'Убедиться в корректности цен и меню' },
@@ -974,19 +887,19 @@ function initShiftChecklist() {
   });
 }
 
-document.getElementById('standard-search').addEventListener('input', () => renderStandardsFromBoot());
+$('standard-search').addEventListener('input', () => renderStandardsFromBoot());
 
 /* ================== FAQ ================== */
 function renderFaqFromBoot() {
-  const box = document.getElementById('faq-list');
+  const box = $('faq-list');
   const list = (BOOT && BOOT.faq) || [];
   if (!list.length) { box.innerHTML = '<div class="no-results">Нет вопросов</div>'; return; }
   box.innerHTML = list.map(f => `<details><summary>${esc(f.question)}</summary><p>${esc(f.answer)}</p></details>`).join('');
 }
 
-document.getElementById('send-question').addEventListener('click', async function() {
+$('send-question').addEventListener('click', async function() {
   const btn = this;
-  const input = document.getElementById('question-input');
+  const input = $('question-input');
   const text = (input.value || '').trim();
   if (!text) { showToast('Введите вопрос'); return; }
   btn.disabled = true;
@@ -997,15 +910,14 @@ document.getElementById('send-question').addEventListener('click', async functio
     input.value = '';
     showToast('✅ Вопрос отправлен');
   } catch (e) {
-    if (e.message === 'too_fast') showToast('Подождите минуту перед новым вопросом', 'error');
-    else if (e.message !== 'unauthorized') showToast('Не удалось отправить', 'error');
+    if (e.message !== 'unauthorized') showToast('Не удалось отправить', 'error');
   } finally {
     btn.disabled = false;
     btn.textContent = oldLabel;
   }
 });
 
-/* ================== START ================== */
+/* ================== INIT ================== */
 (async function init() {
   if (!getToken()) { showLogin(); return; }
   await loadAndRender();

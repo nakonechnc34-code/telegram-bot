@@ -146,7 +146,13 @@ FAQ_SEED = [
     {"question": "Как поменять ресторан в профиле?", "answer": "Обратись к администратору — данные в профиле меняются только через админа.", "category": "Бот"},
 ]
 
-POSITIONS_SEED = ["Холодный Цех", "Жарщик", "Управляющий сменой", "Территориальный управляющий"]
+POSITIONS_SEED = [
+    "Повар холодного цеха",
+    "Повар горячего цеха",
+    "Управляющий сменой",
+    "Территориальный управляющий",
+    "HR",
+]
 
 # ============= ИНИЦИАЛИЗАЦИЯ БД =============
 init_pool()
@@ -165,6 +171,8 @@ with get_conn() as conn:
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS position TEXT")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS restaurant TEXT")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_certified BOOLEAN DEFAULT FALSE")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_medbook_valid BOOLEAN DEFAULT FALSE")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS bot_blocked BOOLEAN DEFAULT FALSE")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()")
@@ -206,6 +214,7 @@ with get_conn() as conn:
         """)
         cur.execute("ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS force_status TEXT")
         cur.execute("ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS sort INT DEFAULT 100")
+        cur.execute("ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS territory_manager_id BIGINT")
 
         cur.execute("""
             CREATE TABLE IF NOT EXISTS standards (
@@ -267,7 +276,7 @@ with get_conn() as conn:
                 PRIMARY KEY (admin_id, user_id)
             )
         """)
-        
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS web_sessions (
                 token TEXT PRIMARY KEY,
@@ -276,7 +285,7 @@ with get_conn() as conn:
                 last_used_at TIMESTAMPTZ DEFAULT NOW()
             )
         """)
-        
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS web_auth_codes (
                 user_id BIGINT PRIMARY KEY,
@@ -341,6 +350,17 @@ with get_conn() as conn:
         if cur.fetchone()[0] == 0:
             for i, name in enumerate(POSITIONS_SEED):
                 cur.execute("INSERT INTO positions (name, sort) VALUES (%s, %s)", (name, i))
+
+        # ---- Миграция v2: переименование должностей + HR ----
+        cur.execute("UPDATE users SET position = 'Повар холодного цеха' WHERE position = 'Холодный Цех'")
+        cur.execute("UPDATE users SET position = 'Повар горячего цеха' WHERE position = 'Жарщик'")
+        cur.execute("UPDATE positions SET name = 'Повар холодного цеха' WHERE name = 'Холодный Цех'")
+        cur.execute("UPDATE positions SET name = 'Повар горячего цеха' WHERE name = 'Жарщик'")
+        cur.execute("SELECT COUNT(*) FROM positions WHERE LOWER(name) = 'hr'")
+        if cur.fetchone()[0] == 0:
+            cur.execute("SELECT COALESCE(MAX(sort), 0) + 1 FROM positions")
+            next_sort = cur.fetchone()[0]
+            cur.execute("INSERT INTO positions (name, sort) VALUES ('HR', %s)", (next_sort,))
 
         cur.execute("SELECT 1 FROM admin_audit WHERE action = 'migration:coords_v1' LIMIT 1")
         if cur.fetchone() is None:
@@ -415,9 +435,10 @@ RESTAURANT_DB_FIELDS = ("name", "address", "phone", "hours", "org", "coords")
 def _sync_db_restaurants_all():
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT key, name, address, hours, lat, lon, org, phone, force_status, sort "
-                        "FROM restaurants ORDER BY sort, name")
-            cols = ["key", "name", "address", "hours", "lat", "lon", "org", "phone", "force_status", "sort"]
+            cur.execute("SELECT key, name, address, hours, lat, lon, org, phone, force_status, sort, "
+                        "territory_manager_id FROM restaurants ORDER BY sort, name")
+            cols = ["key", "name", "address", "hours", "lat", "lon", "org", "phone",
+                    "force_status", "sort", "territory_manager_id"]
             return [dict(zip(cols, row)) for row in cur.fetchall()]
 
 def _sync_db_restaurants_for_app():
@@ -460,6 +481,13 @@ def _sync_db_restaurant_set_status(key, fs):
             cur.execute("UPDATE restaurants SET force_status = %s WHERE key = %s", (fs, key))
             return cur.rowcount > 0
 
+def _sync_db_restaurant_set_tu(key, tu_id):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE restaurants SET territory_manager_id = %s WHERE key = %s",
+                        (tu_id, key))
+            return cur.rowcount > 0
+
 def _sync_db_restaurant_add(key, name, address, hours, phone, org):
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -485,7 +513,8 @@ def _sync_db_restaurant_delete(key):
 def _sync_db_get(user_id):
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT full_name, phone, birth_date, position, restaurant, welcomed, is_blocked "
+            cur.execute("SELECT full_name, phone, birth_date, position, restaurant, welcomed, "
+                        "is_blocked, is_certified, is_medbook_valid "
                         "FROM users WHERE user_id = %s", (user_id,))
             return cur.fetchone()
 
@@ -528,6 +557,8 @@ def _sync_db_update_user(user_id, field, value):
         "birth_date": "UPDATE users SET birth_date = %s WHERE user_id = %s",
         "position": "UPDATE users SET position = %s WHERE user_id = %s",
         "restaurant": "UPDATE users SET restaurant = %s WHERE user_id = %s",
+        "is_certified": "UPDATE users SET is_certified = %s WHERE user_id = %s",
+        "is_medbook_valid": "UPDATE users SET is_medbook_valid = %s WHERE user_id = %s",
     }
     sql = sqls.get(field)
     if not sql:
@@ -607,6 +638,15 @@ def _sync_db_birthday_candidates(md):
                              AND full_name IS NOT NULL
                              AND birth_date IS NOT NULL
                              AND SUBSTRING(birth_date, 1, 5) = %s""", (md,))
+            return cur.fetchall()
+
+def _sync_db_list_tu_candidates():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT user_id, full_name FROM users
+                           WHERE is_blocked = FALSE AND full_name IS NOT NULL
+                             AND LOWER(COALESCE(position,'')) LIKE '%%территориальный управляющий%%'
+                           ORDER BY full_name""")
             return cur.fetchall()
 
 def _sync_get_report_stats():
@@ -1006,12 +1046,12 @@ def _sync_db_request_web_code(phone_raw):
         return None
     if len(digits) == 11 and digits.startswith('8'):
         digits = '7' + digits[1:]
-    
+
     last10 = digits[-10:]
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT user_id FROM users 
+                SELECT user_id FROM users
                 WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', ''), '(', ''), ')', '') LIKE %s
                 AND full_name IS NOT NULL
                 AND is_blocked = FALSE
@@ -1019,10 +1059,10 @@ def _sync_db_request_web_code(phone_raw):
             row = cur.fetchone()
             if not row:
                 return None
-            
+
             user_id = row[0]
             code = f"{secrets.randbelow(900000) + 100000}"
-            
+
             cur.execute("DELETE FROM web_auth_codes WHERE user_id = %s", (user_id,))
             cur.execute("INSERT INTO web_auth_codes (user_id, code) VALUES (%s, %s)", (user_id, code))
             return user_id, code
@@ -1032,7 +1072,7 @@ def _sync_db_verify_web_code(phone_raw, code):
     if len(digits) == 11 and digits.startswith('8'):
         digits = '7' + digits[1:]
     last10 = digits[-10:]
-    
+
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -1056,6 +1096,7 @@ async def db_restaurant(key): return await _run(_sync_db_restaurant, key)
 async def db_restaurant_update(key, f, v): return await _run(_sync_db_restaurant_update, key, f, v)
 async def db_restaurant_set_coords(key, lat, lon): return await _run(_sync_db_restaurant_set_coords, key, lat, lon)
 async def db_restaurant_set_status(key, fs): return await _run(_sync_db_restaurant_set_status, key, fs)
+async def db_restaurant_set_tu(key, tu_id): return await _run(_sync_db_restaurant_set_tu, key, tu_id)
 async def db_restaurant_add(*a): return await _run(_sync_db_restaurant_add, *a)
 async def db_restaurant_delete(key): return await _run(_sync_db_restaurant_delete, key)
 async def db_get(user_id): return await _run(_sync_db_get, user_id)
@@ -1072,6 +1113,7 @@ async def db_set_blocked(uid, b): return await _run(_sync_db_set_blocked, uid, b
 async def db_mark_bot_blocked(uid): return await _run(_sync_db_mark_bot_blocked, uid)
 async def db_mark_seen(uid): return await _run(_sync_db_mark_seen, uid)
 async def db_birthday_candidates(md): return await _run(_sync_db_birthday_candidates, md)
+async def db_list_tu_candidates(): return await _run(_sync_db_list_tu_candidates)
 async def get_report_stats(): return await _run(_sync_get_report_stats)
 async def db_dashboard_stats(): return await _run(_sync_db_dashboard_stats)
 async def db_add_news(t, b, l, publish_at=None): return await _run(_sync_db_add_news, t, b, l, publish_at)
@@ -1128,7 +1170,8 @@ def _sync_bootstrap_data(user_id):
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET last_seen_at = NOW() WHERE user_id = %s", (user_id,))
             cur.execute("SELECT full_name, phone, birth_date, position, restaurant, welcomed, "
-                        "is_blocked, first_name FROM users WHERE user_id = %s", (user_id,))
+                        "is_blocked, first_name, is_certified, is_medbook_valid "
+                        "FROM users WHERE user_id = %s", (user_id,))
             user_row = cur.fetchone()
             cur.execute("SELECT id, title, body, important, level, created_at FROM news "
                         "WHERE published = TRUE ORDER BY created_at DESC, id DESC LIMIT 50")
@@ -1140,8 +1183,48 @@ def _sync_bootstrap_data(user_id):
             cur.execute("SELECT key, name, address, hours, lat, lon, org, phone, force_status, sort "
                         "FROM restaurants ORDER BY sort, name")
             rest_rows = cur.fetchall()
-    return {"user_row": user_row, "news_rows": news_rows, "std_rows": std_rows,
-            "faq_rows": faq_rows, "rest_rows": rest_rows}
+
+            # --- Team ---
+            can_see_team = False
+            team_rows = []
+            if user_row and len(user_row) > 3 and user_row[3]:
+                pos_lower = (user_row[3] or "").lower()
+                can_see_team = ("управляющий" in pos_lower) or ("hr" in pos_lower)
+                if can_see_team:
+                    is_us = "управляющий сменой" in pos_lower
+                    if is_us:
+                        cur.execute("""
+                            SELECT u.full_name, u.position, u.phone,
+                                   u.is_certified, u.is_medbook_valid,
+                                   u.restaurant, r.name, COALESCE(mgr.full_name, '')
+                            FROM users u
+                            LEFT JOIN restaurants r ON u.restaurant = r.key
+                            LEFT JOIN users mgr ON r.territory_manager_id = mgr.user_id
+                            WHERE u.user_id != %s
+                              AND u.is_blocked = FALSE
+                              AND u.full_name IS NOT NULL
+                              AND u.restaurant = %s
+                            ORDER BY u.full_name
+                        """, (user_id, user_row[4]))
+                    else:
+                        cur.execute("""
+                            SELECT u.full_name, u.position, u.phone,
+                                   u.is_certified, u.is_medbook_valid,
+                                   u.restaurant, r.name, COALESCE(mgr.full_name, '')
+                            FROM users u
+                            LEFT JOIN restaurants r ON u.restaurant = r.key
+                            LEFT JOIN users mgr ON r.territory_manager_id = mgr.user_id
+                            WHERE u.user_id != %s
+                              AND u.is_blocked = FALSE
+                              AND u.full_name IS NOT NULL
+                            ORDER BY u.full_name
+                        """, (user_id,))
+                    team_rows = cur.fetchall()
+    return {
+        "user_row": user_row, "news_rows": news_rows, "std_rows": std_rows,
+        "faq_rows": faq_rows, "rest_rows": rest_rows,
+        "team_rows": team_rows, "can_see_team": can_see_team,
+    }
 
 async def db_bootstrap_data(user_id):
     return await _run(_sync_bootstrap_data, user_id)
@@ -1306,6 +1389,15 @@ def sparkline(values):
         idx = max(0, min(idx, len(chars) - 1))
         out.append(chars[idx])
     return "".join(out)
+
+def row_user_flags(row):
+    """Возвращает (is_blocked, is_certified, is_medbook_valid) из кортежа пользователя."""
+    if not row:
+        return False, False, False
+    is_blocked = bool(row[6]) if len(row) > 6 else False
+    is_certified = bool(row[7]) if len(row) > 7 else False
+    is_medbook_valid = bool(row[8]) if len(row) > 8 else False
+    return is_blocked, is_certified, is_medbook_valid
 
 SOURCE_LABELS = {
     "users": "👥 Пользователи",
@@ -1659,7 +1751,8 @@ async def users_list_text(rows, page, pages, total, title="Пользовате�
     if names is None:
         names = await restaurant_names_map()
     lines = [f"📋 {title} · всего {total} · стр. {page+1}/{pages}\n"]
-    for user_id, full_name, phone, position, restaurant, welcomed, is_blocked in rows:
+    for row in rows:
+        user_id, full_name, phone, position, restaurant, welcomed, is_blocked = row[:7]
         if not full_name:
             lines.append(f"• <code>{user_id}</code> — регистрация не завершена")
             continue
@@ -1670,7 +1763,9 @@ async def users_list_text(rows, page, pages, total, title="Пользовате�
 
 def users_list_kb(rows, page, pages, source="users"):
     kb = []
-    for user_id, full_name, phone, position, restaurant, welcomed, is_blocked in rows:
+    for row in rows:
+        user_id, full_name = row[0], row[1]
+        is_blocked = bool(row[6]) if len(row) > 6 else False
         label = full_name if full_name else f"ID {user_id}"
         if is_blocked:
             label = "🚫 " + label
@@ -1696,11 +1791,15 @@ def users_list_kb(rows, page, pages, source="users"):
 async def user_card_text(target_id: int, row, is_pinned=False, source="users", names=None) -> str:
     if not row:
         return "Пользователь не найден."
-    full_name, phone, birth_date, position, restaurant, welcomed, is_blocked = row
+    full_name, phone, birth_date, position, restaurant, welcomed, is_blocked = row[:7]
+    is_certified = bool(row[7]) if len(row) > 7 else False
+    is_medbook_valid = bool(row[8]) if len(row) > 8 else False
     if names is None:
         names = await restaurant_names_map()
     rest_name = names.get(restaurant, restaurant) if restaurant else "—"
     status = "🚫 Заблокирован" if is_blocked else "✅ Активен"
+    cert = "✅ Пройдена" if is_certified else "❌ Не пройдена"
+    medbook = "✅ Действительна" if is_medbook_valid else "❌ Недействительна/нет"
     pin = "📌 " if is_pinned else ""
     header = breadcrumbs(source, f"👤 {pin}Пользователь")
     return (f"{header}\n──────────────────────────────\n"
@@ -1710,16 +1809,25 @@ async def user_card_text(target_id: int, row, is_pinned=False, source="users", n
             f"📍 Ресторан: {html.escape(rest_name)}\n"
             f"📞 Телефон: {html.escape(phone or '—')}\n"
             f"🎂 Дата рождения: {html.escape(birth_date or '—')}\n"
+            f"🎓 Сертификация: {cert}\n"
+            f"📋 Мед. книжка: {medbook}\n"
             f"📊 Статус: {status}")
 
 def user_edit_kb(target_id: int, is_blocked: bool = False, is_pinned: bool = False,
-                 source: str = "users", page: int = 0) -> InlineKeyboardMarkup:
+                 source: str = "users", page: int = 0,
+                 is_certified: bool = False, is_medbook_valid: bool = False) -> InlineKeyboardMarkup:
     ban_btn = (InlineKeyboardButton(text="✅ Разблокировать", callback_data=f"adm_unban:{target_id}")
                if is_blocked else
                InlineKeyboardButton(text="🚫 Заблокировать", callback_data=f"adm_ban_ask:{target_id}"))
     pin_btn = (InlineKeyboardButton(text="📌 Открепить", callback_data=f"adm_pin:{target_id}")
                if is_pinned else
                InlineKeyboardButton(text="📌 Закрепить", callback_data=f"adm_pin:{target_id}"))
+    cert_btn = (InlineKeyboardButton(text="🎓 Сертификация ✅", callback_data=f"adm_cert:{target_id}")
+                if is_certified else
+                InlineKeyboardButton(text="🎓 Сертификация ❌", callback_data=f"adm_cert:{target_id}"))
+    mb_btn = (InlineKeyboardButton(text="📋 Мед. книжка ✅", callback_data=f"adm_medbook:{target_id}")
+              if is_medbook_valid else
+              InlineKeyboardButton(text="📋 Мед. книжка ❌", callback_data=f"adm_medbook:{target_id}"))
     back_cb = back_callback(source, page)
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✏️ ФИО", callback_data=f"edit_field:{target_id}:full_name"),
@@ -1727,6 +1835,7 @@ def user_edit_kb(target_id: int, is_blocked: bool = False, is_pinned: bool = Fal
         [InlineKeyboardButton(text="🎂 Дата рождения", callback_data=f"edit_field:{target_id}:birth_date"),
          InlineKeyboardButton(text="💼 Должность", callback_data=f"edit_pos:{target_id}")],
         [InlineKeyboardButton(text="📍 Ресторан", callback_data=f"edit_rest:{target_id}")],
+        [cert_btn, mb_btn],
         [pin_btn],
         [ban_btn, InlineKeyboardButton(text="🗑 Удалить", callback_data=f"adm_del:{target_id}")],
         [InlineKeyboardButton(text="✍️ Написать", callback_data=f"adm_msg_user:{target_id}")],
@@ -1863,7 +1972,7 @@ def rest_status_label(r: dict) -> str:
         return f"🔴 {status_text}"
     return f"♻️ Авто: {status_text}"
 
-def rest_card_text(r: dict, source="rests") -> str:
+async def rest_card_text(r: dict, source="rests") -> str:
     phone = r.get("phone") or "—"
     lat = r.get("lat")
     lon = r.get("lon")
@@ -1871,6 +1980,14 @@ def rest_card_text(r: dict, source="rests") -> str:
         coords = f"{lat:.5f}, {lon:.5f}"
     else:
         coords = "не заданы"
+    tu_id = r.get("territory_manager_id")
+    tu_str = "не назначен"
+    if tu_id:
+        try:
+            tu_row = await db_get(tu_id)
+            tu_str = (tu_row[0] if tu_row else f"ID {tu_id}") or f"ID {tu_id}"
+        except Exception:
+            tu_str = f"ID {tu_id}"
     header = breadcrumbs(source, f"🏪 {html.escape(r['name'])}")
     return (f"{header}\n──────────────────────────────\n"
             f"{'🟢' if restaurant_status_for(r)[0] == 'open' else '🔴'} Статус: {rest_status_label(r)}\n"
@@ -1878,6 +1995,7 @@ def rest_card_text(r: dict, source="rests") -> str:
             f"🕒 Часы: {html.escape((r.get('hours') or '—').replace(chr(10), ' / '))}\n"
             f"🗺 Яндекс Карты: {html.escape(r.get('org') or 'по адресу')}\n"
             f"📌 Координаты: <code>{coords}</code>\n"
+            f"👔 ТУ: {html.escape(tu_str)}\n"
             f"🔑 Key: <code>{r['key']}</code>")
 
 def rest_card_kb(r: dict, source="rests", page=0) -> InlineKeyboardMarkup:
@@ -1888,6 +2006,7 @@ def rest_card_kb(r: dict, source="rests", page=0) -> InlineKeyboardMarkup:
         status_btn = InlineKeyboardButton(text="🟢 Открыть (вручную)", callback_data=f"restset:{r['key']}:open")
     else:
         status_btn = InlineKeyboardButton(text="🔴 Закрыть (вручную)", callback_data=f"restset:{r['key']}:closed")
+    tu_btn = InlineKeyboardButton(text="👔 Назначить ТУ", callback_data=f"rest_tu:{r['key']}")
     rows = [
         [InlineKeyboardButton(text="✏️ Название", callback_data=f"restedit:{r['key']}:name"),
          InlineKeyboardButton(text="✏️ Адрес", callback_data=f"restedit:{r['key']}:address")],
@@ -1895,7 +2014,7 @@ def rest_card_kb(r: dict, source="rests", page=0) -> InlineKeyboardMarkup:
          InlineKeyboardButton(text="✏️ Часы", callback_data=f"restedit:{r['key']}:hours")],
         [InlineKeyboardButton(text="✏️ Яндекс Карты", callback_data=f"restedit:{r['key']}:org"),
          InlineKeyboardButton(text="🗺 Координаты", callback_data=f"restedit:{r['key']}:coords")],
-        [status_btn],
+        [tu_btn, status_btn],
     ]
     if r["key"] != "office":
         rows.append([InlineKeyboardButton(text="🗑 Удалить точку", callback_data=f"rest_del_ask:{r['key']}")])
@@ -2730,10 +2849,13 @@ async def question_reply_do(message: types.Message, state: FSMContext):
         row = await db_get(q_uid)
         if row:
             is_pin = await db_is_pinned(message.from_user.id, q_uid)
+            is_blocked, is_cert, is_mb = row_user_flags(row)
             await send_tracked(message.chat.id, message.from_user.id,
                                await user_card_text(q_uid, row, is_pin),
                                parse_mode="HTML",
-                               reply_markup=user_edit_kb(q_uid, bool(row[6]), is_pin))
+                               reply_markup=user_edit_kb(q_uid, is_blocked, is_pin,
+                                                         is_certified=is_cert,
+                                                         is_medbook_valid=is_mb))
         return
 
     await db_question_reply(qid, text, message.from_user.id)
@@ -3068,10 +3190,12 @@ async def adm_user_card(callback: types.CallbackQuery, state: FSMContext):
     if not row:
         await send_tracked(cb_chat_id(callback), callback.from_user.id, "❌ Пользователь не найден.")
         return
+    is_blocked, is_cert, is_mb = row_user_flags(row)
     await send_tracked(cb_chat_id(callback), callback.from_user.id,
                        await user_card_text(target_id, row, is_pin, source),
                        parse_mode="HTML",
-                       reply_markup=user_edit_kb(target_id, bool(row[6]), is_pin, source, page))
+                       reply_markup=user_edit_kb(target_id, is_blocked, is_pin, source, page,
+                                                 is_certified=is_cert, is_medbook_valid=is_mb))
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_pin:"))
 async def adm_pin(callback: types.CallbackQuery):
@@ -3081,11 +3205,62 @@ async def adm_pin(callback: types.CallbackQuery):
     await callback.answer("📌 Закреплён" if now_pinned else "Откреплён")
     row = await db_get(target_id)
     if row:
+        is_blocked, is_cert, is_mb = row_user_flags(row)
         await cleanup_chat(callback.from_user.id)
         await send_tracked(cb_chat_id(callback), callback.from_user.id,
                            await user_card_text(target_id, row, now_pinned),
                            parse_mode="HTML",
-                           reply_markup=user_edit_kb(target_id, bool(row[6]), now_pinned))
+                           reply_markup=user_edit_kb(target_id, is_blocked, now_pinned,
+                                                     is_certified=is_cert,
+                                                     is_medbook_valid=is_mb))
+
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_cert:"))
+async def adm_cert_toggle(callback: types.CallbackQuery):
+    target_id = safe_int(callback.data.split(":")[1])
+    row = await db_get(target_id)
+    if not row:
+        await callback.answer("Пользователь не найден", show_alert=True)
+        return
+    _, is_cert, _ = row_user_flags(row)
+    new_val = not is_cert
+    await db_update_user(target_id, "is_certified", new_val)
+    await db_audit(callback.from_user.id, "user_update", "user", target_id, f"is_certified={new_val}")
+    await callback.answer("Сертификация обновлена")
+    row = await db_get(target_id)
+    is_pin = await db_is_pinned(callback.from_user.id, target_id)
+    if row:
+        is_blocked, is_cert2, is_mb = row_user_flags(row)
+        await cleanup_chat(callback.from_user.id)
+        await send_tracked(cb_chat_id(callback), callback.from_user.id,
+                           await user_card_text(target_id, row, is_pin),
+                           parse_mode="HTML",
+                           reply_markup=user_edit_kb(target_id, is_blocked, is_pin,
+                                                     is_certified=is_cert2,
+                                                     is_medbook_valid=is_mb))
+
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_medbook:"))
+async def adm_medbook_toggle(callback: types.CallbackQuery):
+    target_id = safe_int(callback.data.split(":")[1])
+    row = await db_get(target_id)
+    if not row:
+        await callback.answer("Пользователь не найден", show_alert=True)
+        return
+    _, _, is_mb = row_user_flags(row)
+    new_val = not is_mb
+    await db_update_user(target_id, "is_medbook_valid", new_val)
+    await db_audit(callback.from_user.id, "user_update", "user", target_id, f"is_medbook_valid={new_val}")
+    await callback.answer("Мед. книжка обновлена")
+    row = await db_get(target_id)
+    is_pin = await db_is_pinned(callback.from_user.id, target_id)
+    if row:
+        is_blocked, is_cert, is_mb2 = row_user_flags(row)
+        await cleanup_chat(callback.from_user.id)
+        await send_tracked(cb_chat_id(callback), callback.from_user.id,
+                           await user_card_text(target_id, row, is_pin),
+                           parse_mode="HTML",
+                           reply_markup=user_edit_kb(target_id, is_blocked, is_pin,
+                                                     is_certified=is_cert,
+                                                     is_medbook_valid=is_mb2))
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("edit_field:"))
 async def edit_field_start(callback: types.CallbackQuery, state: FSMContext):
@@ -3130,11 +3305,13 @@ async def edit_full_name(message: types.Message, state: FSMContext):
     row = await db_get(target_id)
     is_pin = await db_is_pinned(message.from_user.id, target_id)
     if row:
+        is_blocked, is_cert, is_mb = row_user_flags(row)
         await send_tracked(message.chat.id, message.from_user.id,
                            f"✅ ФИО обновлено: <b>{html.escape(name)}</b>\n\n" +
                            await user_card_text(target_id, row, is_pin),
                            parse_mode="HTML",
-                           reply_markup=user_edit_kb(target_id, bool(row[6]), is_pin))
+                           reply_markup=user_edit_kb(target_id, is_blocked, is_pin,
+                                                     is_certified=is_cert, is_medbook_valid=is_mb))
 
 @admin_router.message(EditUser.phone)
 async def edit_phone(message: types.Message, state: FSMContext):
@@ -3153,11 +3330,13 @@ async def edit_phone(message: types.Message, state: FSMContext):
     row = await db_get(target_id)
     is_pin = await db_is_pinned(message.from_user.id, target_id)
     if row:
+        is_blocked, is_cert, is_mb = row_user_flags(row)
         await send_tracked(message.chat.id, message.from_user.id,
                            f"✅ Телефон обновлён: <b>{html.escape(message.text.strip())}</b>\n\n" +
                            await user_card_text(target_id, row, is_pin),
                            parse_mode="HTML",
-                           reply_markup=user_edit_kb(target_id, bool(row[6]), is_pin))
+                           reply_markup=user_edit_kb(target_id, is_blocked, is_pin,
+                                                     is_certified=is_cert, is_medbook_valid=is_mb))
 
 @admin_router.message(EditUser.birth_date)
 async def edit_birth_date(message: types.Message, state: FSMContext):
@@ -3180,11 +3359,13 @@ async def edit_birth_date(message: types.Message, state: FSMContext):
     row = await db_get(target_id)
     is_pin = await db_is_pinned(message.from_user.id, target_id)
     if row:
+        is_blocked, is_cert, is_mb = row_user_flags(row)
         await send_tracked(message.chat.id, message.from_user.id,
                            f"✅ Дата рождения обновлена: <b>{bd}</b>\n\n" +
                            await user_card_text(target_id, row, is_pin),
                            parse_mode="HTML",
-                           reply_markup=user_edit_kb(target_id, bool(row[6]), is_pin))
+                           reply_markup=user_edit_kb(target_id, is_blocked, is_pin,
+                                                     is_certified=is_cert, is_medbook_valid=is_mb))
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("edit_cancel:"))
 async def edit_cancel(callback: types.CallbackQuery, state: FSMContext):
@@ -3195,10 +3376,12 @@ async def edit_cancel(callback: types.CallbackQuery, state: FSMContext):
     row = await db_get(target_id)
     is_pin = await db_is_pinned(callback.from_user.id, target_id)
     if row:
+        is_blocked, is_cert, is_mb = row_user_flags(row)
         await send_tracked(cb_chat_id(callback), callback.from_user.id,
                            await user_card_text(target_id, row, is_pin),
                            parse_mode="HTML",
-                           reply_markup=user_edit_kb(target_id, bool(row[6]), is_pin))
+                           reply_markup=user_edit_kb(target_id, is_blocked, is_pin,
+                                                     is_certified=is_cert, is_medbook_valid=is_mb))
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("edit_pos:"))
 async def edit_pos_start(callback: types.CallbackQuery, state: FSMContext):
@@ -3230,11 +3413,13 @@ async def edit_pos_set(callback: types.CallbackQuery):
     is_pin = await db_is_pinned(callback.from_user.id, target_id)
     await cleanup_chat(callback.from_user.id)
     if row:
+        is_blocked, is_cert, is_mb = row_user_flags(row)
         await send_tracked(cb_chat_id(callback), callback.from_user.id,
                            f"✅ Должность: <b>{html.escape(position)}</b>\n\n" +
                            await user_card_text(target_id, row, is_pin),
                            parse_mode="HTML",
-                           reply_markup=user_edit_kb(target_id, bool(row[6]), is_pin))
+                           reply_markup=user_edit_kb(target_id, is_blocked, is_pin,
+                                                     is_certified=is_cert, is_medbook_valid=is_mb))
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("edit_rest:"))
 async def edit_rest_start(callback: types.CallbackQuery, state: FSMContext):
@@ -3277,11 +3462,13 @@ async def edit_rest_set(callback: types.CallbackQuery):
     is_pin = await db_is_pinned(callback.from_user.id, target_id)
     await cleanup_chat(callback.from_user.id)
     if row:
+        is_blocked, is_cert, is_mb = row_user_flags(row)
         await send_tracked(cb_chat_id(callback), callback.from_user.id,
                            f"✅ Ресторан: <b>{html.escape(rest_name)}</b>\n\n" +
                            await user_card_text(target_id, row, is_pin, names=names),
                            parse_mode="HTML",
-                           reply_markup=user_edit_kb(target_id, bool(row[6]), is_pin))
+                           reply_markup=user_edit_kb(target_id, is_blocked, is_pin,
+                                                     is_certified=is_cert, is_medbook_valid=is_mb))
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_msg_user:"))
 async def adm_msg_user(callback: types.CallbackQuery, state: FSMContext):
@@ -3337,11 +3524,13 @@ async def adm_ban(callback: types.CallbackQuery):
     row = await db_get(target_id)
     is_pin = await db_is_pinned(callback.from_user.id, target_id)
     if row:
+        _, is_cert, is_mb = row_user_flags(row)
         await cleanup_chat(callback.from_user.id)
         await send_tracked(cb_chat_id(callback), callback.from_user.id,
                            await user_card_text(target_id, row, is_pin),
                            parse_mode="HTML",
-                           reply_markup=user_edit_kb(target_id, True, is_pin))
+                           reply_markup=user_edit_kb(target_id, True, is_pin,
+                                                     is_certified=is_cert, is_medbook_valid=is_mb))
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_unban:"))
 async def adm_unban(callback: types.CallbackQuery):
@@ -3354,11 +3543,13 @@ async def adm_unban(callback: types.CallbackQuery):
     row = await db_get(target_id)
     is_pin = await db_is_pinned(callback.from_user.id, target_id)
     if row:
+        _, is_cert, is_mb = row_user_flags(row)
         await cleanup_chat(callback.from_user.id)
         await send_tracked(cb_chat_id(callback), callback.from_user.id,
                            await user_card_text(target_id, row, is_pin),
                            parse_mode="HTML",
-                           reply_markup=user_edit_kb(target_id, False, is_pin))
+                           reply_markup=user_edit_kb(target_id, False, is_pin,
+                                                     is_certified=is_cert, is_medbook_valid=is_mb))
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("adm_del:"))
 async def adm_del_ask(callback: types.CallbackQuery):
@@ -3427,7 +3618,7 @@ async def rest_card_view(callback: types.CallbackQuery, state: FSMContext):
         await send_tracked(cb_chat_id(callback), callback.from_user.id, "❌ Ресторан не найден.")
         return
     await send_tracked(cb_chat_id(callback), callback.from_user.id,
-                       rest_card_text(r, source), parse_mode="HTML",
+                       await rest_card_text(r, source), parse_mode="HTML",
                        reply_markup=rest_card_kb(r, source, page))
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("restset:"))
@@ -3447,10 +3638,78 @@ async def rest_set_status(callback: types.CallbackQuery):
             await callback.answer("Статус обновлён")
             await cleanup_chat(callback.from_user.id)
             await send_tracked(cb_chat_id(callback), callback.from_user.id,
-                               rest_card_text(r), parse_mode="HTML",
+                               await rest_card_text(r), parse_mode="HTML",
                                reply_markup=rest_card_kb(r))
             return
     await callback.answer("Не удалось изменить статус", show_alert=True)
+
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("rest_tu:"))
+async def rest_tu_pick(callback: types.CallbackQuery, state: FSMContext):
+    key = callback.data.split(":")[1]
+    r = await db_restaurant(key)
+    if not r:
+        await callback.answer("Не найден", show_alert=True)
+        return
+    await callback.answer()
+    tu_rows = await db_list_tu_candidates()
+    if not tu_rows:
+        await cleanup_chat(callback.from_user.id)
+        await send_tracked(cb_chat_id(callback), callback.from_user.id,
+                           "❕ Пока нет пользователей с должностью «Территориальный управляющий».\n"
+                           "Назначь должность через карточку пользователя, затем вернись.",
+                           reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                               [InlineKeyboardButton(text="⬅️ К ресторану",
+                                                     callback_data=f"restadm:{key}")]
+                           ]))
+        return
+    kb = [[InlineKeyboardButton(text=fn or f"ID {uid}",
+                                callback_data=f"rest_tu_set:{key}:{uid}")]
+          for uid, fn in tu_rows]
+    if r.get("territory_manager_id"):
+        kb.append([InlineKeyboardButton(text="🧹 Снять привязку",
+                                        callback_data=f"rest_tu_clear:{key}")])
+    kb.append([InlineKeyboardButton(text="⬅️ К ресторану", callback_data=f"restadm:{key}")])
+    await cleanup_chat(callback.from_user.id)
+    await send_tracked(cb_chat_id(callback), callback.from_user.id,
+                       f"👔 Выбери ТУ для «{html.escape(r['name'])}»:",
+                       parse_mode="HTML",
+                       reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("rest_tu_set:"))
+async def rest_tu_set(callback: types.CallbackQuery):
+    try:
+        _, key, uid = callback.data.split(":")
+        uid = safe_int(uid)
+    except ValueError:
+        return
+    if await db_restaurant_set_tu(key, uid):
+        await db_audit(callback.from_user.id, "rest_set_tu", "restaurant", key, str(uid))
+        await callback.answer("ТУ назначен")
+    else:
+        await callback.answer("Не удалось", show_alert=True)
+        return
+    r = await db_restaurant(key)
+    await cleanup_chat(callback.from_user.id)
+    if r:
+        await send_tracked(cb_chat_id(callback), callback.from_user.id,
+                           await rest_card_text(r), parse_mode="HTML",
+                           reply_markup=rest_card_kb(r))
+
+@admin_router.callback_query(lambda c: c.data and c.data.startswith("rest_tu_clear:"))
+async def rest_tu_clear(callback: types.CallbackQuery):
+    key = callback.data.split(":")[1]
+    if await db_restaurant_set_tu(key, None):
+        await db_audit(callback.from_user.id, "rest_set_tu", "restaurant", key, "None")
+        await callback.answer("Привязка снята")
+    else:
+        await callback.answer("Не удалось", show_alert=True)
+        return
+    r = await db_restaurant(key)
+    await cleanup_chat(callback.from_user.id)
+    if r:
+        await send_tracked(cb_chat_id(callback), callback.from_user.id,
+                           await rest_card_text(r), parse_mode="HTML",
+                           reply_markup=rest_card_kb(r))
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("restedit:"))
 async def rest_edit_start(callback: types.CallbackQuery, state: FSMContext):
@@ -3481,7 +3740,8 @@ async def rest_edit_cancel(callback: types.CallbackQuery, state: FSMContext):
     await cleanup_chat(callback.from_user.id)
     if r:
         await send_tracked(cb_chat_id(callback), callback.from_user.id,
-                           rest_card_text(r), parse_mode="HTML", reply_markup=rest_card_kb(r))
+                           await rest_card_text(r), parse_mode="HTML",
+                           reply_markup=rest_card_kb(r))
 
 @admin_router.message(RestEdit.value)
 async def rest_edit_value(message: types.Message, state: FSMContext):
@@ -3556,7 +3816,8 @@ async def rest_edit_value(message: types.Message, state: FSMContext):
     r = await db_restaurant(rest_key)
     if r:
         await send_tracked(message.chat.id, message.from_user.id,
-                           rest_card_text(r), parse_mode="HTML", reply_markup=rest_card_kb(r))
+                           await rest_card_text(r), parse_mode="HTML",
+                           reply_markup=rest_card_kb(r))
 
 @admin_router.callback_query(lambda c: c.data == "rest_add")
 async def rest_add_start(callback: types.CallbackQuery, state: FSMContext):
@@ -3658,10 +3919,11 @@ async def rest_add_org(message: types.Message, state: FSMContext):
     r = await db_restaurant(key)
     if r:
         await send_tracked(message.chat.id, message.from_user.id,
-                           rest_card_text(r), parse_mode="HTML", reply_markup=rest_card_kb(r))
+                           await rest_card_text(r), parse_mode="HTML",
+                           reply_markup=rest_card_kb(r))
         await send_tracked(message.chat.id, message.from_user.id,
-                           "💡 Совет: сразу задай координаты — "
-                           "нажми «🗺 Координаты» в карточке.",
+                           "💡 Совет: сразу задай координаты и назначь ТУ — "
+                           "кнопки в карточке.",
                            parse_mode="HTML")
 
 @admin_router.callback_query(lambda c: c.data and c.data.startswith("rest_del_ask:"))
@@ -4778,7 +5040,14 @@ async def handle_bootstrap(request):
     rest_map = {r[0]: r[1] for r in data["rest_rows"]}
     profile = None
     if user_row and user_row[0]:
-        full_name, phone, birth_date, position, restaurant, welcomed, is_blocked, first_name = user_row
+        full_name = user_row[0]
+        phone = user_row[1]
+        birth_date = user_row[2]
+        position = user_row[3]
+        restaurant = user_row[4]
+        first_name = user_row[7] if len(user_row) > 7 else None
+        is_certified = bool(user_row[8]) if len(user_row) > 8 else False
+        is_medbook_valid = bool(user_row[9]) if len(user_row) > 9 else False
         profile = {
             "full_name": full_name,
             "first_name": first_name or (full_name.split()[0] if full_name else ""),
@@ -4786,6 +5055,8 @@ async def handle_bootstrap(request):
             "position": position or "—",
             "restaurant": rest_map.get(restaurant, restaurant) if restaurant else "—",
             "restaurant_key": restaurant or "",
+            "is_certified": is_certified,
+            "is_medbook_valid": is_medbook_valid,
         }
     now = _moscow_now()
     kind, title, sub = greeting_for_user(user_row[2] if user_row else None, now)
@@ -4811,11 +5082,26 @@ async def handle_bootstrap(request):
             "sort": rsort if rsort is not None else 100,
             "status": status, "status_text": status_text,
         })
+    team_list = []
+    if data.get("can_see_team"):
+        for row in data["team_rows"]:
+            fn, pos, ph, cert, mb, rkey, rname, mname = row
+            team_list.append({
+                "full_name": fn or "",
+                "position": pos or "",
+                "phone": ph or "",
+                "is_certified": bool(cert),
+                "is_medbook_valid": bool(mb),
+                "restaurant_key": rkey or "",
+                "restaurant_name": rname or "",
+                "manager_name": mname or "",
+            })
     return web.json_response({
         "profile": profile,
         "greeting": {"kind": kind, "title": title, "sub": sub},
         "news": news_list, "restaurants": restaurants_list,
         "standards": standards_list, "faq": faq_list,
+        "team": team_list,
     }, dumps=json_dumps)
 
 async def handle_restaurants(request):
@@ -4869,7 +5155,9 @@ async def handle_profile(request):
     row = await db_get(user_id)
     if not row or not row[0]:
         return web.json_response({"registered": False}, dumps=json_dumps)
-    full_name, phone, birth_date, position, restaurant, welcomed, is_blocked = row
+    full_name, phone, birth_date, position, restaurant, welcomed, is_blocked = row[:7]
+    is_certified = bool(row[7]) if len(row) > 7 else False
+    is_medbook_valid = bool(row[8]) if len(row) > 8 else False
     names = await restaurant_names_map()
     return web.json_response({
         "registered": True,
@@ -4880,6 +5168,8 @@ async def handle_profile(request):
             "position": position or "—",
             "restaurant": names.get(restaurant, restaurant) if restaurant else "—",
             "restaurant_key": restaurant or "",
+            "is_certified": is_certified,
+            "is_medbook_valid": is_medbook_valid,
             "tg_id": user_id,
         },
     }, dumps=json_dumps)
@@ -4974,7 +5264,7 @@ async def handle_auth_request(request):
         phone = payload.get("phone", "").strip()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
-    
+
     if not phone:
         return web.json_response({"error": "phone_required"}, status=400, dumps=json_dumps)
 
@@ -4984,7 +5274,7 @@ async def handle_auth_request(request):
         cutoff = now_ts - 300
         for k in [k for k, v in _auth_rate.items() if v < cutoff]:
             del _auth_rate[k]
-            
+
     digits = re.sub(r'\D', '', phone)
     if now_ts - _auth_rate.get(digits, 0) < 60:
         return web.json_response({"error": "too_fast"}, status=429, dumps=json_dumps)
@@ -4993,7 +5283,7 @@ async def handle_auth_request(request):
     res = await db_request_web_code(phone)
     if not res:
         return web.json_response({"error": "not_found"}, status=404, dumps=json_dumps)
-    
+
     user_id, code = res
     try:
         await bot.send_message(
@@ -5004,7 +5294,7 @@ async def handle_auth_request(request):
     except Exception as e:
         logging.warning(f"auth bot send failed: {e}")
         return web.json_response({"error": "bot_blocked"}, status=400, dumps=json_dumps)
-    
+
     return web.json_response({"ok": True}, dumps=json_dumps)
 
 async def handle_auth_verify(request):
@@ -5014,14 +5304,14 @@ async def handle_auth_verify(request):
         code = payload.get("code", "").strip()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400, dumps=json_dumps)
-        
+
     if not phone or not code:
         return web.json_response({"error": "credentials_required"}, status=400, dumps=json_dumps)
 
     user_id = await db_verify_web_code(phone, code)
     if not user_id:
         return web.json_response({"error": "invalid_code"}, status=401, dumps=json_dumps)
-        
+
     token = await db_web_session_create(user_id)
     return web.json_response({"ok": True, "token": token}, dumps=json_dumps)
 
@@ -5053,7 +5343,7 @@ async def gzip_middleware(request, handler):
             and response.content_type in _GZIP_TYPES):
         compressed = gzip.compress(body, compresslevel=6)
         if len(compressed) < len(body):
-            # Меняем тело и удаляем старый Content-Length, 
+            # Меняем тело и удаляем старый Content-Length,
             # чтобы aiohttp сам корректно пересчитал размер
             response.body = compressed
             response.headers["Content-Encoding"] = "gzip"

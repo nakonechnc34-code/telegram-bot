@@ -169,20 +169,36 @@
   .btn-route { background: #F2F2F7; color: var(--text-main); }
   .my-rest-tag { position: absolute; top: 16px; right: 20px; font-size: 12px; background: var(--text-main); color: #fff; padding: 4px 10px; border-radius: 8px; font-weight: 700; }
 
-  /* Стили для новостей */
-  .news-item { background: var(--card-bg); border-radius: 20px; margin: 0 16px 16px; padding: 20px; box-shadow: var(--shadow); cursor: pointer; transition: transform 0.15s; }
+  /* ================== СТИЛИ НОВОСТЕЙ ================== */
+  /* Компактная карточка в ленте */
+  .news-item {
+    background: var(--card-bg);
+    border-radius: 20px;
+    margin: 0 16px 12px;
+    padding: 16px;
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    transition: transform 0.15s ease;
+  }
   .news-item:active { transform: scale(0.98); }
-  .news-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-  .news-date { font-size: 13px; color: var(--text-muted); font-weight: 600; }
-  .news-badge { font-size: 11px; font-weight: 800; padding: 4px 8px; border-radius: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .news-item-img {
+    width: 90px; height: 90px; border-radius: 12px; object-fit: cover; flex-shrink: 0;
+  }
+  .news-item-content { flex: 1; min-width: 0; }
+  .news-item-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .news-date { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+  .news-badge { font-size: 10px; font-weight: 800; padding: 3px 6px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
   .news-badge.urgent { background: #FFEBEA; color: var(--accent); }
   .news-badge.important { background: #FFF8E5; color: #D48806; }
-  .news-title { font-size: 19px; font-weight: 800; margin-bottom: 8px; line-height: 1.3; }
-  .news-body { font-size: 15px; color: #48484A; line-height: 1.5; }
-  
-  /* Детальный просмотр новости */
+  .news-item-title { font-size: 16px; font-weight: 700; line-height: 1.3; color: var(--text-main); }
+
+  /* Полноэкранный просмотр новости */
   .news-detail-header { padding: 24px 16px; }
-  .news-detail-title { font-size: 26px; font-weight: 800; margin-bottom: 12px; line-height: 1.3; }
+  .news-detail-title { font-size: 26px; font-weight: 800; margin-bottom: 16px; line-height: 1.3; letter-spacing: -0.5px; }
+  .news-detail-img { width: 100%; max-height: 350px; object-fit: cover; border-radius: 16px; margin-bottom: 20px; box-shadow: var(--shadow); }
   .news-detail-text { font-size: 17px; color: #333; line-height: 1.6; white-space: pre-wrap; }
 
   details { background: var(--card-bg); border-radius: 16px; margin: 0 16px 12px; padding: 20px; box-shadow: var(--shadow); }
@@ -272,7 +288,7 @@
     <div id="news-list"></div>
   </div>
 
-  <!-- Новый раздел для полной новости -->
+  <!-- Экран для полного просмотра новости -->
   <div class="section" id="sec-news-detail">
     <div id="news-detail-box"></div>
     <button class="btn-back" id="news-detail-back">← Назад к новостям</button>
@@ -944,23 +960,21 @@ function renderNewsFromBoot() {
     else if (lvl === 'important') badgeHtml = '<span class="news-badge important">Важно</span>';
     const dateStr = fmtDate(n.created_at);
     
-    // Сокращаем текст до 100 символов для ленты
-    const snippet = n.body.length > 100 ? n.body.substring(0, 100) + '...' : n.body;
-
-    // В ленте делаем фото поменьше
+    // Маленькая квадратная картинка для ленты
     const imageHtml = n.image_url 
-      ? `<img src="${esc(n.image_url)}" style="width: 100%; border-radius: 12px; margin-bottom: 12px; display: block; object-fit: cover; max-height: 180px;">` 
+      ? `<img src="${esc(n.image_url)}" class="news-item-img">` 
       : '';
 
     return `
       <div class="news-item" onclick="showNewsDetail(${n.id})">
-        <div class="news-meta">
-          <div class="news-date">${esc(dateStr)}</div>
-          ${badgeHtml}
-        </div>
         ${imageHtml}
-        <div class="news-title">${esc(n.title)}</div>
-        <div class="news-body">${esc(snippet)}</div>
+        <div class="news-item-content">
+          <div class="news-item-meta">
+            <div class="news-date">${esc(dateStr)}</div>
+            ${badgeHtml}
+          </div>
+          <div class="news-item-title">${esc(n.title)}</div>
+        </div>
       </div>
     `;
   }).join('');
@@ -977,19 +991,19 @@ function showNewsDetail(id) {
   
   const dateStr = fmtDate(n.created_at);
   
-  // В детальном просмотре фото на всю ширину
+  // Большая картинка для детального вида
   const imageHtml = n.image_url 
-    ? `<img src="${esc(n.image_url)}" style="width: 100%; border-radius: 16px; margin-bottom: 16px; display: block; object-fit: cover; max-height: 300px;">` 
+    ? `<img src="${esc(n.image_url)}" class="news-detail-img">` 
     : '';
 
   $('news-detail-box').innerHTML = `
     <div class="news-detail-header">
-      <div class="news-meta" style="margin-bottom: 16px;">
+      <div class="news-item-meta" style="margin-bottom: 12px;">
         <div class="news-date">${esc(dateStr)}</div>
         ${badgeHtml}
       </div>
-      ${imageHtml}
       <div class="news-detail-title">${esc(n.title)}</div>
+      ${imageHtml}
       <div class="news-detail-text">${esc(n.body)}</div>
     </div>
   `;

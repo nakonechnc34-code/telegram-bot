@@ -393,15 +393,11 @@ def init_db_and_seed():
         "ALTER TABLE standards ADD COLUMN IF NOT EXISTS proposed_by TEXT",
         "ALTER TABLE standards ADD COLUMN IF NOT EXISTS approved_by TEXT",
         "ALTER TABLE standards ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
-        # Удаляем старые колонки, если они были
         "ALTER TABLE standards DROP COLUMN IF EXISTS category",
         "ALTER TABLE standards DROP COLUMN IF EXISTS description",
         "ALTER TABLE standards DROP COLUMN IF EXISTS url",
     ]:
         _run_migration(_sql, "standards alter")
-
-    # ПОЛНАЯ ОЧИСТКА ТАБЛИЦЫ СТАНДАРТОВ (чтобы вы начали наполнять её с нуля)
-    _run_migration("TRUNCATE TABLE standards RESTART IDENTITY", "Clear standards")
     # =====================
 
     _run_migration("""

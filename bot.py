@@ -67,7 +67,7 @@ PERMISSIONS_LIST = [
     {"key": "users_create", "label": "Добавлять сотрудников"},
     {"key": "users_edit", "label": "Редактировать сотрудников"},
     {"key": "users_fire", "label": "Увольнять сотрудников"},
-    {"key": "citizenships_edit", "label": "Управлять гражданствами"}, # <--- НОВОЕ ПРАВО
+    {"key": "citizenships_edit", "label": "Управлять гражданствами"},
     {"key": "medbook_edit", "label": "Заполнять медкнижки"},
     {"key": "medbook_doctors_manage", "label": "Врачи: добавление и сроки"},
     {"key": "medbook_tests_manage", "label": "Анализы: добавление и сроки"},
@@ -261,7 +261,7 @@ FAQ_SEED = [
     {"question": "Как поменять пароль?", "answer": "Обратись к администратору — он сменит пароль в админ-панели.", "category": "Бот"},
 ]
 POSITIONS_SEED = ["Повар холодного цеха", "Повар горячего цеха", "Управляющий сменой", "Территориальный управляющий", "HR"]
-CITIZENSHIPS_SEED = ["Россия", "Кыргызстан", "Узбекистан", "Таджикистан"] # <--- ДЕФОЛТНЫЕ ГРАЖДАНСТВА
+CITIZENSHIPS_SEED = ["Россия", "Кыргызстан", "Узбекистан", "Таджикистан"]
 
 DOCTORS_SEED = [
     {"name": "Терапевт", "required": True, "validity_months": 12, "sort": 0},
@@ -299,7 +299,7 @@ def init_db_and_seed():
             fired_at TIMESTAMPTZ, fired_by TEXT, is_certified BOOLEAN DEFAULT FALSE,
             medbook JSONB DEFAULT '{"doctors":{},"tests":{},"vaccines":{}}',
             created_at TIMESTAMPTZ DEFAULT NOW(), last_seen_at TIMESTAMPTZ,
-            hire_date TEXT, citizenship_id INT # <--- НОВЫЕ ПОЛЯ
+            hire_date TEXT, citizenship_id INT
         )
     """, "CREATE users")
 
@@ -392,7 +392,6 @@ def init_db_and_seed():
         CREATE TABLE IF NOT EXISTS positions (id SERIAL PRIMARY KEY, name TEXT NOT NULL UNIQUE, sort INT DEFAULT 100, is_archived BOOLEAN DEFAULT FALSE)
     """, "CREATE positions")
     
-    # ТАБЛИЦА ГРАЖДАНСТВ
     _run_migration("""
         CREATE TABLE IF NOT EXISTS citizenships (id SERIAL PRIMARY KEY, name TEXT UNIQUE NOT NULL)
     """, "CREATE citizenships")

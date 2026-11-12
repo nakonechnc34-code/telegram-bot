@@ -186,6 +186,7 @@
   .news-item:active { transform: scale(0.98); }
   .news-item-img {
     width: 90px; height: 90px; border-radius: 12px; object-fit: cover; flex-shrink: 0;
+    image-rendering: -webkit-optimize-contrast;
   }
   .news-item-content { flex: 1; min-width: 0; }
   .news-item-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
@@ -198,8 +199,16 @@
   /* Полноэкранный просмотр новости */
   .news-detail-header { padding: 24px 16px; }
   .news-detail-title { font-size: 26px; font-weight: 800; margin-bottom: 16px; line-height: 1.3; letter-spacing: -0.5px; }
-  /* Обновлено: теперь картинка не обрезается */
-  .news-detail-img { width: 100%; height: auto; border-radius: 16px; margin-bottom: 20px; box-shadow: var(--shadow); display: block; }
+  .news-detail-img { 
+    width: 100%; 
+    height: auto; 
+    border-radius: 16px; 
+    margin-bottom: 20px; 
+    box-shadow: var(--shadow); 
+    display: block; 
+    image-rendering: -webkit-optimize-contrast; 
+    object-fit: contain;
+  }
   .news-detail-text { font-size: 17px; color: #333; line-height: 1.6; white-space: pre-wrap; }
 
   details { background: var(--card-bg); border-radius: 16px; margin: 0 16px 12px; padding: 20px; box-shadow: var(--shadow); }
@@ -961,7 +970,6 @@ function renderNewsFromBoot() {
     else if (lvl === 'important') badgeHtml = '<span class="news-badge important">Важно</span>';
     const dateStr = fmtDate(n.created_at);
     
-    // Маленькая квадратная картинка для ленты
     const imageHtml = n.image_url 
       ? `<img src="${esc(n.image_url)}" class="news-item-img">` 
       : '';
@@ -992,7 +1000,6 @@ function showNewsDetail(id) {
   
   const dateStr = fmtDate(n.created_at);
   
-  // Большая картинка для детального вида
   const imageHtml = n.image_url 
     ? `<img src="${esc(n.image_url)}" class="news-detail-img">` 
     : '';
@@ -1009,7 +1016,6 @@ function showNewsDetail(id) {
     </div>
   `;
 
-  // Прячем табы и переключаем экран
   document.querySelector('.tabs').style.display = 'none';
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   $('sec-news-detail').classList.add('active');
@@ -1017,12 +1023,10 @@ function showNewsDetail(id) {
 }
 
 $('news-detail-back').addEventListener('click', () => {
-  // Возвращаем табы и переключаем обратно на ленту
   document.querySelector('.tabs').style.display = 'flex';
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   $('sec-news').classList.add('active');
   
-  // Возвращаем активный цвет вкладке "Новости"
   document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
   document.querySelector('.tabs button[data-sec="sec-news"]').classList.add('active');
   window.scrollTo(0, 0);

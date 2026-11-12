@@ -72,7 +72,7 @@ PERMISSIONS_LIST = [
     {"key": "medbook_tests_manage", "label": "Анализы: добавление и сроки"},
     {"key": "medbook_vaccines_manage", "label": "Прививки: добавление и сроки"},
     {"key": "restaurant_tu", "label": "Менять ТУ у ресторанов"},
-    {"key": "restaurant_create", "label": "Добавлять рестораны"}, # <--- НОВОЕ ПРАВО
+    {"key": "restaurant_create", "label": "Добавлять рестораны"},
     {"key": "restaurant_edit", "label": "Редактировать рестораны"},
     {"key": "standards_edit", "label": "Менять стандарты"},
     {"key": "checklist_create", "label": "Создавать чек-листы"},
@@ -892,7 +892,6 @@ async def handle_admin_restaurants(request):
     tu = await _run(_sync_tu_candidates)
     return web.json_response({"restaurants": restaurants, "tu_candidates": tu})
 
-# НОВЫЙ ОБРАБОТЧИК: Создание ресторана
 async def handle_admin_restaurant_add(request):
     admin, err = await get_admin_user(request)
     if err: return denied(err)
@@ -1665,7 +1664,7 @@ app.router.add_post("/api/admin/set-permissions", handle_admin_set_permissions)
 app.router.add_post("/api/admin/debug/users", handle_admin_debug_users)
 
 app.router.add_post("/api/admin/restaurants", handle_admin_restaurants)
-app.router.add_post("/api/admin/restaurant/add", handle_admin_restaurant_add) # <--- НОВЫЙ РОУТ
+app.router.add_post("/api/admin/restaurant/add", handle_admin_restaurant_add)
 app.router.add_post("/api/admin/restaurant/update", handle_admin_restaurant_update)
 app.router.add_post("/api/admin/restaurant/tu", handle_admin_restaurant_tu)
 app.router.add_post("/api/admin/restaurant/status", handle_admin_restaurant_status)

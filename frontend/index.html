@@ -6,6 +6,14 @@
 <title>Wokker · Сотрудник</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23DEFF8F'/%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%23000' stroke-width='8'/%3E%3Cpath d='M25 50 A 25 25 0 0 0 75 50' fill='none' stroke='%23000' stroke-width='12' stroke-linecap='round'/%3E%3C/svg%3E">
 
+<!-- PWA -->
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#FF3B30">
+<link rel="apple-touch-icon" href="/static/icon-192.svg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Wokker">
+
 <style>
   :root {
     --bg: #F8F9FA; --card-bg: #FFFFFF; --text-main: #1C1C1E;
@@ -916,7 +924,6 @@ function renderRestaurantsList(list, query) {
   if (!filtered.length) { box.innerHTML = '<div class="no-results">Ничего не нашлось</div>'; return; }
   box.innerHTML = filtered.map(r => {
     const isMy = r.key === myKey;
-    // FIX #7: encodeURI (не encodeURIComponent) — сохраняет слэш в "vokker/13122472923"
     const routeUrl = r.org
       ? 'https://yandex.ru/maps/org/' + encodeURI(r.org)
       : 'https://yandex.ru/maps/?text=' + encodeURIComponent(r.address || '');
@@ -1029,7 +1036,6 @@ function showDetail(key) {
   const box = $('detail-box');
   const r = (BOOT.restaurants || []).find(x => x.key === key);
   if (r) {
-    // FIX #7: encodeURI вместо encodeURIComponent
     const routeUrl = r.org
       ? 'https://yandex.ru/maps/org/' + encodeURI(r.org)
       : 'https://yandex.ru/maps/?text=' + encodeURIComponent(r.address || '');
@@ -1188,6 +1194,13 @@ $('send-question').addEventListener('click', async function() {
     btn.textContent = oldLabel;
   }
 });
+
+/* ================== PWA ================== */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
 
 /* ================== INIT ================== */
 (async function init() {

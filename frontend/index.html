@@ -197,6 +197,19 @@
   .btn-route { background: #F2F2F7; color: var(--text-main); }
   .my-rest-tag { position: absolute; top: 16px; right: 20px; font-size: 12px; background: var(--text-main); color: #fff; padding: 4px 10px; border-radius: 8px; font-weight: 700; }
 
+  /* ДЕТАЛЬНЫЙ ПРОСМОТР РЕСТОРАНА */
+  .detail-hero { text-align: center; margin: 24px 16px; }
+  .detail-hero .emoji { width: 80px; height: 80px; margin: 0 auto 16px; background: var(--beige-soft); border-radius: 24px; display: flex; align-items: center; justify-content: center; font-size: 40px; }
+  .detail-hero .name { font-size: 24px; font-weight: 800; margin-bottom: 8px; }
+  .detail-status { display: inline-block; padding: 6px 16px; border-radius: 100px; font-size: 14px; font-weight: 700; }
+  .detail-status.open { background: var(--green-soft); color: #1B7A36; }
+  .detail-status.closed { background: #FFF0F0; color: var(--accent); }
+  .detail-card { background: var(--card-bg); border-radius: 20px; margin: 0 16px 16px; padding: 20px; box-shadow: var(--shadow); }
+  .detail-card .row { padding: 16px 0; border-bottom: 1px solid rgba(0,0,0,0.05); font-size: 16px; }
+  .detail-card .row:last-child { border-bottom: 0; }
+  .detail-card .row .lbl { color: var(--text-muted); font-size: 13px; margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .btn-back { display: block; margin: 0 16px 24px; padding: 16px; background: #F2F2F7; color: var(--text-main); border: none; border-radius: 16px; font-size: 16px; font-weight: 600; text-align: center; width: calc(100% - 32px); }
+
   /* НОВОСТИ (ЛЕНТА) */
   .news-item {
     background: var(--card-bg);
@@ -255,17 +268,6 @@
   .check-text { font-size: 15px; font-weight: 600; color: var(--text-main); }
 
   .no-results { text-align: center; color: var(--text-muted); padding: 40px 16px; font-size: 15px; }
-  .detail-hero { text-align: center; margin: 24px 16px; }
-  .detail-hero .emoji { width: 80px; height: 80px; margin: 0 auto 16px; background: var(--beige-soft); border-radius: 24px; display: flex; align-items: center; justify-content: center; font-size: 40px; }
-  .detail-hero .name { font-size: 24px; font-weight: 800; margin-bottom: 8px; }
-  .detail-status { display: inline-block; padding: 6px 16px; border-radius: 100px; font-size: 14px; font-weight: 700; }
-  .detail-status.open { background: var(--green-soft); color: #1B7A36; }
-  .detail-status.closed { background: #FFF0F0; color: var(--accent); }
-  .detail-card { background: var(--card-bg); border-radius: 20px; margin: 0 16px 16px; padding: 20px; box-shadow: var(--shadow); }
-  .detail-card .row { padding: 16px 0; border-bottom: 1px solid rgba(0,0,0,0.05); font-size: 16px; }
-  .detail-card .row:last-child { border-bottom: 0; }
-  .detail-card .row .lbl { color: var(--text-muted); font-size: 13px; margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-  .btn-back { display: block; margin: 0 16px 24px; padding: 16px; background: #F2F2F7; color: var(--text-main); border: none; border-radius: 16px; font-size: 16px; font-weight: 600; text-align: center; width: calc(100% - 32px); }
 
   .toast { position: fixed; bottom: calc(100px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%) translateY(20px); background: rgba(28, 28, 30, 0.95); color: #fff; padding: 12px 20px; border-radius: 16px; font-size: 14px; font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,0.2); z-index: 2000; opacity: 0; pointer-events: none; transition: all 0.3s ease; max-width: 88vw; text-align: center; }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -302,7 +304,6 @@
   <div class="section" id="sec-restaurants">
     <div class="rest-tab-header">
       <div class="title">Рестораны</div>
-      <!-- ИЗМЕНЕНА СТРОКА НИЖЕ -->
       <div class="sub">Выберите точку в списке</div>
     </div>
     <div id="restaurants-list"></div>
@@ -812,12 +813,12 @@ function renderRestaurants() {
   
   box.innerHTML = list.map(r => {
     const isOpen = r.force_status !== 'closed';
-    const routeUrl = r.org ? 'https://yandex.ru/maps/org/' + encodeURI(r.org) : 'https://yandex.ru/maps/?text=' + encodeURIComponent(r.address || '');
     const phoneClean = (r.phone || '').replace(/[^\d+]/g, '');
     const isMy = r.key === myKey;
     
+    // ИСПРАВЛЕНО: открываем детальную карточку вместо перехода по ссылке
     return `
-      <div class="rest-card" onclick="window.open('${routeUrl}', '_blank')">
+      <div class="rest-card" onclick="showRestaurantDetail('${esc(r.key)}')">
         ${isMy ? '<div class="my-rest-tag">Мой ресторан</div>' : ''}
         <div class="rest-card-header">
           <div class="rest-logo">🍜</div>
@@ -827,14 +828,52 @@ function renderRestaurants() {
           </div>
         </div>
         <div class="rest-address-row"><span>📍</span> ${esc(r.address || '')}</div>
-        <div class="rest-actions">
-          ${phoneClean ? `<a href="tel:${esc(phoneClean)}" class="btn-call" onclick="event.stopPropagation()">Позвонить</a>` : ''}
-          <a href="${routeUrl}" target="_blank" rel="noopener" class="btn-route" onclick="event.stopPropagation()">Маршрут</a>
-        </div>
       </div>
     `;
   }).join('');
 }
+
+// ВОЗВРАЩЕНА ФУНКЦИЯ ДЕТАЛЬНОГО ПРОСМОТРА РЕСТОРАНА
+function showRestaurantDetail(key) {
+  const section = $('sec-detail');
+  const box = $('detail-box');
+  const r = (BOOT.restaurants || []).find(x => x.key === key);
+  if (!r) return;
+
+  const routeUrl = r.org
+    ? 'https://yandex.ru/maps/org/' + encodeURI(r.org)
+    : 'https://yandex.ru/maps/?text=' + encodeURIComponent(r.address || '');
+  const phoneClean = (r.phone || '').replace(/[^\d+]/g, '');
+  const isOpen = r.force_status !== 'closed';
+
+  box.innerHTML = `
+    <div class="detail-hero">
+      <div class="emoji">🍜</div>
+      <div class="name">${esc(r.name)}</div>
+      <span class="detail-status ${isOpen ? 'open' : 'closed'}">${isOpen ? 'Открыто' : 'Закрыто'}</span>
+    </div>
+    <div class="detail-card">
+      <div class="row"><div class="lbl">Адрес</div>${esc(r.address || '—')}</div>
+      ${phoneClean ? `<div class="row"><div class="lbl">Телефон</div><a href="tel:${esc(phoneClean)}" style="color:var(--accent);font-weight:700;text-decoration:none;">${esc(r.phone)}</a></div>` : ''}
+      <div class="row"><div class="lbl">Часы работы</div>${esc((r.hours || '—').replace(/\n/g, ' · '))}</div>
+    </div>
+    <a href="${routeUrl}" target="_blank" rel="noopener" class="btn" style="display:block; width:calc(100% - 32px); margin: 0 16px; text-decoration:none;">Открыть в Яндекс Картах</a>
+  `;
+
+  document.querySelector('.tabs').style.display = 'none';
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  section.classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+$('detail-back').addEventListener('click', () => {
+  document.querySelector('.tabs').style.display = 'flex';
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+  document.querySelector('.tabs button[data-sec="sec-restaurants"]').classList.add('active');
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  $('sec-restaurants').classList.add('active');
+  window.scrollTo(0, 0);
+});
 
 /* ================== NEWS ================== */
 function renderNewsFromBoot() {

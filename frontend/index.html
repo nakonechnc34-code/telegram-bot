@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Wokker · Сотрудник</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23DEFF8F'/%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%23000' stroke-width='8'/%3E%3Cpath d='M25 50 A 25 25 0 0 0 75 50' fill='none' stroke='%23000' stroke-width='12' stroke-linecap='round'/%3E%3Cpath d='M38 25 C45 15 35 10 40 5 C42 15 50 20 45 30 C42 35 35 35 32 30 C38 28 38 25 38 25 Z' fill='%23000'/%3E%3Cpath d='M62 25 C69 15 59 10 64 5 C66 15 74 20 69 30 C66 35 59 35 56 30 C62 28 62 25 62 25 Z' fill='%23000'/%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23DEFF8F'/%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%23000' stroke-width='8'/%3E%3Cpath d='M25 50 A 25 25 0 0 0 75 50' fill='none' stroke='%23000' stroke-width='12' stroke-linecap='round'/%3E%3C/svg%3E">
 
 <style>
   :root {
@@ -511,7 +511,6 @@ function showToast(text, type) {
   _toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
 }
 
-// FIX: разделены 401 (логаут) и 403 (нет прав — остаёмся), кроме error:"fired" — тоже логаут
 async function api(path, body) {
   const payload = { webToken: getToken() };
   if (body && typeof body === 'object') Object.assign(payload, body);
@@ -520,19 +519,11 @@ async function api(path, body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (res.status === 401) {
-    clearToken();
-    showLogin();
-    throw new Error('unauthorized');
-  }
+  if (res.status === 401) { clearToken(); showLogin(); throw new Error('unauthorized'); }
   if (res.status === 403) {
     let j = {};
     try { j = await res.json(); } catch (e) {}
-    if (j.error === 'fired') {
-      clearToken();
-      showLogin();
-      throw new Error('fired');
-    }
+    if (j.error === 'fired') { clearToken(); showLogin(); throw new Error('fired'); }
     throw new Error(j.error || 'forbidden');
   }
   if (!res.ok) {
@@ -913,7 +904,6 @@ function renderRestaurantsList(list, query) {
   const q = (query || '').trim().toLowerCase();
   const myKey = (BOOT && BOOT.profile && BOOT.profile.restaurant_key) || '';
   let filtered = list.filter(r => ((r.name || '') + ' ' + (r.address || '')).toLowerCase().indexOf(q) !== -1);
-  // FIX: ресторан открыт, если force_status !== 'closed'
   if (currentRestFilter === 'open') filtered = filtered.filter(r => r.force_status !== 'closed');
   if (currentRestFilter === 'my') filtered = filtered.filter(r => r.key === myKey);
   filtered.sort((a, b) => {
@@ -926,11 +916,11 @@ function renderRestaurantsList(list, query) {
   if (!filtered.length) { box.innerHTML = '<div class="no-results">Ничего не нашлось</div>'; return; }
   box.innerHTML = filtered.map(r => {
     const isMy = r.key === myKey;
+    // FIX #7: encodeURI (не encodeURIComponent) — сохраняет слэш в "vokker/13122472923"
     const routeUrl = r.org
-      ? 'https://yandex.ru/maps/org/' + encodeURIComponent(r.org)
+      ? 'https://yandex.ru/maps/org/' + encodeURI(r.org)
       : 'https://yandex.ru/maps/?text=' + encodeURIComponent(r.address || '');
     const phoneClean = (r.phone || '').replace(/[^\d+]/g, '');
-    // FIX: открыт, если не 'closed'
     const isOpen = r.force_status !== 'closed';
     return `
       <div class="rest-card" data-key="${esc(r.key)}">
@@ -1002,7 +992,6 @@ function initInteractiveMap(restaurants) {
   const placemarks = restaurants.filter(r => r.lat && r.lon).map(r => new ymaps.Placemark(
     [r.lat, r.lon],
     { hintContent: r.name, balloonContent: r.name },
-    // FIX: открыт, если не 'closed'
     { preset: r.force_status !== 'closed' ? 'islands#greenIcon' : 'islands#redIcon' }
   ));
   yandexClusterer.add(placemarks);
@@ -1040,11 +1029,11 @@ function showDetail(key) {
   const box = $('detail-box');
   const r = (BOOT.restaurants || []).find(x => x.key === key);
   if (r) {
+    // FIX #7: encodeURI вместо encodeURIComponent
     const routeUrl = r.org
-      ? 'https://yandex.ru/maps/org/' + encodeURIComponent(r.org)
+      ? 'https://yandex.ru/maps/org/' + encodeURI(r.org)
       : 'https://yandex.ru/maps/?text=' + encodeURIComponent(r.address || '');
     const phoneClean = (r.phone || '').replace(/[^\d+]/g, '');
-    // FIX: открыт, если не 'closed'
     const isOpen = r.force_status !== 'closed';
     box.innerHTML = `
       <div class="detail-hero">

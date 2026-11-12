@@ -302,7 +302,8 @@
   <div class="section" id="sec-restaurants">
     <div class="rest-tab-header">
       <div class="title">Рестораны</div>
-      <div class="sub">Выберите точку на карте или в списке</div>
+      <!-- ИЗМЕНЕНА СТРОКА НИЖЕ -->
+      <div class="sub">Выберите точку в списке</div>
     </div>
     <div id="restaurants-list"></div>
   </div>
@@ -522,7 +523,6 @@ const sectionLoaders = {
 
 document.querySelectorAll('.tabs button').forEach(btn => {
   btn.addEventListener('click', () => {
-    // ИСПРАВЛЕНО: убрана ошибка exitDetailView()
     document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
     btn.classList.add('active');

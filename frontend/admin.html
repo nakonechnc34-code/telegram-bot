@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Wokker · Админ</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23FF1A1A'/%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%23000' stroke-width='8'/%3E%3Cpath d='M25 50 A 25 25 0 0 0 75 50' fill='none' stroke='%23000' stroke-width='12' stroke-linecap='round'/%3E%3Cpath d='M38 25 C45 15 35 10 40 5 C42 15 50 20 45 30 C42 35 35 35 32 30 C38 28 38 25 38 25 Z' fill='%23000'/%3E%3Cpath d='M62 25 C69 15 59 10 64 5 C66 15 74 20 69 30 C66 35 59 35 56 30 C62 28 62 25 62 25 Z' fill='%23000'/%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23FF1A1A'/%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%23000' stroke-width='8'/%3E%3Cpath d='M25 50 A 25 25 0 0 0 75 50' fill='none' stroke='%23000' stroke-width='12' stroke-linecap='round'/%3E%3C/svg%3E">
 
 <style>
   :root {
@@ -152,7 +152,6 @@
   .tag.amber { background: var(--amber-soft); color: #C77700; }
   .tag.blue { background: var(--blue-soft); color: #0055CC; }
   .tag.purple { background: var(--purple-soft); color: #7C3FA8; }
-  .tag-stack { display: flex; gap: 4px; flex-wrap: wrap; }
   .login-cell { font-family: monospace; font-weight: 700; font-size: 12px;
     background: #F2F2F7; padding: 2px 6px; border-radius: 4px; }
 
@@ -237,7 +236,7 @@
     border: 1px solid transparent; cursor: pointer;
   }
   .perm-item.checked { background: var(--green-soft); border-color: rgba(52,199,89,0.3); }
-  .perm-item input { width: 16px; height: 16px; accent-color: var(--green); flex-shrink: 0; }
+  .perm-item input { width: 16px; height: 16px; accent-color: var(--green); flex-shrink: 0; pointer-events: none; }
   .perm-item .perm-icon { font-size: 15px; }
   .perm-item .perm-label { flex: 1; font-weight: 500; color: var(--text-main); }
 
@@ -269,9 +268,6 @@
     color: var(--text-muted); border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap; }
   .subtab.active { color: var(--accent); border-bottom-color: var(--accent); }
   .subtab:hover { color: var(--text-main); }
-  .subtab .tab-count { display: inline-block; background: #F2F2F7; color: var(--text-muted);
-    padding: 1px 6px; border-radius: 8px; font-size: 11px; margin-left: 6px; }
-  .subtab.active .tab-count { background: var(--accent-soft); color: var(--accent); }
 
   .medbook-section { margin-bottom: 24px; }
   .medbook-section h4 { font-size: 13px; font-weight: 800; text-transform: uppercase;
@@ -341,10 +337,7 @@
     .sidebar.open { transform: translateX(0); }
     .hamburger { display: inline-flex; }
     .main { width: 100%; }
-    .topbar {
-      padding: 12px 16px;
-      padding-top: max(12px, env(safe-area-inset-top));
-    }
+    .topbar { padding: 12px 16px; padding-top: max(12px, env(safe-area-inset-top)); }
     .topbar h2 { font-size: 17px; }
     .topbar .actions { gap: 6px; }
     .content { padding: 16px; }
@@ -361,8 +354,7 @@
 
     .form-input, .form-select, .form-textarea,
     .login-input, .q, .search-bar input, .medbook-row input {
-      font-size: 16px;
-      min-height: 44px;
+      font-size: 16px; min-height: 44px;
     }
 
     th, td { padding: 10px 12px; font-size: 12px; }
@@ -401,10 +393,7 @@
     .stats-grid { grid-template-columns: 1fr; }
     .content { padding: 12px; }
     .modal-overlay { padding: 0; align-items: flex-end; }
-    .modal {
-      border-radius: 16px 16px 0 0;
-      max-height: 92vh; max-height: 92dvh;
-    }
+    .modal { border-radius: 16px 16px 0 0; max-height: 92vh; max-height: 92dvh; }
     .pending-card { padding: 14px 16px; }
     .pending-card .pc-actions .btn { flex: 1; }
     .medbook-row { grid-template-columns: 1fr 110px 65px; }
@@ -488,7 +477,6 @@
 const TOKEN_KEY = 'wokker_admin_token';
 const LOGIN_RE = /^[a-z]{3}\d{2}$/;
 
-// FIX: добавлены новые права: restaurant_edit, faq_edit, positions_edit, questions_reply
 const PERMISSIONS_LIST = [
   { key: 'users_create', label: 'Добавлять сотрудников', icon: '➕' },
   { key: 'users_edit', label: 'Редактировать сотрудников', icon: '✏️' },
@@ -540,7 +528,6 @@ function fmtDate(iso, withTime) {
   } catch (e) { return iso; }
 }
 
-// FIX: разделены 401 (логаут) и 403 (нет прав — остаёмся), кроме error:"fired"
 async function api(path, body) {
   const payload = { webToken: getToken() };
   if (body && typeof body === 'object') Object.assign(payload, body);
@@ -549,19 +536,11 @@ async function api(path, body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (res.status === 401) {
-    clearToken();
-    showLogin();
-    throw new Error('unauthorized');
-  }
+  if (res.status === 401) { clearToken(); showLogin(); throw new Error('unauthorized'); }
   if (res.status === 403) {
     let j = {};
     try { j = await res.json(); } catch (e) {}
-    if (j.error === 'fired') {
-      clearToken();
-      showLogin();
-      throw new Error('fired');
-    }
+    if (j.error === 'fired') { clearToken(); showLogin(); throw new Error('fired'); }
     throw new Error(j.error || 'forbidden');
   }
   if (!res.ok) {
@@ -576,17 +555,8 @@ async function api(path, body) {
 const sidebar = document.getElementById('sidebar');
 const sidebarOverlay = document.getElementById('sidebar-overlay');
 const hamburger = document.getElementById('hamburger');
-
-function openSidebar() {
-  sidebar.classList.add('open');
-  sidebarOverlay.classList.add('show');
-  document.body.style.overflow = 'hidden';
-}
-function closeSidebar() {
-  sidebar.classList.remove('open');
-  sidebarOverlay.classList.remove('show');
-  document.body.style.overflow = '';
-}
+function openSidebar() { sidebar.classList.add('open'); sidebarOverlay.classList.add('show'); document.body.style.overflow = 'hidden'; }
+function closeSidebar() { sidebar.classList.remove('open'); sidebarOverlay.classList.remove('show'); document.body.style.overflow = ''; }
 if (hamburger) hamburger.addEventListener('click', openSidebar);
 if (sidebarOverlay) sidebarOverlay.addEventListener('click', closeSidebar);
 
@@ -609,10 +579,7 @@ function showLogin() {
   $('login-login').value = '';
   $('login-password').value = '';
 }
-function showApp() {
-  $('login-screen').style.display = 'none';
-  $('app').style.display = 'block';
-}
+function showApp() { $('login-screen').style.display = 'none'; $('app').style.display = 'block'; }
 
 $('login-login').addEventListener('input', e => {
   e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5);
@@ -674,10 +641,7 @@ async function checkAdminAndLoad() {
 $('logout-btn').addEventListener('click', async () => {
   if (!confirm('Выйти?')) return;
   try { await api('/api/auth/logout', {}); } catch (e) {}
-  clearToken();
-  ME = null;
-  closeSidebar();
-  showLogin();
+  clearToken(); ME = null; closeSidebar(); showLogin();
 });
 $('change-password-btn').addEventListener('click', () => { closeSidebar(); openChangePassword(); });
 
@@ -693,7 +657,6 @@ function openChangePassword() {
     const errEl = $('cp-error');
     errEl.textContent = '';
     if (!$('cp-old').value) { errEl.textContent = 'Введите текущий пароль'; return; }
-    // FIX: минимум 8 символов (было 6)
     if (!$('cp-new').value || $('cp-new').value.length < 8) { errEl.textContent = 'Новый минимум 8 символов'; return; }
     if ($('cp-new').value !== $('cp-new2').value) { errEl.textContent = 'Пароли не совпадают'; return; }
     try {
@@ -734,19 +697,27 @@ const SECTION_LOADERS = {
   admins: loadAdmins, reports: loadReports, audit: loadAudit,
 };
 document.querySelectorAll('.nav-item').forEach(btn => {
-  btn.addEventListener('click', () => {
-    closeSidebar();
-    navigate(btn.dataset.sec);
-  });
+  btn.addEventListener('click', () => { closeSidebar(); navigate(btn.dataset.sec); });
 });
+
+// FIX #1: navigate ловит ошибки async-лоадеров
 function navigate(sec) {
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.sec === sec));
   $('page-title').textContent = SECTION_TITLES[sec];
   $('page-actions').innerHTML = '';
   $('page-content').innerHTML = '<div class="loading">Загрузка…</div>';
-  try { SECTION_LOADERS[sec](); }
-  catch (e) { console.error('load:', e); $('page-content').innerHTML = '<div class="empty">Ошибка: ' + esc(e.message) + '</div>'; }
+  const loader = SECTION_LOADERS[sec];
+  if (!loader) return;
+  Promise.resolve()
+    .then(() => loader())
+    .catch(e => {
+      console.error('load:', e);
+      if (e.message !== 'unauthorized' && e.message !== 'fired') {
+        $('page-content').innerHTML = '<div class="empty"><span class="emoji">⚠️</span>Ошибка: ' + esc(e.message) + '</div>';
+      }
+    });
 }
+
 async function refreshCounters() {
   try {
     const q = await api('/api/admin/questions', {});
@@ -790,8 +761,7 @@ let _usersTab = 'active';
 async function loadUsers(search) {
   _usersCurrentSearch = search || '';
   const canCreate = hasPerm('users_create');
-  $('page-actions').innerHTML = `
-    ${canCreate ? '<button class="btn primary small" id="users-create">+ Создать</button>' : ''}`;
+  $('page-actions').innerHTML = canCreate ? '<button class="btn primary small" id="users-create">+ Создать</button>' : '';
   if (canCreate) $('users-create').addEventListener('click', openUserCreate);
 
   $('page-content').innerHTML = `
@@ -839,6 +809,7 @@ async function loadUsers(search) {
 }
 async function refreshUsersTable(search) {
   _usersCurrentSearch = search || '';
+  if (!$('users-tbody')) return;
   const data = await api('/api/admin/users', { search: _usersCurrentSearch, fired: _usersTab === 'fired' });
   renderUsersTbody(data.users);
 }
@@ -896,6 +867,7 @@ async function fireUser(uid) {
     loadUsers(_usersCurrentSearch);
   } catch (e) {
     const map = { forbidden: 'Нет права увольнять', cannot_fire_super: 'Нельзя уволить супер-админа',
+      cannot_fire_admin: 'Только супер-админ может уволить другого админа',
       cannot_fire_self: 'Нельзя уволить себя', already_fired: 'Уже уволен', invalid_id: 'Неверный ID' };
     toast(map[e.message] || 'Ошибка: ' + e.message, 'error');
   }
@@ -924,17 +896,14 @@ function openUserCreate() {
         <input class="form-input" id="nc-name" placeholder="Иванов Иван Иванович" autocomplete="off">
         <div class="form-hint">Логин будет сгенерирован из фамилии автоматически</div>
       </div>
-
       <div class="login-preview" id="login-preview" style="display:none;">
         <div class="lp-icon">🔑</div>
         <div style="flex:1;">
           <div class="lp-label">Логин будет выдан</div>
           <div class="lp-value" id="lp-value">—</div>
-          <!-- FIX: честный текст — превью может отличаться от реального -->
-          <div class="lp-hint">Примерно. Точный логин покажем после создания (может отличаться при коллизии).</div>
+          <div class="lp-hint">Примерно. Точный логин покажем после создания.</div>
         </div>
       </div>
-
       <div class="form-group"><label>Пароль</label><input class="form-input" id="nc-password" placeholder="Минимум 6 символов"><div class="form-hint">Сотрудник сможет сменить после первого входа</div></div>
       <div class="form-row">
         <div class="form-group"><label>Телефон</label><input class="form-input" id="nc-phone" inputmode="tel"></div>
@@ -954,11 +923,7 @@ function openUserCreate() {
       const parts = (name || "").trim().split(/\s+/);
       const surname = (parts[0] || "").toLowerCase();
       let letters = "";
-      for (const ch of surname) {
-        if (letters.length >= 3) break;
-        const t = translit[ch];
-        if (t) letters += t;
-      }
+      for (const ch of surname) { if (letters.length >= 3) break; const t = translit[ch]; if (t) letters += t; }
       while (letters.length < 3) letters += "abcdefghijklmnopqrstuvwxyz"[Math.floor(Math.random() * 26)];
       const rnd = Math.floor(Math.random() * 90) + 10;
       return letters.slice(0, 3) + rnd;
@@ -977,10 +942,8 @@ function openUserCreate() {
       errEl.textContent = '';
       const name = $('nc-name').value.trim();
       const password = $('nc-password').value;
-
       if (!name) { errEl.textContent = 'Введите ФИО'; return; }
       if (!password || password.length < 6) { errEl.textContent = 'Пароль должен быть минимум 6 символов'; return; }
-
       try {
         const res = await api('/api/admin/user/create', {
           password, full_name: name,
@@ -989,7 +952,6 @@ function openUserCreate() {
           is_certified: $('nc-cert').checked,
         });
         closeModal();
-
         openModal('✅ Сотрудник создан', `
           <div style="text-align:center; padding: 10px 0;">
             <div style="font-size:48px; margin-bottom:12px;">🎉</div>
@@ -1002,25 +964,17 @@ function openUserCreate() {
             </div>
           </div>
         `, `<button class="btn primary" id="after-create-ok">Понятно</button>`);
-
         $('after-create-ok').addEventListener('click', () => {
-            closeModal();
-            refreshUsersTable(_usersCurrentSearch);
+          closeModal();
+          refreshUsersTable(_usersCurrentSearch);
         });
       } catch (e) {
-        const map = {
-            invalid: 'Проверьте данные (пароль минимум 6 символов)',
-            forbidden: 'Нет права',
-            invalid_json: 'Ошибка данных',
-        };
+        const map = { invalid: 'Проверьте данные (пароль минимум 6 символов)', forbidden: 'Нет права', invalid_json: 'Ошибка данных' };
         errEl.textContent = map[e.message] || 'Ошибка: ' + e.message;
       }
     });
-  // FIX: обработка ошибок загрузки справочников
   }).catch(e => {
-    if (e.message !== 'unauthorized' && e.message !== 'fired') {
-      toast('Ошибка загрузки данных: ' + e.message, 'error');
-    }
+    if (e.message !== 'unauthorized' && e.message !== 'fired') toast('Ошибка загрузки данных: ' + e.message, 'error');
   });
 }
 
@@ -1032,11 +986,12 @@ async function openUserEditor(uid) {
       api('/api/admin/positions', {}),
     ]);
     const u = data.user;
-    const canEdit = hasPerm('users_edit');
+    // FIX #4: обычный админ не может редактировать супер-админа
+    const targetIsLocked = u.is_super_admin && !isSuperAdmin();
+    const canEdit = hasPerm('users_edit') && !targetIsLocked;
     const canFire = hasPerm('users_fire');
     const restOpts = restData.restaurants.map(r => `<option value="${esc(r.key)}" ${r.key === u.restaurant_key ? 'selected' : ''}>${esc(r.name)}</option>`).join('');
     const posOpts = posData.positions.filter(p => !p.is_archived).map(p => `<option value="${esc(p.name)}" ${p.name === u.position ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
-    // FIX: сервер теперь возвращает medbook_status — отображаем корректно
     const mbStatus = u.medbook_status || 'invalid';
     let mbBadge = '';
     if (!u.is_admin) {
@@ -1044,7 +999,9 @@ async function openUserEditor(uid) {
       else if (mbStatus === 'expiring') mbBadge = '<span class="tag amber">⚠️ Скоро истекает</span>';
       else mbBadge = '<span class="tag red">❌ Недействительна</span>';
     }
-    const showFireBtn = canFire && !u.is_super_admin && u.user_id !== ME.user_id && !u.is_fired;
+    // FIX #3: не показываем «Уволить» для админа (не super), если ты не super
+    const showFireBtn = canFire && !u.is_super_admin && u.user_id !== ME.user_id
+                        && !u.is_fired && (!u.is_admin || isSuperAdmin());
 
     openModal('Редактирование сотрудника', `
       <div class="form-group"><label>Логин</label><input class="form-input" value="${esc(u.login || '')}" readonly><div class="form-hint">🔒 Не изменяется</div></div>
@@ -1075,9 +1032,7 @@ async function openUserEditor(uid) {
     const openMbBtn = $('eu-open-mb');
     if (openMbBtn) openMbBtn.addEventListener('click', () => { closeModal(); openMedbookEditor(uid); });
     const fireBtn = $('eu-fire-btn');
-    if (fireBtn) fireBtn.addEventListener('click', async () => {
-      closeModal(); await fireUser(uid);
-    });
+    if (fireBtn) fireBtn.addEventListener('click', async () => { closeModal(); await fireUser(uid); });
     const saveBtn = $('eu-save');
     if (saveBtn) saveBtn.addEventListener('click', async () => {
       const errEl = $('eu-error'); errEl.textContent = '';
@@ -1355,8 +1310,9 @@ async function openMedbookEditor(userId) {
       await api('/api/admin/medbook/save', { user_id: userId, medbook: newMb });
       toast('Медкнижка сохранена', 'success');
       closeModal();
+      // FIX #5: обновляем только ту страницу, на которой мы находимся
       if (document.querySelector('#page-content [data-mb-tab]')) loadMedbooks();
-      if (_usersCurrentSearch !== null) refreshUsersTable(_usersCurrentSearch);
+      if (document.querySelector('#users-tbody')) refreshUsersTable(_usersCurrentSearch);
     } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
   });
 }
@@ -1399,10 +1355,6 @@ async function loadAdmins() {
   const data = await api('/api/admin/admins', {});
   const admins = data.admins || [];
   const rows = admins.map(a => {
-    const perms = a.is_super_admin ? ['Всё'] : (a.position === 'HR' ? ['Всё + новости'] : Object.keys(a.permissions || {}).map(k => {
-      const found = PERMISSIONS_LIST.find(p => p.key === k);
-      return found ? found.label : k;
-    }));
     const tag = a.is_super_admin ? '<span class="tag purple">👑 Супер</span>'
       : a.position === 'HR' ? '<span class="tag blue">💼 HR</span>'
       : '<span class="tag gray">🛡 Обычный</span>';
@@ -1432,12 +1384,13 @@ function openPermEditor(uid, admins) {
   const a = admins.find(x => x.user_id === uid);
   if (!a) return;
   const perms = a.permissions || {};
+  // FIX #2: используем <div>, чтобы клик по тексту не давал двойной toggle
   const rows = PERMISSIONS_LIST.map(p => `
-    <label class="perm-item ${perms[p.key] ? 'checked' : ''}" data-perm="${p.key}">
+    <div class="perm-item ${perms[p.key] ? 'checked' : ''}" data-perm="${p.key}">
       <input type="checkbox" ${perms[p.key] ? 'checked' : ''} data-perm-check="${p.key}">
       <span class="perm-icon">${p.icon}</span>
       <span class="perm-label">${p.label}</span>
-    </label>`).join('');
+    </div>`).join('');
   openModal(`🔐 Права: ${esc(a.full_name)}`, `
     <div class="form-hint" style="margin-bottom:12px;">
       Права публикации новостей — только супер-админ и HR. Остальные могут только предлагать.
@@ -1445,12 +1398,10 @@ function openPermEditor(uid, admins) {
     <div class="perm-grid">${rows}</div>
   `, `<button class="btn ghost" onclick="closeModal()">Отмена</button><button class="btn primary" id="save-perms-btn">Сохранить</button>`);
   document.querySelectorAll('.perm-item').forEach(item => {
-    item.addEventListener('click', (e) => {
-      if (e.target.tagName !== 'INPUT') {
-        const cb = item.querySelector('input');
-        cb.checked = !cb.checked;
-      }
-      item.classList.toggle('checked', item.querySelector('input').checked);
+    item.addEventListener('click', () => {
+      const cb = item.querySelector('input');
+      cb.checked = !cb.checked;
+      item.classList.toggle('checked', cb.checked);
     });
   });
   $('save-perms-btn').addEventListener('click', async () => {
@@ -1469,12 +1420,10 @@ function openPermEditor(uid, admins) {
 async function loadRestaurants() {
   const data = await api('/api/admin/restaurants', {});
   const canTu = hasPerm('restaurant_tu');
-  // FIX: "открыт", если не 'closed' (статус по умолчанию — открыт)
   const rows = data.restaurants.map(r => `
     <tr>
       <td><b>${esc(r.name)}</b></td>
-      <td>${r.force_status !== 'closed' ? '<span class="tag green">🟢</span>'
-         : '<span class="tag red">🔴</span>'}</td>
+      <td>${r.force_status !== 'closed' ? '<span class="tag green">🟢</span>' : '<span class="tag red">🔴</span>'}</td>
       <td>${esc(r.territory_manager_name || '—')}</td>
       <td class="actions-cell">
         <button class="icon-btn" data-edit="${esc(r.key)}">✏️</button>
@@ -1656,6 +1605,7 @@ function openNewsAdd() {
       refreshCounters();
     } catch (e) {
       if (e.message === 'forbidden') toast('Нет прав на публикацию', 'error');
+      else if (e.message === 'publish_at_required') toast('Укажите дату', 'error');
       else toast('Ошибка: ' + e.message, 'error');
     }
   });
@@ -1664,12 +1614,25 @@ function openNewsEdit(id, news) {
   if (!hasPerm('news_edit')) { toast('Нет права', 'error'); return; }
   const n = news.find(x => x.id === id);
   if (!n) return;
-  openModal('Изменить заголовок', `
+  openModal('Редактировать новость', `
     <div class="form-group"><label>Заголовок</label><input class="form-input" id="edit-n-title" value="${esc(n.title)}"></div>
+    <div class="form-group"><label>Текст</label><textarea class="form-textarea" id="edit-n-body">${esc(n.body)}</textarea></div>
+    <div class="form-group"><label>Уровень</label>
+      <select class="form-select" id="edit-n-level">
+        <option value="normal" ${n.level==='normal'?'selected':''}>🔵 Обычная</option>
+        <option value="important" ${n.level==='important'?'selected':''}>🟡 Важная</option>
+        <option value="urgent" ${n.level==='urgent'?'selected':''}>🔴 Срочная</option>
+      </select>
+    </div>
   `, `<button class="btn ghost" onclick="closeModal()">Отмена</button><button class="btn primary" id="save-title-btn">Сохранить</button>`);
   $('save-title-btn').addEventListener('click', async () => {
     try {
-      await api('/api/admin/news/update', { id, title: $('edit-n-title').value.trim() });
+      await api('/api/admin/news/update', {
+        id,
+        title: $('edit-n-title').value.trim(),
+        body: $('edit-n-body').value.trim(),
+        level: $('edit-n-level').value,
+      });
       toast('Сохранено', 'success');
       closeModal();
       loadNews();
@@ -1838,18 +1801,19 @@ async function loadPositions() {
     }));
   }
 }
+// FIX #6: различаем duplicate и остальные ошибки
 function openPosAdd() {
   openModal('Новая должность', `
     <div class="form-group"><label>Название</label><input class="form-input" id="p-name" placeholder="Например: Стажёр"></div>
   `, `<button class="btn ghost" onclick="closeModal()">Отмена</button><button class="btn primary" id="create-pos-btn">Создать</button>`);
   $('create-pos-btn').addEventListener('click', async () => {
-    const res = await api('/api/admin/position/add', { name: $('p-name').value.trim() }).catch(() => null);
-    if (res && res.ok) {
+    try {
+      await api('/api/admin/position/add', { name: $('p-name').value.trim() });
       toast('Создана', 'success');
       closeModal();
       loadPositions();
-    } else {
-      toast('Уже существует', 'error');
+    } catch (e) {
+      toast(e.message === 'duplicate' ? 'Такая должность уже есть' : 'Ошибка: ' + e.message, 'error');
     }
   });
 }

@@ -450,7 +450,7 @@ const sectionLoaders = {
 
 document.querySelectorAll('.tabs button').forEach(btn => {
   btn.addEventListener('click', () => {
-    exitDetailView();
+    // ИСПРАВЛЕНО: удалена строка exitDetailView()
     document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
     btn.classList.add('active');

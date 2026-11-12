@@ -1626,7 +1626,8 @@ async def gzip_middleware(request, handler):
             response.headers["Vary"] = "Accept-Encoding"
     return response
 
-app = web.Application(middlewares=[error_middleware, gzip_middleware], client_max_size=10 * 1024 * 1024)
+# УВЕЛИЧЕН ЛИМИТ ДО 20 МБ
+app = web.Application(middlewares=[error_middleware, gzip_middleware], client_max_size=20 * 1024 * 1024)
 
 # ============= ROUTES =============
 app.router.add_get("/", handle_index)

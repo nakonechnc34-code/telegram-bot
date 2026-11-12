@@ -75,7 +75,7 @@ PERMISSIONS_LIST = [
     {"key": "restaurant_tu", "label": "Менять ТУ у ресторанов"},
     {"key": "restaurant_create", "label": "Добавлять рестораны"},
     {"key": "restaurant_edit", "label": "Редактировать рестораны"},
-    {"key": "standards_edit", "label": "Менять стандарты"},
+    {"key": "standards_edit", "label": "Предлагать стандарты"},
     {"key": "checklist_create", "label": "Создавать чек-листы"},
     {"key": "checklist_edit", "label": "Редактировать чек-листы"},
     {"key": "news_write", "label": "Писать новости"},
@@ -250,11 +250,6 @@ RESTAURANTS_SEED = [
     {"key": "mega_himki", "name": "Мега Химки", "address": "Московская обл., г. Химки, микрорайон ИКЕА, к1, ТЦ «Мега Химки», этаж 1", "hours": "Пн–чт, вс: 10:00–23:00\nПт–сб: 10:00–24:00", "lat": 55.8948, "lon": 37.3973, "org": "vokker/132066311330", "phone": "+7 (985) 857-08-22"},
     {"key": "office", "name": "ОФИС", "address": "Центральный офис", "hours": "Пн–пт: 09:00–18:00", "lat": None, "lon": None, "org": "", "phone": ""},
 ]
-STANDARDS_SEED = [
-    {"title": "Правила открытия смены", "category": "Чек-листы", "description": "Что проверить перед открытием: оборудование, чистота, касса.", "url": ""},
-    {"title": "Стандарт работы вокера", "category": "Технология", "description": "Пошаговый стандарт приготовления блюд на воке.", "url": ""},
-    {"title": "Обработка жалоб гостей", "category": "Сервис", "description": "Как реагировать на претензии и когда звать управляющего.", "url": ""},
-]
 FAQ_SEED = [
     {"question": "Как посмотреть график смен?", "answer": "График вывешивается на информационной доске в ресторане и уточняется у управляющего сменой.", "category": "Работа"},
     {"question": "Куда сообщать о поломке оборудования?", "answer": "Напиши управляющему сменой. Если поломка серьёзная — он оформляет заявку в сервис.", "category": "Работа"},
@@ -382,9 +377,30 @@ def init_db_and_seed():
     ]:
         _run_migration(_sql, "news alter")
 
+    # ===== STANDARDS =====
     _run_migration("""
-        CREATE TABLE IF NOT EXISTS standards (id SERIAL PRIMARY KEY, title TEXT NOT NULL, category TEXT DEFAULT '', description TEXT DEFAULT '', url TEXT DEFAULT '')
+        CREATE TABLE IF NOT EXISTS standards (
+            id SERIAL PRIMARY KEY, number TEXT DEFAULT '', title TEXT NOT NULL, body TEXT DEFAULT '', image_url TEXT DEFAULT '',
+            status TEXT DEFAULT 'published', proposed_by TEXT, approved_by TEXT, created_at TIMESTAMPTZ DEFAULT NOW()
+        )
     """, "CREATE standards")
+
+    for _sql in [
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS number TEXT DEFAULT ''",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS body TEXT DEFAULT ''",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS image_url TEXT DEFAULT ''",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'published'",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS proposed_by TEXT",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS approved_by TEXT",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
+        # Удаляем старые колонки, если они были
+        "ALTER TABLE standards DROP COLUMN IF EXISTS category",
+        "ALTER TABLE standards DROP COLUMN IF EXISTS description",
+        "ALTER TABLE standards DROP COLUMN IF EXISTS url",
+    ]:
+        _run_migration(_sql, "standards alter")
+    # =====================
+
     _run_migration("""
         CREATE TABLE IF NOT EXISTS faq (id SERIAL PRIMARY KEY, question TEXT NOT NULL, answer TEXT NOT NULL, category TEXT DEFAULT '')
     """, "CREATE faq")
@@ -415,9 +431,6 @@ def init_db_and_seed():
                     status = "closed" if r["key"] == "office" else "open"
                     cur.execute("INSERT INTO restaurants (key, name, address, hours, lat, lon, org, phone, sort, force_status) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (r["key"], r["name"], r["address"], r["hours"], r["lat"], r["lon"], r["org"], r["phone"], sort, status))
 
-            cur.execute("SELECT COUNT(*) FROM standards")
-            if cur.fetchone()[0] == 0:
-                for s in STANDARDS_SEED: cur.execute("INSERT INTO standards (title, category, description, url) VALUES (%s,%s,%s,%s)", (s["title"], s["category"], s["description"], s["url"]))
             cur.execute("SELECT COUNT(*) FROM faq")
             if cur.fetchone()[0] == 0:
                 for f in FAQ_SEED: cur.execute("INSERT INTO faq (question, answer, category) VALUES (%s,%s,%s)", (f["question"], f["answer"], f["category"]))
@@ -628,7 +641,9 @@ def _sync_dashboard_stats():
             questions_open = cur.fetchone()[0] or 0
             cur.execute("SELECT COUNT(*) FROM news WHERE status = 'pending'")
             news_pending = cur.fetchone()[0] or 0
-    return {"total": total, "active": active, "fired": fired, "new_today": new_today, "new7": new7, "inactive7": inactive7, "questions_open": questions_open, "news_pending": news_pending}
+            cur.execute("SELECT COUNT(*) FROM standards WHERE status = 'pending'")
+            standards_pending = cur.fetchone()[0] or 0
+    return {"total": total, "active": active, "fired": fired, "new_today": new_today, "new7": new7, "inactive7": inactive7, "questions_open": questions_open, "news_pending": news_pending, "standards_pending": standards_pending}
 
 async def handle_admin_dashboard(request):
     user, err = await get_admin_user(request)
@@ -1237,28 +1252,47 @@ async def handle_admin_news_reject(request):
         with conn.cursor() as cur: cur.execute("DELETE FROM news WHERE id = %s AND status = 'pending'", (nid,))
     return web.json_response({"ok": True})
 
-# ============= STANDARDS / FAQ / POSITIONS / QUESTIONS =============
-def _sync_standards():
+# ============= STANDARDS (NEW) =============
+def _sync_standards_list():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT * FROM standards ORDER BY id")
+            cur.execute("SELECT * FROM standards ORDER BY created_at DESC, id DESC")
             return [dict(r) for r in cur.fetchall()]
 
 async def handle_admin_standards(request):
     admin, err = await get_admin_user(request)
     if err: return denied(err)
-    return web.json_response({"standards": await _run(_sync_standards)})
+    return web.json_response({"standards": await _run(_sync_standards_list)})
 
 async def handle_admin_standard_add(request):
     admin, err = await get_admin_user(request)
     if err: return denied(err)
-    perm_err = require_perm(admin, "standards_edit")
-    if perm_err: return perm_err
+    can_publish = _check_can_publish(admin)
+    can_suggest = _sync_user_has_perm(admin, "standards_edit")
+    if not (can_publish or can_suggest): return web.json_response({"error": "forbidden"}, status=403)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    number = (body.get("number") or "").strip()
+    title = (body.get("title") or "").strip()
+    text = (body.get("body") or "").strip()
+    image_url = body.get("image_url") or ""
+    
+    if not title or not text: return web.json_response({"error": "invalid"}, status=400)
+
+    if not can_publish:
+        status = "pending"
+        proposed_by = admin.get("full_name") or admin.get("login")
+    else:
+        status = "published"
+        proposed_by = None
+
     with get_conn() as conn:
-        with conn.cursor() as cur: cur.execute("INSERT INTO standards (title, category, description, url) VALUES (%s,%s,%s,%s)", (body.get("title") or "", body.get("category") or "", body.get("description") or "", body.get("url") or ""))
-    return web.json_response({"ok": True})
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("INSERT INTO standards (number, title, body, status, proposed_by, image_url) VALUES (%s,%s,%s,%s,%s,%s) RETURNING *", 
+                        (number, title, text, status, proposed_by, image_url))
+            std_row = dict(cur.fetchone())
+    return web.json_response({"ok": True, "status": status, "standard": std_row})
 
 async def handle_admin_standard_update(request):
     admin, err = await get_admin_user(request)
@@ -1267,12 +1301,14 @@ async def handle_admin_standard_update(request):
     if perm_err: return perm_err
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    field = body.get("field")
-    if field not in ("title", "category", "description", "url"): return web.json_response({"error": "invalid"}, status=400)
     sid = _int(body.get("id"))
     if sid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    allowed = {"number", "title", "body", "image_url"}
+    updates = {k: body[k] for k in allowed if k in body}
+    if not updates: return web.json_response({"ok": True})
+    set_clause = ", ".join(f"{k} = %s" for k in updates)
     with get_conn() as conn:
-        with conn.cursor() as cur: cur.execute(f"UPDATE standards SET {field} = %s WHERE id = %s", (body.get("value") or "", sid))
+        with conn.cursor() as cur: cur.execute(f"UPDATE standards SET {set_clause} WHERE id = %s", (*updates.values(), sid))
     return web.json_response({"ok": True})
 
 async def handle_admin_standard_delete(request):
@@ -1288,6 +1324,31 @@ async def handle_admin_standard_delete(request):
         with conn.cursor() as cur: cur.execute("DELETE FROM standards WHERE id = %s", (sid,))
     return web.json_response({"ok": True})
 
+async def handle_admin_standard_approve(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    if not _check_can_publish(admin): return web.json_response({"error": "forbidden"}, status=403)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    sid = _int(body.get("id"))
+    if sid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    with get_conn() as conn:
+        with conn.cursor() as cur: cur.execute("UPDATE standards SET status = 'published', approved_by = %s WHERE id = %s", (admin.get("full_name"), sid))
+    return web.json_response({"ok": True})
+
+async def handle_admin_standard_reject(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    if not _check_can_publish(admin): return web.json_response({"error": "forbidden"}, status=403)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    sid = _int(body.get("id"))
+    if sid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    with get_conn() as conn:
+        with conn.cursor() as cur: cur.execute("DELETE FROM standards WHERE id = %s AND status = 'pending'", (sid,))
+    return web.json_response({"ok": True})
+
+# ============= FAQ / POSITIONS / QUESTIONS =============
 def _sync_faq_list():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1464,8 +1525,10 @@ def _sync_bootstrap(user_id):
 
             cur.execute("SELECT * FROM news WHERE status = 'published' ORDER BY created_at DESC LIMIT 50")
             news_rows = [dict(r) for r in cur.fetchall()]
-            cur.execute("SELECT * FROM standards ORDER BY id")
+            
+            cur.execute("SELECT * FROM standards WHERE status = 'published' ORDER BY created_at DESC")
             std_rows = [dict(r) for r in cur.fetchall()]
+
             cur.execute("SELECT * FROM faq ORDER BY id")
             faq_rows = [dict(r) for r in cur.fetchall()]
             cur.execute("SELECT * FROM restaurants WHERE key != 'office' ORDER BY sort, name")
@@ -1749,6 +1812,8 @@ app.router.add_post("/api/admin/standards", handle_admin_standards)
 app.router.add_post("/api/admin/standard/add", handle_admin_standard_add)
 app.router.add_post("/api/admin/standard/update", handle_admin_standard_update)
 app.router.add_post("/api/admin/standard/delete", handle_admin_standard_delete)
+app.router.add_post("/api/admin/standard/approve", handle_admin_standard_approve)
+app.router.add_post("/api/admin/standard/reject", handle_admin_standard_reject)
 
 app.router.add_post("/api/admin/faq", handle_admin_faq)
 app.router.add_post("/api/admin/faq/add", handle_admin_faq_add)

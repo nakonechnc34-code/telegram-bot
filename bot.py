@@ -4,6 +4,7 @@ import json
 import gzip
 import logging
 import asyncio
+import threading          # ← ДОБАВЛЕНО: для _pool_lock
 import random
 import secrets
 import hashlib
@@ -208,11 +209,14 @@ def medbook_missing_count(medbook, doctors, tests, vaccines):
 
 # ============= БД =============
 _pool = None
+_pool_lock = threading.Lock()  # ← ДОБАВЛЕНО: защита от race condition при инициализации
 
 def init_pool():
     global _pool
     if _pool is None:
-        _pool = SimpleConnectionPool(2, 20, DB_URL)
+        with _pool_lock:
+            if _pool is None:
+                _pool = SimpleConnectionPool(2, 20, DB_URL)
 
 @contextmanager
 def get_conn():

@@ -67,6 +67,7 @@ PERMISSIONS_LIST = [
     {"key": "users_create", "label": "Добавлять сотрудников"},
     {"key": "users_edit", "label": "Редактировать сотрудников"},
     {"key": "users_fire", "label": "Увольнять сотрудников"},
+    {"key": "citizenships_edit", "label": "Управлять гражданствами"}, # <--- НОВОЕ ПРАВО
     {"key": "medbook_edit", "label": "Заполнять медкнижки"},
     {"key": "medbook_doctors_manage", "label": "Врачи: добавление и сроки"},
     {"key": "medbook_tests_manage", "label": "Анализы: добавление и сроки"},
@@ -260,6 +261,8 @@ FAQ_SEED = [
     {"question": "Как поменять пароль?", "answer": "Обратись к администратору — он сменит пароль в админ-панели.", "category": "Бот"},
 ]
 POSITIONS_SEED = ["Повар холодного цеха", "Повар горячего цеха", "Управляющий сменой", "Территориальный управляющий", "HR"]
+CITIZENSHIPS_SEED = ["Россия", "Кыргызстан", "Узбекистан", "Таджикистан"] # <--- ДЕФОЛТНЫЕ ГРАЖДАНСТВА
+
 DOCTORS_SEED = [
     {"name": "Терапевт", "required": True, "validity_months": 12, "sort": 0},
     {"name": "Психиатр", "required": True, "validity_months": 12, "sort": 1},
@@ -295,7 +298,8 @@ def init_db_and_seed():
             is_super_admin BOOLEAN DEFAULT FALSE, permissions JSONB DEFAULT '{}', is_fired BOOLEAN DEFAULT FALSE,
             fired_at TIMESTAMPTZ, fired_by TEXT, is_certified BOOLEAN DEFAULT FALSE,
             medbook JSONB DEFAULT '{"doctors":{},"tests":{},"vaccines":{}}',
-            created_at TIMESTAMPTZ DEFAULT NOW(), last_seen_at TIMESTAMPTZ
+            created_at TIMESTAMPTZ DEFAULT NOW(), last_seen_at TIMESTAMPTZ,
+            hire_date TEXT, citizenship_id INT # <--- НОВЫЕ ПОЛЯ
         )
     """, "CREATE users")
 
@@ -313,6 +317,8 @@ def init_db_and_seed():
         ("last_seen_at", "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ"),
         ("restaurant_key", "ALTER TABLE users ADD COLUMN IF NOT EXISTS restaurant_key TEXT"),
         ("restaurant", "ALTER TABLE users ADD COLUMN IF NOT EXISTS restaurant TEXT"),
+        ("hire_date", "ALTER TABLE users ADD COLUMN IF NOT EXISTS hire_date TEXT"),
+        ("citizenship_id", "ALTER TABLE users ADD COLUMN IF NOT EXISTS citizenship_id INT"),
     ]:
         _run_migration(_sql, f"ADD {_col}")
 
@@ -385,6 +391,12 @@ def init_db_and_seed():
     _run_migration("""
         CREATE TABLE IF NOT EXISTS positions (id SERIAL PRIMARY KEY, name TEXT NOT NULL UNIQUE, sort INT DEFAULT 100, is_archived BOOLEAN DEFAULT FALSE)
     """, "CREATE positions")
+    
+    # ТАБЛИЦА ГРАЖДАНСТВ
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS citizenships (id SERIAL PRIMARY KEY, name TEXT UNIQUE NOT NULL)
+    """, "CREATE citizenships")
+
     _run_migration("""
         CREATE TABLE IF NOT EXISTS admin_audit (id SERIAL PRIMARY KEY, admin_id BIGINT, action TEXT, target_type TEXT, target_id TEXT, details TEXT, created_at TIMESTAMPTZ DEFAULT NOW())
     """, "CREATE audit")
@@ -413,6 +425,11 @@ def init_db_and_seed():
             cur.execute("SELECT COUNT(*) FROM positions")
             if cur.fetchone()[0] == 0:
                 for i, name in enumerate(POSITIONS_SEED): cur.execute("INSERT INTO positions (name, sort) VALUES (%s,%s)", (name, i))
+            
+            cur.execute("SELECT COUNT(*) FROM citizenships")
+            if cur.fetchone()[0] == 0:
+                for name in CITIZENSHIPS_SEED: cur.execute("INSERT INTO citizenships (name) VALUES (%s)", (name,))
+
             cur.execute("SELECT COUNT(*) FROM medbook_doctors")
             if cur.fetchone()[0] == 0:
                 for d in DOCTORS_SEED: cur.execute("INSERT INTO medbook_doctors (name, required, validity_months, sort) VALUES (%s,%s,%s,%s)", (d["name"], d["required"], d["validity_months"], d["sort"]))
@@ -434,10 +451,8 @@ def init_db_and_seed():
                 existing = cur.fetchone()
                 if existing:
                     cur.execute("UPDATE users SET password_hash = %s, is_admin = TRUE, is_super_admin = TRUE, is_fired = FALSE, fired_at = NULL, fired_by = NULL, full_name = COALESCE(NULLIF(full_name, ''), 'Администратор'), position = COALESCE(NULLIF(position, ''), 'Администратор') WHERE user_id = %s", (pw, existing[0]))
-                    print(f"✅ Существующий пользователь '{ADMIN_LOGIN}' повышен до супер-администратора")
                 else:
                     cur.execute("INSERT INTO users (login, password_hash, full_name, position, is_admin, is_super_admin) VALUES (%s, %s, 'Администратор', 'Администратор', TRUE, TRUE)", (ADMIN_LOGIN, pw))
-                    print(f"✅ Создан супер-администратор: логин={ADMIN_LOGIN}")
     logging.info("✅ БД инициализирована и заполнена")
 
 # ============= СИНХРОННЫЕ ХЕЛПЕРЫ =============
@@ -660,8 +675,11 @@ def _sync_list_users(search="", fired=False):
                 SELECT u.user_id, u.login, u.full_name, u.phone, u.birth_date, u.position, u.restaurant_key, r.name AS restaurant_name,
                        COALESCE(u.is_admin, FALSE) AS is_admin, COALESCE(u.is_super_admin, FALSE) AS is_super_admin,
                        COALESCE(u.is_fired, FALSE) AS is_fired, COALESCE(u.is_certified, FALSE) AS is_certified,
-                       u.medbook, u.created_at, u.last_seen_at, u.fired_at, u.fired_by
-                FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key
+                       u.medbook, u.created_at, u.last_seen_at, u.fired_at, u.fired_by,
+                       u.hire_date, u.citizenship_id, c.name AS citizenship_name
+                FROM users u 
+                LEFT JOIN restaurants r ON u.restaurant_key = r.key
+                LEFT JOIN citizenships c ON u.citizenship_id = c.id
                 WHERE COALESCE(u.is_fired, FALSE) = %s AND u.login IS NOT NULL
             """
             params = [bool(fired)]
@@ -697,10 +715,16 @@ def _sync_create_user(body, existing_logins, admin_id=None):
     if not full_name or not password or len(password) < 6: return None, "invalid"
     if not login or not LOGIN_RE.match(login) or login in existing_logins: login = _generate_login_for(full_name, existing_logins)
     restaurant_key = body.get("restaurant_key") or body.get("restaurant") or ""
+    hire_date = body.get("hire_date") or ""
+    citizenship_id = body.get("citizenship_id")
+    if citizenship_id == "": citizenship_id = None
+    if citizenship_id is not None: citizenship_id = _int(citizenship_id)
+    
     pw_hash = hash_password(password)
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("INSERT INTO users (login, password_hash, full_name, phone, birth_date, position, restaurant_key, is_certified) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *", (login, pw_hash, full_name, body.get("phone") or "", body.get("birth_date") or "", body.get("position") or "", restaurant_key, bool(body.get("is_certified"))))
+            cur.execute("INSERT INTO users (login, password_hash, full_name, phone, birth_date, position, restaurant_key, is_certified, hire_date, citizenship_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *", 
+                        (login, pw_hash, full_name, body.get("phone") or "", body.get("birth_date") or "", body.get("position") or "", restaurant_key, bool(body.get("is_certified")), hire_date, citizenship_id))
             new_user = dict(cur.fetchone())
             cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin_id, "user_create", "user", str(new_user["user_id"]), f"login={login}"))
     return new_user, None
@@ -725,8 +749,12 @@ def _sync_get_user_by_id(user_id):
                 SELECT u.user_id, u.login, u.full_name, u.phone, u.birth_date, u.position, u.restaurant_key, r.name AS restaurant_name,
                        COALESCE(u.is_admin, FALSE) AS is_admin, COALESCE(u.is_super_admin, FALSE) AS is_super_admin,
                        COALESCE(u.is_fired, FALSE) AS is_fired, COALESCE(u.is_certified, FALSE) AS is_certified,
-                       u.medbook, u.created_at, u.last_seen_at, u.fired_at, u.fired_by, u.permissions
-                FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key WHERE u.user_id = %s
+                       u.medbook, u.created_at, u.last_seen_at, u.fired_at, u.fired_by, u.permissions,
+                       u.hire_date, u.citizenship_id, c.name AS citizenship_name
+                FROM users u 
+                LEFT JOIN restaurants r ON u.restaurant_key = r.key 
+                LEFT JOIN citizenships c ON u.citizenship_id = c.id
+                WHERE u.user_id = %s
             """, (user_id,))
             row = cur.fetchone()
             if row:
@@ -750,11 +778,14 @@ async def handle_admin_user_get(request):
     return web.json_response({"user": user})
 
 def _sync_update_user(uid, updates):
-    allowed_simple = {"full_name", "phone", "birth_date", "position", "restaurant_key", "is_certified"}
+    allowed_simple = {"full_name", "phone", "birth_date", "position", "restaurant_key", "is_certified", "hire_date", "citizenship_id"}
     with get_conn() as conn:
         with conn.cursor() as cur:
             for k, v in updates.items():
-                if k in allowed_simple: cur.execute(f"UPDATE users SET {k} = %s WHERE user_id = %s", (v, uid))
+                if k in allowed_simple: 
+                    if k == "citizenship_id" and v == "": v = None
+                    elif k == "citizenship_id" and v is not None: v = _int(v)
+                    cur.execute(f"UPDATE users SET {k} = %s WHERE user_id = %s", (v, uid))
             if "password" in updates and updates["password"]:
                 pw = hash_password(updates["password"])
                 cur.execute("UPDATE users SET password_hash = %s WHERE user_id = %s", (pw, uid))
@@ -872,6 +903,39 @@ async def handle_admin_set_permissions(request):
             cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin["user_id"], "set_permissions", "user", str(uid), ",".join(cleaned.keys())))
     return web.json_response({"ok": True})
 
+# ============= CITIZENSHIPS =============
+def _sync_citizenships():
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM citizenships ORDER BY name")
+            return [dict(r) for r in cur.fetchall()]
+
+async def handle_admin_citizenships(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    return web.json_response({"citizenships": await _run(_sync_citizenships)})
+
+def _sync_citizenship_add(name):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("INSERT INTO citizenships (name) VALUES (%s) ON CONFLICT (name) DO NOTHING RETURNING *", (name,))
+            return cur.fetchone()
+
+async def handle_admin_citizenship_add(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "citizenships_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    name = (body.get("name") or "").strip()
+    if not name: return web.json_response({"error": "invalid"}, status=400)
+    
+    new_c = await _run(_sync_citizenship_add, name)
+    if not new_c:
+        return web.json_response({"ok": False, "error": "duplicate"}, status=409)
+    return web.json_response({"ok": True, "citizenship": new_c})
+
 # ============= RESTAURANTS =============
 def _sync_restaurants():
     with get_conn() as conn:
@@ -897,36 +961,23 @@ async def handle_admin_restaurant_add(request):
     if err: return denied(err)
     perm_err = require_perm(admin, "restaurant_create")
     if perm_err: return perm_err
-    
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    
     key = (body.get("key") or "").strip().lower().replace(" ", "_")
     name = (body.get("name") or "").strip()
-    if not key or not name:
-        return web.json_response({"error": "invalid"}, status=400)
-        
+    if not key or not name: return web.json_response({"error": "invalid"}, status=400)
     address = body.get("address") or ""
     hours = body.get("hours") or ""
     phone = body.get("phone") or ""
     org = body.get("org") or ""
     lat = body.get("lat")
     lon = body.get("lon")
-    
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT key FROM restaurants WHERE key = %s", (key,))
-            if cur.fetchone():
-                return web.json_response({"error": "duplicate"}, status=409)
-                
-            cur.execute("""
-                INSERT INTO restaurants (key, name, address, hours, phone, org, lat, lon, force_status, sort)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'open', 100)
-            """, (key, name, address, hours, phone, org, lat, lon))
-            
-            cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)",
-                        (admin["user_id"], "restaurant_create", "restaurant", key, f"name={name}"))
-                        
+            if cur.fetchone(): return web.json_response({"error": "duplicate"}, status=409)
+            cur.execute("INSERT INTO restaurants (key, name, address, hours, phone, org, lat, lon, force_status, sort) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'open', 100)", (key, name, address, hours, phone, org, lat, lon))
+            cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin["user_id"], "restaurant_create", "restaurant", key, f"name={name}"))
     return web.json_response({"ok": True})
 
 async def handle_admin_restaurant_update(request):
@@ -1403,7 +1454,12 @@ def _sync_bootstrap(user_id):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("UPDATE users SET last_seen_at = NOW() WHERE user_id = %s", (user_id,))
-            cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+            cur.execute("""
+                SELECT u.*, c.name AS citizenship_name 
+                FROM users u 
+                LEFT JOIN citizenships c ON u.citizenship_id = c.id
+                WHERE u.user_id = %s
+            """, (user_id,))
             user = dict(cur.fetchone())
             _auto_publish_scheduled(cur)
 
@@ -1433,10 +1489,12 @@ def _sync_bootstrap(user_id):
             if can_see_team:
                 cur.execute("""
                     SELECT u.user_id, u.full_name, u.position, u.phone, u.restaurant_key, r.name AS restaurant_name,
-                           COALESCE(u.is_certified, FALSE) AS is_certified, u.medbook, mgr.full_name AS manager_name
+                           COALESCE(u.is_certified, FALSE) AS is_certified, u.medbook, mgr.full_name AS manager_name,
+                           c.name AS citizenship_name, u.hire_date
                     FROM users u
                     LEFT JOIN restaurants r ON u.restaurant_key = r.key
                     LEFT JOIN users mgr ON r.territory_manager_id = mgr.user_id
+                    LEFT JOIN citizenships c ON u.citizenship_id = c.id
                     WHERE u.user_id != %s AND COALESCE(u.is_fired, FALSE) = FALSE AND COALESCE(u.is_admin, FALSE) = FALSE AND u.login IS NOT NULL
                     ORDER BY u.full_name
                 """, (user_id,))
@@ -1471,6 +1529,7 @@ async def handle_bootstrap(request):
         "full_name": u.get("full_name") or "", "first_name": (u.get("full_name") or "").split()[0] if u.get("full_name") else "",
         "phone": u.get("phone") or "", "birth_date": u.get("birth_date") or "", "position": u.get("position") or "—",
         "restaurant": restaurant_name or "—", "restaurant_key": restaurant_key, "is_certified": bool(u.get("is_certified")), "is_admin": bool(u.get("is_admin")),
+        "hire_date": u.get("hire_date") or "—", "citizenship_name": u.get("citizenship_name") or "—"
     }
 
     mb = u.get("medbook") or {}
@@ -1504,6 +1563,7 @@ async def handle_bootstrap(request):
             "user_id": t["user_id"], "full_name": t["full_name"] or "", "position": t["position"] or "",
             "phone": t["phone"] or "", "restaurant_key": t.get("restaurant_key") or "", "restaurant_name": t.get("restaurant_name") or "",
             "manager_name": t.get("manager_name") or "", "is_certified": bool(t.get("is_certified")), "medbook_status": compute_medbook_status(tmb, doctors, tests, vaccines),
+            "hire_date": t.get("hire_date") or "—", "citizenship_name": t.get("citizenship_name") or "—"
         })
 
     return web.json_response({
@@ -1626,7 +1686,6 @@ async def gzip_middleware(request, handler):
             response.headers["Vary"] = "Accept-Encoding"
     return response
 
-# УВЕЛИЧЕН ЛИМИТ ДО 20 МБ
 app = web.Application(middlewares=[error_middleware, gzip_middleware], client_max_size=20 * 1024 * 1024)
 
 # ============= ROUTES =============
@@ -1651,6 +1710,9 @@ app.router.add_post("/api/admin/me", handle_admin_me)
 app.router.add_post("/api/admin/dashboard", handle_admin_dashboard)
 app.router.add_post("/api/admin/medbook-alerts", handle_admin_medbook_alerts)
 app.router.add_post("/api/admin/upload", handle_admin_upload)
+
+app.router.add_post("/api/admin/citizenships", handle_admin_citizenships)
+app.router.add_post("/api/admin/citizenship/add", handle_admin_citizenship_add)
 
 app.router.add_post("/api/admin/users", handle_admin_users)
 app.router.add_post("/api/admin/user/get", handle_admin_user_get)

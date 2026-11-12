@@ -4,7 +4,7 @@ import json
 import gzip
 import logging
 import asyncio
-import threading          # ← ДОБАВЛЕНО: для _pool_lock
+import threading
 import random
 import secrets
 import hashlib
@@ -41,7 +41,6 @@ if not DB_URL:
 
 ADMIN_LOGIN = os.getenv("ADMIN_LOGIN", "adm01").strip().lower()
 
-# FIX #9: не запускаем прод с дефолтным паролем
 ADMIN_PASSWORD_ENV = os.getenv("ADMIN_PASSWORD")
 APP_ENV = os.getenv("ENV", "development").lower()
 if not ADMIN_PASSWORD_ENV:
@@ -209,7 +208,7 @@ def medbook_missing_count(medbook, doctors, tests, vaccines):
 
 # ============= БД =============
 _pool = None
-_pool_lock = threading.Lock()  # ← ДОБАВЛЕНО: защита от race condition при инициализации
+_pool_lock = threading.Lock()
 
 def init_pool():
     global _pool
@@ -241,7 +240,27 @@ def _run_migration(sql, label):
         logging.error(f"Миграция '{label}': {type(e).__name__}: {str(e)[:150]}")
         return False
 
-# FIX #4: авто-публикация отложенных новостей
+# FEAT #2: фоновая очистка старых сессий
+async def _cleanup_sessions_loop():
+    while True:
+        try:
+            await asyncio.sleep(3600)  # раз в час
+            def _do_cleanup():
+                with get_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "DELETE FROM web_sessions WHERE last_used_at < NOW() - INTERVAL '%s days'"
+                            % int(SESSION_TTL_DAYS)
+                        )
+                        return cur.rowcount
+            count = await _run(_do_cleanup)
+            if count:
+                logging.info(f"🧹 Очищено старых сессий: {count}")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logging.error(f"Cleanup sessions error: {e}")
+
 def _auto_publish_scheduled(cur):
     cur.execute("""
         UPDATE news SET status = 'published'
@@ -772,6 +791,51 @@ async def handle_admin_dashboard(request):
     stats = await _run(_sync_dashboard_stats)
     return web.json_response({"stats": stats})
 
+# FEAT #3: алерты по медкнижкам
+def _sync_medbook_alerts():
+    doctors, tests, vaccines = _sync_get_medbook_refs()
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT user_id, full_name, position, medbook
+                FROM users
+                WHERE COALESCE(is_admin, FALSE) = FALSE
+                  AND COALESCE(is_fired, FALSE) = FALSE
+                  AND login IS NOT NULL
+            """)
+            users = [dict(r) for r in cur.fetchall()]
+    expiring = []
+    expired = []
+    for u in users:
+        mb = u.get("medbook") or {}
+        if isinstance(mb, str):
+            try: mb = json.loads(mb)
+            except Exception: mb = {}
+        status = compute_medbook_status(mb, doctors, tests, vaccines)
+        if status == "invalid":
+            has_expired = False
+            for date_str, validity in _mb_items(mb, doctors, tests, vaccines):
+                if entry_status(date_str, validity) == "expired":
+                    has_expired = True
+                    break
+            if has_expired:
+                expired.append({"user_id": u["user_id"], "full_name": u["full_name"] or "", "position": u["position"] or ""})
+        elif status == "expiring":
+            expiring.append({"user_id": u["user_id"], "full_name": u["full_name"] or "", "position": u["position"] or ""})
+    return expiring, expired
+
+async def handle_admin_medbook_alerts(request):
+    admin, err = await get_admin_user(request)
+    if err:
+        return denied(err)
+    expiring, expired = await _run(_sync_medbook_alerts)
+    return web.json_response({
+        "expiring": expiring[:20],
+        "expired": expired[:20],
+        "expiring_count": len(expiring),
+        "expired_count": len(expired),
+    })
+
 # ============= USERS =============
 def _sync_list_users(search="", fired=False):
     with get_conn() as conn:
@@ -819,8 +883,6 @@ async def handle_admin_users(request):
             except Exception: u["medbook"] = {}
     return web.json_response({"users": users})
 
-# FIX #5: принимаем restaurant_key (и backward-compatible restaurant)
-# FIX #10: пишем admin_id в аудит
 def _sync_create_user(body, existing_logins, admin_id=None):
     login = (body.get("login") or "").strip().lower()
     full_name = body.get("full_name") or ""
@@ -959,7 +1021,6 @@ async def handle_admin_user_update(request):
         await _enrich_user_with_medbook_status(updated)
     return web.json_response({"ok": True, "user": updated})
 
-# FIX #2: обычный админ не может уволить другого админа
 async def handle_admin_user_fire(request):
     admin, err = await get_admin_user(request)
     if err:
@@ -1019,7 +1080,6 @@ async def handle_admin_user_restore(request):
                         (admin["user_id"], "user_restore", "user", str(uid), f"by={admin['login']}"))
     return web.json_response({"ok": True})
 
-# FIX #3: обычный админ не может удалить другого админа
 async def handle_admin_user_delete(request):
     admin, err = await get_admin_user(request)
     if err:
@@ -1348,7 +1408,7 @@ async def handle_admin_medbook_ref_delete(request):
 def _sync_news_list():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            _auto_publish_scheduled(cur)  # FIX #4
+            _auto_publish_scheduled(cur)
             cur.execute("SELECT * FROM news ORDER BY created_at DESC, id DESC")
             return [dict(r) for r in cur.fetchall()]
 
@@ -1361,7 +1421,6 @@ async def handle_admin_news_list(request):
 def _check_can_publish(admin):
     return admin["is_super_admin"] or (admin.get("position") or "").strip().upper() == "HR"
 
-# FIX #7: schedule без publish_at — 400
 async def handle_admin_news_add(request):
     admin, err = await get_admin_user(request)
     if err:
@@ -1405,7 +1464,6 @@ async def handle_admin_news_add(request):
             news_row = dict(cur.fetchone())
     return web.json_response({"ok": True, "status": status, "news": news_row})
 
-# FIX #6: полное обновление полей новости
 async def handle_admin_news_update(request):
     admin, err = await get_admin_user(request)
     if err:
@@ -1642,7 +1700,6 @@ async def handle_admin_positions(request):
         return denied(err)
     return web.json_response({"positions": await _run(_sync_positions)})
 
-# FIX #8: дубликат → 409, ON CONFLICT (name) безопаснее чем try/except
 async def handle_admin_position_add(request):
     admin, err = await get_admin_user(request)
     if err:
@@ -1789,7 +1846,7 @@ def _sync_bootstrap(user_id):
             cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
             user = dict(cur.fetchone())
 
-            _auto_publish_scheduled(cur)  # FIX #4
+            _auto_publish_scheduled(cur)
 
             cur.execute("SELECT * FROM news WHERE status = 'published' ORDER BY created_at DESC LIMIT 50")
             news_rows = [dict(r) for r in cur.fetchall()]
@@ -1837,7 +1894,6 @@ def _sync_bootstrap(user_id):
                     team_rows = [s for s in all_staff if s.get("restaurant_key") == my_rest]
                 elif is_tu:
                     cur.execute("SELECT key FROM restaurants WHERE territory_manager_id = %s", (user_id,))
-                    # FIX #1: r — RealDictRow, r["key"] вместо r[0]
                     my_rests = {r["key"] for r in cur.fetchall()}
                     team_rows = [s for s in all_staff if s.get("restaurant_key") in my_rests]
                 else:
@@ -1954,6 +2010,7 @@ async def handle_questions_staff(request):
 # ============= STATIC =============
 _INDEX_CACHE = {"data": None, "mtime": 0.0}
 _ADMIN_CACHE = {"data": None, "mtime": 0.0}
+_STATIC_FILES_CACHE = {}
 
 def _serve_file(name, cache):
     p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", name)
@@ -1980,6 +2037,30 @@ async def handle_admin_page(request):
     if not data:
         return web.Response(text="frontend/admin.html not found", status=404)
     return web.Response(body=data, content_type="text/html", charset="utf-8")
+
+# FEAT #1: PWA — статические файлы
+async def _send_static_file(name, content_type):
+    if name not in _STATIC_FILES_CACHE:
+        _STATIC_FILES_CACHE[name] = {"data": None, "mtime": 0.0}
+    data = _serve_file(name, _STATIC_FILES_CACHE[name])
+    if not data:
+        return web.Response(status=404)
+    kwargs = {"body": data, "content_type": content_type}
+    if content_type.startswith("text/") or content_type in ("application/javascript", "application/manifest+json"):
+        kwargs["charset"] = "utf-8"
+    return web.Response(**kwargs)
+
+async def handle_manifest(request):
+    return await _send_static_file("manifest.json", "application/manifest+json")
+
+async def handle_sw(request):
+    return await _send_static_file("sw.js", "application/javascript")
+
+async def handle_icon192(request):
+    return await _send_static_file("icon-192.svg", "image/svg+xml")
+
+async def handle_icon512(request):
+    return await _send_static_file("icon-512.svg", "image/svg+xml")
 
 async def handle_favicon(request):
     return web.Response(status=204)
@@ -2029,6 +2110,12 @@ app.router.add_get("/admin/", handle_admin_page)
 app.router.add_get("/favicon.ico", handle_favicon)
 app.router.add_get("/api/health", handle_health)
 
+# FEAT #1: PWA-роуты
+app.router.add_get("/manifest.json", handle_manifest)
+app.router.add_get("/sw.js", handle_sw)
+app.router.add_get("/static/icon-192.svg", handle_icon192)
+app.router.add_get("/static/icon-512.svg", handle_icon512)
+
 app.router.add_post("/api/auth/login", handle_auth_login_staff)
 app.router.add_post("/api/auth/logout", handle_auth_logout)
 app.router.add_post("/api/bootstrap", handle_bootstrap)
@@ -2037,6 +2124,8 @@ app.router.add_post("/api/questions", handle_questions_staff)
 app.router.add_post("/api/admin/login", handle_auth_login)
 app.router.add_post("/api/admin/me", handle_admin_me)
 app.router.add_post("/api/admin/dashboard", handle_admin_dashboard)
+# FEAT #3
+app.router.add_post("/api/admin/medbook-alerts", handle_admin_medbook_alerts)
 
 app.router.add_post("/api/admin/users", handle_admin_users)
 app.router.add_post("/api/admin/user/get", handle_admin_user_get)
@@ -2097,9 +2186,17 @@ async def main():
     await site.start()
     logging.info(f"✅ Server on port {port}")
     logging.info(f"👤 Admin: {ADMIN_LOGIN}")
+
+    cleanup_task = asyncio.create_task(_cleanup_sessions_loop())
+
     try:
         await asyncio.Event().wait()
     finally:
+        cleanup_task.cancel()
+        try:
+            await cleanup_task
+        except asyncio.CancelledError:
+            pass
         await runner.cleanup()
         if _pool:
             _pool.closeall()

@@ -362,6 +362,7 @@ const PERMISSIONS_LIST = [
   { key: 'users_create', label: 'Добавлять сотрудников', icon: '➕' },
   { key: 'users_edit', label: 'Редактировать сотрудников', icon: '✏️' },
   { key: 'users_fire', label: 'Увольнять сотрудников', icon: '🚪' },
+  { key: 'citizenships_edit', label: 'Управлять гражданствами', icon: '🌍' }, // НОВОЕ ПРАВО
   { key: 'medbook_edit', label: 'Заполнять медкнижки', icon: '📝' },
   { key: 'medbook_doctors_manage', label: 'Врачи: добавление и сроки', icon: '👨‍⚕️' },
   { key: 'medbook_tests_manage', label: 'Анализы: добавление и сроки', icon: '🧪' },
@@ -674,6 +675,16 @@ async function loadDashboard() {
 /* ================== USERS ================== */
 let _usersCurrentSearch = '';
 let _usersTab = 'active';
+let _citizenshipsList = [];
+
+async function loadCitizenships() {
+    if (_citizenshipsList.length > 0) return _citizenshipsList;
+    try {
+        const res = await api('/api/admin/citizenships', {});
+        _citizenshipsList = res.citizenships || [];
+        return _citizenshipsList;
+    } catch(e) { return []; }
+}
 
 async function loadUsers(search) {
   _usersCurrentSearch = search || '';
@@ -798,14 +809,17 @@ async function restoreUser(uid) {
   } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
 }
 
-function openUserCreate() {
+async function openUserCreate() {
   if (!hasPerm('users_create')) { toast('Нет права', 'error'); return; }
-  Promise.all([
-    api('/api/admin/restaurants', {}),
-    api('/api/admin/positions', {}),
-  ]).then(([restData, posData]) => {
+  try {
+    const [restData, posData, cits] = await Promise.all([
+      api('/api/admin/restaurants', {}),
+      api('/api/admin/positions', {}),
+      loadCitizenships()
+    ]);
     const restOpts = restData.restaurants.map(r => `<option value="${esc(r.key)}">${esc(r.name)}</option>`).join('');
     const posOpts = posData.positions.filter(p => !p.is_archived).map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');
+    const citOpts = cits.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
 
     openModal('Создать сотрудника', `
       <div class="form-group">
@@ -822,16 +836,26 @@ function openUserCreate() {
         </div>
       </div>
       <div class="form-group"><label>Пароль</label><input class="form-input" id="nc-password" placeholder="Минимум 6 символов"><div class="form-hint">Сотрудник сможет сменить после первого входа</div></div>
+      
       <div class="form-row">
         <div class="form-group"><label>Телефон</label><input class="form-input" id="nc-phone" inputmode="tel"></div>
         <div class="form-group"><label>Дата рождения</label><input class="form-input" id="nc-birth" placeholder="ДД.ММ.ГГГГ"></div>
       </div>
+
+      <div class="form-row">
+        <div class="form-group"><label>Дата трудоустройства</label><input class="form-input" id="nc-hire-date" type="date"></div>
+        <div class="form-group">
+          <label>Гражданство <button class="btn primary small" type="button" onclick="addNewCitizenship('nc-citizenship')" style="padding:2px 6px; margin-left:6px;">+</button></label>
+          <select class="form-select" id="nc-citizenship">${citOpts}</select>
+        </div>
+      </div>
+
       <div class="form-row">
         <div class="form-group"><label>Должность</label><select class="form-select" id="nc-position">${posOpts}</select></div>
         <div class="form-group"><label>Ресторан</label><select class="form-select" id="nc-restaurant"><option value="">—</option>${restOpts}</select></div>
       </div>
+      
       <div class="form-group"><div class="checkbox-row"><input type="checkbox" id="nc-cert"><label for="nc-cert">Сертификация пройдена</label></div></div>
-      <div class="form-hint" style="font-size:12px;color:var(--text-muted);">Медкнижку можно заполнить после создания в разделе «Медкнижки»</div>
       <div class="form-hint error" id="nc-error"></div>
     `, `<button class="btn ghost" onclick="closeModal()">Отмена</button><button class="btn primary" id="nc-save">Создать</button>`);
 
@@ -867,6 +891,7 @@ function openUserCreate() {
           phone: $('nc-phone').value.trim(), birth_date: $('nc-birth').value.trim(),
           position: $('nc-position').value, restaurant: $('nc-restaurant').value,
           is_certified: $('nc-cert').checked,
+          hire_date: $('nc-hire-date').value, citizenship_id: $('nc-citizenship').value
         });
         closeModal();
         openModal('✅ Сотрудник создан', `
@@ -890,17 +915,18 @@ function openUserCreate() {
         errEl.textContent = map[e.message] || 'Ошибка: ' + e.message;
       }
     });
-  }).catch(e => {
-    if (e.message !== 'unauthorized' && e.message !== 'fired') toast('Ошибка загрузки данных: ' + e.message, 'error');
-  });
+  } catch (e) {
+    toast('Ошибка загрузки данных: ' + e.message, 'error');
+  }
 }
 
 async function openUserEditor(uid) {
   try {
-    const [data, restData, posData] = await Promise.all([
+    const [data, restData, posData, cits] = await Promise.all([
       api('/api/admin/user/get', { user_id: uid }),
       api('/api/admin/restaurants', {}),
       api('/api/admin/positions', {}),
+      loadCitizenships()
     ]);
     const u = data.user;
     const targetIsLocked = u.is_super_admin && !isSuperAdmin();
@@ -908,6 +934,8 @@ async function openUserEditor(uid) {
     const canFire = hasPerm('users_fire');
     const restOpts = restData.restaurants.map(r => `<option value="${esc(r.key)}" ${r.key === u.restaurant_key ? 'selected' : ''}>${esc(r.name)}</option>`).join('');
     const posOpts = posData.positions.filter(p => !p.is_archived).map(p => `<option value="${esc(p.name)}" ${p.name === u.position ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+    const citOpts = cits.map(c => `<option value="${c.id}" ${c.id === u.citizenship_id ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+    
     const mbStatus = u.medbook_status || 'invalid';
     let mbBadge = '';
     if (!u.is_admin) {
@@ -926,6 +954,15 @@ async function openUserEditor(uid) {
         <div class="form-group"><label>Телефон</label><input class="form-input" id="eu-phone" value="${esc(u.phone)}" inputmode="tel" ${canEdit?'':'disabled'}></div>
         <div class="form-group"><label>Дата рождения</label><input class="form-input" id="eu-birth" value="${esc(u.birth_date)}" ${canEdit?'':'disabled'}></div>
       </div>
+
+      <div class="form-row">
+        <div class="form-group"><label>Дата трудоустройства</label><input class="form-input" id="eu-hire-date" type="date" value="${esc(u.hire_date || '')}" ${canEdit?'':'disabled'}></div>
+        <div class="form-group">
+          <label>Гражданство <button class="btn primary small" type="button" onclick="addNewCitizenship('eu-citizenship')" style="padding:2px 6px; margin-left:6px;" ${!canEdit?'disabled':''}>+</button></label>
+          <select class="form-select" id="eu-citizenship" ${canEdit?'':'disabled'}>${citOpts}</select>
+        </div>
+      </div>
+
       <div class="form-row">
         <div class="form-group"><label>Должность</label><select class="form-select" id="eu-position" ${canEdit?'':'disabled'}>${posOpts}</select></div>
         <div class="form-group"><label>Ресторан</label><select class="form-select" id="eu-restaurant" ${canEdit?'':'disabled'}><option value="">—</option>${restOpts}</select></div>
@@ -955,6 +992,7 @@ async function openUserEditor(uid) {
         full_name: $('eu-name').value.trim(), phone: $('eu-phone').value.trim(),
         birth_date: $('eu-birth').value.trim(), position: $('eu-position').value,
         restaurant: $('eu-restaurant').value, is_certified: $('eu-cert').checked,
+        hire_date: $('eu-hire-date').value, citizenship_id: $('eu-citizenship').value
       };
       if (isSuperAdmin() && !u.is_super_admin && $('eu-admin')) updates.is_admin = $('eu-admin').checked;
       const np = $('eu-password') ? $('eu-password').value : '';
@@ -970,8 +1008,41 @@ async function openUserEditor(uid) {
       }
     });
   } catch (e) {
-    if (e.message !== 'unauthorized' && e.message !== 'fired') toast('Ошибка загрузки', 'error');
+    toast('Ошибка загрузки', 'error');
   }
+}
+
+async function addNewCitizenship(selectId) {
+    if (!hasPerm('citizenships_edit')) {
+        toast('Нет права добавлять гражданства', 'error');
+        return;
+    }
+    const name = prompt("Введите название страны (гражданства):");
+    if (!name || !name.trim()) return;
+    
+    try {
+        const res = await api('/api/admin/citizenship/add', { name: name.trim() });
+        if (res.ok) {
+            toast('Гражданство добавлено', 'success');
+            _citizenshipsList = []; // сброс кэша
+            const cits = await loadCitizenships();
+            
+            // Обновляем все существующие селекты на странице
+            const sel = $(selectId);
+            if (sel) {
+                const curVal = sel.value;
+                sel.innerHTML = cits.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+                // Пытаемся выбрать только что добавленное (оно в конце списка по алфавиту, но лучше выбрать по имени)
+                const newOpt = Array.from(sel.options).find(o => o.text === name.trim());
+                if (newOpt) sel.value = newOpt.value;
+                else sel.value = curVal;
+            }
+        } else {
+            toast('Такое гражданство уже существует', 'error');
+        }
+    } catch(e) {
+        toast('Ошибка: ' + e.message, 'error');
+    }
 }
 
 /* ================== MEDBOOKS ================== */
@@ -1582,7 +1653,6 @@ function openNewsAdd() {
   $('n-image-file').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    // УВЕЛИЧЕН ЛИМИТ ДО 15 МБ
     if (file.size > 15 * 1024 * 1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
     
     const reader = new FileReader();
@@ -1671,7 +1741,6 @@ function openNewsEdit(id, news) {
   $('n-image-file').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    // УВЕЛИЧЕН ЛИМИТ ДО 15 МБ
     if (file.size > 15 * 1024 * 1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
     
     const reader = new FileReader();

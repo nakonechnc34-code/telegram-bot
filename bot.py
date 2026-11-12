@@ -9,7 +9,7 @@ import secrets
 import hashlib
 import calendar
 import traceback
-from datetime import datetime, date
+from datetime import datetime, date, timezone as _tz
 from contextlib import contextmanager
 
 from aiohttp import web
@@ -39,10 +39,17 @@ if not DB_URL:
     raise ValueError("DATABASE_URL is not set")
 
 ADMIN_LOGIN = os.getenv("ADMIN_LOGIN", "adm01").strip().lower()
+
+# FIX #9: не запускаем прод с дефолтным паролем
 ADMIN_PASSWORD_ENV = os.getenv("ADMIN_PASSWORD")
-ADMIN_PASSWORD = ADMIN_PASSWORD_ENV or "Wokker2026"
+APP_ENV = os.getenv("ENV", "development").lower()
 if not ADMIN_PASSWORD_ENV:
-    logging.warning("⚠️ ADMIN_PASSWORD не задан — используется дефолт. Обязательно смените в проде!")
+    if APP_ENV == "production":
+        raise ValueError("ADMIN_PASSWORD must be set when ENV=production")
+    ADMIN_PASSWORD = "Wokker2026"
+    logging.warning("⚠️ ADMIN_PASSWORD не задан — дефолт только для dev. В проде ENV=production обязателен!")
+else:
+    ADMIN_PASSWORD = ADMIN_PASSWORD_ENV
 
 APP_URL = os.getenv("MINI_APP_URL", "").rstrip("/")
 
@@ -229,6 +236,13 @@ def _run_migration(sql, label):
     except Exception as e:
         logging.error(f"Миграция '{label}': {type(e).__name__}: {str(e)[:150]}")
         return False
+
+# FIX #4: авто-публикация отложенных новостей
+def _auto_publish_scheduled(cur):
+    cur.execute("""
+        UPDATE news SET status = 'published'
+        WHERE status = 'scheduled' AND publish_at IS NOT NULL AND publish_at <= NOW()
+    """)
 
 # ============= SEED =============
 RESTAURANTS_SEED = [
@@ -546,7 +560,6 @@ def _sync_get_session_user(token):
                 return None
             uid, last_used = row
             if last_used is not None:
-                from datetime import timezone as _tz
                 now = datetime.now(_tz.utc)
                 lu = last_used if last_used.tzinfo else last_used.replace(tzinfo=_tz.utc)
                 if (now - lu).days > SESSION_TTL_DAYS:
@@ -802,7 +815,9 @@ async def handle_admin_users(request):
             except Exception: u["medbook"] = {}
     return web.json_response({"users": users})
 
-def _sync_create_user(body, existing_logins):
+# FIX #5: принимаем restaurant_key (и backward-compatible restaurant)
+# FIX #10: пишем admin_id в аудит
+def _sync_create_user(body, existing_logins, admin_id=None):
     login = (body.get("login") or "").strip().lower()
     full_name = body.get("full_name") or ""
     password = body.get("password") or ""
@@ -812,6 +827,7 @@ def _sync_create_user(body, existing_logins):
     if not login or not LOGIN_RE.match(login) or login in existing_logins:
         login = _generate_login_for(full_name, existing_logins)
 
+    restaurant_key = body.get("restaurant_key") or body.get("restaurant") or ""
     pw_hash = hash_password(password)
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -822,10 +838,10 @@ def _sync_create_user(body, existing_logins):
                 RETURNING *
             """, (login, pw_hash, full_name, body.get("phone") or "",
                   body.get("birth_date") or "", body.get("position") or "",
-                  body.get("restaurant") or "", bool(body.get("is_certified"))))
+                  restaurant_key, bool(body.get("is_certified"))))
             new_user = dict(cur.fetchone())
-            cur.execute("INSERT INTO admin_audit (action, target_type, target_id, details) VALUES (%s,%s,%s,%s)",
-                        ("user_create", "user", str(new_user["user_id"]), f"login={login}"))
+            cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)",
+                        (admin_id, "user_create", "user", str(new_user["user_id"]), f"login={login}"))
     return new_user, None
 
 async def handle_admin_user_create(request):
@@ -841,7 +857,7 @@ async def handle_admin_user_create(request):
         return web.json_response({"error": "invalid_json"}, status=400)
 
     existing_logins = await _run(_sync_get_all_logins)
-    new_user, err_code = await _run(_sync_create_user, body, existing_logins)
+    new_user, err_code = await _run(_sync_create_user, body, existing_logins, admin["user_id"])
     if err_code:
         return web.json_response({"error": err_code}, status=400)
     new_user.pop("password_hash", None)
@@ -939,6 +955,7 @@ async def handle_admin_user_update(request):
         await _enrich_user_with_medbook_status(updated)
     return web.json_response({"ok": True, "user": updated})
 
+# FIX #2: обычный админ не может уволить другого админа
 async def handle_admin_user_fire(request):
     admin, err = await get_admin_user(request)
     if err:
@@ -959,6 +976,8 @@ async def handle_admin_user_fire(request):
         return web.json_response({"error": "not_found"}, status=404)
     if target.get("is_super_admin"):
         return web.json_response({"error": "cannot_fire_super"}, status=403)
+    if target.get("is_admin") and not admin["is_super_admin"]:
+        return web.json_response({"error": "cannot_fire_admin"}, status=403)
     if uid == admin["user_id"]:
         return web.json_response({"error": "cannot_fire_self"}, status=403)
     if target.get("is_fired"):
@@ -996,6 +1015,7 @@ async def handle_admin_user_restore(request):
                         (admin["user_id"], "user_restore", "user", str(uid), f"by={admin['login']}"))
     return web.json_response({"ok": True})
 
+# FIX #3: обычный админ не может удалить другого админа
 async def handle_admin_user_delete(request):
     admin, err = await get_admin_user(request)
     if err:
@@ -1015,6 +1035,8 @@ async def handle_admin_user_delete(request):
         return web.json_response({"error": "not_found"}, status=404)
     if target.get("is_super_admin"):
         return web.json_response({"error": "cannot_delete_super"}, status=403)
+    if target.get("is_admin") and not admin["is_super_admin"]:
+        return web.json_response({"error": "cannot_delete_admin"}, status=403)
     if uid == admin["user_id"]:
         return web.json_response({"error": "cannot_delete_self"}, status=403)
     with get_conn() as conn:
@@ -1322,6 +1344,7 @@ async def handle_admin_medbook_ref_delete(request):
 def _sync_news_list():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            _auto_publish_scheduled(cur)  # FIX #4
             cur.execute("SELECT * FROM news ORDER BY created_at DESC, id DESC")
             return [dict(r) for r in cur.fetchall()]
 
@@ -1334,6 +1357,7 @@ async def handle_admin_news_list(request):
 def _check_can_publish(admin):
     return admin["is_super_admin"] or (admin.get("position") or "").strip().upper() == "HR"
 
+# FIX #7: schedule без publish_at — 400
 async def handle_admin_news_add(request):
     admin, err = await get_admin_user(request)
     if err:
@@ -1360,7 +1384,9 @@ async def handle_admin_news_add(request):
     else:
         if intent == "publish":
             status = "published"
-        elif intent == "schedule" and publish_at:
+        elif intent == "schedule":
+            if not publish_at:
+                return web.json_response({"error": "publish_at_required"}, status=400)
             status = "scheduled"
         else:
             status = "pending"
@@ -1375,6 +1401,7 @@ async def handle_admin_news_add(request):
             news_row = dict(cur.fetchone())
     return web.json_response({"ok": True, "status": status, "news": news_row})
 
+# FIX #6: полное обновление полей новости
 async def handle_admin_news_update(request):
     admin, err = await get_admin_user(request)
     if err:
@@ -1389,11 +1416,15 @@ async def handle_admin_news_update(request):
     nid = _int(body.get("id"))
     if nid <= 0:
         return web.json_response({"error": "invalid_id"}, status=400)
-    title = body.get("title")
-    if title:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("UPDATE news SET title = %s WHERE id = %s", (title.strip(), nid))
+
+    allowed = {"title", "body", "level", "status", "publish_at"}
+    updates = {k: body[k] for k in allowed if k in body}
+    if not updates:
+        return web.json_response({"ok": True})
+    set_clause = ", ".join(f"{k} = %s" for k in updates)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"UPDATE news SET {set_clause} WHERE id = %s", (*updates.values(), nid))
     return web.json_response({"ok": True})
 
 async def handle_admin_news_delete(request):
@@ -1607,6 +1638,7 @@ async def handle_admin_positions(request):
         return denied(err)
     return web.json_response({"positions": await _run(_sync_positions)})
 
+# FIX #8: дубликат → 409, ON CONFLICT (name) безопаснее чем try/except
 async def handle_admin_position_add(request):
     admin, err = await get_admin_user(request)
     if err:
@@ -1625,10 +1657,10 @@ async def handle_admin_position_add(request):
         with conn.cursor() as cur:
             cur.execute("SELECT COALESCE(MAX(sort), 0) FROM positions")
             sort = (cur.fetchone()[0] or 0) + 1
-            try:
-                cur.execute("INSERT INTO positions (name, sort) VALUES (%s,%s)", (name, sort))
-            except Exception:
-                return web.json_response({"ok": False, "error": "duplicate"}, status=200)
+            cur.execute("INSERT INTO positions (name, sort) VALUES (%s,%s) ON CONFLICT (name) DO NOTHING RETURNING id",
+                        (name, sort))
+            if not cur.fetchone():
+                return web.json_response({"ok": False, "error": "duplicate"}, status=409)
     return web.json_response({"ok": True})
 
 async def handle_admin_position_archive(request):
@@ -1753,6 +1785,8 @@ def _sync_bootstrap(user_id):
             cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
             user = dict(cur.fetchone())
 
+            _auto_publish_scheduled(cur)  # FIX #4
+
             cur.execute("SELECT * FROM news WHERE status = 'published' ORDER BY created_at DESC LIMIT 50")
             news_rows = [dict(r) for r in cur.fetchall()]
             cur.execute("SELECT * FROM standards ORDER BY id")
@@ -1799,7 +1833,8 @@ def _sync_bootstrap(user_id):
                     team_rows = [s for s in all_staff if s.get("restaurant_key") == my_rest]
                 elif is_tu:
                     cur.execute("SELECT key FROM restaurants WHERE territory_manager_id = %s", (user_id,))
-                    my_rests = {r[0] for r in cur.fetchall()}
+                    # FIX #1: r — RealDictRow, r["key"] вместо r[0]
+                    my_rests = {r["key"] for r in cur.fetchall()}
                     team_rows = [s for s in all_staff if s.get("restaurant_key") in my_rests]
                 else:
                     team_rows = all_staff

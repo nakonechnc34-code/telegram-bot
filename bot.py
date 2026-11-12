@@ -14,7 +14,7 @@ from datetime import datetime, date, timezone as _tz
 from contextlib import contextmanager
 
 from aiohttp import web
-from psycopg2.pool import SimpleConnectionPool
+from psycopg2.pool import ThreadedConnectionPool   # FIX: потокобезопасный пул
 from psycopg2.extras import RealDictCursor, Json
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -215,7 +215,7 @@ def init_pool():
     if _pool is None:
         with _pool_lock:
             if _pool is None:
-                _pool = SimpleConnectionPool(2, 20, DB_URL)
+                _pool = ThreadedConnectionPool(2, 20, DB_URL)   # FIX: было SimpleConnectionPool
 
 @contextmanager
 def get_conn():
@@ -240,11 +240,11 @@ def _run_migration(sql, label):
         logging.error(f"Миграция '{label}': {type(e).__name__}: {str(e)[:150]}")
         return False
 
-# FEAT #2: фоновая очистка старых сессий
+# Фоновая очистка старых сессий
 async def _cleanup_sessions_loop():
     while True:
         try:
-            await asyncio.sleep(3600)  # раз в час
+            await asyncio.sleep(3600)
             def _do_cleanup():
                 with get_conn() as conn:
                     with conn.cursor() as cur:
@@ -791,7 +791,7 @@ async def handle_admin_dashboard(request):
     stats = await _run(_sync_dashboard_stats)
     return web.json_response({"stats": stats})
 
-# FEAT #3: алерты по медкнижкам
+# ============= MEDBOOK ALERTS =============
 def _sync_medbook_alerts():
     doctors, tests, vaccines = _sync_get_medbook_refs()
     with get_conn() as conn:
@@ -2038,7 +2038,6 @@ async def handle_admin_page(request):
         return web.Response(text="frontend/admin.html not found", status=404)
     return web.Response(body=data, content_type="text/html", charset="utf-8")
 
-# FEAT #1: PWA — статические файлы
 async def _send_static_file(name, content_type):
     if name not in _STATIC_FILES_CACHE:
         _STATIC_FILES_CACHE[name] = {"data": None, "mtime": 0.0}
@@ -2110,7 +2109,6 @@ app.router.add_get("/admin/", handle_admin_page)
 app.router.add_get("/favicon.ico", handle_favicon)
 app.router.add_get("/api/health", handle_health)
 
-# FEAT #1: PWA-роуты
 app.router.add_get("/manifest.json", handle_manifest)
 app.router.add_get("/sw.js", handle_sw)
 app.router.add_get("/static/icon-192.svg", handle_icon192)
@@ -2124,7 +2122,6 @@ app.router.add_post("/api/questions", handle_questions_staff)
 app.router.add_post("/api/admin/login", handle_auth_login)
 app.router.add_post("/api/admin/me", handle_admin_me)
 app.router.add_post("/api/admin/dashboard", handle_admin_dashboard)
-# FEAT #3
 app.router.add_post("/api/admin/medbook-alerts", handle_admin_medbook_alerts)
 
 app.router.add_post("/api/admin/users", handle_admin_users)

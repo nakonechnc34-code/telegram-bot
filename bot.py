@@ -399,6 +399,9 @@ def init_db_and_seed():
         "ALTER TABLE standards DROP COLUMN IF EXISTS url",
     ]:
         _run_migration(_sql, "standards alter")
+
+    # ПОЛНАЯ ОЧИСТКА ТАБЛИЦЫ СТАНДАРТОВ (чтобы вы начали наполнять её с нуля)
+    _run_migration("TRUNCATE TABLE standards RESTART IDENTITY", "Clear standards")
     # =====================
 
     _run_migration("""
@@ -1252,7 +1255,7 @@ async def handle_admin_news_reject(request):
         with conn.cursor() as cur: cur.execute("DELETE FROM news WHERE id = %s AND status = 'pending'", (nid,))
     return web.json_response({"ok": True})
 
-# ============= STANDARDS (NEW) =============
+# ============= STANDARDS =============
 def _sync_standards_list():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:

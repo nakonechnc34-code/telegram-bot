@@ -1,8 +1,9 @@
 meta:
   environment: python
   toolchain:
-    name: pip
-    version: '3.12'
+    name: uv
+    version: "3.12"
+
 run:
   scriptName: bot.py
   persistenceMount: /data

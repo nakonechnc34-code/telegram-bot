@@ -14,7 +14,7 @@ from datetime import datetime, date, timezone as _tz
 from contextlib import contextmanager
 
 from aiohttp import web
-from psycopg2.pool import ThreadedConnectionPool   # FIX: потокобезопасный пул
+from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.extras import RealDictCursor, Json
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -215,7 +215,7 @@ def init_pool():
     if _pool is None:
         with _pool_lock:
             if _pool is None:
-                _pool = ThreadedConnectionPool(2, 20, DB_URL)   # FIX: было SimpleConnectionPool
+                _pool = ThreadedConnectionPool(2, 20, DB_URL)
 
 @contextmanager
 def get_conn():
@@ -314,252 +314,253 @@ VACCINES_SEED = [
     {"name": "COVID-19", "required": False, "validity_months": 12, "sort": 3},
 ]
 
-# ============= ИНИЦИАЛИЗАЦИЯ БД =============
-init_pool()
+# ============= ИНИЦИАЛИЗАЦИЯ БД И СИДОВ =============
+def init_db_and_seed():
+    logging.info("⏳ Начинаю миграции и заполнение БД...")
+    
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id BIGSERIAL PRIMARY KEY,
+            login TEXT,
+            password_hash TEXT,
+            full_name TEXT,
+            phone TEXT,
+            birth_date TEXT,
+            position TEXT,
+            restaurant_key TEXT,
+            is_admin BOOLEAN DEFAULT FALSE,
+            is_super_admin BOOLEAN DEFAULT FALSE,
+            permissions JSONB DEFAULT '{}',
+            is_fired BOOLEAN DEFAULT FALSE,
+            fired_at TIMESTAMPTZ,
+            fired_by TEXT,
+            is_certified BOOLEAN DEFAULT FALSE,
+            medbook JSONB DEFAULT '{"doctors":{},"tests":{},"vaccines":{}}',
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            last_seen_at TIMESTAMPTZ
+        )
+    """, "CREATE users")
 
-_run_migration("""
-    CREATE TABLE IF NOT EXISTS users (
-        user_id BIGSERIAL PRIMARY KEY,
-        login TEXT,
-        password_hash TEXT,
-        full_name TEXT,
-        phone TEXT,
-        birth_date TEXT,
-        position TEXT,
-        restaurant_key TEXT,
-        is_admin BOOLEAN DEFAULT FALSE,
-        is_super_admin BOOLEAN DEFAULT FALSE,
-        permissions JSONB DEFAULT '{}',
-        is_fired BOOLEAN DEFAULT FALSE,
-        fired_at TIMESTAMPTZ,
-        fired_by TEXT,
-        is_certified BOOLEAN DEFAULT FALSE,
-        medbook JSONB DEFAULT '{"doctors":{},"tests":{},"vaccines":{}}',
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        last_seen_at TIMESTAMPTZ
-    )
-""", "CREATE users")
+    for _col, _sql in [
+        ("login", "ALTER TABLE users ADD COLUMN IF NOT EXISTS login TEXT"),
+        ("password_hash", "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT"),
+        ("is_admin", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE"),
+        ("is_super_admin", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN DEFAULT FALSE"),
+        ("permissions", "ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT '{}'"),
+        ("is_fired", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_fired BOOLEAN DEFAULT FALSE"),
+        ("fired_at", "ALTER TABLE users ADD COLUMN IF NOT EXISTS fired_at TIMESTAMPTZ"),
+        ("fired_by", "ALTER TABLE users ADD COLUMN IF NOT EXISTS fired_by TEXT"),
+        ("is_certified", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_certified BOOLEAN DEFAULT FALSE"),
+        ("medbook", "ALTER TABLE users ADD COLUMN IF NOT EXISTS medbook JSONB DEFAULT '{\"doctors\":{},\"tests\":{},\"vaccines\":{}}'"),
+        ("last_seen_at", "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ"),
+        ("restaurant_key", "ALTER TABLE users ADD COLUMN IF NOT EXISTS restaurant_key TEXT"),
+        ("restaurant", "ALTER TABLE users ADD COLUMN IF NOT EXISTS restaurant TEXT"),
+    ]:
+        _run_migration(_sql, f"ADD {_col}")
 
-for _col, _sql in [
-    ("login", "ALTER TABLE users ADD COLUMN IF NOT EXISTS login TEXT"),
-    ("password_hash", "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT"),
-    ("is_admin", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE"),
-    ("is_super_admin", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN DEFAULT FALSE"),
-    ("permissions", "ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT '{}'"),
-    ("is_fired", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_fired BOOLEAN DEFAULT FALSE"),
-    ("fired_at", "ALTER TABLE users ADD COLUMN IF NOT EXISTS fired_at TIMESTAMPTZ"),
-    ("fired_by", "ALTER TABLE users ADD COLUMN IF NOT EXISTS fired_by TEXT"),
-    ("is_certified", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_certified BOOLEAN DEFAULT FALSE"),
-    ("medbook", "ALTER TABLE users ADD COLUMN IF NOT EXISTS medbook JSONB DEFAULT '{\"doctors\":{},\"tests\":{},\"vaccines\":{}}'"),
-    ("last_seen_at", "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ"),
-    ("restaurant_key", "ALTER TABLE users ADD COLUMN IF NOT EXISTS restaurant_key TEXT"),
-    ("restaurant", "ALTER TABLE users ADD COLUMN IF NOT EXISTS restaurant TEXT"),
-]:
-    _run_migration(_sql, f"ADD {_col}")
+    _run_migration("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_login ON users (LOWER(login)) WHERE login IS NOT NULL", "idx login")
 
-_run_migration("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_login ON users (LOWER(login)) WHERE login IS NOT NULL", "idx login")
+    _run_migration("UPDATE users SET is_fired = FALSE WHERE is_fired IS NULL", "NULL is_fired")
+    _run_migration("UPDATE users SET is_admin = FALSE WHERE is_admin IS NULL", "NULL is_admin")
+    _run_migration("UPDATE users SET is_super_admin = FALSE WHERE is_super_admin IS NULL", "NULL is_super_admin")
+    _run_migration("UPDATE users SET is_certified = FALSE WHERE is_certified IS NULL", "NULL is_certified")
 
-_run_migration("UPDATE users SET is_fired = FALSE WHERE is_fired IS NULL", "NULL is_fired")
-_run_migration("UPDATE users SET is_admin = FALSE WHERE is_admin IS NULL", "NULL is_admin")
-_run_migration("UPDATE users SET is_super_admin = FALSE WHERE is_super_admin IS NULL", "NULL is_super_admin")
-_run_migration("UPDATE users SET is_certified = FALSE WHERE is_certified IS NULL", "NULL is_certified")
+    _run_migration("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'S' AND relname = 'users_user_id_seq') THEN
+                CREATE SEQUENCE users_user_id_seq;
+            END IF;
+            PERFORM setval(
+                'users_user_id_seq',
+                GREATEST((SELECT COALESCE(MAX(user_id), 0) FROM users), 1),
+                (SELECT COUNT(*) FROM users) > 0
+            );
+            ALTER TABLE users ALTER COLUMN user_id SET DEFAULT nextval('users_user_id_seq');
+            ALTER SEQUENCE users_user_id_seq OWNED BY users.user_id;
+        END $$;
+    """, "user_id sequence")
 
-_run_migration("""
-    DO $$
-    BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'S' AND relname = 'users_user_id_seq') THEN
-            CREATE SEQUENCE users_user_id_seq;
-        END IF;
-        PERFORM setval(
-            'users_user_id_seq',
-            GREATEST((SELECT COALESCE(MAX(user_id), 0) FROM users), 1),
-            (SELECT COUNT(*) FROM users) > 0
-        );
-        ALTER TABLE users ALTER COLUMN user_id SET DEFAULT nextval('users_user_id_seq');
-        ALTER SEQUENCE users_user_id_seq OWNED BY users.user_id;
-    END $$;
-""", "user_id sequence")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS restaurants (
+            key TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            address TEXT,
+            hours TEXT,
+            lat REAL,
+            lon REAL,
+            org TEXT,
+            phone TEXT DEFAULT '',
+            force_status TEXT DEFAULT 'open',
+            sort INT DEFAULT 100,
+            territory_manager_id BIGINT
+        )
+    """, "CREATE restaurants")
 
-_run_migration("""
-    CREATE TABLE IF NOT EXISTS restaurants (
-        key TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        address TEXT,
-        hours TEXT,
-        lat REAL,
-        lon REAL,
-        org TEXT,
-        phone TEXT DEFAULT '',
-        force_status TEXT DEFAULT 'open',
-        sort INT DEFAULT 100,
-        territory_manager_id BIGINT
-    )
-""", "CREATE restaurants")
+    for _sql in [
+        "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS force_status TEXT DEFAULT 'open'",
+        "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS sort INT DEFAULT 100",
+        "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS territory_manager_id BIGINT",
+    ]:
+        _run_migration(_sql, "restaurants alter")
 
-for _sql in [
-    "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS force_status TEXT DEFAULT 'open'",
-    "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS sort INT DEFAULT 100",
-    "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS territory_manager_id BIGINT",
-]:
-    _run_migration(_sql, "restaurants alter")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS medbook_doctors (
+            id SERIAL PRIMARY KEY, name TEXT NOT NULL,
+            required BOOLEAN DEFAULT FALSE, validity_months INT DEFAULT 12, sort INT DEFAULT 100
+        )
+    """, "CREATE medbook_doctors")
 
-_run_migration("""
-    CREATE TABLE IF NOT EXISTS medbook_doctors (
-        id SERIAL PRIMARY KEY, name TEXT NOT NULL,
-        required BOOLEAN DEFAULT FALSE, validity_months INT DEFAULT 12, sort INT DEFAULT 100
-    )
-""", "CREATE medbook_doctors")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS medbook_tests (
+            id SERIAL PRIMARY KEY, name TEXT NOT NULL,
+            required BOOLEAN DEFAULT FALSE, validity_months INT DEFAULT 12, sort INT DEFAULT 100
+        )
+    """, "CREATE medbook_tests")
 
-_run_migration("""
-    CREATE TABLE IF NOT EXISTS medbook_tests (
-        id SERIAL PRIMARY KEY, name TEXT NOT NULL,
-        required BOOLEAN DEFAULT FALSE, validity_months INT DEFAULT 12, sort INT DEFAULT 100
-    )
-""", "CREATE medbook_tests")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS medbook_vaccines (
+            id SERIAL PRIMARY KEY, name TEXT NOT NULL,
+            required BOOLEAN DEFAULT FALSE, validity_months INT DEFAULT 12, sort INT DEFAULT 100
+        )
+    """, "CREATE medbook_vaccines")
 
-_run_migration("""
-    CREATE TABLE IF NOT EXISTS medbook_vaccines (
-        id SERIAL PRIMARY KEY, name TEXT NOT NULL,
-        required BOOLEAN DEFAULT FALSE, validity_months INT DEFAULT 12, sort INT DEFAULT 100
-    )
-""", "CREATE medbook_vaccines")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS news (
+            id SERIAL PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL,
+            level TEXT DEFAULT 'normal', status TEXT DEFAULT 'published',
+            publish_at TIMESTAMPTZ, proposed_by TEXT, approved_by TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """, "CREATE news")
 
-_run_migration("""
-    CREATE TABLE IF NOT EXISTS news (
-        id SERIAL PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL,
-        level TEXT DEFAULT 'normal', status TEXT DEFAULT 'published',
-        publish_at TIMESTAMPTZ, proposed_by TEXT, approved_by TEXT,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-    )
-""", "CREATE news")
+    for _sql in [
+        "ALTER TABLE news ADD COLUMN IF NOT EXISTS level TEXT DEFAULT 'normal'",
+        "ALTER TABLE news ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'published'",
+        "ALTER TABLE news ADD COLUMN IF NOT EXISTS publish_at TIMESTAMPTZ",
+        "ALTER TABLE news ADD COLUMN IF NOT EXISTS proposed_by TEXT",
+        "ALTER TABLE news ADD COLUMN IF NOT EXISTS approved_by TEXT",
+    ]:
+        _run_migration(_sql, "news alter")
 
-for _sql in [
-    "ALTER TABLE news ADD COLUMN IF NOT EXISTS level TEXT DEFAULT 'normal'",
-    "ALTER TABLE news ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'published'",
-    "ALTER TABLE news ADD COLUMN IF NOT EXISTS publish_at TIMESTAMPTZ",
-    "ALTER TABLE news ADD COLUMN IF NOT EXISTS proposed_by TEXT",
-    "ALTER TABLE news ADD COLUMN IF NOT EXISTS approved_by TEXT",
-]:
-    _run_migration(_sql, "news alter")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS standards (
+            id SERIAL PRIMARY KEY, title TEXT NOT NULL,
+            category TEXT DEFAULT '', description TEXT DEFAULT '', url TEXT DEFAULT ''
+        )
+    """, "CREATE standards")
 
-_run_migration("""
-    CREATE TABLE IF NOT EXISTS standards (
-        id SERIAL PRIMARY KEY, title TEXT NOT NULL,
-        category TEXT DEFAULT '', description TEXT DEFAULT '', url TEXT DEFAULT ''
-    )
-""", "CREATE standards")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS faq (
+            id SERIAL PRIMARY KEY, question TEXT NOT NULL,
+            answer TEXT NOT NULL, category TEXT DEFAULT ''
+        )
+    """, "CREATE faq")
 
-_run_migration("""
-    CREATE TABLE IF NOT EXISTS faq (
-        id SERIAL PRIMARY KEY, question TEXT NOT NULL,
-        answer TEXT NOT NULL, category TEXT DEFAULT ''
-    )
-""", "CREATE faq")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS positions (
+            id SERIAL PRIMARY KEY, name TEXT NOT NULL UNIQUE,
+            sort INT DEFAULT 100, is_archived BOOLEAN DEFAULT FALSE
+        )
+    """, "CREATE positions")
 
-_run_migration("""
-    CREATE TABLE IF NOT EXISTS positions (
-        id SERIAL PRIMARY KEY, name TEXT NOT NULL UNIQUE,
-        sort INT DEFAULT 100, is_archived BOOLEAN DEFAULT FALSE
-    )
-""", "CREATE positions")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS admin_audit (
+            id SERIAL PRIMARY KEY, admin_id BIGINT, action TEXT,
+            target_type TEXT, target_id TEXT, details TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """, "CREATE audit")
 
-_run_migration("""
-    CREATE TABLE IF NOT EXISTS admin_audit (
-        id SERIAL PRIMARY KEY, admin_id BIGINT, action TEXT,
-        target_type TEXT, target_id TEXT, details TEXT,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-    )
-""", "CREATE audit")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS questions (
+            id SERIAL PRIMARY KEY, user_id BIGINT NOT NULL, text TEXT NOT NULL,
+            replied BOOLEAN DEFAULT FALSE, reply_text TEXT,
+            replied_at TIMESTAMPTZ, replied_by BIGINT,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """, "CREATE questions")
 
-_run_migration("""
-    CREATE TABLE IF NOT EXISTS questions (
-        id SERIAL PRIMARY KEY, user_id BIGINT NOT NULL, text TEXT NOT NULL,
-        replied BOOLEAN DEFAULT FALSE, reply_text TEXT,
-        replied_at TIMESTAMPTZ, replied_by BIGINT,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-    )
-""", "CREATE questions")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS web_sessions (
+            token TEXT PRIMARY KEY, user_id BIGINT NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT NOW(), last_used_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """, "CREATE sessions")
 
-_run_migration("""
-    CREATE TABLE IF NOT EXISTS web_sessions (
-        token TEXT PRIMARY KEY, user_id BIGINT NOT NULL,
-        created_at TIMESTAMPTZ DEFAULT NOW(), last_used_at TIMESTAMPTZ DEFAULT NOW()
-    )
-""", "CREATE sessions")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM restaurants")
+            if cur.fetchone()[0] == 0:
+                for i, r in enumerate(RESTAURANTS_SEED):
+                    sort = 999 if r["key"] == "office" else i
+                    status = "closed" if r["key"] == "office" else "open"
+                    cur.execute(
+                        "INSERT INTO restaurants (key, name, address, hours, lat, lon, org, phone, sort, force_status) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                        (r["key"], r["name"], r["address"], r["hours"], r["lat"], r["lon"], r["org"], r["phone"], sort, status)
+                    )
 
-with get_conn() as conn:
-    with conn.cursor() as cur:
-        cur.execute("SELECT COUNT(*) FROM restaurants")
-        if cur.fetchone()[0] == 0:
-            for i, r in enumerate(RESTAURANTS_SEED):
-                sort = 999 if r["key"] == "office" else i
-                status = "closed" if r["key"] == "office" else "open"
-                cur.execute(
-                    "INSERT INTO restaurants (key, name, address, hours, lat, lon, org, phone, sort, force_status) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                    (r["key"], r["name"], r["address"], r["hours"], r["lat"], r["lon"], r["org"], r["phone"], sort, status)
-                )
+            cur.execute("SELECT COUNT(*) FROM standards")
+            if cur.fetchone()[0] == 0:
+                for s in STANDARDS_SEED:
+                    cur.execute("INSERT INTO standards (title, category, description, url) VALUES (%s,%s,%s,%s)",
+                                (s["title"], s["category"], s["description"], s["url"]))
+            cur.execute("SELECT COUNT(*) FROM faq")
+            if cur.fetchone()[0] == 0:
+                for f in FAQ_SEED:
+                    cur.execute("INSERT INTO faq (question, answer, category) VALUES (%s,%s,%s)",
+                                (f["question"], f["answer"], f["category"]))
+            cur.execute("SELECT COUNT(*) FROM positions")
+            if cur.fetchone()[0] == 0:
+                for i, name in enumerate(POSITIONS_SEED):
+                    cur.execute("INSERT INTO positions (name, sort) VALUES (%s,%s)", (name, i))
 
-        cur.execute("SELECT COUNT(*) FROM standards")
-        if cur.fetchone()[0] == 0:
-            for s in STANDARDS_SEED:
-                cur.execute("INSERT INTO standards (title, category, description, url) VALUES (%s,%s,%s,%s)",
-                            (s["title"], s["category"], s["description"], s["url"]))
-        cur.execute("SELECT COUNT(*) FROM faq")
-        if cur.fetchone()[0] == 0:
-            for f in FAQ_SEED:
-                cur.execute("INSERT INTO faq (question, answer, category) VALUES (%s,%s,%s)",
-                            (f["question"], f["answer"], f["category"]))
-        cur.execute("SELECT COUNT(*) FROM positions")
-        if cur.fetchone()[0] == 0:
-            for i, name in enumerate(POSITIONS_SEED):
-                cur.execute("INSERT INTO positions (name, sort) VALUES (%s,%s)", (name, i))
+            cur.execute("SELECT COUNT(*) FROM medbook_doctors")
+            if cur.fetchone()[0] == 0:
+                for d in DOCTORS_SEED:
+                    cur.execute("INSERT INTO medbook_doctors (name, required, validity_months, sort) VALUES (%s,%s,%s,%s)",
+                                (d["name"], d["required"], d["validity_months"], d["sort"]))
+            cur.execute("SELECT COUNT(*) FROM medbook_tests")
+            if cur.fetchone()[0] == 0:
+                for t in TESTS_SEED:
+                    cur.execute("INSERT INTO medbook_tests (name, required, validity_months, sort) VALUES (%s,%s,%s,%s)",
+                                (t["name"], t["required"], t["validity_months"], t["sort"]))
+            cur.execute("SELECT COUNT(*) FROM medbook_vaccines")
+            if cur.fetchone()[0] == 0:
+                for v in VACCINES_SEED:
+                    cur.execute("INSERT INTO medbook_vaccines (name, required, validity_months, sort) VALUES (%s,%s,%s,%s)",
+                                (v["name"], v["required"], v["validity_months"], v["sort"]))
 
-        cur.execute("SELECT COUNT(*) FROM medbook_doctors")
-        if cur.fetchone()[0] == 0:
-            for d in DOCTORS_SEED:
-                cur.execute("INSERT INTO medbook_doctors (name, required, validity_months, sort) VALUES (%s,%s,%s,%s)",
-                            (d["name"], d["required"], d["validity_months"], d["sort"]))
-        cur.execute("SELECT COUNT(*) FROM medbook_tests")
-        if cur.fetchone()[0] == 0:
-            for t in TESTS_SEED:
-                cur.execute("INSERT INTO medbook_tests (name, required, validity_months, sort) VALUES (%s,%s,%s,%s)",
-                            (t["name"], t["required"], t["validity_months"], t["sort"]))
-        cur.execute("SELECT COUNT(*) FROM medbook_vaccines")
-        if cur.fetchone()[0] == 0:
-            for v in VACCINES_SEED:
-                cur.execute("INSERT INTO medbook_vaccines (name, required, validity_months, sort) VALUES (%s,%s,%s,%s)",
-                            (v["name"], v["required"], v["validity_months"], v["sort"]))
+            cur.execute("SELECT COUNT(*) FROM news")
+            if cur.fetchone()[0] == 0:
+                cur.execute("INSERT INTO news (title, body, level, status) VALUES (%s,%s,%s,%s)",
+                            ("Открытие новой точки", "Скоро открываем новый ресторан!", "urgent", "published"))
+                cur.execute("INSERT INTO news (title, body, level, status) VALUES (%s,%s,%s,%s)",
+                            ("Обновление меню", "Появились новые позиции в меню.", "normal", "published"))
 
-        cur.execute("SELECT COUNT(*) FROM news")
-        if cur.fetchone()[0] == 0:
-            cur.execute("INSERT INTO news (title, body, level, status) VALUES (%s,%s,%s,%s)",
-                        ("Открытие новой точки", "Скоро открываем новый ресторан!", "urgent", "published"))
-            cur.execute("INSERT INTO news (title, body, level, status) VALUES (%s,%s,%s,%s)",
-                        ("Обновление меню", "Появились новые позиции в меню.", "normal", "published"))
-
-        cur.execute("SELECT COUNT(*) FROM users WHERE is_super_admin = TRUE")
-        if cur.fetchone()[0] == 0:
-            pw = hash_password(ADMIN_PASSWORD)
-            cur.execute("SELECT user_id FROM users WHERE LOWER(login) = LOWER(%s)", (ADMIN_LOGIN,))
-            existing = cur.fetchone()
-            if existing:
-                cur.execute("""
-                    UPDATE users SET password_hash = %s, is_admin = TRUE, is_super_admin = TRUE,
-                           is_fired = FALSE, fired_at = NULL, fired_by = NULL,
-                           full_name = COALESCE(NULLIF(full_name, ''), 'Администратор'),
-                           position = COALESCE(NULLIF(position, ''), 'Администратор')
-                    WHERE user_id = %s
-                """, (pw, existing[0]))
-                print(f"✅ Существующий пользователь '{ADMIN_LOGIN}' повышен до супер-администратора")
-            else:
-                cur.execute("""
-                    INSERT INTO users (login, password_hash, full_name, position, is_admin, is_super_admin)
-                    VALUES (%s, %s, 'Администратор', 'Администратор', TRUE, TRUE)
-                """, (ADMIN_LOGIN, pw))
-                print(f"✅ Создан супер-администратор: логин={ADMIN_LOGIN}")
-
-print("✅ БД инициализирована")
+            cur.execute("SELECT COUNT(*) FROM users WHERE is_super_admin = TRUE")
+            if cur.fetchone()[0] == 0:
+                pw = hash_password(ADMIN_PASSWORD)
+                cur.execute("SELECT user_id FROM users WHERE LOWER(login) = LOWER(%s)", (ADMIN_LOGIN,))
+                existing = cur.fetchone()
+                if existing:
+                    cur.execute("""
+                        UPDATE users SET password_hash = %s, is_admin = TRUE, is_super_admin = TRUE,
+                               is_fired = FALSE, fired_at = NULL, fired_by = NULL,
+                               full_name = COALESCE(NULLIF(full_name, ''), 'Администратор'),
+                               position = COALESCE(NULLIF(position, ''), 'Администратор')
+                        WHERE user_id = %s
+                    """, (pw, existing[0]))
+                    print(f"✅ Существующий пользователь '{ADMIN_LOGIN}' повышен до супер-администратора")
+                else:
+                    cur.execute("""
+                        INSERT INTO users (login, password_hash, full_name, position, is_admin, is_super_admin)
+                        VALUES (%s, %s, 'Администратор', 'Администратор', TRUE, TRUE)
+                    """, (ADMIN_LOGIN, pw))
+                    print(f"✅ Создан супер-администратор: логин={ADMIN_LOGIN}")
+    
+    logging.info("✅ БД инициализирована и заполнена")
 
 # ============= СИНХРОННЫЕ ХЕЛПЕРЫ =============
 def _sync_get_user_by_login(login):
@@ -2177,6 +2178,16 @@ app.router.add_post("/api/admin/change-password", handle_admin_change_password)
 # ============= MAIN =============
 async def main():
     port = int(os.getenv("PORT", 8080))
+    
+    # Проверяем флаг: нужно ли делать миграции
+    if os.getenv("RUN_MIGRATIONS", "false").lower() == "true":
+        init_pool()
+        await _run(init_db_and_seed)
+    else:
+        logging.info("⏩ Миграции пропущены (RUN_MIGRATIONS != true)")
+        # Инициализируем пул, чтобы приложение могло работать
+        init_pool()
+
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)

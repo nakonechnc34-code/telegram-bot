@@ -367,6 +367,7 @@ const PERMISSIONS_LIST = [
   { key: 'medbook_tests_manage', label: 'Анализы: добавление и сроки', icon: '🧪' },
   { key: 'medbook_vaccines_manage', label: 'Прививки: добавление и сроки', icon: '💉' },
   { key: 'restaurant_tu', label: 'Менять ТУ у ресторанов', icon: '👔' },
+  { key: 'restaurant_create', label: 'Добавлять рестораны', icon: '➕' }, // НОВОЕ ПРАВО
   { key: 'restaurant_edit', label: 'Редактировать рестораны', icon: '🏪' },
   { key: 'standards_edit', label: 'Менять стандарты', icon: '📚' },
   { key: 'checklist_create', label: 'Создавать чек-листы', icon: '📋' },
@@ -1325,6 +1326,12 @@ function openPermEditor(uid, admins) {
 async function loadRestaurants() {
   const data = await api('/api/admin/restaurants', {});
   const canTu = hasPerm('restaurant_tu');
+  const canCreate = hasPerm('restaurant_create'); // <--- ПРОВЕРКА ПРАВА
+
+  // <--- ДОБАВЛЯЕМ КНОПКУ, ЕСЛИ ЕСТЬ ПРАВО
+  $('page-actions').innerHTML = canCreate ? '<button class="btn primary small" id="rest-add-btn">+ Добавить</button>' : '';
+  if (canCreate) $('rest-add-btn').addEventListener('click', openRestaurantAdd);
+
   const rows = data.restaurants.map(r => `
     <tr>
       <td><b>${esc(r.name)}</b></td>
@@ -1341,6 +1348,60 @@ async function loadRestaurants() {
   document.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openRestaurantEditor(b.dataset.edit, data.restaurants)));
   document.querySelectorAll('[data-tu]').forEach(b => b.addEventListener('click', () => openTuEditor(b.dataset.tu, data.tu_candidates, data.restaurants)));
 }
+
+// НОВАЯ ФУНКЦИЯ: Модалка добавления ресторана
+function openRestaurantAdd() {
+  openModal('Новый ресторан', `
+    <div class="form-group">
+      <label>Ключ (латиницей, без пробелов)</label>
+      <input class="form-input" id="ra-key" placeholder="например: mega_belaya_dacha">
+      <div class="form-hint">Уникальный идентификатор. Изменить потом нельзя.</div>
+    </div>
+    <div class="form-group"><label>Название</label><input class="form-input" id="ra-name" placeholder="Мега Белая Дача"></div>
+    <div class="form-group"><label>Адрес</label><input class="form-input" id="ra-address"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Телефон</label><input class="form-input" id="ra-phone" inputmode="tel"></div>
+      <div class="form-group"><label>Яндекс Карты (org)</label><input class="form-input" id="ra-org" placeholder="vokker/1234567890"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Широта (lat)</label><input class="form-input" id="ra-lat" type="number" step="any" placeholder="55.123"></div>
+      <div class="form-group"><label>Долгота (lon)</label><input class="form-input" id="ra-lon" type="number" step="any" placeholder="37.123"></div>
+    </div>
+    <div class="form-group"><label>Часы работы</label><textarea class="form-textarea" id="ra-hours" rows="2" placeholder="Пн-вс: 10:00–22:00"></textarea></div>
+    <div class="form-hint error" id="ra-error"></div>
+  `, `<button class="btn ghost" onclick="closeModal()">Отмена</button><button class="btn primary" id="save-rest-add">Создать</button>`);
+
+  $('ra-key').addEventListener('input', (e) => {
+    e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '');
+  });
+
+  $('save-rest-add').addEventListener('click', async () => {
+    const errEl = $('ra-error'); errEl.textContent = '';
+    const key = $('ra-key').value.trim();
+    const name = $('ra-name').value.trim();
+
+    if (!key || !name) { errEl.textContent = 'Заполните ключ и название'; return; }
+
+    try {
+      await api('/api/admin/restaurant/add', {
+        key, name,
+        address: $('ra-address').value.trim(),
+        phone: $('ra-phone').value.trim(),
+        org: $('ra-org').value.trim(),
+        lat: $('ra-lat').value ? parseFloat($('ra-lat').value) : null,
+        lon: $('ra-lon').value ? parseFloat($('ra-lon').value) : null,
+        hours: $('ra-hours').value.trim()
+      });
+      toast('Ресторан добавлен', 'success');
+      closeModal();
+      loadRestaurants();
+    } catch (e) {
+      if (e.message === 'duplicate') errEl.textContent = 'Ресторан с таким ключом уже существует';
+      else errEl.textContent = 'Ошибка: ' + e.message;
+    }
+  });
+}
+
 function openRestaurantEditor(key, rests) {
   const r = rests.find(x => x.key === key);
   if (!r) return;
@@ -1352,6 +1413,10 @@ function openRestaurantEditor(key, rests) {
       <div class="form-group"><label>Телефон</label><input class="form-input" id="rf-phone" value="${esc(r.phone || '')}" inputmode="tel"></div>
       <div class="form-group"><label>Яндекс Карты</label><input class="form-input" id="rf-org" value="${esc(r.org || '')}"></div>
     </div>
+    <div class="form-row">
+      <div class="form-group"><label>Широта (lat)</label><input class="form-input" id="rf-lat" type="number" step="any" value="${r.lat || ''}"></div>
+      <div class="form-group"><label>Долгота (lon)</label><input class="form-input" id="rf-lon" type="number" step="any" value="${r.lon || ''}"></div>
+    </div>
     <div class="form-group"><label>Часы</label><textarea class="form-textarea" id="rf-hours" rows="3">${esc(r.hours || '')}</textarea></div>
   `, `<button class="btn ghost" onclick="closeModal()">Отмена</button><button class="btn primary" id="save-rest-btn">Сохранить</button>`);
   $('save-rest-btn').addEventListener('click', async () => {
@@ -1359,7 +1424,9 @@ function openRestaurantEditor(key, rests) {
       await api('/api/admin/restaurant/update', { key, updates: {
         name: $('rf-name').value.trim(), address: $('rf-address').value.trim(),
         phone: $('rf-phone').value.trim(), org: $('rf-org').value.trim(),
-        hours: $('rf-hours').value.trim()
+        hours: $('rf-hours').value.trim(),
+        lat: $('rf-lat').value ? parseFloat($('rf-lat').value) : null,
+        lon: $('rf-lon').value ? parseFloat($('rf-lon').value) : null,
       }});
       toast('Сохранено', 'success');
       closeModal();
@@ -1367,6 +1434,7 @@ function openRestaurantEditor(key, rests) {
     } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
   });
 }
+
 function openTuEditor(key, candidates, rests) {
   if (!hasPerm('restaurant_tu')) { toast('Нет права менять ТУ', 'error'); return; }
   const r = rests.find(x => x.key === key);

@@ -72,6 +72,7 @@ PERMISSIONS_LIST = [
     {"key": "medbook_tests_manage", "label": "Анализы: добавление и сроки"},
     {"key": "medbook_vaccines_manage", "label": "Прививки: добавление и сроки"},
     {"key": "restaurant_tu", "label": "Менять ТУ у ресторанов"},
+    {"key": "restaurant_create", "label": "Добавлять рестораны"}, # <--- НОВОЕ ПРАВО
     {"key": "restaurant_edit", "label": "Редактировать рестораны"},
     {"key": "standards_edit", "label": "Менять стандарты"},
     {"key": "checklist_create", "label": "Создавать чек-листы"},
@@ -281,10 +282,8 @@ VACCINES_SEED = [
     {"name": "COVID-19", "required": False, "validity_months": 12, "sort": 3},
 ]
 
-# ============= ИНИЦИАЛИЗАЦИЯ БД И СИДОВ =============
 def init_db_and_seed():
     logging.info("⏳ Начинаю миграции и заполнение БД...")
-    
     data_dir = os.getenv("DATA_DIR", "/data")
     upload_dir = os.path.join(data_dir, "uploads")
     os.makedirs(upload_dir, exist_ok=True)
@@ -892,6 +891,44 @@ async def handle_admin_restaurants(request):
     restaurants = await _run(_sync_restaurants)
     tu = await _run(_sync_tu_candidates)
     return web.json_response({"restaurants": restaurants, "tu_candidates": tu})
+
+# НОВЫЙ ОБРАБОТЧИК: Создание ресторана
+async def handle_admin_restaurant_add(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "restaurant_create")
+    if perm_err: return perm_err
+    
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    key = (body.get("key") or "").strip().lower().replace(" ", "_")
+    name = (body.get("name") or "").strip()
+    if not key or not name:
+        return web.json_response({"error": "invalid"}, status=400)
+        
+    address = body.get("address") or ""
+    hours = body.get("hours") or ""
+    phone = body.get("phone") or ""
+    org = body.get("org") or ""
+    lat = body.get("lat")
+    lon = body.get("lon")
+    
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT key FROM restaurants WHERE key = %s", (key,))
+            if cur.fetchone():
+                return web.json_response({"error": "duplicate"}, status=409)
+                
+            cur.execute("""
+                INSERT INTO restaurants (key, name, address, hours, phone, org, lat, lon, force_status, sort)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'open', 100)
+            """, (key, name, address, hours, phone, org, lat, lon))
+            
+            cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)",
+                        (admin["user_id"], "restaurant_create", "restaurant", key, f"name={name}"))
+                        
+    return web.json_response({"ok": True})
 
 async def handle_admin_restaurant_update(request):
     admin, err = await get_admin_user(request)
@@ -1628,6 +1665,7 @@ app.router.add_post("/api/admin/set-permissions", handle_admin_set_permissions)
 app.router.add_post("/api/admin/debug/users", handle_admin_debug_users)
 
 app.router.add_post("/api/admin/restaurants", handle_admin_restaurants)
+app.router.add_post("/api/admin/restaurant/add", handle_admin_restaurant_add) # <--- НОВЫЙ РОУТ
 app.router.add_post("/api/admin/restaurant/update", handle_admin_restaurant_update)
 app.router.add_post("/api/admin/restaurant/tu", handle_admin_restaurant_tu)
 app.router.add_post("/api/admin/restaurant/status", handle_admin_restaurant_status)

@@ -6,6 +6,14 @@
 <title>Wokker · Админ</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23FF1A1A'/%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%23000' stroke-width='8'/%3E%3Cpath d='M25 50 A 25 25 0 0 0 75 50' fill='none' stroke='%23000' stroke-width='12' stroke-linecap='round'/%3E%3C/svg%3E">
 
+<!-- PWA -->
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#FF3B30">
+<link rel="apple-touch-icon" href="/static/icon-192.svg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Wokker Admin">
+
 <style>
   :root {
     --bg: #F5F5F7; --card-bg: #FFFFFF; --text-main: #1C1C1E;
@@ -700,7 +708,6 @@ document.querySelectorAll('.nav-item').forEach(btn => {
   btn.addEventListener('click', () => { closeSidebar(); navigate(btn.dataset.sec); });
 });
 
-// FIX #1: navigate ловит ошибки async-лоадеров
 function navigate(sec) {
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.sec === sec));
   $('page-title').textContent = SECTION_TITLES[sec];
@@ -741,6 +748,7 @@ async function loadDashboard() {
   const attention = [];
   if (stats.questions_open > 0) attention.push(`❓ ${stats.questions_open} вопросов без ответа`);
   if (canPublishNews() && stats.news_pending > 0) attention.push(`💭 ${stats.news_pending} новостей на модерации`);
+
   $('page-content').innerHTML = `
     <div class="stats-grid">
       <div class="stat-card accent"><div class="label">Сегодня</div><div class="value">+${stats.new_today}</div><div class="hint">новых</div></div>
@@ -751,7 +759,42 @@ async function loadDashboard() {
     ${attention.length ? `
       <div class="chart-card"><h3>Требует внимания</h3>
         ${attention.map(a => `<div style="padding:12px;background:#FFF4E0;border-radius:10px;color:#C77700;font-weight:600;margin-bottom:8px;">${a}</div>`).join('')}
-      </div>` : ''}`;
+      </div>` : ''}
+    <div id="medbook-alerts-box"></div>`;
+
+  // Асинхронно подгружаем алерты по медкнижкам
+  try {
+    const alerts = await api('/api/admin/medbook-alerts', {});
+    const box = $('medbook-alerts-box');
+    if (!box) return;
+    if (alerts.expired_count === 0 && alerts.expiring_count === 0) {
+      box.innerHTML = `<div class="chart-card" style="margin-top:16px;">
+        <h3>🩺 Медкнижки</h3>
+        <div style="color:var(--green); font-weight:600;">✅ Все медкнижки в порядке</div>
+      </div>`;
+      return;
+    }
+    let html = `<div class="chart-card" style="margin-top:16px;">
+      <h3>🩺 Медкнижки требуют внимания</h3>`;
+    if (alerts.expired_count > 0) {
+      html += `<div style="margin-bottom:16px;">
+        <div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:8px;">🔴 Просрочены (${alerts.expired_count})</div>
+        ${alerts.expired.map(u => `<div style="padding:8px 12px;background:var(--accent-soft);border-radius:8px;margin-bottom:6px;font-size:13px;"><b>${esc(u.full_name)}</b> · ${esc(u.position || '—')}</div>`).join('')}
+        ${alerts.expired_count > alerts.expired.length ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">…и ещё ${alerts.expired_count - alerts.expired.length}</div>` : ''}
+      </div>`;
+    }
+    if (alerts.expiring_count > 0) {
+      html += `<div>
+        <div style="font-size:13px;font-weight:700;color:#C77700;margin-bottom:8px;">⚠️ Скоро истекают (${alerts.expiring_count})</div>
+        ${alerts.expiring.map(u => `<div style="padding:8px 12px;background:var(--amber-soft);border-radius:8px;margin-bottom:6px;font-size:13px;"><b>${esc(u.full_name)}</b> · ${esc(u.position || '—')}</div>`).join('')}
+        ${alerts.expiring_count > alerts.expiring.length ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">…и ещё ${alerts.expiring_count - alerts.expiring.length}</div>` : ''}
+      </div>`;
+    }
+    html += `</div>`;
+    box.innerHTML = html;
+  } catch (e) {
+    // алерты — не критично, тихо игнорируем
+  }
 }
 
 /* ================== USERS ================== */
@@ -986,7 +1029,6 @@ async function openUserEditor(uid) {
       api('/api/admin/positions', {}),
     ]);
     const u = data.user;
-    // FIX #4: обычный админ не может редактировать супер-админа
     const targetIsLocked = u.is_super_admin && !isSuperAdmin();
     const canEdit = hasPerm('users_edit') && !targetIsLocked;
     const canFire = hasPerm('users_fire');
@@ -999,7 +1041,6 @@ async function openUserEditor(uid) {
       else if (mbStatus === 'expiring') mbBadge = '<span class="tag amber">⚠️ Скоро истекает</span>';
       else mbBadge = '<span class="tag red">❌ Недействительна</span>';
     }
-    // FIX #3: не показываем «Уволить» для админа (не super), если ты не super
     const showFireBtn = canFire && !u.is_super_admin && u.user_id !== ME.user_id
                         && !u.is_fired && (!u.is_admin || isSuperAdmin());
 
@@ -1310,7 +1351,6 @@ async function openMedbookEditor(userId) {
       await api('/api/admin/medbook/save', { user_id: userId, medbook: newMb });
       toast('Медкнижка сохранена', 'success');
       closeModal();
-      // FIX #5: обновляем только ту страницу, на которой мы находимся
       if (document.querySelector('#page-content [data-mb-tab]')) loadMedbooks();
       if (document.querySelector('#users-tbody')) refreshUsersTable(_usersCurrentSearch);
     } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
@@ -1384,7 +1424,6 @@ function openPermEditor(uid, admins) {
   const a = admins.find(x => x.user_id === uid);
   if (!a) return;
   const perms = a.permissions || {};
-  // FIX #2: используем <div>, чтобы клик по тексту не давал двойной toggle
   const rows = PERMISSIONS_LIST.map(p => `
     <div class="perm-item ${perms[p.key] ? 'checked' : ''}" data-perm="${p.key}">
       <input type="checkbox" ${perms[p.key] ? 'checked' : ''} data-perm-check="${p.key}">
@@ -1801,7 +1840,6 @@ async function loadPositions() {
     }));
   }
 }
-// FIX #6: различаем duplicate и остальные ошибки
 function openPosAdd() {
   openModal('Новая должность', `
     <div class="form-group"><label>Название</label><input class="form-input" id="p-name" placeholder="Например: Стажёр"></div>
@@ -1881,6 +1919,13 @@ async function loadAudit() {
   $('page-content').innerHTML = `<div class="table-card"><div class="table-wrap"><table>
     <thead><tr><th>Когда</th><th>Действие</th><th>Цель</th></tr></thead>
     <tbody>${rows || '<tr><td colspan="3"><div class="empty">История пуста</div></td></tr>'}</tbody></table></div></div>`;
+}
+
+/* ================== PWA ================== */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
 }
 
 /* ================== INIT ================== */

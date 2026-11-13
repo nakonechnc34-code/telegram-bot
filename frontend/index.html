@@ -190,13 +190,56 @@
   /* Карточка для текста или таблицы */
   .std-content-card { background: #fff; border-radius: var(--radius-sm); padding: 24px; box-shadow: var(--shadow); margin-bottom: 24px; }
   
-  .std-detail-text { font-size: 16px; color: #333; line-height: 1.7; font-weight: 500; }
-  .std-detail-text p { margin-bottom: 12px; }
-  .std-detail-text ul, .std-detail-text ol { margin-left: 20px; margin-bottom: 12px; }
-  .std-detail-text li { margin-bottom: 6px; }
-  .std-detail-text b, .std-detail-text strong { font-weight: 800; }
-  .std-detail-text h1, .std-detail-text h2, .std-detail-text h3 { margin-top: 20px; margin-bottom: 10px; color: var(--text-main); font-weight: 800; }
-  .std-detail-text span { font-family: inherit !important; }
+  /* ====== ЖЕСТКИЕ СТИЛИ ДЛЯ ТЕКСТА СТАНДАРТА ====== */
+  .std-detail-text {
+    font-size: 15px !important;
+    line-height: 1.6 !important;
+    color: #333;
+    font-weight: 500;
+    word-break: break-word;
+  }
+  
+  /* Заставляем все внутренние теги (p, span, div) быть нормального размера */
+  .std-detail-text *, 
+  .std-detail-text p, 
+  .std-detail-text span, 
+  .std-detail-text div {
+    font-size: 15px !important;
+    font-family: inherit !important;
+    line-height: 1.6 !important;
+  }
+
+  /* Заголовки делаем чуть больше, но не огромными */
+  .std-detail-text h1, 
+  .std-detail-text h2, 
+  .std-detail-text h3, 
+  .std-detail-text h4 {
+    font-size: 18px !important;
+    font-weight: 800;
+    margin-top: 20px;
+    margin-bottom: 12px;
+    color: var(--text-main);
+  }
+
+  /* Жирный текст оставляем жирным */
+  .std-detail-text b, 
+  .std-detail-text strong {
+    font-weight: 800;
+    color: var(--text-main);
+  }
+
+  /* Красиво оформляем списки */
+  .std-detail-text ul, 
+  .std-detail-text ol {
+    margin-left: 20px;
+    margin-bottom: 16px;
+    padding-left: 0;
+  }
+  .std-detail-text li {
+    font-size: 15px !important;
+    margin-bottom: 8px;
+    list-style-position: outside;
+  }
 
   .std-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .std-table { width: 100%; border-collapse: collapse; text-align: left; }
@@ -206,7 +249,7 @@
   .std-table tr:nth-child(even) { background: #FAFAFA; }
 
   /* Карточка скачивания файла */
-  .std-file-card { background: #fff; border-radius: var(--radius-sm); padding: 20px; box-shadow: var(--shadow); border: 1px solid var(--border); display: flex; align-items: center; gap: 16px; transition: transform 0.2s; }
+  .std-file-card { background: #fff; border-radius: var(--radius-sm); padding: 20px; box-shadow: var(--shadow); border: 1px solid var(--border); display: flex; align-items: center; gap: 16px; transition: transform 0.2s; cursor: pointer; }
   .std-file-card:active { transform: scale(0.98); }
   .std-file-icon { width: 48px; height: 48px; border-radius: 14px; background: var(--blue-soft); color: var(--blue); display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
   .std-file-info { flex: 1; min-width: 0; }

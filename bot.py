@@ -1170,8 +1170,11 @@ async def handle_admin_standard_add(request):
     file_url = body.get("file_url") or ""
     file_name = body.get("file_name") or ""
     
-    if not title or not text or len(title) > 200 or len(text) > 10000:
-        return web.json_response({"error": "invalid_or_too_long"}, status=400)
+    # Разделяем ошибки для удобства отладки
+    if not title: return web.json_response({"error": "title_required"}, status=400)
+    if not text: return web.json_response({"error": "text_required"}, status=400)
+    if len(title) > 200: return web.json_response({"error": "title_too_long"}, status=400)
+    if len(text) > 200000: return web.json_response({"error": "text_too_long"}, status=400)
 
     if not can_publish:
         status = "pending"
@@ -1200,8 +1203,10 @@ async def handle_admin_standard_update(request):
     updates = {k: body[k] for k in allowed if k in body}
     if not updates: return web.json_response({"ok": True})
 
+    if "title" in updates and not updates["title"]: return web.json_response({"error": "title_required"}, status=400)
     if "title" in updates and len(updates["title"]) > 200: return web.json_response({"error": "title_too_long"}, status=400)
-    if "body" in updates and len(updates["body"]) > 10000: return web.json_response({"error": "body_too_long"}, status=400)
+    if "body" in updates and not updates["body"]: return web.json_response({"error": "text_required"}, status=400)
+    if "body" in updates and len(updates["body"]) > 200000: return web.json_response({"error": "text_too_long"}, status=400)
 
     set_clause = sql.SQL(", ").join(sql.SQL("{} = %s").format(sql.Identifier(k)) for k in updates)
     query = sql.SQL("UPDATE standards SET {} WHERE id = %s").format(set_clause)
@@ -1796,7 +1801,6 @@ async def handle_uploaded_file(request):
         return web.Response(status=403)
     if not os.path.exists(safe_path): return web.Response(status=404)
     
-    # Попытка скачать файл вместо просмотра
     headers = {}
     if request.query.get("download"):
         headers["Content-Disposition"] = f'attachment; filename="{os.path.basename(filename)}"'

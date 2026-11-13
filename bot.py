@@ -59,7 +59,7 @@ LOGIN_RE = re.compile(r"^[a-z]{3}\d{2}$")
 SESSION_TTL_DAYS = 30
 
 # ============= RATE LIMITING =============
-_login_attempts = {}  # ip -> [timestamps]
+_login_attempts = {}
 _login_lock = threading.Lock()
 
 def _check_rate_limit(ip):
@@ -67,7 +67,6 @@ def _check_rate_limit(ip):
     with _login_lock:
         if ip not in _login_attempts:
             _login_attempts[ip] = []
-        # Очищаем старые попытки (окно 60 секунд)
         _login_attempts[ip] = [t for t in _login_attempts[ip] if now - t < 60]
         if len(_login_attempts[ip]) >= 5:
             return False
@@ -100,6 +99,8 @@ PERMISSIONS_LIST = [
     {"key": "faq_edit", "label": "Редактировать FAQ"},
     {"key": "positions_edit", "label": "Управлять должностями"},
     {"key": "questions_reply", "label": "Отвечать на вопросы"},
+    {"key": "certification_edit", "label": "Управлять вопросами сертификации"},
+    {"key": "academy_edit", "label": "Управлять Академией"},
 ]
 PERM_KEYS = [p["key"] for p in PERMISSIONS_LIST]
 REF_TYPE_PERM = {
@@ -415,6 +416,41 @@ def init_db_and_seed():
     ]:
         _run_migration(_sql, "standards alter")
 
+    # ===== CERTIFICATION =====
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS certification_questions (
+            id SERIAL PRIMARY KEY, question TEXT NOT NULL, 
+            option_a TEXT NOT NULL, option_b TEXT NOT NULL, option_c TEXT NOT NULL, option_d TEXT NOT NULL,
+            correct_option TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """, "CREATE certification_questions")
+
+    # ===== ACADEMY =====
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS academy_courses (
+            id SERIAL PRIMARY KEY, title TEXT NOT NULL, description TEXT, color TEXT DEFAULT 'pink', icon TEXT DEFAULT '🚀', created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """, "CREATE academy_courses")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS academy_lessons (
+            id SERIAL PRIMARY KEY, course_id INT REFERENCES academy_courses(id) ON DELETE CASCADE, title TEXT NOT NULL, content TEXT, sort INT DEFAULT 0
+        )
+    """, "CREATE academy_lessons")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS academy_tests (
+            id SERIAL PRIMARY KEY, course_id INT REFERENCES academy_courses(id) ON DELETE CASCADE, 
+            question TEXT NOT NULL, options JSONB NOT NULL, correct_index INT NOT NULL
+        )
+    """, "CREATE academy_tests")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS academy_progress (
+            user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE, course_id INT REFERENCES academy_courses(id) ON DELETE CASCADE,
+            status TEXT DEFAULT 'in_progress', score INT DEFAULT 0, updated_at TIMESTAMPTZ DEFAULT NOW(),
+            PRIMARY KEY (user_id, course_id)
+        )
+    """, "CREATE academy_progress")
+    # =====================
+
     _run_migration("""
         CREATE TABLE IF NOT EXISTS faq (id SERIAL PRIMARY KEY, question TEXT NOT NULL, answer TEXT NOT NULL, category TEXT DEFAULT '')
     """, "CREATE faq")
@@ -465,10 +501,28 @@ def init_db_and_seed():
             cur.execute("SELECT COUNT(*) FROM medbook_vaccines")
             if cur.fetchone()[0] == 0:
                 for v in VACCINES_SEED: cur.execute("INSERT INTO medbook_vaccines (name, required, validity_months, sort) VALUES (%s,%s,%s,%s)", (v["name"], v["required"], v["validity_months"], v["sort"]))
+            
             cur.execute("SELECT COUNT(*) FROM news")
             if cur.fetchone()[0] == 0:
                 cur.execute("INSERT INTO news (title, body, level, status) VALUES (%s,%s,%s,%s)", ("Открытие новой точки", "Скоро открываем новый ресторан!", "urgent", "published"))
                 cur.execute("INSERT INTO news (title, body, level, status) VALUES (%s,%s,%s,%s)", ("Обновление меню", "Появились новые позиции в меню.", "normal", "published"))
+
+            cur.execute("SELECT COUNT(*) FROM certification_questions")
+            if cur.fetchone()[0] == 0:
+                cur.execute("INSERT INTO certification_questions (question, option_a, option_b, option_c, option_d, correct_option) VALUES (%s,%s,%s,%s,%s,%s)", ("Что нужно сделать перед открытием смены?", "Проверить чистоту и кассу", "Пойти покурить", "Позвонить другу", "Ничего", "a"))
+
+            cur.execute("SELECT COUNT(*) FROM academy_courses")
+            if cur.fetchone()[0] == 0:
+                cur.execute("INSERT INTO academy_courses (title, description, color, icon) VALUES (%s,%s,%s,%s) RETURNING id", ("Основы сервиса", "Как общаться с гостями, чтобы они возвращались.", "pink", "💖"))
+                c1_id = cur.fetchone()[0]
+                cur.execute("INSERT INTO academy_lessons (course_id, title, content, sort) VALUES (%s,%s,%s,%s)", (c1_id, "Улыбка решает всё", "Всегда улыбайтесь гостю. Это создает позитивное настроение.", 0))
+                cur.execute("INSERT INTO academy_lessons (course_id, title, content, sort) VALUES (%s,%s,%s,%s)", (c1_id, "Как реагировать на жалобы", "Слушайте, не перебивайте, предложите решение.", 1))
+                cur.execute("INSERT INTO academy_tests (course_id, question, options, correct_index) VALUES (%s,%s,%s,%s)", (c1_id, "Что делать, если гость жалуется?", '["Спорить", "Слушать и предложить решение", "Игнорировать", "Позвать охрану"]', 1))
+
+                cur.execute("INSERT INTO academy_courses (title, description, color, icon) VALUES (%s,%s,%s,%s) RETURNING id", ("Гигиена и безопасность", "Базовые правила, которые спасают жизни.", "blue", "🧼"))
+                c2_id = cur.fetchone()[0]
+                cur.execute("INSERT INTO academy_lessons (course_id, title, content, sort) VALUES (%s,%s,%s,%s)", (c2_id, "Мытье рук", "Мойте руки не менее 20 секунд с мылом.", 0))
+                cur.execute("INSERT INTO academy_tests (course_id, question, options, correct_index) VALUES (%s,%s,%s,%s)", (c2_id, "Сколько секунд нужно мыть руки?", '["5 секунд", "10 секунд", "20 секунд", "1 минуту"]', 2))
 
             cur.execute("SELECT COUNT(*) FROM users WHERE is_super_admin = TRUE")
             if cur.fetchone()[0] == 0:
@@ -604,7 +658,6 @@ async def handle_auth_login(request):
 
     user = await _run(_sync_get_user_by_login, login)
     if not user or not verify_password(password, user.get("password_hash") or ""):
-        _reset_rate_limit(ip) # Сбрасываем счетчик только при успехе? Нет, оставляем для накопления
         return web.json_response({"error": "invalid_credentials"}, status=401)
     
     _reset_rate_limit(ip)
@@ -833,7 +886,6 @@ def _sync_update_user(uid, updates):
                 if k in allowed_simple: 
                     if k == "citizenship_id" and v == "": v = None
                     elif k == "citizenship_id" and v is not None: v = int(v)
-                    # Используем sql.Identifier для безопасности
                     query = sql.SQL("UPDATE users SET {} = %s WHERE user_id = %s").format(sql.Identifier(k))
                     cur.execute(query, (v, uid))
             if "password" in updates and updates["password"]:
@@ -1257,7 +1309,6 @@ async def handle_admin_news_update(request):
     updates = {k: body[k] for k in allowed if k in body}
     if not updates: return web.json_response({"ok": True})
     
-    # Валидация длины
     if "title" in updates and len(updates["title"]) > 200: return web.json_response({"error": "title_too_long"}, status=400)
     if "body" in updates and len(updates["body"]) > 5000: return web.json_response({"error": "body_too_long"}, status=400)
 
@@ -1360,7 +1411,6 @@ async def handle_admin_standard_update(request):
     updates = {k: body[k] for k in allowed if k in body}
     if not updates: return web.json_response({"ok": True})
 
-    # Валидация длины
     if "title" in updates and len(updates["title"]) > 200: return web.json_response({"error": "title_too_long"}, status=400)
     if "body" in updates and len(updates["body"]) > 10000: return web.json_response({"error": "body_too_long"}, status=400)
 
@@ -1406,6 +1456,195 @@ async def handle_admin_standard_reject(request):
     with get_conn() as conn:
         with conn.cursor() as cur: cur.execute("DELETE FROM standards WHERE id = %s AND status = 'pending'", (sid,))
     return web.json_response({"ok": True})
+
+# ============= CERTIFICATION =============
+def _sync_certification_list():
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM certification_questions ORDER BY created_at DESC")
+            return [dict(r) for r in cur.fetchall()]
+
+async def handle_admin_certification_list(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    return web.json_response({"questions": await _run(_sync_certification_list)})
+
+async def handle_admin_certification_add(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "certification_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    q = (body.get("question") or "").strip()
+    a = (body.get("option_a") or "").strip()
+    b = (body.get("option_b") or "").strip()
+    c = (body.get("option_c") or "").strip()
+    d = (body.get("option_d") or "").strip()
+    correct = (body.get("correct_option") or "").strip().lower()
+    
+    if not q or not a or not b or not c or not d or correct not in ("a","b","c","d"):
+        return web.json_response({"error": "invalid"}, status=400)
+        
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO certification_questions (question, option_a, option_b, option_c, option_d, correct_option) VALUES (%s,%s,%s,%s,%s,%s)", (q, a, b, c, d, correct))
+    return web.json_response({"ok": True})
+
+async def handle_admin_certification_delete(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "certification_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    qid = int(body.get("id", 0))
+    if qid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    with get_conn() as conn:
+        with conn.cursor() as cur: cur.execute("DELETE FROM certification_questions WHERE id = %s", (qid,))
+    return web.json_response({"ok": True})
+
+async def handle_staff_certification_get(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id, question, option_a, option_b, option_c, option_d FROM certification_questions ORDER BY random()")
+            questions = [dict(r) for r in cur.fetchall()]
+    
+    return web.json_response({"questions": questions})
+
+async def handle_staff_certification_submit(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    answers = body.get("answers") or {}
+    if not answers:
+        return web.json_response({"error": "no_answers"}, status=400)
+        
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id, correct_option FROM certification_questions")
+            correct_db = {str(r["id"]): r["correct_option"] for r in cur.fetchall()}
+            
+            total = len(correct_db)
+            if total == 0:
+                return web.json_response({"ok": True, "passed": True, "score": 100, "msg": "Вопросов нет, тест пройден автоматически"})
+                
+            correct_count = 0
+            for qid, ans in answers.items():
+                if correct_db.get(qid) == ans:
+                    correct_count += 1
+                    
+            score = int((correct_count / total) * 100)
+            passed = score >= 80
+            
+            if passed:
+                cur.execute("UPDATE users SET is_certified = TRUE WHERE user_id = %s", (user["user_id"],))
+                cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (user["user_id"], "certification_pass", "user", str(user["user_id"]), f"score={score}"))
+                
+    return web.json_response({"ok": True, "passed": passed, "score": score})
+
+# ============= ACADEMY =============
+def _sync_academy_courses(user_id):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT c.*, 
+                       COALESCE(p.status, 'new') as status,
+                       COALESCE(p.score, 0) as score
+                FROM academy_courses c
+                LEFT JOIN academy_progress p ON c.id = p.course_id AND p.user_id = %s
+                ORDER BY c.id
+            """, (user_id,))
+            return [dict(r) for r in cur.fetchall()]
+
+async def handle_academy_courses(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    courses = await _run(_sync_academy_courses, user["user_id"])
+    return web.json_response({"courses": courses})
+
+def _sync_academy_course_detail(course_id):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM academy_courses WHERE id = %s", (course_id,))
+            course = cur.fetchone()
+            if not course: return None, None, None
+            
+            cur.execute("SELECT * FROM academy_lessons WHERE course_id = %s ORDER BY sort", (course_id,))
+            lessons = [dict(r) for r in cur.fetchall()]
+            
+            cur.execute("SELECT * FROM academy_tests WHERE course_id = %s", (course_id,))
+            tests = [dict(r) for r in cur.fetchall()]
+            
+            return dict(course), lessons, tests
+
+async def handle_academy_course_detail(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    cid = int(body.get("course_id", 0))
+    if cid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    
+    course, lessons, tests = await _run(_sync_academy_course_detail, cid)
+    if not course: return web.json_response({"error": "not_found"}, status=404)
+    
+    # Обрезаем правильные ответы для клиента
+    for t in tests:
+        del t["correct_index"]
+        
+    return web.json_response({"course": course, "lessons": lessons, "tests": tests})
+
+async def handle_academy_submit_test(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    cid = int(body.get("course_id", 0))
+    answers = body.get("answers") or {}
+    
+    if cid <= 0 or not answers:
+        return web.json_response({"error": "invalid_data"}, status=400)
+        
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id, correct_index FROM academy_tests WHERE course_id = %s", (cid,))
+            correct_db = {str(r["id"]): r["correct_index"] for r in cur.fetchall()}
+            
+            total = len(correct_db)
+            if total == 0:
+                return web.json_response({"ok": True, "passed": True, "score": 100})
+                
+            correct_count = 0
+            for qid, ans in answers.items():
+                if str(correct_db.get(qid)) == str(ans):
+                    correct_count += 1
+                    
+            score = int((correct_count / total) * 100)
+            passed = score >= 80
+            
+            if passed:
+                cur.execute("""
+                    INSERT INTO academy_progress (user_id, course_id, status, score, updated_at)
+                    VALUES (%s, %s, 'completed', %s, NOW())
+                    ON CONFLICT (user_id, course_id) DO UPDATE 
+                    SET status = 'completed', score = GREATEST(academy_progress.score, EXCLUDED.score), updated_at = NOW()
+                """, (user["user_id"], cid, score))
+                
+                cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", 
+                            (user["user_id"], "academy_test_pass", "course", str(cid), f"score={score}"))
+                
+    return web.json_response({"ok": True, "passed": passed, "score": score})
 
 # ============= FAQ / POSITIONS / QUESTIONS =============
 def _sync_faq_list():
@@ -1746,7 +1985,6 @@ async def handle_uploaded_file(request):
     data_dir = os.getenv("DATA_DIR", "/data")
     upload_dir = os.path.abspath(os.path.join(data_dir, "uploads"))
     
-    # Безопасная проверка пути
     safe_path = os.path.abspath(os.path.join(upload_dir, os.path.basename(filename)))
     if not safe_path.startswith(upload_dir + os.sep):
         logging.warning(f"Path traversal attempt blocked: {filename}")
@@ -1758,6 +1996,7 @@ async def handle_uploaded_file(request):
 # ============= STATIC =============
 _INDEX_CACHE = {"data": None, "mtime": 0.0}
 _ADMIN_CACHE = {"data": None, "mtime": 0.0}
+_ACADEMY_CACHE = {"data": None, "mtime": 0.0}
 _STATIC_FILES_CACHE = {}
 
 def _serve_file(name, cache):
@@ -1779,6 +2018,11 @@ async def handle_index(request):
 async def handle_admin_page(request):
     data = _serve_file("admin.html", _ADMIN_CACHE)
     if not data: return web.Response(text="frontend/admin.html not found", status=404)
+    return web.Response(body=data, content_type="text/html", charset="utf-8")
+
+async def handle_academy_page(request):
+    data = _serve_file("academy.html", _ACADEMY_CACHE)
+    if not data: return web.Response(text="frontend/academy.html not found", status=404)
     return web.Response(body=data, content_type="text/html", charset="utf-8")
 
 async def _send_static_file(name, content_type):
@@ -1823,14 +2067,12 @@ async def gzip_middleware(request, handler):
             response.headers["Vary"] = "Accept-Encoding"
     return response
 
-# ============= SECURITY HEADERS MIDDLEWARE =============
 @web.middleware
 async def security_headers_middleware(request, handler):
     response = await handler(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    # CSP: разрешаем только self и нужные CDN
     csp = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
@@ -1843,13 +2085,14 @@ async def security_headers_middleware(request, handler):
     response.headers["Content-Security-Policy"] = csp
     return response
 
-# Порядок middleware важен: security_headers -> gzip -> error
 app = web.Application(middlewares=[error_middleware, gzip_middleware, security_headers_middleware], client_max_size=20 * 1024 * 1024)
 
 # ============= ROUTES =============
 app.router.add_get("/", handle_index)
 app.router.add_get("/admin", handle_admin_page)
 app.router.add_get("/admin/", handle_admin_page)
+app.router.add_get("/academy", handle_academy_page)
+app.router.add_get("/academy/", handle_academy_page)
 app.router.add_get("/favicon.ico", handle_favicon)
 app.router.add_get("/api/health", handle_health)
 app.router.add_get("/manifest.json", handle_manifest)
@@ -1862,6 +2105,12 @@ app.router.add_post("/api/auth/login", handle_auth_login_staff)
 app.router.add_post("/api/auth/logout", handle_auth_logout)
 app.router.add_post("/api/bootstrap", handle_bootstrap)
 app.router.add_post("/api/questions", handle_questions_staff)
+app.router.add_post("/api/certification/get", handle_staff_certification_get)
+app.router.add_post("/api/certification/submit", handle_staff_certification_submit)
+
+app.router.add_post("/api/academy/courses", handle_academy_courses)
+app.router.add_post("/api/academy/course", handle_academy_course_detail)
+app.router.add_post("/api/academy/submit-test", handle_academy_submit_test)
 
 app.router.add_post("/api/admin/login", handle_auth_login)
 app.router.add_post("/api/admin/me", handle_admin_me)
@@ -1910,6 +2159,10 @@ app.router.add_post("/api/admin/standard/update", handle_admin_standard_update)
 app.router.add_post("/api/admin/standard/delete", handle_admin_standard_delete)
 app.router.add_post("/api/admin/standard/approve", handle_admin_standard_approve)
 app.router.add_post("/api/admin/standard/reject", handle_admin_standard_reject)
+
+app.router.add_post("/api/admin/certification", handle_admin_certification_list)
+app.router.add_post("/api/admin/certification/add", handle_admin_certification_add)
+app.router.add_post("/api/admin/certification/delete", handle_admin_certification_delete)
 
 app.router.add_post("/api/admin/faq", handle_admin_faq)
 app.router.add_post("/api/admin/faq/add", handle_admin_faq_add)

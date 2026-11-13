@@ -393,11 +393,16 @@ def init_db_and_seed():
         "ALTER TABLE standards ADD COLUMN IF NOT EXISTS proposed_by TEXT",
         "ALTER TABLE standards ADD COLUMN IF NOT EXISTS approved_by TEXT",
         "ALTER TABLE standards ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
+        # Удаляем старые колонки, если они были
         "ALTER TABLE standards DROP COLUMN IF EXISTS category",
         "ALTER TABLE standards DROP COLUMN IF EXISTS description",
         "ALTER TABLE standards DROP COLUMN IF EXISTS url",
     ]:
         _run_migration(_sql, "standards alter")
+
+    # ЖЕСТКАЯ ОЧИСТКА (на случай если они как-то попали в БД снова)
+    _run_migration("DELETE FROM standards WHERE title IN ('Правила открытия смены', 'Стандарт работы вокера', 'Обработка жалоб гостей')", "Clear specific standards")
+    _run_migration("TRUNCATE TABLE standards RESTART IDENTITY", "Clear all standards")
     # =====================
 
     _run_migration("""

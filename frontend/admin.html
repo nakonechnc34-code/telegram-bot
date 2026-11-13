@@ -2191,6 +2191,8 @@ function openNewsEdit(id, news) {
 
 /* ================== STANDARDS ================== */
 let _uploadedStandardImageUrl = '';
+let _uploadedStandardFileUrl = '';
+let _uploadedStandardFileName = '';
 
 async function loadStandards() {
   const data = await api('/api/admin/standards', {});
@@ -2236,6 +2238,7 @@ async function loadStandards() {
         <td data-label="Номер"><span class="tag gray">${esc(n.number || '—')}</span></td>
         <td data-label="Группа"><span class="tag purple">${esc(n.group_name || 'Общее')}</span></td>
         <td data-label="Заголовок"><b>${esc(n.title)}</b></td>
+        <td data-label="Файл">${n.file_url ? '📎 Да' : '—'}</td>
         <td data-label="Статус">${status}</td>
         <td class="actions-cell" data-label="">
           ${canEdit ? `<button class="icon-btn" data-title="${n.id}">✏️</button>` : ''}
@@ -2248,8 +2251,8 @@ async function loadStandards() {
     ${pendingHtml}
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Фото</th><th>Номер</th><th>Группа</th><th>Заголовок</th><th>Статус</th><th></th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="6"><div class="empty">Стандартов нет</div></td></tr>'}</tbody>
+        <thead><tr><th>Фото</th><th>Номер</th><th>Группа</th><th>Заголовок</th><th>Файл</th><th>Статус</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="7"><div class="empty">Стандартов нет</div></td></tr>'}</tbody>
       </table>
     </div>`;
     
@@ -2281,30 +2284,183 @@ async function loadStandards() {
   }));
 }
 
+function renderTableEditor(headers, rows) {
+  let headerHtml = headers.map((h, i) => `<th style="padding:4px;"><input class="form-input" style="padding:8px; border-radius:8px; font-size:13px; text-align:center;" value="${esc(h)}" onchange="updateTableHeaders()" data-col="${i}"></th>`).join('');
+  let rowsHtml = rows.map((row, rIdx) => `
+    <tr>
+      ${headers.map((_, cIdx) => `
+        <td style="padding:4px;">
+          <input class="form-input" style="padding:8px; border-radius:8px; font-size:13px;" value="${esc(row[cIdx] || '')}" onchange="updateTableCell(${rIdx}, ${cIdx})">
+        </td>
+      `).join('')}
+      <td style="padding:4px;"><button type="button" class="icon-btn danger small" onclick="removeTableRow(${rIdx})">✕</button></td>
+    </tr>
+  `).join('');
+
+  return `
+    <div style="overflow-x:auto; padding-bottom:8px;">
+      <table style="width:100%; border-collapse:collapse; min-width:600px;">
+        <thead><tr>${headerHtml}<th></th></tr></thead>
+        <tbody id="table-editor-rows">${rowsHtml}</tbody>
+      </table>
+    </div>
+    <div style="display:flex; gap:8px; margin-top:16px;">
+      <button type="button" class="btn ghost small" onclick="addTableRow()">+ Добавить строку</button>
+    </div>
+  `;
+}
+
+let _tableHeaders = [];
+let _tableRows = [];
+
+window.updateTableHeaders = function() {
+  const newHeaders = Array.from(document.querySelectorAll('#std-table-area thead input')).map(i => i.value);
+  _tableHeaders = newHeaders;
+  _tableRows = _tableRows.map(r => {
+    const newR = [];
+    for(let i=0; i<newHeaders.length; i++) newR.push(r[i] || '');
+    return newR;
+  });
+  document.getElementById('table-editor-container').innerHTML = renderTableEditor(_tableHeaders, _tableRows);
+};
+window.updateTableCell = function(rIdx, cIdx) {
+  const inputs = document.querySelectorAll(`#table-editor-rows tr:nth-child(${rIdx+1}) input`);
+  _tableRows[rIdx][cIdx] = inputs[cIdx].value;
+};
+window.addTableRow = function() {
+  _tableRows.push(Array(_tableHeaders.length).fill(''));
+  document.getElementById('table-editor-container').innerHTML = renderTableEditor(_tableHeaders, _tableRows);
+};
+window.removeTableRow = function(rIdx) {
+  _tableRows.splice(rIdx, 1);
+  document.getElementById('table-editor-container').innerHTML = renderTableEditor(_tableHeaders, _tableRows);
+};
+
+window.parsePastedTable = function(text) {
+  const rows = text.trim().split('\n').map(line => line.split('\t'));
+  if (rows.length === 0) return;
+  
+  _tableHeaders = rows[0];
+  _tableRows = rows.slice(1).map(r => {
+      const newR = [];
+      for(let i=0; i<_tableHeaders.length; i++) newR.push(r[i] || '');
+      return newR;
+  });
+  
+  document.getElementById('table-editor-container').innerHTML = renderTableEditor(_tableHeaders, _tableRows);
+  const pasteArea = document.getElementById('paste-table-area');
+  if (pasteArea) {
+      pasteArea.value = '';
+      pasteArea.placeholder = '✅ Таблица успешно вставлена! Можете отредактировать её ниже.';
+  }
+};
+
+function switchContentTypeUI(type) {
+  if (type === 'table') {
+    $('std-text-area').style.display = 'none';
+    $('std-table-area').style.display = 'block';
+    if (!_tableHeaders.length) {
+      _tableHeaders = ['Колонка 1', 'Колонка 2', 'Колонка 3'];
+      _tableRows = [['', '', '']];
+    }
+    $('table-editor-container').innerHTML = renderTableEditor(_tableHeaders, _tableRows);
+  } else {
+    $('std-text-area').style.display = 'block';
+    $('std-table-area').style.display = 'none';
+  }
+}
+
+function renderFilePreviewUI() {
+  const box = $('std-file-preview-box');
+  if (!box) return;
+  if (_uploadedStandardFileUrl) {
+    box.style.display = 'flex';
+    $('std-file-name').textContent = _uploadedStandardFileName || 'Файл';
+    $('std-file-status').textContent = 'Готов к сохранению';
+    $('std-file-btn').style.display = 'none';
+  } else {
+    box.style.display = 'none';
+    $('std-file-btn').style.display = 'block';
+  }
+}
+
 function openStdAdd() {
   const canPublishFlag = canPublish();
   _uploadedStandardImageUrl = '';
+  _uploadedStandardFileUrl = '';
+  _uploadedStandardFileName = '';
+  _tableHeaders = [];
+  _tableRows = [];
 
   const groupOpts = STANDARD_GROUPS.map(g => `<option value="${g}">${g}</option>`).join('');
   
   openModal(canPublishFlag ? 'Новый стандарт' : 'Предложить стандарт', `
-    <div class="form-group">
-      <label>Фотография (опционально)</label>
-      <input type="file" id="std-image-file" accept="image/*" style="display: none;">
-      <button type="button" class="btn ghost" id="std-image-btn" style="width: 100%; padding: 20px; border-style:dashed; border-radius:24px;">📷 Прикрепить фото</button>
-      <div id="std-image-preview-box" style="display: none; margin-top: 16px; text-align: center;">
-        <img id="std-image-preview" style="max-width: 100%; max-height: 200px; border-radius: 16px; object-fit: contain;">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Обложка (фото)</label>
+        <input type="file" id="std-image-file" accept="image/*" style="display: none;">
+        <button type="button" class="btn ghost" id="std-image-btn" style="width: 100%; padding: 16px; border-style:dashed; border-radius:24px;">📷 Прикрепить фото</button>
+        <div id="std-image-preview-box" style="display: none; margin-top: 12px; text-align: center;">
+          <img id="std-image-preview" style="max-width: 100%; max-height: 100px; border-radius: 16px; object-fit: contain;">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Документ (PDF, Word, Excel)</label>
+        <input type="file" id="std-file-file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" style="display: none;">
+        <button type="button" class="btn ghost" id="std-file-btn" style="width: 100%; padding: 16px; border-style:dashed; border-radius:24px;">📎 Прикрепить файл</button>
+        <div id="std-file-preview-box" style="display: none; margin-top: 12px; padding: 12px; background: #FAFAFA; border-radius: 12px; align-items: center; gap: 12px;">
+          <span style="font-size: 24px;">📄</span>
+          <div style="flex: 1; min-width: 0;">
+            <div id="std-file-name" style="font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
+            <div id="std-file-status" style="font-size: 12px; color: var(--text-muted);"></div>
+          </div>
+          <button type="button" class="icon-btn danger" onclick="_uploadedStandardFileUrl=''; _uploadedStandardFileName=''; renderFilePreviewUI();">✕</button>
+        </div>
       </div>
     </div>
+
     <div class="form-row">
-      <div class="form-group"><label>Номер стандарта</label><input class="form-input" id="std-number" placeholder="Например: СТ-001"></div>
+      <div class="form-group"><label>Номер стандарта</label><input class="form-input" id="std-number" placeholder="СТ-001"></div>
       <div class="form-group"><label>Группа</label><select class="form-select" id="std-group">${groupOpts}</select></div>
     </div>
     <div class="form-group"><label>Заголовок</label><input class="form-input" id="std-title" maxlength="150"></div>
-    <div class="form-group"><label>Текст стандарта</label><textarea class="form-textarea" id="std-body" style="min-height:200px;"></textarea></div>
+    
+    <div class="form-group">
+      <label>Тип контента</label>
+      <select class="form-select" id="std-content-type" onchange="switchContentTypeUI(this.value)">
+        <option value="text">Обычный текст</option>
+        <option value="table">Таблица</option>
+      </select>
+    </div>
+
+    <div id="std-text-area">
+      <div class="form-group"><label>Текст стандарта</label><textarea class="form-textarea" id="std-body" style="min-height:200px;"></textarea></div>
+    </div>
+
+    <div id="std-table-area" style="display:none; margin-bottom:24px;">
+      <div class="form-group" style="background:var(--green-soft); padding:16px; border-radius:16px; border:1px dashed var(--green);">
+        <label style="color:#1B7A36;">Вставить таблицу из Excel / Word (Ctrl+V)</label>
+        <textarea class="form-textarea" id="paste-table-area" placeholder="Скопируйте таблицу из Excel и вставьте сюда..." style="min-height:80px; font-size:13px; background:#fff; margin-bottom:0;"></textarea>
+        <div class="form-hint" style="color:#1B7A36; opacity:0.8;">После вставки таблица появится ниже. Вы сможете её отредактировать.</div>
+      </div>
+      
+      <label style="display:block; font-size:12px; font-weight:700; color:var(--text-muted); margin-bottom:8px; text-transform:uppercase;">Ручная настройка</label>
+      <div id="table-editor-container"></div>
+    </div>
+
     <div class="form-hint error" id="std-error"></div>
   `, `<button class="btn ghost" onclick="closeModal()">Отмена</button><button class="btn primary" id="create-std-btn">${canPublishFlag ? 'Создать' : 'Предложить'}</button>`);
-  
+
+  const pasteArea = $('paste-table-area');
+  if (pasteArea) {
+    pasteArea.addEventListener('paste', (e) => {
+      setTimeout(() => {
+        const text = e.target.value;
+        if (text.trim()) parsePastedTable(text);
+      }, 100);
+    });
+  }
+
   $('std-image-btn').addEventListener('click', () => $('std-image-file').click());
   $('std-image-file').addEventListener('change', async (e) => {
     const file = e.target.files[0];
@@ -2336,17 +2492,62 @@ function openStdAdd() {
     };
     reader.readAsDataURL(file);
   });
+
+  $('std-file-btn').addEventListener('click', () => $('std-file-file').click());
+  $('std-file-file').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 15 * 1024 * 1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
+    
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const b64 = ev.target.result;
+      
+      const btn = $('std-file-btn');
+      btn.textContent = '⏳ Загрузка...';
+      btn.disabled = true;
+      
+      try {
+        const res = await api('/api/admin/upload', { file_base64: b64, filename: file.name });
+        _uploadedStandardFileUrl = res.url;
+        _uploadedStandardFileName = res.name;
+        renderFilePreviewUI();
+      } catch (err) {
+        toast('Ошибка загрузки файла', 'error');
+        btn.textContent = '📎 Прикрепить файл';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '📎 Прикрепить файл';
+      }
+    };
+    reader.readAsDataURL(file);
+  });
   
   $('create-std-btn').addEventListener('click', async () => {
     const errEl = $('std-error'); errEl.textContent = '';
+    const type = $('std-content-type').value;
+    
     const body = {
       number: $('std-number').value.trim(),
       group_name: $('std-group').value,
       title: $('std-title').value.trim(),
-      body: $('std-body').value.trim(),
-      image_url: _uploadedStandardImageUrl
+      image_url: _uploadedStandardImageUrl,
+      file_url: _uploadedStandardFileUrl,
+      file_name: _uploadedStandardFileName,
+      content_type: type,
+      content_data: type === 'table' ? { headers: _tableHeaders, rows: _tableRows } : null
     };
-    if (!body.title || !body.body) { errEl.textContent = 'Заполните заголовок и текст'; return; }
+    
+    if (type === 'text') {
+      body.body = $('std-body').value.trim();
+      if (!body.body) { errEl.textContent = 'Заполните текст стандарта'; return; }
+    } else {
+      body.body = 'Таблица'; // Заглушка
+      if (!_tableHeaders.length || !_tableRows.length) { errEl.textContent = 'Заполните таблицу'; return; }
+    }
+    
+    if (!body.title) { errEl.textContent = 'Заполните заголовок'; return; }
+
     try {
       const res = await api('/api/admin/standard/add', body);
       const msg = res.status === 'published' ? 'Опубликован' : 'Отправлено на согласование';
@@ -2367,26 +2568,91 @@ function openStdEdit(id, news) {
   if (!n) return;
   
   _uploadedStandardImageUrl = n.image_url || '';
+  _uploadedStandardFileUrl = n.file_url || '';
+  _uploadedStandardFileName = n.file_name || '';
   
   const groupOpts = STANDARD_GROUPS.map(g => `<option value="${g}" ${n.group_name === g ? 'selected' : ''}>${g}</option>`).join('');
+  
+  const isTable = n.content_type === 'table' && n.content_data;
+  if (isTable) {
+    _tableHeaders = n.content_data.headers || [];
+    _tableRows = n.content_data.rows || [];
+  } else {
+    _tableHeaders = [];
+    _tableRows = [];
+  }
 
   openModal('Редактировать стандарт', `
-    <div class="form-group">
-      <label>Фотография</label>
-      <input type="file" id="std-image-file" accept="image/*" style="display: none;">
-      <button type="button" class="btn ghost" id="std-image-btn" style="width: 100%; padding: 20px; border-style:dashed; border-radius:24px;">📷 Заменить фото</button>
-      <div id="std-image-preview-box" style="display: ${n.image_url ? 'block' : 'none'}; margin-top: 16px; text-align: center;">
-        <img id="std-image-preview" src="${esc(n.image_url || '')}" style="max-width: 100%; max-height: 200px; border-radius: 16px; object-fit: contain;">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Обложка (фото)</label>
+        <input type="file" id="std-image-file" accept="image/*" style="display: none;">
+        <button type="button" class="btn ghost" id="std-image-btn" style="width: 100%; padding: 16px; border-style:dashed; border-radius:24px;">📷 Заменить фото</button>
+        <div id="std-image-preview-box" style="display: ${n.image_url ? 'block' : 'none'}; margin-top: 12px; text-align: center;">
+          <img id="std-image-preview" src="${esc(n.image_url || '')}" style="max-width: 100%; max-height: 100px; border-radius: 16px; object-fit: contain;">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Документ (PDF, Word, Excel)</label>
+        <input type="file" id="std-file-file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" style="display: none;">
+        <button type="button" class="btn ghost" id="std-file-btn" style="width: 100%; padding: 16px; border-style:dashed; border-radius:24px; display: ${n.file_url ? 'none' : 'block'};">📎 Прикрепить файл</button>
+        <div id="std-file-preview-box" style="display: ${n.file_url ? 'flex' : 'none'}; margin-top: 12px; padding: 12px; background: #FAFAFA; border-radius: 12px; align-items: center; gap: 12px;">
+          <span style="font-size: 24px;">📄</span>
+          <div style="flex: 1; min-width: 0;">
+            <div id="std-file-name" style="font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${esc(n.file_name || 'Документ')}</div>
+            <div id="std-file-status" style="font-size: 12px; color: var(--text-muted);">Готов к сохранению</div>
+          </div>
+          <button type="button" class="icon-btn danger" onclick="_uploadedStandardFileUrl=''; _uploadedStandardFileName=''; renderFilePreviewUI();">✕</button>
+        </div>
       </div>
     </div>
+
     <div class="form-row">
       <div class="form-group"><label>Номер</label><input class="form-input" id="edit-std-number" value="${esc(n.number || '')}"></div>
       <div class="form-group"><label>Группа</label><select class="form-select" id="edit-std-group">${groupOpts}</select></div>
     </div>
     <div class="form-group"><label>Заголовок</label><input class="form-input" id="edit-std-title" value="${esc(n.title)}"></div>
-    <div class="form-group"><label>Текст</label><textarea class="form-textarea" id="edit-std-body" style="min-height:200px;">${esc(n.body)}</textarea></div>
+    
+    <div class="form-group">
+      <label>Тип контента</label>
+      <select class="form-select" id="edit-std-content-type" onchange="switchContentTypeUI(this.value)">
+        <option value="text" ${!isTable ? 'selected' : ''}>Обычный текст</option>
+        <option value="table" ${isTable ? 'selected' : ''}>Таблица</option>
+      </select>
+    </div>
+
+    <div id="std-text-area" style="display: ${isTable ? 'none' : 'block'};">
+      <div class="form-group"><label>Текст</label><textarea class="form-textarea" id="edit-std-body" style="min-height:200px;">${esc(n.body)}</textarea></div>
+    </div>
+
+    <div id="std-table-area" style="display: ${isTable ? 'block' : 'none'}; margin-bottom:24px;">
+      <div class="form-group" style="background:var(--green-soft); padding:16px; border-radius:16px; border:1px dashed var(--green);">
+        <label style="color:#1B7A36;">Вставить таблицу заново из Excel / Word (Ctrl+V)</label>
+        <textarea class="form-textarea" id="paste-table-area" placeholder="Скопируйте таблицу из Excel и вставьте сюда..." style="min-height:80px; font-size:13px; background:#fff; margin-bottom:0;"></textarea>
+        <div class="form-hint" style="color:#1B7A36; opacity:0.8;">Вставка перезапишет текущую таблицу ниже.</div>
+      </div>
+
+      <label style="display:block; font-size:12px; font-weight:700; color:var(--text-muted); margin-bottom:8px; text-transform:uppercase;">Ручная настройка</label>
+      <div id="table-editor-container">
+        <!-- Сгенерируется через JS -->
+      </div>
+    </div>
   `, `<button class="btn ghost" onclick="closeModal()">Отмена</button><button class="btn primary" id="save-std-btn">Сохранить</button>`);
   
+  if (isTable) {
+    $('table-editor-container').innerHTML = renderTableEditor(_tableHeaders, _tableRows);
+  }
+  
+  const pasteArea = $('paste-table-area');
+  if (pasteArea) {
+    pasteArea.addEventListener('paste', (e) => {
+      setTimeout(() => {
+        const text = e.target.value;
+        if (text.trim()) parsePastedTable(text);
+      }, 100);
+    });
+  }
+
   $('std-image-btn').addEventListener('click', () => $('std-image-file').click());
   $('std-image-file').addEventListener('change', async (e) => {
     const file = e.target.files[0];
@@ -2419,16 +2685,57 @@ function openStdEdit(id, news) {
     reader.readAsDataURL(file);
   });
 
+  $('std-file-btn').addEventListener('click', () => $('std-file-file').click());
+  $('std-file-file').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 15 * 1024 * 1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
+    
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const b64 = ev.target.result;
+      
+      const btn = $('std-file-btn');
+      btn.textContent = '⏳ Загрузка...';
+      btn.disabled = true;
+      
+      try {
+        const res = await api('/api/admin/upload', { file_base64: b64, filename: file.name });
+        _uploadedStandardFileUrl = res.url;
+        _uploadedStandardFileName = res.name;
+        renderFilePreviewUI();
+      } catch (err) {
+        toast('Ошибка загрузки файла', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '📎 Прикрепить файл';
+      }
+    };
+    reader.readAsDataURL(file);
+  });
+
   $('save-std-btn').addEventListener('click', async () => {
+    const type = $('edit-std-content-type').value;
+    const body = {
+      id,
+      number: $('edit-std-number').value.trim(),
+      group_name: $('edit-std-group').value,
+      title: $('edit-std-title').value.trim(),
+      image_url: _uploadedStandardImageUrl,
+      file_url: _uploadedStandardFileUrl,
+      file_name: _uploadedStandardFileName,
+      content_type: type,
+      content_data: type === 'table' ? { headers: _tableHeaders, rows: _tableRows } : null
+    };
+    
+    if (type === 'text') {
+      body.body = $('edit-std-body').value.trim();
+    } else {
+      body.body = 'Таблица'; // Заглушка
+    }
+
     try {
-      await api('/api/admin/standard/update', {
-        id,
-        number: $('edit-std-number').value.trim(),
-        group_name: $('edit-std-group').value,
-        title: $('edit-std-title').value.trim(),
-        body: $('edit-std-body').value.trim(),
-        image_url: _uploadedStandardImageUrl
-      });
+      await api('/api/admin/standard/update', body);
       toast('Сохранено', 'success');
       closeModal();
       loadStandards();

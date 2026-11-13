@@ -91,7 +91,6 @@ ALLOWED_ATTRS = {
 def sanitize_html(html_str):
     if not html_str:
         return ""
-    # Очищаем HTML, разрешая только безопасные теги
     return bleach.clean(html_str, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS, strip=True)
 
 # ============= ПРАВА =============
@@ -264,7 +263,6 @@ async def _cleanup_sessions_loop():
             def _do_cleanup():
                 with get_conn() as conn:
                     with conn.cursor() as cur:
-                        # Параметризованный запрос для безопасности
                         cur.execute("DELETE FROM web_sessions WHERE last_used_at < NOW() - INTERVAL %s", (f"{int(SESSION_TTL_DAYS)} days",))
                         return cur.rowcount
             count = await _run(_do_cleanup)
@@ -330,7 +328,7 @@ def init_db_and_seed():
             fired_at TIMESTAMPTZ, fired_by TEXT, is_certified BOOLEAN DEFAULT FALSE,
             medbook JSONB DEFAULT '{"doctors":{},"tests":{},"vaccines":{}}',
             created_at TIMESTAMPTZ DEFAULT NOW(), last_seen_at TIMESTAMPTZ,
-            hire_date TEXT, citizenship_id INT
+            hire_date TEXT, citizenship_id INT, rate NUMERIC(10,2) DEFAULT 0
         )
     """, "CREATE users")
 
@@ -350,6 +348,7 @@ def init_db_and_seed():
         ("restaurant", "ALTER TABLE users ADD COLUMN IF NOT EXISTS restaurant TEXT"),
         ("hire_date", "ALTER TABLE users ADD COLUMN IF NOT EXISTS hire_date TEXT"),
         ("citizenship_id", "ALTER TABLE users ADD COLUMN IF NOT EXISTS citizenship_id INT"),
+        ("rate", "ALTER TABLE users ADD COLUMN IF NOT EXISTS rate NUMERIC(10,2) DEFAULT 0"),
     ]:
         _run_migration(_sql, f"ADD {_col}")
 
@@ -639,7 +638,6 @@ def _sync_user_has_perm(user, perm):
 # ============= AUTH =============
 async def get_auth_user(request):
     try:
-        # Пытаемся получить токен из query (для загрузки файлов) или из JSON
         token = request.query.get("token") or request.query.get("webToken")
         if not token:
             body = await request.json()
@@ -1429,7 +1427,6 @@ async def handle_admin_standard_add(request):
     if len(title) > 200: return web.json_response({"error": "title_too_long"}, status=400)
     if len(text) > 200000: return web.json_response({"error": "text_too_long"}, status=400)
 
-    # XSS CLEANING
     if content_type == 'text':
         text = sanitize_html(text)
 
@@ -1465,7 +1462,6 @@ async def handle_admin_standard_update(request):
     if "body" in updates and not updates["body"]: return web.json_response({"error": "text_required"}, status=400)
     if "body" in updates and len(updates["body"]) > 200000: return web.json_response({"error": "text_too_long"}, status=400)
 
-    # XSS CLEANING
     if updates.get("content_type") == "text" and "body" in updates:
         updates["body"] = sanitize_html(updates["body"])
 
@@ -1706,7 +1702,7 @@ async def handle_academy_submit_test(request):
                 
     return web.json_response({"ok": True, "passed": passed, "score": score})
 
-# ============= TIMESHEET =============
+# ============= TIMESHEET (MATRIX & CALENDAR) =============
 def _sync_timesheet_get(user_id, month, year):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1748,6 +1744,118 @@ async def handle_timesheet_save(request):
                 ON CONFLICT (user_id, work_date) DO UPDATE 
                 SET hours = EXCLUDED.hours, status = EXCLUDED.status, updated_at = NOW()
             """, (user["user_id"], work_date, hours, status))
+    return web.json_response({"ok": True})
+
+# ============= MATRIX =============
+def _sync_timesheet_matrix(user_id, month, year):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+            u = cur.fetchone()
+            if not u: return []
+            
+            pos_lower = (u.get("position") or "").lower()
+            is_hr = pos_lower.strip() == "hr"
+            is_tu = "территориальный" in pos_lower
+            is_us = "управляющий сменой" in pos_lower
+            
+            query = """
+                SELECT u.user_id, u.full_name, u.position, COALESCE(u.rate, 0) AS rate, r.name AS restaurant_name
+                FROM users u
+                LEFT JOIN restaurants r ON u.restaurant_key = r.key
+                WHERE COALESCE(u.is_fired, FALSE) = FALSE AND COALESCE(u.is_admin, FALSE) = FALSE AND u.login IS NOT NULL
+            """
+            params = []
+            
+            if is_us:
+                query += " AND u.restaurant_key = %s"
+                params.append(u.get("restaurant_key"))
+            elif is_tu:
+                query += " AND u.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id = %s)"
+                params.append(user_id)
+            elif not is_hr:
+                query += " AND u.user_id = %s"
+                params.append(user_id)
+                
+            query += " ORDER BY u.full_name"
+            cur.execute(query, params)
+            employees = [dict(r) for r in cur.fetchall()]
+            
+            if not employees: return []
+            
+            emp_ids = [e["user_id"] for e in employees]
+            
+            cur.execute("""
+                SELECT user_id, work_date, hours 
+                FROM timesheet_records 
+                WHERE user_id = ANY(%s) 
+                  AND EXTRACT(MONTH FROM work_date) = %s 
+                  AND EXTRACT(YEAR FROM work_date) = %s
+            """, (emp_ids, month, year))
+            
+            records = cur.fetchall()
+            
+            hours_map = {eid: {} for eid in emp_ids}
+            for r in records:
+                day = r["work_date"].day
+                hours_map[r["user_id"]][str(day)] = float(r["hours"])
+                
+            for e in employees:
+                e["hours"] = hours_map[e["user_id"]]
+                
+            return employees
+
+async def handle_timesheet_matrix(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    month = int(body.get("month", datetime.now().month))
+    year = int(body.get("year", datetime.now().year))
+    
+    employees = await _run(_sync_timesheet_matrix, user["user_id"], month, year)
+    return web.json_response({"employees": employees})
+
+def _sync_save_cell(user_id, target_uid, work_date, hours):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if hours <= 0:
+                cur.execute("DELETE FROM timesheet_records WHERE user_id = %s AND work_date = %s", (target_uid, work_date))
+            else:
+                cur.execute("""
+                    INSERT INTO timesheet_records (user_id, work_date, hours, status, updated_at)
+                    VALUES (%s, %s, %s, 'work', NOW())
+                    ON CONFLICT (user_id, work_date) DO UPDATE 
+                    SET hours = EXCLUDED.hours, updated_at = NOW()
+                """, (target_uid, work_date, hours))
+
+async def handle_timesheet_save_cell(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    target_uid = int(body.get("user_id"))
+    work_date = body.get("work_date")
+    hours = float(body.get("hours", 0))
+    
+    await _run(_sync_save_cell, user["user_id"], target_uid, work_date, hours)
+    return web.json_response({"ok": True})
+
+async def handle_timesheet_update_rate(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    target_uid = int(body.get("user_id"))
+    rate = float(body.get("rate", 0))
+    
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET rate = %s WHERE user_id = %s", (rate, target_uid))
+            
     return web.json_response({"ok": True})
 
 def _sync_timesheet_employees(user_id):
@@ -1803,7 +1911,8 @@ def _sync_timesheet_reports(user_id, month, year):
             
             base = """
                 SELECT u.full_name, u.position, r.name AS restaurant_name, 
-                       SUM(t.hours) as total_hours
+                       SUM(t.hours) as total_hours, COALESCE(u.rate, 0) as rate,
+                       (SUM(t.hours) * COALESCE(u.rate, 0)) as total_salary
                 FROM users u
                 JOIN timesheet_records t ON u.user_id = t.user_id
                 LEFT JOIN restaurants r ON u.restaurant_key = r.key
@@ -1822,7 +1931,7 @@ def _sync_timesheet_reports(user_id, month, year):
                 base += " AND u.user_id = %s"
                 params.append(user_id)
                 
-            base += " GROUP BY u.user_id, u.full_name, u.position, r.name ORDER BY total_hours DESC"
+            base += " GROUP BY u.user_id, u.full_name, u.position, r.name, u.rate ORDER BY total_hours DESC"
             cur.execute(base, params)
             return [dict(r) for r in cur.fetchall()]
 
@@ -2144,7 +2253,6 @@ async def handle_questions_staff(request):
 
 # ============= UPLOAD =============
 async def handle_admin_upload(request):
-    # Получаем токен из query-параметров
     token = request.query.get("token") or request.query.get("webToken")
     if not token:
         return web.json_response({"error": "unauthorized"}, status=401)
@@ -2158,7 +2266,6 @@ async def handle_admin_upload(request):
         return web.json_response({"error": "forbidden"}, status=403)
 
     try:
-        # Читаем Multipart данные
         reader = await request.multipart()
         field = await reader.next()
         
@@ -2181,7 +2288,6 @@ async def handle_admin_upload(request):
         
         file_path = os.path.join(upload_dir, new_name)
         
-        # Сохраняем файл по частям, чтобы не забить память
         with open(file_path, "wb") as f:
             while True:
                 chunk = await field.read_chunk()
@@ -2342,6 +2448,9 @@ app.router.add_post("/api/academy/submit-test", handle_academy_submit_test)
 
 app.router.add_post("/api/timesheet/get", handle_timesheet_get)
 app.router.add_post("/api/timesheet/save", handle_timesheet_save)
+app.router.add_post("/api/timesheet/matrix", handle_timesheet_matrix)
+app.router.add_post("/api/timesheet/save_cell", handle_timesheet_save_cell)
+app.router.add_post("/api/timesheet/update_rate", handle_timesheet_update_rate)
 app.router.add_post("/api/timesheet/employees", handle_timesheet_employees)
 app.router.add_post("/api/timesheet/reports", handle_timesheet_reports)
 

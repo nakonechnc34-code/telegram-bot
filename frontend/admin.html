@@ -799,7 +799,7 @@ async function loadDashboard() {
   `).join('');
 
   // 2. Вопросы (Top Menus в референсе)
-  const qsHtml = openQs.slice(0, 4).map(q => `
+  let qsHtml = openQs.slice(0, 4).map(q => `
     <div class="dash-list-item">
       <div class="dash-list-avatar" style="background: var(--dash-blue);">${esc((q.full_name || 'С').charAt(0))}</div>
       <div class="dash-list-content">
@@ -812,7 +812,7 @@ async function loadDashboard() {
   if (!qsHtml) qsHtml = '<div style="color: var(--dash-muted); font-size: 14px; text-align: center; margin-top: 20px;">Нет активных вопросов</div>';
 
   // 3. Новые сотрудники (Table overview)
-  const newUsersHtml = newUsers.map(u => `
+  let newUsersHtml = newUsers.map(u => `
     <tr>
       <td style="display: flex; align-items: center; gap: 8px;">
         <div class="dash-list-avatar" style="width: 24px; height: 24px; font-size: 10px; background: #444;">${esc((u.full_name || '?').charAt(0))}</div>
@@ -859,7 +859,7 @@ async function loadDashboard() {
       if (res) medbookAlerts = [...(res.expired || []), ...(res.expiring || [])];
   } catch(e) {}
   
-  const medbookHtml = medbookAlerts.slice(0, 4).map(u => `
+  let medbookHtml = medbookAlerts.slice(0, 4).map(u => `
     <tr>
       <td style="color: #fff;">${esc(u.full_name)}</td>
       <td style="color: var(--accent); font-weight: 600;">Истекает</td>

@@ -465,7 +465,6 @@ def init_db_and_seed():
             UNIQUE(user_id, work_date)
         )
     """, "CREATE timesheet_records")
-    # =====================
 
     _run_migration("""
         CREATE TABLE IF NOT EXISTS faq (id SERIAL PRIMARY KEY, question TEXT NOT NULL, answer TEXT NOT NULL, category TEXT DEFAULT '')
@@ -1704,7 +1703,6 @@ async def handle_timesheet_save(request):
 def _sync_timesheet_employees(user_id):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Проверяем права (если HR или ТУ или УС)
             cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
             u = cur.fetchone()
             if not u: return []

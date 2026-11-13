@@ -263,6 +263,56 @@
     #page-content.dark-dash { margin: -16px; padding: 16px; }
   }
 
+  /* STATS & EMPTY STATES */
+  .stats-grid { 
+    display: grid; 
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); 
+    gap: 16px; 
+    margin-bottom: 32px; 
+  }
+  .stat-card { 
+    background: var(--card-bg); 
+    border: 1px solid var(--border); 
+    border-radius: 20px; 
+    padding: 24px; 
+    box-shadow: var(--shadow-sm); 
+    transition: transform 0.2s;
+  }
+  .stat-card:hover { transform: translateY(-2px); }
+  .stat-card .label { 
+    font-size: 12px; 
+    font-weight: 700; 
+    color: var(--text-muted); 
+    text-transform: uppercase; 
+    letter-spacing: 0.5px;
+    margin-bottom: 8px; 
+  }
+  .stat-card .value { 
+    font-size: 32px; 
+    font-weight: 800; 
+    color: var(--text-main); 
+    line-height: 1;
+  }
+  .stat-card.green .value { color: var(--green); }
+  .stat-card.amber .value { color: var(--amber); }
+  .stat-card.accent .value { color: var(--accent); }
+  
+  .empty { 
+    text-align: center; 
+    padding: 60px 20px; 
+    color: var(--text-muted); 
+    font-size: 15px; 
+    font-weight: 500; 
+    background: var(--card-bg);
+    border-radius: 24px;
+    border: 1px dashed var(--border);
+  }
+  .empty .emoji { 
+    display: block; 
+    font-size: 48px; 
+    margin-bottom: 16px; 
+  }
+
   /* MODALS */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; backdrop-filter: blur(4px); }
   .modal-overlay.show { display: flex; }
@@ -1592,6 +1642,7 @@ async function loadRestaurants() {
   const data = await api('/api/admin/restaurants', {});
   const canTu = hasPerm('restaurant_tu');
   const canCreate = hasPerm('restaurant_create');
+  const canEdit = hasPerm('restaurant_edit');
 
   $('page-actions').innerHTML = canCreate ? '<button class="btn primary small" id="rest-add-btn">+ Добавить</button>' : '';
   if (canCreate) $('rest-add-btn').addEventListener('click', openRestaurantAdd);
@@ -1602,7 +1653,7 @@ async function loadRestaurants() {
       <td data-label="Статус">${r.force_status !== 'closed' ? '<span class="tag green">🟢 Открыт</span>' : '<span class="tag red">🔴 Закрыт</span>'}</td>
       <td data-label="ТУ">${esc(r.territory_manager_name || '—')}</td>
       <td class="actions-cell" data-label="">
-        <button class="icon-btn" data-edit="${esc(r.key)}">✏️</button>
+        ${canEdit ? `<button class="icon-btn" data-edit="${esc(r.key)}">✏️</button>` : ''}
         ${canTu ? `<button class="icon-btn" data-tu="${esc(r.key)}" title="Назначить ТУ">👔</button>` : ''}
       </td>
     </tr>`).join('');

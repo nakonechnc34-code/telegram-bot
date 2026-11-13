@@ -21,8 +21,14 @@ from aiohttp import web
 from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.extras import RealDictCursor, Json
 from psycopg2 import sql
+from pywebpush import webpush, WebPushException
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+# ============= PUSH SETTINGS =============
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "YOUR_PUBLIC_KEY_HERE")
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "YOUR_PRIVATE_KEY_HERE")
+VAPID_CLAIMS = {"sub": "mailto:admin@wokker.ru"}
 
 # ============= JSON SERIALIZER =============
 def _json_default(obj):
@@ -58,6 +64,12 @@ else:
 
 LOGIN_RE = re.compile(r"^[a-z]{3}\d{2}$")
 SESSION_TTL_DAYS = 30
+
+def _safe_int(val, default=0):
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
 
 # ============= RATE LIMITING =============
 _login_attempts = {}
@@ -508,6 +520,16 @@ def init_db_and_seed():
         CREATE TABLE IF NOT EXISTS web_sessions (token TEXT PRIMARY KEY, user_id BIGINT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(), last_used_at TIMESTAMPTZ DEFAULT NOW())
     """, "CREATE sessions")
 
+    # ===== PUSH SUBSCRIPTIONS =====
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+            id SERIAL PRIMARY KEY, 
+            user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE, 
+            subscription JSONB NOT NULL, 
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """, "CREATE push_subscriptions")
+
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM restaurants")
@@ -803,6 +825,58 @@ async def handle_admin_medbook_alerts(request):
     expiring, expired = await _run(_sync_medbook_alerts)
     return web.json_response({"expiring": expiring[:20], "expired": expired[:20], "expiring_count": len(expiring), "expired_count": len(expired)})
 
+# ============= PUSH NOTIFICATIONS =============
+def _sync_get_all_subscriptions():
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id, subscription FROM push_subscriptions")
+            return [dict(r) for r in cur.fetchall()]
+
+def _sync_delete_subscription(sub_id):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM push_subscriptions WHERE id = %s", (sub_id,))
+
+async def send_push_to_all(title, body_text, url="/"):
+    subs = await _run(_sync_get_all_subscriptions)
+    if not subs: return
+    
+    payload = json.dumps({
+        "title": title,
+        "body": body_text[:100],
+        "url": url
+    })
+    
+    for sub in subs:
+        try:
+            def _send():
+                webpush(
+                    subscription_info=sub["subscription"],
+                    data=payload,
+                    vapid_private_key=VAPID_PRIVATE_KEY,
+                    vapid_claims=VAPID_CLAIMS
+                )
+            await _run(_send)
+        except WebPushException as ex:
+            if ex.response is not None and ex.response.status_code == 410:
+                await _run(_sync_delete_subscription, sub["id"])
+        except Exception as e:
+            logging.error(f"Push error: {e}")
+
+async def handle_push_subscribe(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    subscription = body.get("subscription")
+    if not subscription: return web.json_response({"error": "invalid_sub"}, status=400)
+    
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO push_subscriptions (user_id, subscription) VALUES (%s, %s)", (user["user_id"], Json(subscription)))
+    return web.json_response({"ok": True})
+
 # ============= USERS =============
 def _sync_list_users(search="", fired=False):
     with get_conn() as conn:
@@ -907,7 +981,7 @@ async def handle_admin_user_get(request):
     if err: return denied(err)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    uid = int(body.get("user_id", 0))
+    uid = _safe_int(body.get("user_id"))
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     user = await _run(_sync_get_user_by_id, uid)
     if not user: return web.json_response({"error": "not_found"}, status=404)
@@ -939,7 +1013,7 @@ async def handle_admin_user_update(request):
     if perm_err: return perm_err
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    uid = int(body.get("user_id", 0))
+    uid = _safe_int(body.get("user_id"))
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     updates = body.get("updates") or {}
     target = await _run(_sync_get_user_by_id, uid)
@@ -963,7 +1037,7 @@ async def handle_admin_user_fire(request):
     if perm_err: return perm_err
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    uid = int(body.get("user_id", 0))
+    uid = _safe_int(body.get("user_id"))
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     target = await _run(_sync_get_user_by_id, uid)
     if not target: return web.json_response({"error": "not_found"}, status=404)
@@ -984,7 +1058,7 @@ async def handle_admin_user_restore(request):
     if perm_err: return perm_err
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    uid = int(body.get("user_id", 0))
+    uid = _safe_int(body.get("user_id"))
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -999,7 +1073,7 @@ async def handle_admin_user_delete(request):
     if perm_err: return perm_err
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    uid = int(body.get("user_id", 0))
+    uid = _safe_int(body.get("user_id"))
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     target = await _run(_sync_get_user_by_id, uid)
     if not target: return web.json_response({"error": "not_found"}, status=404)
@@ -1031,7 +1105,7 @@ async def handle_admin_set_permissions(request):
     if not admin["is_super_admin"]: return web.json_response({"error": "forbidden"}, status=403)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    uid = int(body.get("user_id", 0))
+    uid = _safe_int(body.get("user_id"))
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     perms = body.get("permissions") or {}
     target = await _run(_sync_get_user_by_id, uid)
@@ -1149,7 +1223,7 @@ async def handle_admin_restaurant_tu(request):
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     key = body.get("key") or ""
     tu = body.get("territory_manager_id")
-    tu = int(tu) if tu else None
+    tu = _safe_int(tu) if tu else None
     if tu is not None and tu <= 0: tu = None
     with get_conn() as conn:
         with conn.cursor() as cur: cur.execute("UPDATE restaurants SET territory_manager_id = %s WHERE key = %s", (tu, key))
@@ -1199,7 +1273,7 @@ async def handle_admin_medbook_get(request):
     if err: return denied(err)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    uid = int(body.get("user_id", 0))
+    uid = _safe_int(body.get("user_id"))
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     user = await _run(_sync_get_user_by_id, uid)
     if not user: return web.json_response({"error": "not_found"}, status=404)
@@ -1216,7 +1290,7 @@ async def handle_admin_medbook_save(request):
     if perm_err: return perm_err
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    uid = int(body.get("user_id", 0))
+    uid = _safe_int(body.get("user_id"))
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     mb = body.get("medbook") or {"doctors": {}, "tests": {}, "vaccines": {}}
     with get_conn() as conn:
@@ -1234,7 +1308,7 @@ async def handle_admin_medbook_ref_add(request):
     if perm_err: return perm_err
     name = (body.get("name") or "").strip()
     if not name or len(name) > 100: return web.json_response({"error": "invalid"}, status=400)
-    months = max(1, min(120, int(body.get("validity_months", 12))))
+    months = max(1, min(120, _safe_int(body.get("validity_months", 12))))
     required = bool(body.get("required"))
     table = {"doctor": "medbook_doctors", "test": "medbook_tests", "vaccine": "medbook_vaccines"}[rtype]
     with get_conn() as conn:
@@ -1250,7 +1324,7 @@ async def handle_admin_medbook_ref_update(request):
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     rtype = body.get("type")
-    rid = int(body.get("id", 0))
+    rid = _safe_int(body.get("id"))
     if rtype not in REF_TYPE_PERM or not rid: return web.json_response({"error": "invalid"}, status=400)
     perm_err = require_perm(admin, REF_TYPE_PERM[rtype])
     if perm_err: return perm_err
@@ -1260,7 +1334,7 @@ async def handle_admin_medbook_ref_update(request):
             if "name" in body:
                 cur.execute(sql.SQL("UPDATE {} SET name = %s WHERE id = %s").format(sql.Identifier(table)), (body["name"], rid))
             if "validity_months" in body:
-                v = max(1, min(120, int(body["validity_months"])))
+                v = max(1, min(120, _safe_int(body["validity_months"])))
                 cur.execute(sql.SQL("UPDATE {} SET validity_months = %s WHERE id = %s").format(sql.Identifier(table)), (v, rid))
             if "required" in body:
                 cur.execute(sql.SQL("UPDATE {} SET required = %s WHERE id = %s").format(sql.Identifier(table)), (bool(body["required"]), rid))
@@ -1272,7 +1346,7 @@ async def handle_admin_medbook_ref_delete(request):
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     rtype = body.get("type")
-    rid = int(body.get("id", 0))
+    rid = _safe_int(body.get("id"))
     if rtype not in REF_TYPE_PERM or not rid: return web.json_response({"error": "invalid"}, status=400)
     perm_err = require_perm(admin, REF_TYPE_PERM[rtype])
     if perm_err: return perm_err
@@ -1330,6 +1404,14 @@ async def handle_admin_news_add(request):
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("INSERT INTO news (title, body, level, status, publish_at, proposed_by, image_url) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING *", (title, text, level, status, publish_at, proposed_by, image_url))
             news_row = dict(cur.fetchone())
+    
+    if status == 'published':
+        asyncio.create_task(send_push_to_all(
+            title=f"📰 {title}", 
+            body_text=text, 
+            url="/"
+        ))
+        
     return web.json_response({"ok": True, "status": status, "news": news_row})
 
 async def handle_admin_news_update(request):
@@ -1339,7 +1421,7 @@ async def handle_admin_news_update(request):
     if perm_err: return perm_err
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    nid = int(body.get("id", 0))
+    nid = _safe_int(body.get("id"))
     if nid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     allowed = {"title", "body", "level", "status", "publish_at", "image_url"}
     updates = {k: body[k] for k in allowed if k in body}
@@ -1361,7 +1443,7 @@ async def handle_admin_news_delete(request):
     if perm_err: return perm_err
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    nid = int(body.get("id", 0))
+    nid = _safe_int(body.get("id"))
     if nid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     with get_conn() as conn:
         with conn.cursor() as cur: cur.execute("DELETE FROM news WHERE id = %s", (nid,))
@@ -1373,7 +1455,7 @@ async def handle_admin_news_approve(request):
     if not _check_can_publish(admin): return web.json_response({"error": "forbidden"}, status=403)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    nid = int(body.get("id", 0))
+    nid = _safe_int(body.get("id"))
     if nid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     with get_conn() as conn:
         with conn.cursor() as cur: cur.execute("UPDATE news SET status = 'published', approved_by = %s WHERE id = %s", (admin.get("full_name"), nid))
@@ -1385,7 +1467,7 @@ async def handle_admin_news_reject(request):
     if not _check_can_publish(admin): return web.json_response({"error": "forbidden"}, status=403)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    nid = int(body.get("id", 0))
+    nid = _safe_int(body.get("id"))
     if nid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     with get_conn() as conn:
         with conn.cursor() as cur: cur.execute("DELETE FROM news WHERE id = %s AND status = 'pending'", (nid,))
@@ -1451,7 +1533,7 @@ async def handle_admin_standard_update(request):
     if perm_err: return perm_err
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    sid = int(body.get("id", 0))
+    sid = _safe_int(body.get("id"))
     if sid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     allowed = {"number", "title", "body", "image_url", "group_name", "content_type", "content_data", "file_url", "file_name"}
     updates = {k: body[k] for k in allowed if k in body}
@@ -1484,7 +1566,7 @@ async def handle_admin_standard_delete(request):
     if perm_err: return perm_err
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    sid = int(body.get("id", 0))
+    sid = _safe_int(body.get("id"))
     if sid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     with get_conn() as conn:
         with conn.cursor() as cur: cur.execute("DELETE FROM standards WHERE id = %s", (sid,))
@@ -1496,7 +1578,7 @@ async def handle_admin_standard_approve(request):
     if not _check_can_publish(admin): return web.json_response({"error": "forbidden"}, status=403)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    sid = int(body.get("id", 0))
+    sid = _safe_int(body.get("id"))
     if sid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     with get_conn() as conn:
         with conn.cursor() as cur: cur.execute("UPDATE standards SET status = 'published', approved_by = %s WHERE id = %s", (admin.get("full_name"), sid))
@@ -1508,7 +1590,7 @@ async def handle_admin_standard_reject(request):
     if not _check_can_publish(admin): return web.json_response({"error": "forbidden"}, status=403)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    sid = int(body.get("id", 0))
+    sid = _safe_int(body.get("id"))
     if sid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     with get_conn() as conn:
         with conn.cursor() as cur: cur.execute("DELETE FROM standards WHERE id = %s AND status = 'pending'", (sid,))
@@ -1556,7 +1638,7 @@ async def handle_admin_certification_delete(request):
     if perm_err: return perm_err
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    qid = int(body.get("id", 0))
+    qid = _safe_int(body.get("id"))
     if qid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     with get_conn() as conn:
         with conn.cursor() as cur: cur.execute("DELETE FROM certification_questions WHERE id = %s", (qid,))
@@ -1648,7 +1730,7 @@ async def handle_academy_course_detail(request):
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
-    cid = int(body.get("course_id", 0))
+    cid = _safe_int(body.get("course_id"))
     if cid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     
     course, lessons, tests = await _run(_sync_academy_course_detail, cid)
@@ -1666,7 +1748,7 @@ async def handle_academy_submit_test(request):
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
-    cid = int(body.get("course_id", 0))
+    cid = _safe_int(body.get("course_id"))
     answers = body.get("answers") or {}
     
     if cid <= 0 or not answers:
@@ -1718,8 +1800,8 @@ async def handle_timesheet_get(request):
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
-    month = int(body.get("month", datetime.now().month))
-    year = int(body.get("year", datetime.now().year))
+    month = _safe_int(body.get("month", datetime.now().month))
+    year = _safe_int(body.get("year", datetime.now().year))
     
     records = await _run(_sync_timesheet_get, user["user_id"], month, year)
     return web.json_response({"records": records})
@@ -1746,7 +1828,6 @@ async def handle_timesheet_save(request):
             """, (user["user_id"], work_date, hours, status))
     return web.json_response({"ok": True})
 
-# ============= MATRIX =============
 def _sync_timesheet_matrix(user_id, month, year):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1811,8 +1892,8 @@ async def handle_timesheet_matrix(request):
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
-    month = int(body.get("month", datetime.now().month))
-    year = int(body.get("year", datetime.now().year))
+    month = _safe_int(body.get("month", datetime.now().month))
+    year = _safe_int(body.get("year", datetime.now().year))
     
     employees = await _run(_sync_timesheet_matrix, user["user_id"], month, year)
     return web.json_response({"employees": employees})
@@ -1830,15 +1911,47 @@ def _sync_save_cell(user_id, target_uid, work_date, hours):
                     SET hours = EXCLUDED.hours, updated_at = NOW()
                 """, (target_uid, work_date, hours))
 
+def _check_can_edit_user(editor_user, target_uid):
+    """Проверяет, имеет ли текущий юзер право редактировать target_uid"""
+    if editor_user["is_super_admin"] or (editor_user.get("position") or "").strip().upper() == "HR":
+        return True
+    if editor_user["user_id"] == target_uid:
+        return True
+
+    pos_lower = (editor_user.get("position") or "").lower()
+    is_tu = "территориальный" in pos_lower
+    is_us = "управляющий сменой" in pos_lower
+    if not (is_tu or is_us):
+        return False
+
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT restaurant_key FROM users WHERE user_id = %s", (target_uid,))
+            target = cur.fetchone()
+            if not target: return False
+            
+            if is_us:
+                return target["restaurant_key"] == editor_user.get("restaurant_key")
+            elif is_tu:
+                cur.execute("SELECT key FROM restaurants WHERE territory_manager_id = %s AND key = %s", (editor_user["user_id"], target["restaurant_key"]))
+                return cur.fetchone() is not None
+    return False
+
 async def handle_timesheet_save_cell(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
-    target_uid = int(body.get("user_id"))
+    target_uid = _safe_int(body.get("user_id"))
     work_date = body.get("work_date")
     hours = float(body.get("hours", 0))
+    
+    if not work_date or target_uid <= 0: return web.json_response({"error": "invalid_data"}, status=400)
+    
+    allowed = await _run(_check_can_edit_user, user, target_uid)
+    if not allowed:
+        return web.json_response({"error": "forbidden_edit_other"}, status=403)
     
     await _run(_sync_save_cell, user["user_id"], target_uid, work_date, hours)
     return web.json_response({"ok": True})
@@ -1849,9 +1962,14 @@ async def handle_timesheet_update_rate(request):
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
-    target_uid = int(body.get("user_id"))
+    target_uid = _safe_int(body.get("user_id"))
     rate = float(body.get("rate", 0))
+    if target_uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     
+    allowed = await _run(_check_can_edit_user, user, target_uid)
+    if not allowed:
+        return web.json_response({"error": "forbidden_edit_other"}, status=403)
+
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET rate = %s WHERE user_id = %s", (rate, target_uid))
@@ -1941,8 +2059,8 @@ async def handle_timesheet_reports(request):
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
-    month = int(body.get("month", datetime.now().month))
-    year = int(body.get("year", datetime.now().year))
+    month = _safe_int(body.get("month", datetime.now().month))
+    year = _safe_int(body.get("year", datetime.now().year))
     
     report = await _run(_sync_timesheet_reports, user["user_id"], month, year)
     return web.json_response({"report": report})
@@ -1982,7 +2100,7 @@ async def handle_admin_faq_update(request):
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     field = body.get("field")
     if field not in ("question", "answer"): return web.json_response({"error": "invalid"}, status=400)
-    fid = int(body.get("id", 0))
+    fid = _safe_int(body.get("id"))
     if fid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     val = body.get("value") or ""
     if (field == "question" and len(val) > 500) or (field == "answer" and len(val) > 2000):
@@ -1999,7 +2117,7 @@ async def handle_admin_faq_delete(request):
     if perm_err: return perm_err
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    fid = int(body.get("id", 0))
+    fid = _safe_int(body.get("id"))
     if fid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     with get_conn() as conn:
         with conn.cursor() as cur: cur.execute("DELETE FROM faq WHERE id = %s", (fid,))
@@ -2040,7 +2158,7 @@ async def handle_admin_position_archive(request):
     if perm_err: return perm_err
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    pid = int(body.get("id", 0))
+    pid = _safe_int(body.get("id"))
     if pid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     with get_conn() as conn:
         with conn.cursor() as cur: cur.execute("UPDATE positions SET is_archived = TRUE WHERE id = %s", (pid,))
@@ -2064,7 +2182,7 @@ async def handle_admin_question_reply(request):
     if perm_err: return perm_err
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    qid = int(body.get("id", 0))
+    qid = _safe_int(body.get("id"))
     if qid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     text = (body.get("text") or "").strip()
     if not text or len(text) > 2000: return web.json_response({"error": "invalid_or_too_long"}, status=400)
@@ -2243,6 +2361,9 @@ async def handle_bootstrap(request):
 async def handle_questions_staff(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
+    ip = request.remote or "unknown"
+    if not _check_rate_limit(ip):
+        return web.json_response({"error": "too_many_attempts"}, status=429)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     text = (body.get("question") or "").strip()
@@ -2441,6 +2562,7 @@ app.router.add_post("/api/bootstrap", handle_bootstrap)
 app.router.add_post("/api/questions", handle_questions_staff)
 app.router.add_post("/api/certification/get", handle_staff_certification_get)
 app.router.add_post("/api/certification/submit", handle_staff_certification_submit)
+app.router.add_post("/api/push/subscribe", handle_push_subscribe)
 
 app.router.add_post("/api/academy/courses", handle_academy_courses)
 app.router.add_post("/api/academy/course", handle_academy_course_detail)

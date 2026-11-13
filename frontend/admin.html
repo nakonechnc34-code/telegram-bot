@@ -694,7 +694,6 @@ async function api(path, body) {
   return res.json();
 }
 
-// Универсальная функция загрузки файлов (Multipart)
 async function uploadFile(file) {
     const formData = new FormData();
     formData.append('file', file);
@@ -853,7 +852,6 @@ function closeModal() { $('modal-overlay').classList.remove('show'); }
 $('modal-close').addEventListener('click', closeModal);
 $('modal-overlay').addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
 
-// Добавлено закрытие модалки по Escape
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && $('modal-overlay').classList.contains('show')) {
     closeModal();
@@ -1484,7 +1482,7 @@ async function addNewCitizenship(selectId) {
         const res = await api('/api/admin/citizenship/add', { name: name.trim() });
         if (res.ok) {
             toast('Гражданство добавлено', 'success');
-            _citizenshipsList = []; // сброс кэша
+            _citizenshipsList = []; 
             const cits = await loadCitizenships();
             
             const sel = $(selectId);
@@ -2126,7 +2124,6 @@ function openNewsAdd() {
     btn.disabled = true;
     
     try {
-        // ИСПОЛЬЗУЕМ НОВУЮ ФУНКЦИЮ ЗАГРУЗКИ
         const res = await uploadFile(file);
         _uploadedNewsImageUrl = res.url;
         $('n-image-preview').src = res.url;
@@ -2580,7 +2577,7 @@ function openStdAdd() {
     };
     
     if (type === 'text') {
-      body.body = cleanHTML($('std-body').innerHTML); // <--- ПРИМЕНЯЕМ ОЧИСТКУ
+      body.body = cleanHTML($('std-body').innerHTML);
       if (!body.body || body.body === '<br>') { errEl.textContent = 'Заполните текст стандарта'; return; }
     } else {
       body.body = 'Таблица';
@@ -2683,9 +2680,7 @@ function openStdEdit(id, news) {
       </div>
 
       <label style="display:block; font-size:12px; font-weight:700; color:var(--text-muted); margin-bottom:8px; text-transform:uppercase;">Ручная настройка</label>
-      <div id="table-editor-container">
-        <!-- Сгенерируется через JS -->
-      </div>
+      <div id="table-editor-container"></div>
     </div>
   `, `<button class="btn ghost" onclick="closeModal()">Отмена</button><button class="btn primary" id="save-std-btn">Сохранить</button>`);
   
@@ -2765,7 +2760,7 @@ function openStdEdit(id, news) {
     };
     
     if (type === 'text') {
-      body.body = cleanHTML($('edit-std-body').innerHTML); // <--- ПРИМЕНЯЕМ ОЧИСТКУ
+      body.body = cleanHTML($('edit-std-body').innerHTML);
     } else {
       body.body = 'Таблица';
     }
@@ -3045,14 +3040,12 @@ async function loadAudit() {
     </div>`;
 }
 
-/* ================== PWA ================== */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   });
 }
 
-/* ================== INIT ================== */
 (function init() {
   if (!getToken()) { showLogin(); return; }
   checkAdminAndLoad();

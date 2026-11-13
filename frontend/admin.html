@@ -232,6 +232,7 @@
   .dash-list { display: flex; flex-direction: column; gap: 16px; margin-top: 20px; }
   .dash-list-item { display: flex; align-items: center; gap: 16px; padding: 12px; background: rgba(255,255,255,0.02); border-radius: 12px; border-left: 3px solid transparent; transition: all 0.2s; }
   .dash-list-item:hover { background: rgba(255,255,255,0.05); }
+  .dash-list-item.yellow { border-left-color: var(--dash-accent); }
   .dash-list-avatar { width: 44px; height: 44px; border-radius: 50%; background: #333; object-fit: cover; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; }
   .dash-list-content { flex: 1; min-width: 0; }
   .dash-list-title { font-size: 14px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -591,6 +592,14 @@ const PERMISSIONS_LIST = [
   { key: 'timesheet_access', label: 'Доступ к Табелю', icon: '⏱' },
 ];
 
+const STANDARD_GROUPS = [
+  'Пищевая Безопасность', 
+  'Касса', 
+  'Горячий цех', 
+  'Холодный цех', 
+  'Общее'
+];
+
 let ME = null;
 
 /* ================== UTILS ================== */
@@ -936,8 +945,6 @@ async function loadDashboard() {
   let medbookAlerts = [];
   
   try {
-    // ВАЖНО: Запрашиваем /api/admin/medbooks вместо medbook-alerts, 
-    // чтобы видеть ВСЕХ проблемных сотрудников (включая тех, у кого не заполнено)
     const results = await Promise.allSettled([
       api('/api/admin/dashboard', {}), 
       api('/api/admin/news', {}), 
@@ -956,7 +963,6 @@ async function loadDashboard() {
     }
   } catch(e) { console.error('Dashboard load error', e); }
 
-  // 1. Заполняем карточки статистики
   const statActiveEl = $('stat-active');
   if (statActiveEl) statActiveEl.textContent = stats.active || 0;
   
@@ -969,7 +975,6 @@ async function loadDashboard() {
   const statMedbooksEl = $('stat-medbooks');
   if (statMedbooksEl) statMedbooksEl.textContent = medbookAlerts.length || 0;
 
-  // 2. Заполняем блок вопросов
   const qsContainer = $('dash-questions-container');
   if (qsContainer) {
     const openQs = qsList.filter(x => !x.replied);
@@ -989,7 +994,6 @@ async function loadDashboard() {
     }
   }
 
-  // 3. Заполняем новых сотрудников
   const usersContainer = $('dash-users-container');
   if (usersContainer) {
     const newUsers = usersList.slice(0, 4);
@@ -1008,7 +1012,6 @@ async function loadDashboard() {
     }
   }
 
-  // 4. Заполняем модерацию
   const modContainer = $('dash-mod-container');
   if (modContainer) {
     const pendingNews = newsList.filter(x => x.status === 'pending');
@@ -1043,7 +1046,6 @@ async function loadDashboard() {
     modContainer.innerHTML = modHtml;
   }
 
-  // 5. Заполняем медкнижки
   const medbookContainer = $('dash-medbook-container');
   if (medbookContainer) {
     if (medbookAlerts.length) {
@@ -2216,7 +2218,7 @@ async function loadStandards() {
               <span class="tag amber">Предложено</span>
             </div>
             ${n.image_url ? `<img src="${esc(n.image_url)}" style="max-height: 160px; border-radius: 16px; margin-bottom: 16px; display: block;">` : ''}
-            <div class="pc-title"><span class="tag gray">${esc(n.number || '—')}</span> ${esc(n.title)}</div>
+            <div class="pc-title"><span class="tag gray">${esc(n.number || '—')}</span> <span class="tag purple" style="margin-right:8px;">${esc(n.group_name || 'Общее')}</span> ${esc(n.title)}</div>
             <div class="pc-body">${esc(n.body)}</div>
             <div class="pc-actions">
               <button class="btn green small" data-approve="${n.id}">✅ Согласовать и опубликовать</button>
@@ -2232,6 +2234,7 @@ async function loadStandards() {
       <tr>
         <td data-label="Фото">${n.image_url ? `<img src="${esc(n.image_url)}" style="width: 48px; height: 48px; object-fit: cover; border-radius: 12px;">` : '<div style="width:48px; height:48px; background:#F2F2F7; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px;">📚</div>'}</td>
         <td data-label="Номер"><span class="tag gray">${esc(n.number || '—')}</span></td>
+        <td data-label="Группа"><span class="tag purple">${esc(n.group_name || 'Общее')}</span></td>
         <td data-label="Заголовок"><b>${esc(n.title)}</b></td>
         <td data-label="Статус">${status}</td>
         <td class="actions-cell" data-label="">
@@ -2245,8 +2248,8 @@ async function loadStandards() {
     ${pendingHtml}
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Фото</th><th>Номер</th><th>Заголовок</th><th>Статус</th><th></th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="5"><div class="empty">Стандартов нет</div></td></tr>'}</tbody>
+        <thead><tr><th>Фото</th><th>Номер</th><th>Группа</th><th>Заголовок</th><th>Статус</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="6"><div class="empty">Стандартов нет</div></td></tr>'}</tbody>
       </table>
     </div>`;
     
@@ -2281,6 +2284,8 @@ async function loadStandards() {
 function openStdAdd() {
   const canPublishFlag = canPublish();
   _uploadedStandardImageUrl = '';
+
+  const groupOpts = STANDARD_GROUPS.map(g => `<option value="${g}">${g}</option>`).join('');
   
   openModal(canPublishFlag ? 'Новый стандарт' : 'Предложить стандарт', `
     <div class="form-group">
@@ -2291,7 +2296,10 @@ function openStdAdd() {
         <img id="std-image-preview" style="max-width: 100%; max-height: 200px; border-radius: 16px; object-fit: contain;">
       </div>
     </div>
-    <div class="form-group"><label>Номер стандарта</label><input class="form-input" id="std-number" placeholder="Например: СТ-001 или Внутренний-5"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Номер стандарта</label><input class="form-input" id="std-number" placeholder="Например: СТ-001"></div>
+      <div class="form-group"><label>Группа</label><select class="form-select" id="std-group">${groupOpts}</select></div>
+    </div>
     <div class="form-group"><label>Заголовок</label><input class="form-input" id="std-title" maxlength="150"></div>
     <div class="form-group"><label>Текст стандарта</label><textarea class="form-textarea" id="std-body" style="min-height:200px;"></textarea></div>
     <div class="form-hint error" id="std-error"></div>
@@ -2333,6 +2341,7 @@ function openStdAdd() {
     const errEl = $('std-error'); errEl.textContent = '';
     const body = {
       number: $('std-number').value.trim(),
+      group_name: $('std-group').value,
       title: $('std-title').value.trim(),
       body: $('std-body').value.trim(),
       image_url: _uploadedStandardImageUrl
@@ -2359,6 +2368,8 @@ function openStdEdit(id, news) {
   
   _uploadedStandardImageUrl = n.image_url || '';
   
+  const groupOpts = STANDARD_GROUPS.map(g => `<option value="${g}" ${n.group_name === g ? 'selected' : ''}>${g}</option>`).join('');
+
   openModal('Редактировать стандарт', `
     <div class="form-group">
       <label>Фотография</label>
@@ -2368,7 +2379,10 @@ function openStdEdit(id, news) {
         <img id="std-image-preview" src="${esc(n.image_url || '')}" style="max-width: 100%; max-height: 200px; border-radius: 16px; object-fit: contain;">
       </div>
     </div>
-    <div class="form-group"><label>Номер</label><input class="form-input" id="edit-std-number" value="${esc(n.number || '')}"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Номер</label><input class="form-input" id="edit-std-number" value="${esc(n.number || '')}"></div>
+      <div class="form-group"><label>Группа</label><select class="form-select" id="edit-std-group">${groupOpts}</select></div>
+    </div>
     <div class="form-group"><label>Заголовок</label><input class="form-input" id="edit-std-title" value="${esc(n.title)}"></div>
     <div class="form-group"><label>Текст</label><textarea class="form-textarea" id="edit-std-body" style="min-height:200px;">${esc(n.body)}</textarea></div>
   `, `<button class="btn ghost" onclick="closeModal()">Отмена</button><button class="btn primary" id="save-std-btn">Сохранить</button>`);
@@ -2410,6 +2424,7 @@ function openStdEdit(id, news) {
       await api('/api/admin/standard/update', {
         id,
         number: $('edit-std-number').value.trim(),
+        group_name: $('edit-std-group').value,
         title: $('edit-std-title').value.trim(),
         body: $('edit-std-body').value.trim(),
         image_url: _uploadedStandardImageUrl

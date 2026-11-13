@@ -1,117 +1,377 @@
-# ============= TIMESHEET (MATRIX) =============
-def _sync_timesheet_matrix(user_id, month, year):
-    with get_conn() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Определяем права текущего пользователя
-            cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
-            u = cur.fetchone()
-            if not u: return []
-            
-            pos_lower = (u.get("position") or "").lower()
-            is_hr = pos_lower.strip() == "hr"
-            is_tu = "территориальный" in pos_lower
-            is_us = "управляющий сменой" in pos_lower
-            
-            # Получаем список сотрудников
-            query = """
-                SELECT u.user_id, u.full_name, u.position, COALESCE(u.rate, 0) AS rate, r.name AS restaurant_name
-                FROM users u
-                LEFT JOIN restaurants r ON u.restaurant_key = r.key
-                WHERE COALESCE(u.is_fired, FALSE) = FALSE AND COALESCE(u.is_admin, FALSE) = FALSE AND u.login IS NOT NULL
-            """
-            params = []
-            
-            if is_us:
-                query += " AND u.restaurant_key = %s"
-                params.append(u.get("restaurant_key"))
-            elif is_tu:
-                query += " AND u.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id = %s)"
-                params.append(user_id)
-            elif not is_hr:
-                # Обычный сотрудник видит только себя
-                query += " AND u.user_id = %s"
-                params.append(user_id)
-                
-            query += " ORDER BY u.full_name"
-            cur.execute(query, params)
-            employees = [dict(r) for r in cur.fetchall()]
-            
-            if not employees: return []
-            
-            emp_ids = [e["user_id"] for e in employees]
-            
-            # Получаем часы за месяц
-            cur.execute("""
-                SELECT user_id, work_date, hours 
-                FROM timesheet_records 
-                WHERE user_id = ANY(%s) 
-                  AND EXTRACT(MONTH FROM work_date) = %s 
-                  AND EXTRACT(YEAR FROM work_date) = %s
-            """, (emp_ids, month, year))
-            
-            records = cur.fetchall()
-            
-            # Группируем часы по сотрудникам в формат { "1": 8, "2": 8 }
-            hours_map = {eid: {} for eid in emp_ids}
-            for r in records:
-                day = r["work_date"].day
-                hours_map[r["user_id"]][str(day)] = float(r["hours"])
-                
-            for e in employees:
-                e["hours"] = hours_map[e["user_id"]]
-                
-            return employees
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wokker · Табель</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23F5F5F7'/%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%23007AFF' stroke-width='8'/%3E%3Cpath d='M25 50 A 25 25 0 0 0 75 50' fill='none' stroke='%23007AFF' stroke-width='12' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#F5F5F7">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #F5F5F7; --card-bg: #FFFFFF; --text-main: #1C1C1E; --text-muted: #8E8E93;
+    --accent: #007AFF; --accent-soft: #E5F0FF; --green: #34C759; --green-soft: #E8F8EB;
+    --red: #FF3B30; --border: rgba(0,0,0,0.08); --font: 'Inter', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
+  body { font-family: var(--font); background: var(--bg); color: var(--text-main); min-height: 100vh; display: flex; flex-direction: column; }
+  
+  /* HEADER */
+  .header { background: #fff; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 20; box-shadow: 0 2px 10px rgba(0,0,0,0.02); }
+  .logo { font-size: 20px; font-weight: 800; display: flex; align-items: center; gap: 10px; }
+  .btn-close { background: #F2F2F7; padding: 10px 20px; border-radius: 100px; font-weight: 600; color: var(--text-main); text-decoration: none; font-size: 13px; }
+  
+  /* TABS */
+  .tabs { display: flex; gap: 8px; padding: 12px 24px; background: #fff; border-bottom: 1px solid var(--border); overflow-x: auto; z-index: 15; }
+  .tab { background: none; border: none; padding: 10px 20px; font-weight: 600; font-size: 14px; color: var(--text-muted); border-radius: 100px; cursor: pointer; white-space: nowrap; transition: all 0.2s; }
+  .tab.active { background: var(--accent-soft); color: var(--accent); }
+  
+  /* CONTENT */
+  .content { padding: 20px; flex: 1; display: flex; flex-direction: column; }
+  .section { display: none; height: 100%; }
+  .section.active { display: flex; flex-direction: column; animation: fadeIn 0.3s; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  
+  /* MONTH SELECTOR */
+  .month-selector { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; background: #fff; padding: 12px 16px; border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); flex-shrink: 0; }
+  .month-selector button { background: #F2F2F7; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s; }
+  .month-selector button:hover { background: #E5E5EA; }
+  .month-title { font-size: 18px; font-weight: 700; }
+  
+  /* TABLE WRAPPER */
+  .table-scroll { flex: 1; overflow: auto; background: #fff; border-radius: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.06); position: relative; max-height: calc(100vh - 200px); }
+  table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; }
+  th, td { padding: 10px 12px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); font-size: 13px; text-align: center; white-space: nowrap; }
+  
+  /* Sticky Headers & Columns */
+  thead th { position: sticky; top: 0; background: #F9F9FB; z-index: 10; font-weight: 700; color: var(--text-muted); font-size: 11px; text-transform: uppercase; }
+  th.sticky-col, td.sticky-col { position: sticky; left: 0; background: #fff; z-index: 5; text-align: left; border-right: 2px solid var(--border); min-width: 220px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+  thead th.sticky-col { z-index: 15; background: #F9F9FB; }
+  
+  /* Инпуты */
+  .cell-input { width: 100%; min-width: 40px; border: 1px solid transparent; border-radius: 6px; padding: 6px; text-align: center; font-weight: 600; font-size: 13px; background: transparent; transition: all 0.2s; outline: none; }
+  .cell-input:hover { background: #F2F2F7; }
+  .cell-input:focus { background: #fff; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .cell-input.error { background: #FFEBEA; border-color: var(--red); color: var(--red); }
+  
+  /* Специальные колонки */
+  .col-rate { background: #F9F9FB; }
+  .col-rate input { background: #fff; border: 1px solid var(--border); }
+  .col-total { font-weight: 800; background: #FAFCFF; }
+  .col-salary { font-weight: 800; color: var(--green); background: #F0FDF4; }
 
-async def handle_timesheet_matrix(request):
-    user, err = await get_auth_user(request)
-    if err: return denied(err)
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    
-    month = int(body.get("month", datetime.now().month))
-    year = int(body.get("year", datetime.now().year))
-    
-    employees = await _run(_sync_timesheet_matrix, user["user_id"], month, year)
-    return web.json_response({"employees": employees})
+  /* Индикатор сохранения */
+  .save-indicator { position: fixed; bottom: 24px; right: 24px; background: var(--text-main); color: #fff; padding: 12px 24px; border-radius: 100px; font-weight: 600; font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 100; }
+  .save-indicator.show { opacity: 1; }
 
-def _sync_save_cell(user_id, target_uid, work_date, hours):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            if hours <= 0:
-                cur.execute("DELETE FROM timesheet_records WHERE user_id = %s AND work_date = %s", (target_uid, work_date))
-            else:
-                cur.execute("""
-                    INSERT INTO timesheet_records (user_id, work_date, hours, status, updated_at)
-                    VALUES (%s, %s, %s, 'work', NOW())
-                    ON CONFLICT (user_id, work_date) DO UPDATE 
-                    SET hours = EXCLUDED.hours, updated_at = NOW()
-                """, (target_uid, work_date, hours))
+  .loader { text-align: center; padding: 40px; color: var(--text-muted); font-weight: 600; }
 
-async def handle_timesheet_save_cell(request):
-    user, err = await get_auth_user(request)
-    if err: return denied(err)
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    
-    target_uid = int(body.get("user_id"))
-    work_date = body.get("work_date")
-    hours = float(body.get("hours", 0))
-    
-    # TODO: Здесь стоит добавить проверку, может ли текущий user редактировать target_uid
-    await _run(_sync_save_cell, user["user_id"], target_uid, work_date, hours)
-    return web.json_response({"ok": True})
+  @media (max-width: 600px) {
+    .content { padding: 10px; }
+    th, td { padding: 8px 6px; }
+    .cell-input { min-width: 30px; padding: 4px; font-size: 12px; }
+    th.sticky-col, td.sticky-col { min-width: 140px; max-width: 140px; font-size: 12px; }
+  }
+</style>
+</head>
+<body>
 
-async def handle_timesheet_update_rate(request):
-    user, err = await get_auth_user(request)
-    if err: return denied(err)
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+<div class="header">
+  <div class="logo">⏱ Табель</div>
+  <a href="/" class="btn-close">← На портал</a>
+</div>
+
+<div class="tabs">
+  <button class="tab active" data-sec="tab-sheet">Табель</button>
+  <button class="tab" data-sec="tab-employees">Сотрудники</button>
+  <button class="tab" data-sec="tab-reports">Отчёты</button>
+</div>
+
+<div class="content">
+  <!-- ВКЛАДКА: ТАБЕЛЬ (МАТРИЦА) -->
+  <div class="section active" id="tab-sheet">
+    <div class="month-selector">
+      <button onclick="changeMonth(-1)">←</button>
+      <div class="month-title" id="current-month-title">Месяц</div>
+      <button onclick="changeMonth(1)">→</button>
+    </div>
     
-    target_uid = int(body.get("user_id"))
-    rate = float(body.get("rate", 0))
+    <div class="table-scroll" id="matrix-container">
+      <div class="loader">Загрузка данных...</div>
+    </div>
+  </div>
+
+  <!-- ВКЛАДКА: СОТРУДНИКИ -->
+  <div class="section" id="tab-employees">
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th class="sticky-col">Сотрудник</th><th>Должность</th><th>Ресторан</th><th>Ставка</th></tr></thead>
+        <tbody id="employees-list">
+          <tr><td colspan="4" class="loader">Загрузка...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ВКЛАДКА: ОТЧЁТЫ -->
+  <div class="section" id="tab-reports">
+    <div class="month-selector">
+      <button onclick="changeMonth(-1)">←</button>
+      <div class="month-title" id="report-month-title">Месяц</div>
+      <button onclick="changeMonth(1)">→</button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th class="sticky-col">Сотрудник</th><th>Должность</th><th>Часов</th><th>К оплате (₽)</th></tr></thead>
+        <tbody id="report-list">
+          <tr><td colspan="4" class="loader">Загрузка...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="save-indicator" id="save-indicator">✓ Сохранено</div>
+
+<script>
+const TOKEN_KEY = 'wokker_staff_token';
+let CURRENT_DATE = new Date();
+let CURRENT_MONTH = CURRENT_DATE.getMonth() + 1;
+let CURRENT_YEAR = CURRENT_DATE.getFullYear();
+let EMPLOYEES_DATA = [];
+
+const $ = id => document.getElementById(id);
+const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
+
+async function api(path, body) {
+  const payload = { webToken: getToken() };
+  if (body && typeof body === 'object') Object.assign(payload, body);
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (res.status === 401) { window.location.href = '/'; throw new Error('unauthorized'); }
+  if (!res.ok) {
+    let msg = 'error';
+    try { const j = await res.json(); msg = j.error || msg; } catch (e) {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+function showSaveIndicator() {
+  const ind = $('save-indicator');
+  ind.classList.add('show');
+  setTimeout(() => ind.classList.remove('show'), 2000);
+}
+
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    t.classList.add('active');
+    $(t.dataset.sec).classList.add('active');
     
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("UPDATE users SET rate = %s WHERE user_id = %s", (rate, target_uid))
-            
-    return web.json_response({"ok": True})
+    if (t.dataset.sec === 'tab-sheet') loadMatrix();
+    if (t.dataset.sec === 'tab-employees') loadEmployees();
+    if (t.dataset.sec === 'tab-reports') loadReports();
+  });
+});
+
+function updateMonthTitles() {
+  const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+  const title = `${months[CURRENT_MONTH - 1]} ${CURRENT_YEAR}`;
+  $('current-month-title').textContent = title;
+  $('report-month-title').textContent = title;
+}
+
+function changeMonth(delta) {
+  let m = CURRENT_MONTH + delta;
+  let y = CURRENT_YEAR;
+  if (m > 12) { m = 1; y++; }
+  if (m < 1) { m = 12; y--; }
+  CURRENT_MONTH = m;
+  CURRENT_YEAR = y;
+  updateMonthTitles();
+  
+  const activeSec = document.querySelector('.section.active').id;
+  if (activeSec === 'tab-sheet') loadMatrix();
+  if (activeSec === 'tab-reports') loadReports();
+}
+
+// ================== МАТРИЦА ТАБЕЛЯ ==================
+async function loadMatrix() {
+  $('matrix-container').innerHTML = '<div class="loader">Загрузка табеля...</div>';
+  try {
+    const res = await api('/api/timesheet/matrix', { month: CURRENT_MONTH, year: CURRENT_YEAR });
+    EMPLOYEES_DATA = res.employees || [];
+    renderMatrix();
+  } catch (e) {
+    $('matrix-container').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderMatrix() {
+  if (!EMPLOYEES_DATA.length) {
+    $('matrix-container').innerHTML = '<div class="loader">Нет сотрудников для отображения</div>';
+    return;
+  }
+
+  const daysInMonth = new Date(CURRENT_YEAR, CURRENT_MONTH, 0).getDate();
+  
+  let thead = `<thead><tr><th class="sticky-col">Сотрудник</th>`;
+  for (let d = 1; d <= daysInMonth; d++) {
+    thead += `<th>${d}</th>`;
+  }
+  thead += `<th class="col-rate">Ставка (₽)</th>
+            <th class="col-total">Часов</th>
+            <th class="col-salary">К оплате (₽)</th>
+            </tr></thead>`;
+
+  let tbody = '<tbody>';
+  EMPLOYEES_DATA.forEach(emp => {
+    tbody += `<tr data-uid="${emp.user_id}">
+      <td class="sticky-col" title="${esc(emp.full_name)}"><b>${esc(emp.full_name)}</b><br><span style="font-size:11px; color:var(--text-muted);">${esc(emp.position || '')}</span></td>`;
+    
+    for (let d = 1; d <= daysInMonth; d++) {
+      const val = emp.hours[d] || '';
+      tbody += `<td><input type="number" class="cell-input day-input" data-day="${d}" data-uid="${emp.user_id}" value="${val}" min="0" max="24" step="0.5" placeholder="-"></td>`;
+    }
+
+    const totalHours = Object.values(emp.hours).reduce((a, b) => a + parseFloat(b || 0), 0);
+    const rate = emp.rate || 0;
+    const salary = totalHours * rate;
+
+    tbody += `<td class="col-rate"><input type="number" class="cell-input rate-input" data-uid="${emp.user_id}" value="${rate || ''}" min="0" step="10" placeholder="0"></td>
+              <td class="col-total total-hours">${totalHours}</td>
+              <td class="col-salary total-salary">${salary.toLocaleString('ru-RU')}</td>
+              </tr>`;
+  });
+  tbody += '</tbody>';
+
+  $('matrix-container').innerHTML = `<table>${thead}${tbody}</table>`;
+
+  document.querySelectorAll('.day-input').forEach(inp => inp.addEventListener('change', handleDayChange));
+  document.querySelectorAll('.rate-input').forEach(inp => inp.addEventListener('change', handleRateChange));
+}
+
+async function handleDayChange(e) {
+  const inp = e.target;
+  const uid = parseInt(inp.dataset.uid);
+  const day = parseInt(inp.dataset.day);
+  const val = inp.value ? parseFloat(inp.value) : 0;
+
+  if (val < 0 || val > 24) { inp.classList.add('error'); return; }
+  inp.classList.remove('error');
+
+  const dateStr = `${CURRENT_YEAR}-${String(CURRENT_MONTH).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+  try {
+    await api('/api/timesheet/save_cell', { user_id: uid, work_date: dateStr, hours: val });
+    const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
+    if (emp) {
+      if (val === 0) delete emp.hours[day];
+      else emp.hours[day] = val;
+      recalcRow(uid);
+    }
+    showSaveIndicator();
+  } catch (err) {
+    alert('Ошибка сохранения: ' + err.message);
+  }
+}
+
+async function handleRateChange(e) {
+  const inp = e.target;
+  const uid = parseInt(inp.dataset.uid);
+  const rate = inp.value ? parseFloat(inp.value) : 0;
+
+  if (rate < 0) { inp.classList.add('error'); return; }
+  inp.classList.remove('error');
+
+  try {
+    await api('/api/timesheet/update_rate', { user_id: uid, rate });
+    const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
+    if (emp) {
+      emp.rate = rate;
+      recalcRow(uid);
+    }
+    showSaveIndicator();
+  } catch (err) {
+    alert('Ошибка сохранения ставки: ' + err.message);
+  }
+}
+
+function recalcRow(uid) {
+  const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
+  if (!emp) return;
+  const tr = document.querySelector(`tr[data-uid="${uid}"]`);
+  if (!tr) return;
+
+  const totalHours = Object.values(emp.hours).reduce((a, b) => a + parseFloat(b || 0), 0);
+  const salary = totalHours * (emp.rate || 0);
+
+  tr.querySelector('.total-hours').textContent = totalHours;
+  tr.querySelector('.total-salary').textContent = salary.toLocaleString('ru-RU');
+}
+
+// ================== СОТРУДНИКИ ==================
+async function loadEmployees() {
+  try {
+    const res = await api('/api/timesheet/employees', {});
+    const employees = res.employees || [];
+    
+    if (!employees.length) {
+      $('employees-list').innerHTML = '<tr><td colspan="4" class="loader">Нет доступных сотрудников</td></tr>';
+      return;
+    }
+    
+    $('employees-list').innerHTML = employees.map(e => `
+      <tr>
+        <td class="sticky-col"><b>${esc(e.full_name)}</b></td>
+        <td>${esc(e.position || '—')}</td>
+        <td>${esc(e.restaurant_name || '—')}</td>
+        <td>—</td>
+      </tr>
+    `).join('');
+  } catch (e) {
+    $('employees-list').innerHTML = '<tr><td colspan="4" class="loader" style="color:var(--red);">Ошибка загрузки</td></tr>';
+  }
+}
+
+// ================== ОТЧЕТЫ ==================
+async function loadReports() {
+  $('report-list').innerHTML = '<tr><td colspan="4" class="loader">Загрузка...</td></tr>';
+  try {
+    const res = await api('/api/timesheet/reports', { month: CURRENT_MONTH, year: CURRENT_YEAR });
+    const report = res.report || [];
+    
+    if (!report.length) {
+      $('report-list').innerHTML = '<tr><td colspan="4" class="loader">Нет данных за этот месяц</td></tr>';
+      return;
+    }
+    
+    $('report-list').innerHTML = report.map(r => `
+      <tr>
+        <td class="sticky-col"><b>${esc(r.full_name)}</b></td>
+        <td>${esc(r.position || '—')}</td>
+        <td style="font-weight:700; color:var(--accent);">${r.total_hours} ч</td>
+        <td style="font-weight:700; color:var(--green);">${(r.total_salary || 0).toLocaleString('ru-RU')} ₽</td>
+      </tr>
+    `).join('');
+  } catch (e) {
+    $('report-list').innerHTML = '<tr><td colspan="4" class="loader" style="color:var(--red);">Ошибка загрузки</td></tr>';
+  }
+}
+
+(async function init() {
+  if (!getToken()) { window.location.href = '/'; return; }
+  updateMonthTitles();
+  await loadMatrix();
+})();
+</script>
+</body>
+</html>

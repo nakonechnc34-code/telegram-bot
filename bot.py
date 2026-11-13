@@ -411,6 +411,7 @@ def init_db_and_seed():
         "ALTER TABLE standards ADD COLUMN IF NOT EXISTS proposed_by TEXT",
         "ALTER TABLE standards ADD COLUMN IF NOT EXISTS approved_by TEXT",
         "ALTER TABLE standards ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS group_name TEXT DEFAULT 'Общее'",
         "ALTER TABLE standards DROP COLUMN IF EXISTS category",
         "ALTER TABLE standards DROP COLUMN IF EXISTS description",
         "ALTER TABLE standards DROP COLUMN IF EXISTS url",
@@ -1390,6 +1391,7 @@ async def handle_admin_standard_add(request):
     title = (body.get("title") or "").strip()
     text = (body.get("body") or "").strip()
     image_url = body.get("image_url") or ""
+    group_name = (body.get("group_name") or "Общее").strip()
     
     if not title or not text or len(title) > 200 or len(text) > 10000:
         return web.json_response({"error": "invalid_or_too_long"}, status=400)
@@ -1403,8 +1405,8 @@ async def handle_admin_standard_add(request):
 
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("INSERT INTO standards (number, title, body, status, proposed_by, image_url) VALUES (%s,%s,%s,%s,%s,%s) RETURNING *", 
-                        (number, title, text, status, proposed_by, image_url))
+            cur.execute("INSERT INTO standards (number, title, body, status, proposed_by, image_url, group_name) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING *", 
+                        (number, title, text, status, proposed_by, image_url, group_name))
             std_row = dict(cur.fetchone())
     return web.json_response({"ok": True, "status": status, "standard": std_row})
 
@@ -1417,7 +1419,7 @@ async def handle_admin_standard_update(request):
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     sid = int(body.get("id", 0))
     if sid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
-    allowed = {"number", "title", "body", "image_url"}
+    allowed = {"number", "title", "body", "image_url", "group_name"}
     updates = {k: body[k] for k in allowed if k in body}
     if not updates: return web.json_response({"ok": True})
 

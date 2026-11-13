@@ -166,11 +166,17 @@
   .std-search { width: calc(100% - 40px); margin: 0 20px 20px; border: 1px solid #E5E5EA; border-radius: 100px; padding: 16px 24px; font-size: 16px; background: #fff; color: var(--text-main); font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.02); }
   .std-search:focus { border-color: var(--gold); }
   
+  .std-groups-wrap { display: flex; gap: 8px; overflow-x: auto; padding: 0 20px 20px; scrollbar-width: none; }
+  .std-groups-wrap::-webkit-scrollbar { display: none; }
+  .std-group-btn { background: #fff; color: var(--text-muted); border: 1px solid #E5E5EA; padding: 10px 18px; border-radius: 100px; font-size: 14px; font-weight: 700; white-space: nowrap; transition: all 0.2s; }
+  .std-group-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  
   .std-card { background: #fff; border-radius: var(--radius); margin: 0 20px 16px; padding: 20px; box-shadow: var(--shadow); cursor: pointer; display: flex; gap: 16px; align-items: center; transition: transform 0.2s; }
   .std-card:active { transform: scale(0.98); }
   .std-img { width: 80px; height: 80px; border-radius: 20px; object-fit: cover; flex-shrink: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 32px; }
   .std-content { flex: 1; min-width: 0; }
   .std-number { font-size: 12px; font-weight: 800; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .std-group-tag { display: inline-block; font-size: 10px; font-weight: 800; background: #F0EAE1; color: #8E8E93; padding: 2px 8px; border-radius: 6px; margin-bottom: 6px; }
   .std-title { font-size: 17px; font-weight: 800; line-height: 1.3; color: var(--text-main); margin-bottom: 8px; }
   .std-snippet { font-size: 13px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -179,6 +185,21 @@
   .std-detail-title { font-size: 32px; font-weight: 800; margin-bottom: 24px; line-height: 1.2; letter-spacing: -1px; }
   .std-detail-img { width: 100%; height: auto; border-radius: var(--radius); margin-bottom: 24px; box-shadow: var(--shadow); display: block; object-fit: contain; }
   .std-detail-text { font-size: 17px; color: #333; line-height: 1.7; white-space: pre-wrap; font-weight: 500; }
+
+  /* Стили для красивой таблицы внутри стандарта */
+  .std-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top: 16px; background: #fff; border-radius: var(--radius-sm); box-shadow: var(--shadow); border: 1px solid var(--border); }
+  .std-table { width: 100%; border-collapse: collapse; text-align: left; }
+  .std-table th { padding: 16px; font-size: 13px; font-weight: 800; color: var(--text-main); border-bottom: 2px solid var(--accent-soft); background: #FAFAFA; white-space: nowrap; }
+  .std-table td { padding: 16px; font-size: 14px; color: #333; border-bottom: 1px solid var(--border); font-weight: 500; }
+  .std-table tr:last-child td { border-bottom: none; }
+  .std-table tr:nth-child(even) { background: #FAFAFA; }
+
+  /* Кнопка скачивания файла */
+  .std-file-link { display: flex; align-items: center; gap: 16px; padding: 20px; background: #fff; border-radius: var(--radius-sm); margin-top: 24px; box-shadow: var(--shadow); text-decoration: none; color: var(--text-main); border: 1px solid var(--border); transition: transform 0.2s; }
+  .std-file-link:active { transform: scale(0.98); }
+  .std-file-link .icon { font-size: 28px; }
+  .std-file-link .text { flex: 1; font-size: 15px; font-weight: 700; }
+  .std-file-link .hint { font-size: 12px; color: var(--text-muted); font-weight: 500; }
 
   .accordion { background: #fff; border-radius: var(--radius-sm); margin: 0 20px 12px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.02); }
   .accordion summary { padding: 24px; font-size: 17px; font-weight: 800; list-style: none; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
@@ -248,6 +269,7 @@
   <div class="section" id="sec-standards">
     <div class="page-header"><div class="page-title">Стандарты</div></div>
     <input class="std-search" id="standard-search" placeholder="Поиск по номеру или названию...">
+    <div class="std-groups-wrap" id="std-groups-filter"></div>
     <div id="standards-list"></div>
   </div>
 
@@ -311,6 +333,7 @@ const LOGIN_RE = /^[a-z]{3}\d{2}$/;
 
 let BOOT = null;
 let currentStandardsData = [];
+let _currentGroupFilter = 'Все';
 
 /* ================== UTILS ================== */
 const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -420,7 +443,6 @@ async function loadAndRender() {
     BOOT = data;
     if (!BOOT.profile) { showToast('Профиль не найден', 'error'); showLogin(); return; }
     
-    // Сохраняем имя для Академии
     localStorage.setItem('wokker_staff_name', BOOT.profile.first_name || 'Сотрудник');
     
     showMainApp();
@@ -890,17 +912,48 @@ function renderStandardsFromBoot() {
   if (!list.length) { box.innerHTML = '<div class="no-results">Стандартов пока нет</div>'; return; }
 
   currentStandardsData = list;
-  drawStandardsList(currentStandardsData);
+  
+  const groups = ['Все', ...new Set(list.map(s => s.group_name || 'Общее'))];
+  const filterWrap = $('std-groups-filter');
+  filterWrap.innerHTML = groups.map(g => 
+    `<button class="std-group-btn ${g === _currentGroupFilter ? 'active' : ''}" data-group="${esc(g)}">${esc(g)}</button>`
+  ).join('');
+  
+  filterWrap.querySelectorAll('.std-group-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _currentGroupFilter = btn.dataset.group;
+      filterWrap.querySelectorAll('.std-group-btn').forEach(b => b.classList.toggle('active', b.dataset.group === _currentGroupFilter));
+      drawStandardsList();
+    });
+  });
+
+  drawStandardsList();
 }
 
-function drawStandardsList(data) {
+function drawStandardsList() {
   const box = $('standards-list');
-  if (!data.length) {
+  const query = ($('standard-search').value || '').toLowerCase().trim();
+  
+  let filtered = currentStandardsData;
+  
+  if (_currentGroupFilter !== 'Все') {
+    filtered = filtered.filter(s => (s.group_name || 'Общее') === _currentGroupFilter);
+  }
+  
+  if (query) {
+    filtered = filtered.filter(s => {
+      return (s.number || '').toLowerCase().includes(query) || 
+             (s.title || '').toLowerCase().includes(query) || 
+             (s.body || '').toLowerCase().includes(query);
+    });
+  }
+
+  if (!filtered.length) {
     box.innerHTML = '<div class="no-results">Ничего не найдено</div>';
     return;
   }
 
-  box.innerHTML = data.map(s => {
+  box.innerHTML = filtered.map(s => {
     const imageHtml = s.image_url 
       ? `<img src="${esc(s.image_url)}" class="std-img">` 
       : `<div class="std-img">📚</div>`;
@@ -910,6 +963,7 @@ function drawStandardsList(data) {
         ${imageHtml}
         <div class="std-content">
           ${s.number ? `<div class="std-number">${esc(s.number)}</div>` : ''}
+          <div class="std-group-tag">${esc(s.group_name || 'Общее')}</div>
           <div class="std-title">${esc(s.title)}</div>
           <div class="std-snippet">${esc(s.body)}</div>
         </div>
@@ -924,12 +978,51 @@ function showStandardDetail(id) {
 
   const imageHtml = s.image_url ? `<img src="${esc(s.image_url)}" class="std-detail-img">` : '';
 
+  let contentHtml = '';
+  if (s.content_type === 'table' && s.content_data) {
+    // Рендер красивой таблицы
+    const headers = s.content_data.headers || [];
+    const rows = s.content_data.rows || [];
+    let tableHtml = `
+      <div class="std-table-wrap">
+        <table class="std-table">
+          <thead>
+            <tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr>
+          </thead>
+          <tbody>
+            ${rows.map(row => `
+              <tr>${headers.map((_, i) => `<td>${esc(row[i] || '')}</td>`).join('')}</tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+    contentHtml = tableHtml;
+  } else {
+    contentHtml = `<div class="std-detail-text">${esc(s.body)}</div>`;
+  }
+
+  // Блок с прикрепленным файлом
+  let fileHtml = '';
+  if (s.file_url) {
+    fileHtml = `
+      <a href="${esc(s.file_url)}?download=1" target="_blank" class="std-file-link">
+        <div class="icon">📥</div>
+        <div class="text">
+          Скачать файл
+          <div class="hint">${esc(s.file_name || 'Документ')}</div>
+        </div>
+      </a>
+    `;
+  }
+
   $('standard-detail-box').innerHTML = `
     <div class="std-detail-header">
       ${s.number ? `<div class="std-detail-number">${esc(s.number)}</div>` : ''}
       <div class="std-detail-title">${esc(s.title)}</div>
       ${imageHtml}
-      <div class="std-detail-text">${esc(s.body)}</div>
+      ${contentHtml}
+      ${fileHtml}
     </div>
   `;
 
@@ -948,18 +1041,8 @@ $('standard-detail-back').addEventListener('click', () => {
   window.scrollTo(0, 0);
 });
 
-$('standard-search').addEventListener('input', (e) => {
-  const query = e.target.value.toLowerCase().trim();
-  if (!query) {
-    drawStandardsList(currentStandardsData);
-    return;
-  }
-  const filtered = currentStandardsData.filter(s => {
-    return (s.number || '').toLowerCase().includes(query) || 
-           (s.title || '').toLowerCase().includes(query) || 
-           (s.body || '').toLowerCase().includes(query);
-  });
-  drawStandardsList(filtered);
+$('standard-search').addEventListener('input', () => {
+  drawStandardsList();
 });
 
 /* ================== FAQ ================== */

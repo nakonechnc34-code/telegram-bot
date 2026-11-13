@@ -180,34 +180,38 @@
   .std-title { font-size: 17px; font-weight: 800; line-height: 1.3; color: var(--text-main); margin-bottom: 8px; }
   .std-snippet { font-size: 13px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  .std-detail-header { padding: 32px 24px; }
-  .std-detail-number { display: inline-block; background: var(--accent-soft); color: var(--accent); padding: 6px 12px; border-radius: 100px; font-size: 13px; font-weight: 800; margin-bottom: 16px; }
-  .std-detail-title { font-size: 32px; font-weight: 800; margin-bottom: 24px; line-height: 1.2; letter-spacing: -1px; }
+  /* ====== НОВЫЙ ДИЗАЙН ДЕТАЛЬНОГО ЭКРАНА СТАНДАРТА ====== */
+  .std-detail-page { padding: 24px 20px; }
+  .std-detail-meta { margin-bottom: 24px; }
+  .std-detail-number { display: inline-block; background: var(--accent-soft); color: var(--accent); padding: 6px 12px; border-radius: 100px; font-size: 13px; font-weight: 800; margin-bottom: 12px; }
+  .std-detail-title { font-size: 32px; font-weight: 800; line-height: 1.2; letter-spacing: -1px; color: var(--text-main); }
   .std-detail-img { width: 100%; height: auto; border-radius: var(--radius); margin-bottom: 24px; box-shadow: var(--shadow); display: block; object-fit: contain; }
+
+  /* Карточка для текста или таблицы */
+  .std-content-card { background: #fff; border-radius: var(--radius-sm); padding: 24px; box-shadow: var(--shadow); margin-bottom: 24px; }
   
-  /* Стили для визуального редактора (Rich Text) */
-  .std-detail-text { font-size: 17px; color: #333; line-height: 1.7; font-weight: 500; }
+  .std-detail-text { font-size: 16px; color: #333; line-height: 1.7; font-weight: 500; }
   .std-detail-text p { margin-bottom: 12px; }
   .std-detail-text ul, .std-detail-text ol { margin-left: 20px; margin-bottom: 12px; }
   .std-detail-text li { margin-bottom: 6px; }
   .std-detail-text b, .std-detail-text strong { font-weight: 800; }
   .std-detail-text h1, .std-detail-text h2, .std-detail-text h3 { margin-top: 20px; margin-bottom: 10px; color: var(--text-main); font-weight: 800; }
-  .std-detail-text span { font-family: inherit !important; } /* Сохраняем шрифт приложения, но оставляем цвета */
+  .std-detail-text span { font-family: inherit !important; }
 
-  /* Стили для красивой таблицы внутри стандарта */
-  .std-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top: 16px; background: #fff; border-radius: var(--radius-sm); box-shadow: var(--shadow); border: 1px solid var(--border); }
+  .std-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .std-table { width: 100%; border-collapse: collapse; text-align: left; }
-  .std-table th { padding: 16px; font-size: 13px; font-weight: 800; color: var(--text-main); border-bottom: 2px solid var(--accent-soft); background: #FAFAFA; white-space: nowrap; }
-  .std-table td { padding: 16px; font-size: 14px; color: #333; border-bottom: 1px solid var(--border); font-weight: 500; }
+  .std-table th { padding: 12px; font-size: 13px; font-weight: 800; color: var(--text-main); border-bottom: 2px solid var(--accent-soft); background: #FAFAFA; white-space: nowrap; }
+  .std-table td { padding: 12px; font-size: 14px; color: #333; border-bottom: 1px solid var(--border); font-weight: 500; }
   .std-table tr:last-child td { border-bottom: none; }
   .std-table tr:nth-child(even) { background: #FAFAFA; }
 
-  /* Кнопка скачивания файла */
-  .std-file-link { display: flex; align-items: center; gap: 16px; padding: 20px; background: #fff; border-radius: var(--radius-sm); margin-top: 24px; box-shadow: var(--shadow); text-decoration: none; color: var(--text-main); border: 1px solid var(--border); transition: transform 0.2s; }
-  .std-file-link:active { transform: scale(0.98); }
-  .std-file-link .icon { font-size: 28px; }
-  .std-file-link .text { flex: 1; font-size: 15px; font-weight: 700; }
-  .std-file-link .hint { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+  /* Карточка скачивания файла */
+  .std-file-card { background: #fff; border-radius: var(--radius-sm); padding: 20px; box-shadow: var(--shadow); border: 1px solid var(--border); display: flex; align-items: center; gap: 16px; transition: transform 0.2s; }
+  .std-file-card:active { transform: scale(0.98); }
+  .std-file-icon { width: 48px; height: 48px; border-radius: 14px; background: var(--blue-soft); color: var(--blue); display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
+  .std-file-info { flex: 1; min-width: 0; }
+  .std-file-title { font-size: 15px; font-weight: 700; color: var(--text-main); margin-bottom: 4px; }
+  .std-file-name { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   .accordion { background: #fff; border-radius: var(--radius-sm); margin: 0 20px 12px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.02); }
   .accordion summary { padding: 24px; font-size: 17px; font-weight: 800; list-style: none; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
@@ -980,6 +984,26 @@ function drawStandardsList() {
   }).join('');
 }
 
+// Функция принудительного скачивания
+async function downloadFile(url, filename) {
+  try {
+    showToast('Скачивание началось...');
+    const response = await fetch(url);
+    const blob = await response.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = blobUrl;
+    a.download = filename || 'file';
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(blobUrl);
+    document.body.removeChild(a);
+  } catch (e) {
+    showToast('Ошибка при скачивании', 'error');
+  }
+}
+
 function showStandardDetail(id) {
   const s = (BOOT && BOOT.standards || []).find(x => x.id === id);
   if (!s) return;
@@ -988,7 +1012,6 @@ function showStandardDetail(id) {
 
   let contentHtml = '';
   if (s.content_type === 'table' && s.content_data) {
-    // Рендер красивой таблицы
     const headers = s.content_data.headers || [];
     const rows = s.content_data.rows || [];
     let tableHtml = `
@@ -1005,30 +1028,31 @@ function showStandardDetail(id) {
         </table>
       </div>
     `;
-    contentHtml = tableHtml;
+    contentHtml = `<div class="std-content-card">${tableHtml}</div>`;
   } else {
-    // Рендер текста (Rich Text) - используем innerHTML, чтобы сохранить форматирование
-    contentHtml = `<div class="std-detail-text">${s.body}</div>`;
+    contentHtml = `<div class="std-content-card"><div class="std-detail-text">${s.body}</div></div>`;
   }
 
-  // Блок с прикрепленным файлом
   let fileHtml = '';
   if (s.file_url) {
     fileHtml = `
-      <a href="${esc(s.file_url)}?download=1" target="_blank" class="std-file-link">
-        <div class="icon">📥</div>
-        <div class="text">
-          Скачать файл
-          <div class="hint">${esc(s.file_name || 'Документ')}</div>
+      <div class="std-file-card" onclick="downloadFile('${esc(s.file_url)}?download=1&name=${encodeURIComponent(s.file_name || 'file')}', '${esc(s.file_name || 'Документ')}')">
+        <div class="std-file-icon">📥</div>
+        <div class="std-file-info">
+          <div class="std-file-title">Скачать документ</div>
+          <div class="std-file-name">${esc(s.file_name || 'Прикрепленный файл')}</div>
         </div>
-      </a>
+      </div>
     `;
   }
 
+  // ВЫВОДИМ В КРАСИВОЙ ОБЕРТКЕ
   $('standard-detail-box').innerHTML = `
-    <div class="std-detail-header">
-      ${s.number ? `<div class="std-detail-number">${esc(s.number)}</div>` : ''}
-      <div class="std-detail-title">${esc(s.title)}</div>
+    <div class="std-detail-page">
+      <div class="std-detail-meta">
+        ${s.number ? `<div class="std-detail-number">${esc(s.number)}</div>` : ''}
+        <div class="std-detail-title">${esc(s.title)}</div>
+      </div>
       ${imageHtml}
       ${contentHtml}
       ${fileHtml}

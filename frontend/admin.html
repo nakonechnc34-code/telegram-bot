@@ -694,6 +694,25 @@ async function api(path, body) {
   return res.json();
 }
 
+// Универсальная функция загрузки файлов (Multipart)
+async function uploadFile(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+        const res = await fetch(`/api/admin/upload?token=${getToken()}`, {
+            method: 'POST',
+            body: formData
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Upload failed');
+        }
+        return await res.json();
+    } catch (e) {
+        throw new Error('Ошибка сети при загрузке файла');
+    }
+}
+
 /* ================== MOBILE SIDEBAR ================== */
 const sidebar = document.getElementById('sidebar');
 const sidebarOverlay = document.getElementById('sidebar-overlay');
@@ -833,6 +852,13 @@ function openModal(title, bodyHtml, footerHtml, opts) {
 function closeModal() { $('modal-overlay').classList.remove('show'); }
 $('modal-close').addEventListener('click', closeModal);
 $('modal-overlay').addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
+
+// Добавлено закрытие модалки по Escape
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && $('modal-overlay').classList.contains('show')) {
+    closeModal();
+  }
+});
 
 /* ================== NAV ================== */
 const SECTION_TITLES = {
@@ -2095,30 +2121,25 @@ function openNewsAdd() {
     if (!file) return;
     if (file.size > 15 * 1024 * 1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
     
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const b64 = ev.target.result;
-      $('n-image-preview').src = b64;
-      $('n-image-preview-box').style.display = 'block';
-      
-      const btn = $('n-image-btn');
-      btn.textContent = '⏳ Загрузка...';
-      btn.disabled = true;
-      
-      try {
-        const res = await api('/api/admin/upload', { image_base64: b64, filename: file.name });
+    const btn = $('n-image-btn');
+    btn.textContent = '⏳ Загрузка...';
+    btn.disabled = true;
+    
+    try {
+        // ИСПОЛЬЗУЕМ НОВУЮ ФУНКЦИЮ ЗАГРУЗКИ
+        const res = await uploadFile(file);
         _uploadedNewsImageUrl = res.url;
+        $('n-image-preview').src = res.url;
+        $('n-image-preview-box').style.display = 'block';
         btn.textContent = '✅ Фото загружено';
         btn.style.borderColor = 'var(--green)';
         btn.style.color = '#1B7A36';
-      } catch (err) {
-        toast('Ошибка загрузки фото', 'error');
+    } catch (err) {
+        toast(err.message, 'error');
         btn.textContent = '📷 Прикрепить фото';
-      } finally {
+    } finally {
         btn.disabled = false;
-      }
-    };
-    reader.readAsDataURL(file);
+    }
   });
 
   $('n-intent').addEventListener('change', e => {
@@ -2185,30 +2206,22 @@ function openNewsEdit(id, news) {
     if (!file) return;
     if (file.size > 15 * 1024 * 1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
     
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const b64 = ev.target.result;
-      $('n-image-preview').src = b64;
-      $('n-image-preview-box').style.display = 'block';
-      
-      const btn = $('n-image-btn');
-      btn.textContent = '⏳ Загрузка...';
-      btn.disabled = true;
-      
-      try {
-        const res = await api('/api/admin/upload', { image_base64: b64, filename: file.name });
+    const btn = $('n-image-btn');
+    btn.textContent = '⏳ Загрузка...';
+    btn.disabled = true;
+    
+    try {
+        const res = await uploadFile(file);
         _uploadedNewsImageUrl = res.url;
+        $('n-image-preview').src = res.url;
+        $('n-image-preview-box').style.display = 'block';
         btn.textContent = '✅ Фото загружено';
-        btn.style.borderColor = 'var(--green)';
-        btn.style.color = '#1B7A36';
-      } catch (err) {
-        toast('Ошибка загрузки фото', 'error');
+    } catch (err) {
+        toast(err.message, 'error');
         btn.textContent = '📷 Заменить фото';
-      } finally {
+    } finally {
         btn.disabled = false;
-      }
-    };
-    reader.readAsDataURL(file);
+    }
   });
 
   $('save-title-btn').addEventListener('click', async () => {
@@ -2508,30 +2521,24 @@ function openStdAdd() {
     if (!file) return;
     if (file.size > 15 * 1024 * 1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
     
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const b64 = ev.target.result;
-      $('std-image-preview').src = b64;
-      $('std-image-preview-box').style.display = 'block';
-      
-      const btn = $('std-image-btn');
-      btn.textContent = '⏳ Загрузка...';
-      btn.disabled = true;
-      
-      try {
-        const res = await api('/api/admin/upload', { image_base64: b64, filename: file.name });
+    const btn = $('std-image-btn');
+    btn.textContent = '⏳ Загрузка...';
+    btn.disabled = true;
+    
+    try {
+        const res = await uploadFile(file);
         _uploadedStandardImageUrl = res.url;
+        $('std-image-preview').src = res.url;
+        $('std-image-preview-box').style.display = 'block';
         btn.textContent = '✅ Фото загружено';
         btn.style.borderColor = 'var(--green)';
         btn.style.color = '#1B7A36';
-      } catch (err) {
-        toast('Ошибка загрузки фото', 'error');
+    } catch (err) {
+        toast(err.message, 'error');
         btn.textContent = '📷 Прикрепить фото';
-      } finally {
+    } finally {
         btn.disabled = false;
-      }
-    };
-    reader.readAsDataURL(file);
+    }
   });
 
   $('std-file-btn').addEventListener('click', () => $('std-file-file').click());
@@ -2540,28 +2547,21 @@ function openStdAdd() {
     if (!file) return;
     if (file.size > 15 * 1024 * 1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
     
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const b64 = ev.target.result;
-      
-      const btn = $('std-file-btn');
-      btn.textContent = '⏳ Загрузка...';
-      btn.disabled = true;
-      
-      try {
-        const res = await api('/api/admin/upload', { file_base64: b64, filename: file.name });
+    const btn = $('std-file-btn');
+    btn.textContent = '⏳ Загрузка...';
+    btn.disabled = true;
+    
+    try {
+        const res = await uploadFile(file);
         _uploadedStandardFileUrl = res.url;
         _uploadedStandardFileName = res.name;
         renderFilePreviewUI();
-      } catch (err) {
-        toast('Ошибка загрузки файла', 'error');
-        btn.textContent = '📎 Прикрепить файл';
-      } finally {
+    } catch (err) {
+        toast(err.message, 'error');
+    } finally {
         btn.disabled = false;
         btn.textContent = '📎 Прикрепить файл';
-      }
-    };
-    reader.readAsDataURL(file);
+    }
   });
   
   $('create-std-btn').addEventListener('click', async () => {
@@ -2709,30 +2709,22 @@ function openStdEdit(id, news) {
     if (!file) return;
     if (file.size > 15 * 1024 * 1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
     
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const b64 = ev.target.result;
-      $('std-image-preview').src = b64;
-      $('std-image-preview-box').style.display = 'block';
-      
-      const btn = $('std-image-btn');
-      btn.textContent = '⏳ Загрузка...';
-      btn.disabled = true;
-      
-      try {
-        const res = await api('/api/admin/upload', { image_base64: b64, filename: file.name });
+    const btn = $('std-image-btn');
+    btn.textContent = '⏳ Загрузка...';
+    btn.disabled = true;
+    
+    try {
+        const res = await uploadFile(file);
         _uploadedStandardImageUrl = res.url;
+        $('std-image-preview').src = res.url;
+        $('std-image-preview-box').style.display = 'block';
         btn.textContent = '✅ Фото загружено';
-        btn.style.borderColor = 'var(--green)';
-        btn.style.color = '#1B7A36';
-      } catch (err) {
-        toast('Ошибка загрузки фото', 'error');
+    } catch (err) {
+        toast(err.message, 'error');
         btn.textContent = '📷 Заменить фото';
-      } finally {
+    } finally {
         btn.disabled = false;
-      }
-    };
-    reader.readAsDataURL(file);
+    }
   });
 
   $('std-file-btn').addEventListener('click', () => $('std-file-file').click());
@@ -2741,27 +2733,21 @@ function openStdEdit(id, news) {
     if (!file) return;
     if (file.size > 15 * 1024 * 1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
     
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const b64 = ev.target.result;
-      
-      const btn = $('std-file-btn');
-      btn.textContent = '⏳ Загрузка...';
-      btn.disabled = true;
-      
-      try {
-        const res = await api('/api/admin/upload', { file_base64: b64, filename: file.name });
+    const btn = $('std-file-btn');
+    btn.textContent = '⏳ Загрузка...';
+    btn.disabled = true;
+    
+    try {
+        const res = await uploadFile(file);
         _uploadedStandardFileUrl = res.url;
         _uploadedStandardFileName = res.name;
         renderFilePreviewUI();
-      } catch (err) {
-        toast('Ошибка загрузки файла', 'error');
-      } finally {
+    } catch (err) {
+        toast(err.message, 'error');
+    } finally {
         btn.disabled = false;
         btn.textContent = '📎 Прикрепить файл';
-      }
-    };
-    reader.readAsDataURL(file);
+    }
   });
 
   $('save-std-btn').addEventListener('click', async () => {

@@ -163,7 +163,6 @@
   .news-detail-img { width: 100%; height: auto; border-radius: var(--radius); margin-bottom: 24px; box-shadow: var(--shadow); display: block; object-fit: contain; }
   .news-detail-text { font-size: 17px; color: #333; line-height: 1.7; white-space: pre-wrap; font-weight: 500; }
 
-  /* STANDARDS (NEW) */
   .std-search { width: calc(100% - 40px); margin: 0 20px 20px; border: 1px solid #E5E5EA; border-radius: 100px; padding: 16px 24px; font-size: 16px; background: #fff; color: var(--text-main); font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.02); }
   .std-search:focus { border-color: var(--gold); }
   
@@ -246,7 +245,6 @@
     <button class="btn-back" id="news-detail-back">← Назад к новостям</button>
   </div>
 
-  <!-- STANDARDS UPDATED -->
   <div class="section" id="sec-standards">
     <div class="page-header"><div class="page-title">Стандарты</div></div>
     <input class="std-search" id="standard-search" placeholder="Поиск по номеру или названию...">
@@ -421,6 +419,10 @@ async function loadAndRender() {
     const data = await api('/api/bootstrap', {});
     BOOT = data;
     if (!BOOT.profile) { showToast('Профиль не найден', 'error'); showLogin(); return; }
+    
+    // Сохраняем имя для Академии
+    localStorage.setItem('wokker_staff_name', BOOT.profile.first_name || 'Сотрудник');
+    
     showMainApp();
     checkTeamTabVisibility();
     updateNewsBadge();
@@ -595,6 +597,9 @@ function renderProfileFromBoot() {
       ${medbookHtml}
 
       <div class="actions-block">
+        <!-- НОВАЯ КНОПКА АКАДЕМИИ -->
+        <a href="/academy" class="action-btn" style="background: linear-gradient(135deg, #FF007F 0%, #FF7A00 100%); color: #fff; text-decoration: none; border: none; box-shadow: 0 8px 24px rgba(255,0,127,0.3);">🎓 Перейти в Академию</a>
+        
         ${p.is_admin ? `<button class="action-btn admin" id="open-admin-btn">🛠 Открыть админ-панель</button>` : ''}
         <button class="action-btn" id="report-bug-btn">⚠️ Сообщить об ошибке</button>
         <button class="action-btn danger" id="logout-btn">🚪 Выйти из аккаунта</button>
@@ -619,6 +624,7 @@ async function logout() {
   if (!confirm('Выйти из аккаунта?')) return;
   try { await api('/api/auth/logout', {}); } catch (e) {}
   clearToken();
+  localStorage.removeItem('wokker_staff_name');
   BOOT = null;
   showLogin();
 }
@@ -867,14 +873,13 @@ $('news-detail-back').addEventListener('click', () => {
   window.scrollTo(0, 0);
 });
 
-/* ================== STANDARDS (NEW) ================== */
+/* ================== STANDARDS ================== */
 function renderStandardsFromBoot() {
   const box = $('standards-list');
   const list = (BOOT && BOOT.standards) || [];
   
   if (!list.length) { box.innerHTML = '<div class="no-results">Стандартов пока нет</div>'; return; }
 
-  // Рендерим все изначально
   currentStandardsData = list;
   drawStandardsList(currentStandardsData);
 }
@@ -934,7 +939,6 @@ $('standard-detail-back').addEventListener('click', () => {
   window.scrollTo(0, 0);
 });
 
-// Умный поиск
 $('standard-search').addEventListener('input', (e) => {
   const query = e.target.value.toLowerCase().trim();
   if (!query) {

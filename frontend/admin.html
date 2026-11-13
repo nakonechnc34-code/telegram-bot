@@ -1,998 +1,1860 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Wokker · Сотрудник</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23F8F5F2'/%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%231C1C1E' stroke-width='6'/%3E%3Cpath d='M25 50 A 25 25 0 0 0 75 50' fill='none' stroke='%231C1C1E' stroke-width='10' stroke-linecap='round'/%3E%3C/svg%3E">
-<link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#F8F5F2">
-<link rel="apple-touch-icon" href="/static/icon-192.svg">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Wokker">
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --bg: #F8F5F2; --card-bg: #FFFFFF; --text-main: #1C1C1E; --text-muted: #8E8E93;
-    --accent: #1C1C1E; --accent-soft: #F0EAE1; --gold: #D4C4B7; 
-    --green: #E8F5E9; --green-text: #2E7D32;
-    --red: #FFEBEE; --red-text: #C62828;
-    --amber: #FFF8E1; --amber-text: #F57F17;
-    --shadow: 0 12px 36px rgba(0, 0, 0, 0.04);
-    --shadow-nav: 0 16px 40px rgba(0, 0, 0, 0.08);
-    --radius: 32px; --radius-sm: 20px;
-  }
-  * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
-  body { font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text-main); padding-bottom: 110px; -webkit-font-smoothing: antialiased; }
-  button, input { font-family: inherit; border: none; background: none; cursor: pointer; outline: none; }
+import os
+import re
+import json
+import gzip
+import logging
+import asyncio
+import threading
+import random
+import secrets
+import hashlib
+import calendar
+import traceback
+import base64
+import uuid
+from datetime import datetime, date, timezone as _tz
+from contextlib import contextmanager
 
-  #login-screen { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 1000; }
-  .login-card { background: #fff; border-radius: var(--radius); padding: 40px 32px; box-shadow: var(--shadow); width: 100%; max-width: 400px; text-align: center; }
-  .login-logo { width: 90px; height: 90px; border-radius: 50%; background: var(--accent-soft); margin: 0 auto 24px; display: flex; align-items: center; justify-content: center; font-size: 44px; }
-  .login-title { font-size: 32px; font-weight: 800; margin-bottom: 8px; letter-spacing: -1px; color: var(--text-main); }
-  .login-sub { font-size: 15px; color: var(--text-muted); margin-bottom: 32px; font-weight: 500; }
-  .login-input { width: 100%; border: 1px solid #E5E5EA; border-radius: var(--radius-sm); padding: 18px; font-size: 16px; background: #FAFAFA; color: var(--text-main); font-weight: 600; margin-bottom: 16px; text-align: center; transition: all 0.3s; }
-  .login-input:focus { border-color: var(--gold); background: #fff; }
-  .login-hint { font-size: 13px; color: var(--text-muted); margin-bottom: 12px; font-weight: 500; }
-  .login-btn { width: 100%; background: var(--accent); color: #fff; border-radius: var(--radius-sm); padding: 18px; font-size: 16px; font-weight: 700; margin-top: 8px; transition: transform 0.2s; }
-  .login-btn:active { transform: scale(0.98); }
-  .login-error { color: var(--red-text); font-size: 14px; font-weight: 600; min-height: 20px; margin-top: 12px; }
+from aiohttp import web
+from psycopg2.pool import ThreadedConnectionPool
+from psycopg2.extras import RealDictCursor, Json
 
-  .tabs { position: fixed; bottom: 24px; left: 20px; right: 20px; display: flex; background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(20px) saturate(1.8); -webkit-backdrop-filter: blur(20px) saturate(1.8); border-radius: 40px; padding: 10px; box-shadow: var(--shadow-nav); z-index: 100; justify-content: space-between; align-items: center; border: 1px solid rgba(255,255,255,0.6); }
-  .tabs button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 9px; font-weight: 700; color: var(--text-muted); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); position: relative; }
-  .tabs button.active { color: var(--text-main); }
-  .tabs .icon-wrap { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; }
-  .tabs button.active .icon-wrap { background: var(--accent-soft); transform: translateY(-8px); box-shadow: 0 8px 16px rgba(0,0,0,0.06); }
-  .tabs svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-  .badge-dot { position: absolute; top: 2px; right: 20%; width: 8px; height: 8px; background: var(--red-text); border-radius: 50%; border: 2px solid #fff; display: none; }
-  .badge-dot.show { display: block; }
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-  .section { display: none; animation: fadeIn 0.4s ease; }
-  .section.active { display: block; }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-  
-  .page-header { padding: 32px 24px 20px; text-align: center; }
-  .page-title { font-size: 36px; font-weight: 800; letter-spacing: -1.5px; color: var(--text-main); margin-bottom: 6px; }
-  .page-sub { font-size: 15px; color: var(--text-muted); font-weight: 500; }
+# ============= JSON SERIALIZER =============
+def _json_default(obj):
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
-  .profile-wrapper { margin: 24px 20px; }
-  .profile-card { background: linear-gradient(145deg, #ffffff 0%, #FAFAFA 100%); border-radius: var(--radius); padding: 32px 24px; box-shadow: var(--shadow); position: relative; overflow: hidden; text-align: center; }
-  .profile-card::before { content: ''; position: absolute; top: -50px; right: -50px; width: 150px; height: 150px; background: var(--accent-soft); border-radius: 50%; opacity: 0.5; z-index: 0; }
-  .profile-card > * { position: relative; z-index: 1; }
-  .avatar-ring { width: 100px; height: 100px; border-radius: 50%; margin: 0 auto 20px; padding: 4px; background: #FFF; box-shadow: 0 10px 24px rgba(0,0,0,0.06); }
-  .avatar-inner { width: 100%; height: 100%; border-radius: 50%; background: var(--gold); display: flex; align-items: center; justify-content: center; font-size: 36px; font-weight: 800; color: #fff; }
-  .p-name { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 6px; color: var(--text-main); }
-  .p-pos { font-size: 15px; color: var(--text-muted); font-weight: 600; margin-bottom: 16px; }
-  .status-pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--green); color: var(--green-text); border-radius: 100px; font-size: 13px; font-weight: 700; }
-  .status-pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green-text); }
+def _json_dumps(data):
+    return json.dumps(data, ensure_ascii=False, default=_json_default)
 
-  .info-section { margin-top: 20px; }
-  .info-group { background: #fff; border-radius: var(--radius-sm); overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.02); }
-  .info-item { display: flex; align-items: center; padding: 18px 20px; border-bottom: 1px solid #F2F2F7; }
-  .info-item:last-child { border-bottom: none; }
-  .info-icon { width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 20px; margin-right: 16px; flex-shrink: 0; background: var(--bg); }
-  .info-text { flex: 1; text-align: left; }
-  .info-lbl { font-size: 12px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
-  .info-val { font-size: 16px; font-weight: 700; color: var(--text-main); }
-  .info-val a { color: var(--text-main); text-decoration: none; }
+_orig_json_response = web.json_response
+def _safe_json_response(data=None, *args, **kwargs):
+    kwargs.setdefault("dumps", _json_dumps)
+    return _orig_json_response(data, *args, **kwargs)
+web.json_response = _safe_json_response
+# =========================================================
 
-  .medbook-card { background: #fff; border-radius: var(--radius-sm); padding: 20px; margin-top: 20px; box-shadow: var(--shadow); }
-  .medbook-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 8px; flex-wrap: wrap; }
-  .medbook-header h3 { font-size: 18px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
-  .medbook-status { display: inline-flex; align-items: center; padding: 6px 14px; border-radius: 100px; font-size: 12px; font-weight: 800; }
-  .medbook-status.ok { background: var(--green); color: var(--green-text); }
-  .medbook-status.expiring { background: var(--amber); color: var(--amber-text); }
-  .medbook-status.invalid { background: var(--red); color: var(--red-text); }
-  .medbook-sub { font-size: 14px; color: var(--text-muted); margin-bottom: 16px; font-weight: 500; }
-  .medbook-card details { background: #FAFAFA; border-radius: 16px; padding: 0; margin-top: 12px; }
-  .medbook-card summary { padding: 16px; font-size: 15px; font-weight: 700; cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; }
-  .medbook-card summary::-webkit-details-marker { display: none; }
-  .medbook-card summary::after { content: '+'; font-size: 20px; color: var(--text-muted); font-weight: 400; }
-  .medbook-card details[open] summary::after { content: '−'; }
-  .medbook-block { padding: 0 16px 16px; }
-  .medbook-block h4 { font-size: 12px; font-weight: 800; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; margin-bottom: 12px; }
-  .medbook-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #F2F2F7; font-size: 14px; }
-  .medbook-item:last-child { border-bottom: none; }
-  .medbook-item .mbi-name { font-weight: 600; flex: 1; }
-  .medbook-item .mbi-date { font-family: monospace; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-right: 12px; }
-  .mbi-status { font-size: 10px; font-weight: 800; padding: 4px 8px; border-radius: 6px; text-transform: uppercase; }
-  .mbi-status.ok { background: var(--green); color: var(--green-text); }
-  .mbi-status.expiring { background: var(--amber); color: var(--amber-text); }
-  .mbi-status.expired, .mbi-status.missing, .mbi-status.invalid_date { background: var(--red); color: var(--red-text); }
+DB_URL = os.getenv("DATABASE_URL")
+if not DB_URL:
+    raise ValueError("DATABASE_URL is not set")
 
-  .action-btn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 18px; border-radius: var(--radius-sm); font-size: 16px; font-weight: 700; background: #fff; color: var(--text-main); box-shadow: var(--shadow); margin-top: 12px; }
-  .action-btn.danger { color: var(--red-text); }
-  .action-btn.admin { background: var(--accent); color: #fff; }
+ADMIN_LOGIN = os.getenv("ADMIN_LOGIN", "adm01").strip().lower()
+ADMIN_PASSWORD_ENV = os.getenv("ADMIN_PASSWORD")
+APP_ENV = os.getenv("ENV", "development").lower()
+if not ADMIN_PASSWORD_ENV:
+    if APP_ENV == "production":
+        raise ValueError("ADMIN_PASSWORD must be set when ENV=production")
+    ADMIN_PASSWORD = "Wokker2026"
+    logging.warning("⚠️ ADMIN_PASSWORD не задан — дефолт только для dev.")
+else:
+    ADMIN_PASSWORD = ADMIN_PASSWORD_ENV
 
-  .team-group-title { font-size: 14px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin: 32px 24px 16px; display: flex; align-items: center; gap: 8px; }
-  .team-card { background: #fff; border-radius: var(--radius-sm); margin: 0 20px 12px; padding: 16px; box-shadow: var(--shadow); display: flex; align-items: center; gap: 16px; }
-  .team-avatar { width: 54px; height: 54px; border-radius: 50%; background: var(--accent-soft); color: var(--text-main); display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 800; flex-shrink: 0; }
-  .team-info { flex: 1; min-width: 0; }
-  .team-name { font-size: 17px; font-weight: 800; margin-bottom: 2px; }
-  .team-pos { font-size: 13px; color: var(--text-muted); font-weight: 500; margin-bottom: 8px; }
-  .team-badges { display: flex; gap: 6px; flex-wrap: wrap; }
-  .team-badge { font-size: 10px; font-weight: 800; padding: 4px 8px; border-radius: 8px; }
-  .team-badge.green { background: var(--green); color: var(--green-text); }
-  .team-badge.red { background: var(--red); color: var(--red-text); }
-  .team-badge.gray { background: #F2F2F7; color: var(--text-muted); }
-  .team-badge.amber { background: var(--amber); color: var(--amber-text); }
-  .team-actions a { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--text-main); font-size: 18px; text-decoration: none; }
+APP_URL = os.getenv("MINI_APP_URL", "").rstrip("/")
+LOGIN_RE = re.compile(r"^[a-z]{3}\d{2}$")
+SESSION_TTL_DAYS = 30
 
-  .rest-card { background: #fff; border-radius: var(--radius); margin: 0 20px 16px; padding: 24px; box-shadow: var(--shadow); cursor: pointer; transition: transform 0.2s; position: relative; }
-  .rest-card:active { transform: scale(0.98); }
-  .rest-card-header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
-  .rest-logo { width: 60px; height: 60px; border-radius: 20px; background: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 30px; flex-shrink: 0; }
-  .rest-info { flex: 1; }
-  .rest-name { font-size: 20px; font-weight: 800; margin-bottom: 6px; }
-  .rest-badge { display: inline-block; padding: 6px 12px; border-radius: 10px; font-size: 12px; font-weight: 800; }
-  .rest-badge.open { background: var(--green); color: var(--green-text); }
-  .rest-badge.closed { background: var(--red); color: var(--red-text); }
-  .rest-address-row { font-size: 15px; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5; font-weight: 500; display: flex; gap: 8px; }
-  .rest-actions { display: flex; gap: 12px; }
-  .rest-actions a { flex: 1; display: flex; align-items: center; justify-content: center; padding: 14px; border-radius: var(--radius-sm); font-size: 15px; font-weight: 700; text-decoration: none; }
-  .btn-call { background: var(--bg); color: var(--text-main); }
-  .btn-route { background: var(--accent); color: #fff; }
-  .my-rest-tag { position: absolute; top: 20px; right: 24px; font-size: 11px; background: var(--gold); color: #fff; padding: 4px 10px; border-radius: 8px; font-weight: 800; text-transform: uppercase; }
+def _int(v, default=0):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
 
-  .detail-hero { text-align: center; margin: 32px 24px; }
-  .detail-hero .emoji { width: 90px; height: 90px; margin: 0 auto 20px; background: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 44px; box-shadow: var(--shadow); }
-  .detail-hero .name { font-size: 32px; font-weight: 800; margin-bottom: 12px; letter-spacing: -1px; }
-  .detail-status { display: inline-block; padding: 8px 20px; border-radius: 100px; font-size: 14px; font-weight: 800; }
-  .detail-status.open { background: var(--green); color: var(--green-text); }
-  .detail-status.closed { background: var(--red); color: var(--red-text); }
-  .detail-card { background: #fff; border-radius: var(--radius); margin: 0 20px 20px; padding: 24px; box-shadow: var(--shadow); }
-  .detail-card .row { padding: 20px 0; border-bottom: 1px solid #F2F2F7; font-size: 17px; font-weight: 600; }
-  .detail-card .row:last-child { border-bottom: 0; padding-bottom: 0; }
-  .detail-card .row:first-child { padding-top: 0; }
-  .detail-card .row .lbl { color: var(--text-muted); font-size: 12px; margin-bottom: 6px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
-  .btn-back { display: block; margin: 0 20px 30px; padding: 18px; background: #fff; color: var(--text-main); border-radius: var(--radius-sm); font-size: 16px; font-weight: 700; text-align: center; width: calc(100% - 40px); box-shadow: var(--shadow); }
-
-  .news-item { background: #fff; border-radius: var(--radius); margin: 0 20px 16px; padding: 20px; box-shadow: var(--shadow); cursor: pointer; display: flex; gap: 20px; align-items: center; }
-  .news-item-img { width: 100px; height: 100px; border-radius: 24px; object-fit: cover; flex-shrink: 0; }
-  .news-item-content { flex: 1; min-width: 0; }
-  .news-item-meta { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-  .news-date { font-size: 13px; color: var(--text-muted); font-weight: 700; }
-  .news-badge { font-size: 10px; font-weight: 800; padding: 4px 8px; border-radius: 8px; text-transform: uppercase; }
-  .news-badge.urgent { background: var(--red); color: var(--red-text); }
-  .news-badge.important { background: var(--amber); color: var(--amber-text); }
-  .news-item-title { font-size: 18px; font-weight: 800; line-height: 1.3; color: var(--text-main); }
-
-  .news-detail-header { padding: 32px 24px; }
-  .news-detail-title { font-size: 32px; font-weight: 800; margin-bottom: 20px; line-height: 1.2; letter-spacing: -1px; }
-  .news-detail-img { width: 100%; height: auto; border-radius: var(--radius); margin-bottom: 24px; box-shadow: var(--shadow); display: block; object-fit: contain; }
-  .news-detail-text { font-size: 17px; color: #333; line-height: 1.7; white-space: pre-wrap; font-weight: 500; }
-
-  .std-search { width: calc(100% - 40px); margin: 0 20px 20px; border: 1px solid #E5E5EA; border-radius: 100px; padding: 16px 24px; font-size: 16px; background: #fff; color: var(--text-main); font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.02); }
-  .std-search:focus { border-color: var(--gold); }
-  
-  .std-card { background: #fff; border-radius: var(--radius); margin: 0 20px 16px; padding: 20px; box-shadow: var(--shadow); cursor: pointer; display: flex; gap: 16px; align-items: center; transition: transform 0.2s; }
-  .std-card:active { transform: scale(0.98); }
-  .std-img { width: 80px; height: 80px; border-radius: 20px; object-fit: cover; flex-shrink: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 32px; }
-  .std-content { flex: 1; min-width: 0; }
-  .std-number { font-size: 12px; font-weight: 800; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
-  .std-title { font-size: 17px; font-weight: 800; line-height: 1.3; color: var(--text-main); margin-bottom: 8px; }
-  .std-snippet { font-size: 13px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-  .std-detail-header { padding: 32px 24px; }
-  .std-detail-number { display: inline-block; background: var(--accent-soft); color: var(--accent); padding: 6px 12px; border-radius: 100px; font-size: 13px; font-weight: 800; margin-bottom: 16px; }
-  .std-detail-title { font-size: 32px; font-weight: 800; margin-bottom: 24px; line-height: 1.2; letter-spacing: -1px; }
-  .std-detail-img { width: 100%; height: auto; border-radius: var(--radius); margin-bottom: 24px; box-shadow: var(--shadow); display: block; object-fit: contain; }
-  .std-detail-text { font-size: 17px; color: #333; line-height: 1.7; white-space: pre-wrap; font-weight: 500; }
-
-  .accordion { background: #fff; border-radius: var(--radius-sm); margin: 0 20px 12px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.02); }
-  .accordion summary { padding: 24px; font-size: 17px; font-weight: 800; list-style: none; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
-  .accordion summary::-webkit-details-marker { display: none; }
-  .accordion summary::after { content: '+'; font-size: 24px; color: var(--text-muted); font-weight: 300; }
-  .accordion[open] summary::after { content: '−'; }
-  .accordion .content { padding: 0 24px 24px; font-size: 15px; color: var(--text-muted); line-height: 1.6; font-weight: 500; }
-
-  .q { width: calc(100% - 40px); margin: 0 20px 16px; border: 1px solid #E5E5EA; border-radius: var(--radius-sm); padding: 18px; font-size: 16px; background: #fff; color: var(--text-main); font-weight: 500; }
-  .q:focus { border-color: var(--gold); }
-  .btn-send { width: calc(100% - 40px); margin: 0 20px; background: var(--accent); color: #fff; border-radius: var(--radius-sm); padding: 18px; font-size: 16px; font-weight: 700; text-align: center; }
-
-  .no-results { text-align: center; color: var(--text-muted); padding: 60px 20px; font-size: 16px; font-weight: 500; }
-  .toast { position: fixed; bottom: 110px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--text-main); color: #fff; padding: 16px 28px; border-radius: 100px; font-size: 14px; font-weight: 700; z-index: 2000; opacity: 0; pointer-events: none; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
-  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-  .toast.error { background: var(--red-text); }
-</style>
-</head>
-<body>
-
-<div id="login-screen">
-  <div class="login-card">
-    <div class="login-logo">🍜</div>
-    <div class="login-title">Wokker</div>
-    <div class="login-sub">Кабинет сотрудника</div>
-    <input class="login-input" id="login-login" type="text" placeholder="Логин" maxlength="5" autocomplete="username" style="text-transform: lowercase;">
-    <input class="login-input" id="login-password" type="password" placeholder="Пароль" autocomplete="current-password">
-    <div class="login-hint">Логин выдаёт администратор</div>
-    <button class="login-btn" id="login-btn">Войти</button>
-    <div class="login-error" id="login-error"></div>
-  </div>
-</div>
-
-<div id="main-app" style="display:none;">
-  
-  <div class="section active" id="sec-profile">
-    <div class="page-header"><div class="page-title">Профиль</div></div>
-    <div id="profile-box"></div>
-  </div>
-
-  <div class="section" id="sec-team">
-    <div class="page-header">
-      <div class="page-title">Команда</div>
-      <div class="page-sub" id="team-subtitle">Сотрудники</div>
-    </div>
-    <div id="team-list"></div>
-  </div>
-
-  <div class="section" id="sec-restaurants">
-    <div class="page-header">
-      <div class="page-title">Рестораны</div>
-      <div class="page-sub">Выберите точку в списке</div>
-    </div>
-    <div id="restaurants-list"></div>
-  </div>
-
-  <div class="section" id="sec-news">
-    <div class="page-header"><div class="page-title">Новости</div></div>
-    <div id="news-list"></div>
-  </div>
-
-  <div class="section" id="sec-news-detail">
-    <div id="news-detail-box"></div>
-    <button class="btn-back" id="news-detail-back">← Назад к новостям</button>
-  </div>
-
-  <div class="section" id="sec-standards">
-    <div class="page-header"><div class="page-title">Стандарты</div></div>
-    <input class="std-search" id="standard-search" placeholder="Поиск по номеру или названию...">
-    <div id="standards-list"></div>
-  </div>
-
-  <div class="section" id="sec-standard-detail">
-    <div id="standard-detail-box"></div>
-    <button class="btn-back" id="standard-detail-back">← Назад к стандартам</button>
-  </div>
-
-  <div class="section" id="sec-faq">
-    <div class="page-header">
-      <div class="page-title">Вопросы</div>
-    </div>
-    <div id="faq-list"></div>
-    <div style="margin-top: 24px;">
-      <input class="q" id="question-input" maxlength="1000" placeholder="Задать свой вопрос...">
-      <button class="btn-send" id="send-question">Отправить</button>
-    </div>
-  </div>
-
-  <div class="section" id="sec-detail">
-    <div id="detail-box"></div>
-    <button class="btn-back" id="detail-back">← Назад к списку</button>
-  </div>
-
-  <nav class="tabs" id="main-tabs">
-    <button data-sec="sec-profile" class="active">
-      <div class="icon-wrap"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
-      Профиль
-    </button>
-    <button data-sec="sec-team" id="tab-team" style="display: none;">
-      <div class="icon-wrap"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
-      Команда
-    </button>
-    <button data-sec="sec-restaurants">
-      <div class="icon-wrap"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
-      Рестораны
-    </button>
-    <button data-sec="sec-news">
-      <div class="icon-wrap"><svg viewBox="0 0 24 24"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></svg></div>
-      Новости
-      <span class="badge-dot" id="news-badge"></span>
-    </button>
-    <button data-sec="sec-standards">
-      <div class="icon-wrap"><svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></div>
-      Стандарты
-    </button>
-    <button data-sec="sec-faq">
-      <div class="icon-wrap"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
-      Вопросы
-    </button>
-  </nav>
-</div>
-
-<div class="toast" id="toast"></div>
-
-<script>
-/* ================== CONFIG ================== */
-const TOKEN_KEY = 'wokker_staff_token';
-const SEEN_NEWS_KEY = 'wokker_seen_news';
-const LOGIN_RE = /^[a-z]{3}\d{2}$/;
-
-let BOOT = null;
-let currentStandardsData = [];
-
-/* ================== UTILS ================== */
-const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const $ = id => document.getElementById(id);
-
-function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
-function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
-function clearToken() { localStorage.removeItem(TOKEN_KEY); }
-
-let _toastTimer = null;
-function showToast(text, type) {
-  const el = $('toast');
-  el.textContent = text;
-  el.classList.remove('error');
-  if (type === 'error') el.classList.add('error');
-  el.classList.add('show');
-  clearTimeout(_toastTimer);
-  _toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+# ============= ПРАВА =============
+PERMISSIONS_LIST = [
+    {"key": "users_create", "label": "Добавлять сотрудников"},
+    {"key": "users_edit", "label": "Редактировать сотрудников"},
+    {"key": "users_fire", "label": "Увольнять сотрудников"},
+    {"key": "citizenships_edit", "label": "Управлять гражданствами"},
+    {"key": "medbook_edit", "label": "Заполнять медкнижки"},
+    {"key": "medbook_doctors_manage", "label": "Врачи: добавление и сроки"},
+    {"key": "medbook_tests_manage", "label": "Анализы: добавление и сроки"},
+    {"key": "medbook_vaccines_manage", "label": "Прививки: добавление и сроки"},
+    {"key": "restaurant_tu", "label": "Менять ТУ у ресторанов"},
+    {"key": "restaurant_create", "label": "Добавлять рестораны"},
+    {"key": "restaurant_edit", "label": "Редактировать рестораны"},
+    {"key": "standards_edit", "label": "Предлагать стандарты"},
+    {"key": "checklist_create", "label": "Создавать чек-листы"},
+    {"key": "checklist_edit", "label": "Редактировать чек-листы"},
+    {"key": "news_write", "label": "Писать новости"},
+    {"key": "news_edit", "label": "Редактировать новости"},
+    {"key": "news_suggest", "label": "Предлагать новости"},
+    {"key": "faq_edit", "label": "Редактировать FAQ"},
+    {"key": "positions_edit", "label": "Управлять должностями"},
+    {"key": "questions_reply", "label": "Отвечать на вопросы"},
+]
+PERM_KEYS = [p["key"] for p in PERMISSIONS_LIST]
+REF_TYPE_PERM = {
+    "doctor": "medbook_doctors_manage",
+    "test": "medbook_tests_manage",
+    "vaccine": "medbook_vaccines_manage",
 }
 
-async function api(path, body) {
-  const payload = { webToken: getToken() };
-  if (body && typeof body === 'object') Object.assign(payload, body);
-  const res = await fetch(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (res.status === 401) { clearToken(); showLogin(); throw new Error('unauthorized'); }
-  if (res.status === 403) {
-    let j = {};
-    try { j = await res.json(); } catch (e) {}
-    if (j.error === 'fired') { clearToken(); showLogin(); throw new Error('fired'); }
-    throw new Error(j.error || 'forbidden');
-  }
-  if (!res.ok) {
-    let msg = 'error';
-    try { const j = await res.json(); msg = j.detail || j.error || msg; } catch (e) {}
-    throw new Error(msg);
-  }
-  return res.json();
+# ============= ПАРОЛИ =============
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 200_000)
+    return f"pbkdf2_sha256${salt}${dk.hex()}"
+
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        algo, salt, hash_hex = stored.split("$", 2)
+        if algo != "pbkdf2_sha256":
+            return False
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 200_000)
+        return secrets.compare_digest(dk.hex(), hash_hex)
+    except Exception:
+        return False
+
+# ============= ЛОГИН =============
+TRANSLIT = {
+    "а":"a","б":"b","в":"v","г":"g","д":"d","е":"e","ё":"e","ж":"zh","з":"z",
+    "и":"i","й":"y","к":"k","л":"l","м":"m","н":"n","о":"o","п":"p","р":"r",
+    "с":"s","т":"t","у":"u","ф":"f","х":"h","ц":"ts","ч":"ch","ш":"sh","щ":"sch",
+    "ъ":"","ы":"y","ь":"","э":"e","ю":"yu","я":"ya",
 }
 
-function fmtDate(iso) {
-  if (!iso) return '';
-  try {
-    const d = new Date(iso);
-    const pad = n => String(n).padStart(2, '0');
-    return `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`;
-  } catch (e) { return iso; }
-}
+def _generate_login_for(full_name, existing_logins):
+    parts = (full_name or "").strip().split()
+    surname = (parts[0] if parts else "").lower()
+    letters = ""
+    for ch in surname:
+        if len(letters) >= 3: break
+        t = TRANSLIT.get(ch)
+        if t: letters += t
+    while len(letters) < 3:
+        letters += random.choice("abcdefghijklmnopqrstuvwxyz")
+    letters = letters[:3]
 
-/* ================== AUTH ================== */
-function showLogin() {
-  $('main-app').style.display = 'none';
-  $('login-screen').style.display = 'flex';
-  $('login-error').textContent = '';
-  $('login-login').value = '';
-  $('login-password').value = '';
-}
-function showMainApp() {
-  $('login-screen').style.display = 'none';
-  $('main-app').style.display = 'block';
-}
+    digits = list(range(10, 100))
+    random.shuffle(digits)
+    for d in digits:
+        candidate = f"{letters}{d}"
+        if candidate not in existing_logins: return candidate
+    for _ in range(500):
+        rl = "".join(random.choice("abcdefghijklmnopqrstuvwxyz") for _ in range(3))
+        d = random.randint(10, 99)
+        candidate = f"{rl}{d}"
+        if candidate not in existing_logins: return candidate
+    raise RuntimeError("Не удалось сгенерировать логин")
 
-$('login-login').addEventListener('input', e => {
-  e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5);
-});
+# ============= МЕДКНИЖКИ =============
+def parse_date_ddmmYYYY(s):
+    if not s: return None
+    m = re.match(r"^(\d{1,2})\.(\d{1,2})\.(\d{4})$", str(s).strip())
+    if not m: return None
+    try:
+        d = datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+        if d.day != int(m.group(1)) or d.month != int(m.group(2)): return None
+        return d
+    except ValueError: return None
 
-async function doLogin() {
-  const login = $('login-login').value.trim().toLowerCase();
-  const password = $('login-password').value;
-  const errEl = $('login-error');
-  errEl.textContent = '';
-  if (!LOGIN_RE.test(login)) { errEl.textContent = 'Логин: 3 латинские буквы + 2 цифры'; return; }
-  if (!password) { errEl.textContent = 'Введите пароль'; return; }
-  const btn = $('login-btn');
-  btn.disabled = true; btn.textContent = 'Проверяем…';
-  try {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ login, password }),
-    });
-    if (res.status === 401) { errEl.textContent = '❌ Неверный логин или пароль'; return; }
-    if (res.status === 403) { errEl.textContent = '❌ Аккаунт уволен'; return; }
-    if (!res.ok) { errEl.textContent = 'Ошибка сервера'; return; }
-    const data = await res.json();
-    if (!data.token) { errEl.textContent = 'Ошибка'; return; }
-    setToken(data.token);
-    await loadAndRender();
-  } catch (e) {
-    errEl.textContent = 'Сеть недоступна';
-  } finally {
-    btn.disabled = false; btn.textContent = 'Войти';
-  }
-}
+def add_months(dt, months):
+    y = dt.year + (dt.month - 1 + months) // 12
+    m = (dt.month - 1 + months) % 12 + 1
+    day = min(dt.day, calendar.monthrange(y, m)[1])
+    return dt.replace(year=y, month=m, day=day)
 
-$('login-btn').addEventListener('click', doLogin);
-$('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
-$('login-login').addEventListener('keydown', e => { if (e.key === 'Enter') $('login-password').focus(); });
+def entry_status(date_str, validity_months):
+    if not date_str: return "missing"
+    d = parse_date_ddmmYYYY(date_str)
+    if not d: return "invalid_date"
+    exp = add_months(d, validity_months)
+    now = datetime.utcnow()
+    if exp < now: return "expired"
+    if (exp - now).days <= 30: return "expiring"
+    return "ok"
 
-/* ================== BOOTSTRAP ================== */
-async function loadAndRender() {
-  try {
-    const data = await api('/api/bootstrap', {});
-    BOOT = data;
-    if (!BOOT.profile) { showToast('Профиль не найден', 'error'); showLogin(); return; }
-    showMainApp();
-    checkTeamTabVisibility();
-    updateNewsBadge();
-    renderProfileFromBoot();
-    renderTeamFromBoot();
-    renderNewsFromBoot();
-    renderRestaurants();
-    renderStandardsFromBoot();
-    renderFaqFromBoot();
-  } catch (e) {
-    if (e.message !== 'unauthorized' && e.message !== 'fired') showToast('Ошибка загрузки', 'error');
-  }
-}
+def _mb_items(medbook, doctors, tests, vaccines):
+    mb = medbook or {}
+    if isinstance(mb, str):
+        try: mb = json.loads(mb)
+        except Exception: mb = {}
+    items = []
+    for d in doctors: items.append((mb.get("doctors", {}).get(str(d["id"])), d["validity_months"]))
+    for t in tests: items.append((mb.get("tests", {}).get(str(t["id"])), t["validity_months"]))
+    for v in vaccines: items.append((mb.get("vaccines", {}).get(str(v["id"])), v["validity_months"]))
+    return items
 
-function checkTeamTabVisibility() {
-  const tab = $('tab-team');
-  const canSee = !!(BOOT && BOOT.can_see_team);
-  tab.style.display = canSee ? 'flex' : 'none';
-}
+def compute_medbook_status(medbook, doctors, tests, vaccines):
+    has_expiring = False
+    for date_str, validity in _mb_items(medbook, doctors, tests, vaccines):
+        s = entry_status(date_str, validity)
+        if s in ("missing", "invalid_date", "expired"): return "invalid"
+        if s == "expiring": has_expiring = True
+    return "expiring" if has_expiring else "ok"
 
-/* ================== TABS ================== */
-const sectionLoaders = {
-  'sec-profile': () => renderProfileFromBoot(),
-  'sec-team': () => renderTeamFromBoot(),
-  'sec-restaurants': () => renderRestaurants(),
-  'sec-news': () => { renderNewsFromBoot(); markNewsSeen(); },
-  'sec-standards': () => renderStandardsFromBoot(),
-  'sec-faq': () => renderFaqFromBoot(),
-};
+def medbook_missing_count(medbook, doctors, tests, vaccines):
+    items = _mb_items(medbook, doctors, tests, vaccines)
+    missing = sum(1 for date_str, v in items if entry_status(date_str, v) in ("missing", "invalid_date", "expired"))
+    return missing, len(items)
 
-document.querySelectorAll('.tabs button').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-    btn.classList.add('active');
-    $(btn.dataset.sec).classList.add('active');
-    window.scrollTo(0, 0);
-    const loader = sectionLoaders[btn.dataset.sec];
-    if (loader) loader();
-  });
-});
+# ============= БД =============
+_pool = None
+_pool_lock = threading.Lock()
 
-/* ================== NEWS BADGE ================== */
-function updateNewsBadge() {
-  const news = (BOOT && BOOT.news) || [];
-  let seen = [];
-  try { seen = JSON.parse(localStorage.getItem(SEEN_NEWS_KEY) || '[]'); } catch (e) {}
-  const hasUnread = news.some(n => !seen.includes(n.id));
-  const badge = $('news-badge');
-  if (badge) badge.classList.toggle('show', hasUnread);
-}
-function markNewsSeen() {
-  const news = (BOOT && BOOT.news) || [];
-  try { localStorage.setItem(SEEN_NEWS_KEY, JSON.stringify(news.map(n => n.id))); } catch (e) {}
-  const badge = $('news-badge');
-  if (badge) badge.classList.remove('show');
-}
+def init_pool():
+    global _pool
+    if _pool is None:
+        with _pool_lock:
+            if _pool is None:
+                _pool = ThreadedConnectionPool(2, 20, DB_URL)
 
-/* ================== PROFILE ================== */
-function renderProfileFromBoot() {
-  const box = $('profile-box');
-  if (!BOOT || !BOOT.profile) return;
-  const p = BOOT.profile;
-  const mb = BOOT.medbook || null;
-  const avatarLetter = (p.full_name || '?').charAt(0).toUpperCase();
-  const phoneClean = (p.phone || '').replace(/[^\d+]/g, '');
+@contextmanager
+def get_conn():
+    init_pool()
+    conn = _pool.getconn()
+    try:
+        with conn: yield conn
+    finally: _pool.putconn(conn)
 
-  let medbookHtml = '';
-  if (mb && !p.is_admin) {
-    let statusClass = 'invalid', statusText = '❌ Недействительна';
-    if (mb.status === 'ok') { statusClass = 'ok'; statusText = '✅ Действительна'; }
-    else if (mb.status === 'expiring') { statusClass = 'expiring'; statusText = '⚠️ Скоро истекает'; }
+async def _run(fn, *args):
+    return await asyncio.to_thread(fn, *args)
 
-    const renderItems = (items) => items.map(it => {
-      let stText = '', stClass = '';
-      if (it.status === 'ok') { stText = 'OK'; stClass = 'ok'; }
-      else if (it.status === 'expiring') { stText = 'Скоро'; stClass = 'expiring'; }
-      else if (it.status === 'expired') { stText = 'Просроч.'; stClass = 'expired'; }
-      else if (it.status === 'missing') { stText = 'Нет'; stClass = 'missing'; }
-      else { stText = 'Ошибка'; stClass = 'invalid_date'; }
-      const dateStr = it.date || '—';
-      return `
-        <div class="medbook-item">
-          <div class="mbi-name">${esc(it.name)}${it.required ? '<span style="color:var(--red-text)">*</span>' : ''}</div>
-          <div class="mbi-date">${esc(dateStr)}</div>
-          <div class="mbi-status ${stClass}">${stText}</div>
-        </div>`;
-    }).join('');
+def _run_migration(sql, label):
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur: cur.execute(sql)
+        return True
+    except Exception as e:
+        logging.error(f"Миграция '{label}': {type(e).__name__}: {str(e)[:150]}")
+        return False
 
-    medbookHtml = `
-      <div class="medbook-card">
-        <div class="medbook-header">
-          <h3>🩺 Медкнижка</h3>
-          <span class="medbook-status ${statusClass}">${statusText}</span>
-        </div>
-        <div class="medbook-sub">${mb.missing > 0 ? `Не заполнено ${mb.missing} из ${mb.total}` : `Все пункты заполнены (${mb.total})`}</div>
-        <details>
-          <summary>Показать все пункты (${mb.total})</summary>
-          <div class="medbook-block">
-            <h4>👨‍⚕️ Врачи</h4>
-            ${renderItems(mb.doctors || [])}
-          </div>
-          <div class="medbook-block">
-            <h4>🧪 Анализы</h4>
-            ${renderItems(mb.tests || [])}
-          </div>
-          <div class="medbook-block">
-            <h4>💉 Прививки</h4>
-            ${renderItems(mb.vaccines || [])}
-          </div>
-        </details>
-      </div>
-    `;
-  }
+async def _cleanup_sessions_loop():
+    while True:
+        try:
+            await asyncio.sleep(3600)
+            def _do_cleanup():
+                with get_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("DELETE FROM web_sessions WHERE last_used_at < NOW() - INTERVAL '%s days'" % int(SESSION_TTL_DAYS))
+                        return cur.rowcount
+            count = await _run(_do_cleanup)
+            if count: logging.info(f"🧹 Очищено старых сессий: {count}")
+        except asyncio.CancelledError: raise
+        except Exception as e: logging.error(f"Cleanup sessions error: {e}")
 
-  box.innerHTML = `
-    <div class="profile-wrapper">
-      <div class="profile-card">
-        <div class="avatar-ring"><div class="avatar-inner">${esc(avatarLetter)}</div></div>
-        <div class="p-name">${esc(p.full_name || '—')}</div>
-        <div class="p-pos">${esc(p.position || '—')}</div>
-        <div class="status-pill"><span class="dot"></span> Активен</div>
-      </div>
+def _auto_publish_scheduled(cur):
+    cur.execute("""
+        UPDATE news SET status = 'published'
+        WHERE status = 'scheduled' AND publish_at IS NOT NULL AND publish_at <= NOW()
+    """)
 
-      <div class="info-section">
-        <div class="info-group">
-          <div class="info-item">
-            <div class="info-icon">📍</div>
-            <div class="info-text">
-              <div class="info-lbl">Ресторан</div>
-              <div class="info-val">${esc(p.restaurant || '—')}</div>
-            </div>
-          </div>
-          <div class="info-item">
-            <div class="info-icon">📞</div>
-            <div class="info-text">
-              <div class="info-lbl">Телефон</div>
-              <div class="info-val">${phoneClean ? `<a href="tel:${esc(phoneClean)}">${esc(p.phone)}</a>` : '—'}</div>
-            </div>
-          </div>
-          <div class="info-item">
-            <div class="info-icon">🎂</div>
-            <div class="info-text">
-              <div class="info-lbl">Дата рождения</div>
-              <div class="info-val">${esc(p.birth_date || '—')}</div>
-            </div>
-          </div>
-          <div class="info-item">
-            <div class="info-icon">📅</div>
-            <div class="info-text">
-              <div class="info-lbl">Дата трудоустройства</div>
-              <div class="info-val">${esc(p.hire_date || '—')}</div>
-            </div>
-          </div>
-          <div class="info-item">
-            <div class="info-icon">🌍</div>
-            <div class="info-text">
-              <div class="info-lbl">Гражданство</div>
-              <div class="info-val">${esc(p.citizenship_name || '—')}</div>
-            </div>
-          </div>
-          <div class="info-item">
-            <div class="info-icon">📜</div>
-            <div class="info-text">
-              <div class="info-lbl">Сертификация</div>
-              <div class="info-val">${p.is_certified ? '<span style="color:var(--green-text);">Пройдена</span>' : '<span style="color:var(--text-muted);">Не пройдена</span>'}</div>
-            </div>
-          </div>
-        </div>
-      </div>
+# ============= SEED =============
+RESTAURANTS_SEED = [
+    {"key": "belyaevo", "name": "Беляево", "address": "Москва, ул. Миклухо-Маклая, 32А, ТЦ «Капитолий», этаж 2", "hours": "Пн–вс: 10:00–22:00", "lat": 55.6437, "lon": 37.5302, "org": "vokker/13122472923", "phone": "+7 (985) 857-06-69"},
+    {"key": "vernadka", "name": "Вернадка", "address": "Москва, проспект Вернадского, 6, ТЦ «Капитолий Вернадского», этаж 3", "hours": "Пн–вс: 10:00–22:00", "lat": 55.6845, "lon": 37.4948, "org": "vokker/91626648547", "phone": ""},
+    {"key": "metropolis", "name": "Метрополис", "address": "Москва, Ленинградское ш., д. 16А, стр. 4, ТРЦ «Метрополис», этаж 3", "hours": "Пн–вс: 10:00–23:00", "lat": 55.8214, "lon": 37.4977, "org": "vokker/1298559872", "phone": "+7 (985) 857-07-14"},
+    {"key": "mega_himki", "name": "Мега Химки", "address": "Московская обл., г. Химки, микрорайон ИКЕА, к1, ТЦ «Мега Химки», этаж 1", "hours": "Пн–чт, вс: 10:00–23:00\nПт–сб: 10:00–24:00", "lat": 55.8948, "lon": 37.3973, "org": "vokker/132066311330", "phone": "+7 (985) 857-08-22"},
+    {"key": "office", "name": "ОФИС", "address": "Центральный офис", "hours": "Пн–пт: 09:00–18:00", "lat": None, "lon": None, "org": "", "phone": ""},
+]
+FAQ_SEED = [
+    {"question": "Как посмотреть график смен?", "answer": "График вывешивается на информационной доске в ресторане и уточняется у управляющего сменой.", "category": "Работа"},
+    {"question": "Куда сообщать о поломке оборудования?", "answer": "Напиши управляющему сменой. Если поломка серьёзная — он оформляет заявку в сервис.", "category": "Работа"},
+    {"question": "Как поменять пароль?", "answer": "Обратись к администратору — он сменит пароль в админ-панели.", "category": "Бот"},
+]
+POSITIONS_SEED = ["Повар холодного цеха", "Повар горячего цеха", "Управляющий сменой", "Территориальный управляющий", "HR"]
+CITIZENSHIPS_SEED = ["Россия", "Кыргызстан", "Узбекистан", "Таджикистан"]
 
-      ${medbookHtml}
+DOCTORS_SEED = [
+    {"name": "Терапевт", "required": True, "validity_months": 12, "sort": 0},
+    {"name": "Психиатр", "required": True, "validity_months": 12, "sort": 1},
+    {"name": "Нарколог", "required": True, "validity_months": 12, "sort": 2},
+    {"name": "Дерматовенеролог", "required": True, "validity_months": 12, "sort": 3},
+    {"name": "ЛОР", "required": False, "validity_months": 12, "sort": 4},
+    {"name": "Стоматолог", "required": False, "validity_months": 12, "sort": 5},
+]
+TESTS_SEED = [
+    {"name": "Общий анализ крови", "required": True, "validity_months": 12, "sort": 0},
+    {"name": "Общий анализ мочи", "required": True, "validity_months": 12, "sort": 1},
+    {"name": "Флюорография", "required": True, "validity_months": 12, "sort": 2},
+    {"name": "Кровь на RW", "required": True, "validity_months": 6, "sort": 3},
+    {"name": "ЭКГ", "required": False, "validity_months": 12, "sort": 4},
+]
+VACCINES_SEED = [
+    {"name": "Грипп", "required": False, "validity_months": 12, "sort": 0},
+    {"name": "Корь", "required": False, "validity_months": 60, "sort": 1},
+    {"name": "Дифтерия и столбняк (АДС-М)", "required": False, "validity_months": 120, "sort": 2},
+    {"name": "COVID-19", "required": False, "validity_months": 12, "sort": 3},
+]
 
-      <div class="actions-block">
-        ${p.is_admin ? `<button class="action-btn admin" id="open-admin-btn">🛠 Открыть админ-панель</button>` : ''}
-        <button class="action-btn" id="report-bug-btn">⚠️ Сообщить об ошибке</button>
-        <button class="action-btn danger" id="logout-btn">🚪 Выйти из аккаунта</button>
-      </div>
-    </div>
-  `;
+def init_db_and_seed():
+    logging.info("⏳ Начинаю миграции и заполнение БД...")
+    data_dir = os.getenv("DATA_DIR", "/data")
+    upload_dir = os.path.join(data_dir, "uploads")
+    os.makedirs(upload_dir, exist_ok=True)
 
-  $('logout-btn').addEventListener('click', logout);
-  $('report-bug-btn').addEventListener('click', () => {
-    document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-    document.querySelector('.tabs button[data-sec="sec-faq"]').classList.add('active');
-    $('sec-faq').classList.add('active');
-    window.scrollTo(0, 0);
-    setTimeout(() => { const inp = $('question-input'); if (inp) inp.focus(); }, 300);
-  });
-  const adminBtn = $('open-admin-btn');
-  if (adminBtn) adminBtn.addEventListener('click', () => { window.location.href = '/admin'; });
-}
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id BIGSERIAL PRIMARY KEY, login TEXT, password_hash TEXT, full_name TEXT, phone TEXT,
+            birth_date TEXT, position TEXT, restaurant_key TEXT, is_admin BOOLEAN DEFAULT FALSE,
+            is_super_admin BOOLEAN DEFAULT FALSE, permissions JSONB DEFAULT '{}', is_fired BOOLEAN DEFAULT FALSE,
+            fired_at TIMESTAMPTZ, fired_by TEXT, is_certified BOOLEAN DEFAULT FALSE,
+            medbook JSONB DEFAULT '{"doctors":{},"tests":{},"vaccines":{}}',
+            created_at TIMESTAMPTZ DEFAULT NOW(), last_seen_at TIMESTAMPTZ,
+            hire_date TEXT, citizenship_id INT
+        )
+    """, "CREATE users")
 
-async function logout() {
-  if (!confirm('Выйти из аккаунта?')) return;
-  try { await api('/api/auth/logout', {}); } catch (e) {}
-  clearToken();
-  BOOT = null;
-  showLogin();
-}
+    for _col, _sql in [
+        ("login", "ALTER TABLE users ADD COLUMN IF NOT EXISTS login TEXT"),
+        ("password_hash", "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT"),
+        ("is_admin", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE"),
+        ("is_super_admin", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN DEFAULT FALSE"),
+        ("permissions", "ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT '{}'"),
+        ("is_fired", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_fired BOOLEAN DEFAULT FALSE"),
+        ("fired_at", "ALTER TABLE users ADD COLUMN IF NOT EXISTS fired_at TIMESTAMPTZ"),
+        ("fired_by", "ALTER TABLE users ADD COLUMN IF NOT EXISTS fired_by TEXT"),
+        ("is_certified", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_certified BOOLEAN DEFAULT FALSE"),
+        ("medbook", "ALTER TABLE users ADD COLUMN IF NOT EXISTS medbook JSONB DEFAULT '{\"doctors\":{},\"tests\":{},\"vaccines\":{}}'"),
+        ("last_seen_at", "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ"),
+        ("restaurant_key", "ALTER TABLE users ADD COLUMN IF NOT EXISTS restaurant_key TEXT"),
+        ("restaurant", "ALTER TABLE users ADD COLUMN IF NOT EXISTS restaurant TEXT"),
+        ("hire_date", "ALTER TABLE users ADD COLUMN IF NOT EXISTS hire_date TEXT"),
+        ("citizenship_id", "ALTER TABLE users ADD COLUMN IF NOT EXISTS citizenship_id INT"),
+    ]:
+        _run_migration(_sql, f"ADD {_col}")
 
-/* ================== TEAM ================== */
-function positionPriority(pos) {
-  const lp = (pos || "").toLowerCase();
-  if (lp.includes("управляющий сменой")) return 1;
-  if (lp.includes("горячего")) return 2;
-  if (lp.includes("холодного")) return 3;
-  return 99;
-}
+    _run_migration("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_login ON users (LOWER(login)) WHERE login IS NOT NULL", "idx login")
+    _run_migration("UPDATE users SET is_fired = FALSE WHERE is_fired IS NULL", "NULL is_fired")
+    _run_migration("UPDATE users SET is_admin = FALSE WHERE is_admin IS NULL", "NULL is_admin")
+    _run_migration("UPDATE users SET is_super_admin = FALSE WHERE is_super_admin IS NULL", "NULL is_super_admin")
+    _run_migration("UPDATE users SET is_certified = FALSE WHERE is_certified IS NULL", "NULL is_certified")
 
-function sortByPosition(arr) {
-  return arr.slice().sort((a, b) => {
-    const pa = positionPriority(a.position), pb = positionPriority(b.position);
-    if (pa !== pb) return pa - pb;
-    return (a.full_name || "").localeCompare(b.full_name || "");
-  });
-}
+    _run_migration("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'S' AND relname = 'users_user_id_seq') THEN
+                CREATE SEQUENCE users_user_id_seq;
+            END IF;
+            PERFORM setval('users_user_id_seq', GREATEST((SELECT COALESCE(MAX(user_id), 0) FROM users), 1), (SELECT COUNT(*) FROM users) > 0);
+            ALTER TABLE users ALTER COLUMN user_id SET DEFAULT nextval('users_user_id_seq');
+            ALTER SEQUENCE users_user_id_seq OWNED BY users.user_id;
+        END $$;
+    """, "user_id sequence")
 
-function renderTeamCard(t) {
-  const initial = (t.full_name || "?").charAt(0).toUpperCase();
-  const badges = [];
-  if (t.is_certified) badges.push('<span class="team-badge green">📜 Сертификат</span>');
-  else badges.push('<span class="team-badge gray">📜 Нет сертификата</span>');
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS restaurants (
+            key TEXT PRIMARY KEY, name TEXT NOT NULL, address TEXT, hours TEXT, lat REAL, lon REAL,
+            org TEXT, phone TEXT DEFAULT '', force_status TEXT DEFAULT 'open', sort INT DEFAULT 100, territory_manager_id BIGINT
+        )
+    """, "CREATE restaurants")
 
-  if (t.medbook_status === 'ok') badges.push('<span class="team-badge green">🩺 Медкнижка</span>');
-  else if (t.medbook_status === 'expiring') badges.push('<span class="team-badge amber">🩺 Скоро истекает</span>');
-  else badges.push('<span class="team-badge red">🩺 Недействительна</span>');
+    for _sql in [
+        "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS force_status TEXT DEFAULT 'open'",
+        "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS sort INT DEFAULT 100",
+        "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS territory_manager_id BIGINT",
+    ]:
+        _run_migration(_sql, "restaurants alter")
 
-  const phoneClean = (t.phone || "").replace(/[^\d+]/g, "");
-  return `
-    <div class="team-card">
-      <div class="team-avatar">${esc(initial)}</div>
-      <div class="team-info">
-        <div class="team-name">${esc(t.full_name || "—")}</div>
-        <div class="team-pos">${esc(t.position || "—")}</div>
-        <div class="team-badges">${badges.join("")}</div>
-      </div>
-      ${phoneClean ? `<div class="team-actions"><a href="tel:${esc(phoneClean)}" aria-label="Позвонить">📞</a></div>` : ""}
-    </div>`;
-}
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS medbook_doctors (id SERIAL PRIMARY KEY, name TEXT NOT NULL, required BOOLEAN DEFAULT FALSE, validity_months INT DEFAULT 12, sort INT DEFAULT 100)
+    """, "CREATE medbook_doctors")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS medbook_tests (id SERIAL PRIMARY KEY, name TEXT NOT NULL, required BOOLEAN DEFAULT FALSE, validity_months INT DEFAULT 12, sort INT DEFAULT 100)
+    """, "CREATE medbook_tests")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS medbook_vaccines (id SERIAL PRIMARY KEY, name TEXT NOT NULL, required BOOLEAN DEFAULT FALSE, validity_months INT DEFAULT 12, sort INT DEFAULT 100)
+    """, "CREATE medbook_vaccines")
 
-function renderTeamFromBoot() {
-  const box = $('team-list');
-  const team = (BOOT && BOOT.team) || [];
-  const pos = (BOOT && BOOT.profile && BOOT.profile.position || "").toLowerCase();
-  const isHR = pos.trim() === "hr";
-  const isTU = pos.includes("территориальный");
-  const isUS = pos.includes("управляющий сменой");
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS news (
+            id SERIAL PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL, level TEXT DEFAULT 'normal',
+            status TEXT DEFAULT 'published', publish_at TIMESTAMPTZ, proposed_by TEXT, approved_by TEXT,
+            image_url TEXT DEFAULT '', created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """, "CREATE news")
 
-  const subtitle = $('team-subtitle');
-  if (subtitle) {
-    if (isHR) subtitle.textContent = "Все сотрудники по территориям";
-    else if (isTU) subtitle.textContent = "Сотрудники ваших ресторанов";
-    else subtitle.textContent = "Сотрудники вашего ресторана";
-  }
+    for _sql in [
+        "ALTER TABLE news ADD COLUMN IF NOT EXISTS level TEXT DEFAULT 'normal'",
+        "ALTER TABLE news ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'published'",
+        "ALTER TABLE news ADD COLUMN IF NOT EXISTS publish_at TIMESTAMPTZ",
+        "ALTER TABLE news ADD COLUMN IF NOT EXISTS proposed_by TEXT",
+        "ALTER TABLE news ADD COLUMN IF NOT EXISTS approved_by TEXT",
+        "ALTER TABLE news ADD COLUMN IF NOT EXISTS image_url TEXT DEFAULT ''",
+    ]:
+        _run_migration(_sql, "news alter")
 
-  if (!team.length) {
-    box.innerHTML = '<div class="no-results">Список сотрудников пуст</div>';
-    return;
-  }
+    # ===== STANDARDS =====
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS standards (
+            id SERIAL PRIMARY KEY, number TEXT DEFAULT '', title TEXT NOT NULL, body TEXT DEFAULT '', image_url TEXT DEFAULT '',
+            status TEXT DEFAULT 'published', proposed_by TEXT, approved_by TEXT, created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """, "CREATE standards")
 
-  if (isHR) {
-    const byMgr = {};
-    for (const t of team) {
-      const mgr = t.manager_name || "Без территориального управляющего";
-      const rest = t.restaurant_name || "Без ресторана";
-      if (!byMgr[mgr]) byMgr[mgr] = {};
-      if (!byMgr[mgr][rest]) byMgr[mgr][rest] = [];
-      byMgr[mgr][rest].push(t);
-    }
-    let html = "";
-    const mgrs = Object.keys(byMgr).sort();
-    for (const mgr of mgrs) {
-      html += `<div class="team-group-title">🏢 ${esc(mgr)}</div>`;
-      const rests = Object.keys(byMgr[mgr]).sort();
-      for (const rest of rests) {
-        html += `<div class="team-group-title" style="margin-top:20px; font-size:12px; color:var(--gold);">📍 ${esc(rest)}</div>`;
-        html += sortByPosition(byMgr[mgr][rest]).map(renderTeamCard).join("");
-      }
-    }
-    box.innerHTML = html;
-    return;
-  }
+    for _sql in [
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS number TEXT DEFAULT ''",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS body TEXT DEFAULT ''",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS image_url TEXT DEFAULT ''",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'published'",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS proposed_by TEXT",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS approved_by TEXT",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
+        "ALTER TABLE standards DROP COLUMN IF EXISTS category",
+        "ALTER TABLE standards DROP COLUMN IF EXISTS description",
+        "ALTER TABLE standards DROP COLUMN IF EXISTS url",
+    ]:
+        _run_migration(_sql, "standards alter")
+    # =====================
 
-  if (isTU) {
-    const byRest = {};
-    for (const t of team) {
-      const rest = t.restaurant_name || "Без ресторана";
-      if (!byRest[rest]) byRest[rest] = [];
-      byRest[rest].push(t);
-    }
-    let html = "";
-    const rests = Object.keys(byRest).sort();
-    for (const rest of rests) {
-      html += `<div class="team-group-title">📍 ${esc(rest)}</div>`;
-      html += sortByPosition(byRest[rest]).map(renderTeamCard).join("");
-    }
-    box.innerHTML = html;
-    return;
-  }
-
-  box.innerHTML = sortByPosition(team).map(renderTeamCard).join("");
-}
-
-/* ================== RESTAURANTS ================== */
-function renderRestaurants() {
-  if (!BOOT) return;
-  const box = $('restaurants-list');
-  const list = BOOT.restaurants || [];
-  const myKey = BOOT.profile.restaurant_key || '';
-  
-  if (!list.length) { box.innerHTML = '<div class="no-results">Нет ресторанов</div>'; return; }
-  
-  box.innerHTML = list.map(r => {
-    const isOpen = r.force_status !== 'closed';
-    const isMy = r.key === myKey;
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS faq (id SERIAL PRIMARY KEY, question TEXT NOT NULL, answer TEXT NOT NULL, category TEXT DEFAULT '')
+    """, "CREATE faq")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS positions (id SERIAL PRIMARY KEY, name TEXT NOT NULL UNIQUE, sort INT DEFAULT 100, is_archived BOOLEAN DEFAULT FALSE)
+    """, "CREATE positions")
     
-    return `
-      <div class="rest-card" onclick="showRestaurantDetail('${esc(r.key)}')">
-        ${isMy ? '<div class="my-rest-tag">Мой</div>' : ''}
-        <div class="rest-card-header">
-          <div class="rest-logo">🍜</div>
-          <div class="rest-info">
-            <div class="rest-name">${esc(r.name)}</div>
-            <span class="rest-badge ${isOpen ? 'open' : 'closed'}">${isOpen ? 'Открыто' : 'Закрыто'}</span>
-          </div>
-        </div>
-        <div class="rest-address-row">📍 ${esc(r.address || '')}</div>
-      </div>
-    `;
-  }).join('');
-}
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS citizenships (id SERIAL PRIMARY KEY, name TEXT UNIQUE NOT NULL)
+    """, "CREATE citizenships")
 
-function showRestaurantDetail(key) {
-  const section = $('sec-detail');
-  const box = $('detail-box');
-  const r = (BOOT.restaurants || []).find(x => x.key === key);
-  if (!r) return;
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS admin_audit (id SERIAL PRIMARY KEY, admin_id BIGINT, action TEXT, target_type TEXT, target_id TEXT, details TEXT, created_at TIMESTAMPTZ DEFAULT NOW())
+    """, "CREATE audit")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS questions (id SERIAL PRIMARY KEY, user_id BIGINT NOT NULL, text TEXT NOT NULL, replied BOOLEAN DEFAULT FALSE, reply_text TEXT, replied_at TIMESTAMPTZ, replied_by BIGINT, created_at TIMESTAMPTZ DEFAULT NOW())
+    """, "CREATE questions")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS web_sessions (token TEXT PRIMARY KEY, user_id BIGINT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(), last_used_at TIMESTAMPTZ DEFAULT NOW())
+    """, "CREATE sessions")
 
-  const routeUrl = r.org
-    ? 'https://yandex.ru/maps/org/' + encodeURI(r.org)
-    : 'https://yandex.ru/maps/?text=' + encodeURIComponent(r.address || '');
-  const phoneClean = (r.phone || '').replace(/[^\d+]/g, '');
-  const isOpen = r.force_status !== 'closed';
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM restaurants")
+            if cur.fetchone()[0] == 0:
+                for i, r in enumerate(RESTAURANTS_SEED):
+                    sort = 999 if r["key"] == "office" else i
+                    status = "closed" if r["key"] == "office" else "open"
+                    cur.execute("INSERT INTO restaurants (key, name, address, hours, lat, lon, org, phone, sort, force_status) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (r["key"], r["name"], r["address"], r["hours"], r["lat"], r["lon"], r["org"], r["phone"], sort, status))
 
-  box.innerHTML = `
-    <div class="detail-hero">
-      <div class="emoji">🍜</div>
-      <div class="name">${esc(r.name)}</div>
-      <span class="detail-status ${isOpen ? 'open' : 'closed'}">${isOpen ? 'Открыто' : 'Закрыто'}</span>
-    </div>
-    <div class="detail-card">
-      <div class="row"><div class="lbl">Адрес</div>${esc(r.address || '—')}</div>
-      ${phoneClean ? `<div class="row"><div class="lbl">Телефон</div><a href="tel:${esc(phoneClean)}" style="color:var(--text-main);text-decoration:none;">${esc(r.phone)}</a></div>` : ''}
-      <div class="row"><div class="lbl">Часы работы</div>${esc((r.hours || '—').replace(/\n/g, ' · '))}</div>
-    </div>
-    <a href="${routeUrl}" target="_blank" rel="noopener" class="btn-send" style="display:block; margin: 0 20px 30px; text-decoration:none;">Открыть в Яндекс Картах</a>
-  `;
+            cur.execute("SELECT COUNT(*) FROM faq")
+            if cur.fetchone()[0] == 0:
+                for f in FAQ_SEED: cur.execute("INSERT INTO faq (question, answer, category) VALUES (%s,%s,%s)", (f["question"], f["answer"], f["category"]))
+            cur.execute("SELECT COUNT(*) FROM positions")
+            if cur.fetchone()[0] == 0:
+                for i, name in enumerate(POSITIONS_SEED): cur.execute("INSERT INTO positions (name, sort) VALUES (%s,%s)", (name, i))
+            
+            cur.execute("SELECT COUNT(*) FROM citizenships")
+            if cur.fetchone()[0] == 0:
+                for name in CITIZENSHIPS_SEED: cur.execute("INSERT INTO citizenships (name) VALUES (%s)", (name,))
 
-  document.querySelector('.tabs').style.display = 'none';
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  section.classList.add('active');
-  window.scrollTo(0, 0);
-}
+            cur.execute("SELECT COUNT(*) FROM medbook_doctors")
+            if cur.fetchone()[0] == 0:
+                for d in DOCTORS_SEED: cur.execute("INSERT INTO medbook_doctors (name, required, validity_months, sort) VALUES (%s,%s,%s,%s)", (d["name"], d["required"], d["validity_months"], d["sort"]))
+            cur.execute("SELECT COUNT(*) FROM medbook_tests")
+            if cur.fetchone()[0] == 0:
+                for t in TESTS_SEED: cur.execute("INSERT INTO medbook_tests (name, required, validity_months, sort) VALUES (%s,%s,%s,%s)", (t["name"], t["required"], t["validity_months"], t["sort"]))
+            cur.execute("SELECT COUNT(*) FROM medbook_vaccines")
+            if cur.fetchone()[0] == 0:
+                for v in VACCINES_SEED: cur.execute("INSERT INTO medbook_vaccines (name, required, validity_months, sort) VALUES (%s,%s,%s,%s)", (v["name"], v["required"], v["validity_months"], v["sort"]))
+            cur.execute("SELECT COUNT(*) FROM news")
+            if cur.fetchone()[0] == 0:
+                cur.execute("INSERT INTO news (title, body, level, status) VALUES (%s,%s,%s,%s)", ("Открытие новой точки", "Скоро открываем новый ресторан!", "urgent", "published"))
+                cur.execute("INSERT INTO news (title, body, level, status) VALUES (%s,%s,%s,%s)", ("Обновление меню", "Появились новые позиции в меню.", "normal", "published"))
 
-$('detail-back').addEventListener('click', () => {
-  document.querySelector('.tabs').style.display = 'flex';
-  document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
-  document.querySelector('.tabs button[data-sec="sec-restaurants"]').classList.add('active');
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  $('sec-restaurants').classList.add('active');
-  window.scrollTo(0, 0);
-});
+            cur.execute("SELECT COUNT(*) FROM users WHERE is_super_admin = TRUE")
+            if cur.fetchone()[0] == 0:
+                pw = hash_password(ADMIN_PASSWORD)
+                cur.execute("SELECT user_id FROM users WHERE LOWER(login) = LOWER(%s)", (ADMIN_LOGIN,))
+                existing = cur.fetchone()
+                if existing:
+                    cur.execute("UPDATE users SET password_hash = %s, is_admin = TRUE, is_super_admin = TRUE, is_fired = FALSE, fired_at = NULL, fired_by = NULL, full_name = COALESCE(NULLIF(full_name, ''), 'Администратор'), position = COALESCE(NULLIF(position, ''), 'Администратор') WHERE user_id = %s", (pw, existing[0]))
+                else:
+                    cur.execute("INSERT INTO users (login, password_hash, full_name, position, is_admin, is_super_admin) VALUES (%s, %s, 'Администратор', 'Администратор', TRUE, TRUE)", (ADMIN_LOGIN, pw))
+    logging.info("✅ БД инициализирована и заполнена")
 
-/* ================== NEWS ================== */
-function renderNewsFromBoot() {
-  const box = $('news-list');
-  const list = (BOOT && BOOT.news) || [];
-  const published = list.filter(n => n.status === 'published');
-  
-  if (!published.length) { box.innerHTML = '<div class="no-results">Пока новостей нет</div>'; return; }
-  
-  box.innerHTML = published.map(n => {
-    const lvl = ['urgent', 'important'].includes(n.level) ? n.level : 'normal';
-    let badgeHtml = '';
-    if (lvl === 'urgent') badgeHtml = '<span class="news-badge urgent">Срочно</span>';
-    else if (lvl === 'important') badgeHtml = '<span class="news-badge important">Важно</span>';
+# ============= СИНХРОННЫЕ ХЕЛПЕРЫ =============
+def _sync_get_user_by_login(login):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE LOWER(login) = LOWER(%s)", (login,))
+            return cur.fetchone()
+
+def _sync_get_user(user_id):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+            return cur.fetchone()
+
+def _sync_get_session_user(token):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT user_id, last_used_at FROM web_sessions WHERE token = %s", (token,))
+            row = cur.fetchone()
+            if not row: return None
+            uid, last_used = row
+            if last_used is not None:
+                now = datetime.now(_tz.utc)
+                lu = last_used if last_used.tzinfo else last_used.replace(tzinfo=_tz.utc)
+                if (now - lu).days > SESSION_TTL_DAYS:
+                    cur.execute("DELETE FROM web_sessions WHERE token = %s", (token,))
+                    return None
+            cur.execute("UPDATE web_sessions SET last_used_at = NOW() WHERE token = %s", (token,))
+            return uid
+
+def _sync_create_session(user_id):
+    token = secrets.token_urlsafe(32)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO web_sessions (token, user_id) VALUES (%s,%s)", (token, user_id))
+    return token
+
+def _sync_delete_session(token):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM web_sessions WHERE token = %s", (token,))
+            return cur.rowcount > 0
+
+def _sync_get_medbook_refs():
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM medbook_doctors ORDER BY sort, id")
+            doctors = [dict(r) for r in cur.fetchall()]
+            cur.execute("SELECT * FROM medbook_tests ORDER BY sort, id")
+            tests = [dict(r) for r in cur.fetchall()]
+            cur.execute("SELECT * FROM medbook_vaccines ORDER BY sort, id")
+            vaccines = [dict(r) for r in cur.fetchall()]
+    return doctors, tests, vaccines
+
+def _sync_get_all_logins():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT LOWER(login) FROM users WHERE login IS NOT NULL")
+            return set(r[0] for r in cur.fetchall())
+
+def _sync_user_has_perm(user, perm):
+    if not user: return False
+    if user.get("is_super_admin"): return True
+    if (user.get("position") or "").strip().upper() == "HR": return True
+    perms = user.get("permissions") or {}
+    if isinstance(perms, str):
+        try: perms = json.loads(perms)
+        except Exception: perms = {}
+    return bool(perms.get(perm))
+
+# ============= AUTH =============
+async def get_auth_user(request):
+    try: body = await request.json()
+    except Exception: return None, 401
+    token = body.get("webToken") or ""
+    if not token: return None, 401
+    user_id = await _run(_sync_get_session_user, token)
+    if not user_id: return None, 401
+    user = await _run(_sync_get_user, user_id)
+    if not user: return None, 401
+    if user.get("is_fired"): return None, "fired"
+    return user, None
+
+def denied(status):
+    if status == "fired": return web.json_response({"error": "fired"}, status=403)
+    if status == 403: return web.json_response({"error": "forbidden"}, status=403)
+    return web.json_response({"error": "unauthorized"}, status=401)
+
+def require_perm(user, perm):
+    if not _sync_user_has_perm(user, perm):
+        return web.json_response({"error": "forbidden"}, status=403)
+    return None
+
+async def get_admin_user(request):
+    user, err = await get_auth_user(request)
+    if err: return None, err
+    if not user.get("is_admin"): return None, 403
+    return user, None
+
+async def _enrich_user_with_medbook_status(user):
+    if not user: return user
+    if user.get("is_admin"):
+        user["medbook_status"] = "—"
+        return user
+    doctors, tests, vaccines = await _run(_sync_get_medbook_refs)
+    user["medbook_status"] = compute_medbook_status(user.get("medbook") or {}, doctors, tests, vaccines)
+    return user
+
+# ============= API: AUTH =============
+async def handle_auth_login(request):
+    try: data = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    login = (data.get("login") or "").strip().lower()
+    password = data.get("password") or ""
+    if not LOGIN_RE.match(login): return web.json_response({"error": "invalid_login_format"}, status=400)
+    if not password: return web.json_response({"error": "password_required"}, status=400)
+    user = await _run(_sync_get_user_by_login, login)
+    if not user or not verify_password(password, user.get("password_hash") or ""): return web.json_response({"error": "invalid_credentials"}, status=401)
+    if user.get("is_fired"): return web.json_response({"error": "fired"}, status=403)
+    if not user.get("is_admin"): return web.json_response({"error": "not_admin"}, status=403)
+    token = await _run(_sync_create_session, user["user_id"])
+    return web.json_response({"ok": True, "token": token, "is_admin": True})
+
+async def handle_auth_login_staff(request):
+    try: data = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    login = (data.get("login") or "").strip().lower()
+    password = data.get("password") or ""
+    if not LOGIN_RE.match(login): return web.json_response({"error": "invalid_login_format"}, status=400)
+    if not password: return web.json_response({"error": "password_required"}, status=400)
+    user = await _run(_sync_get_user_by_login, login)
+    if not user or not verify_password(password, user.get("password_hash") or ""): return web.json_response({"error": "invalid_credentials"}, status=401)
+    if user.get("is_fired"): return web.json_response({"error": "fired"}, status=403)
+    token = await _run(_sync_create_session, user["user_id"])
+    return web.json_response({"ok": True, "token": token, "is_admin": bool(user.get("is_admin"))})
+
+async def handle_auth_logout(request):
+    try: data = await request.json()
+    except Exception: data = {}
+    token = data.get("webToken") or ""
+    if token: await _run(_sync_delete_session, token)
+    return web.json_response({"ok": True})
+
+# ============= API: ME / DASHBOARD =============
+async def handle_admin_me(request):
+    user, err = await get_admin_user(request)
+    if err: return denied(err)
+    return web.json_response({
+        "is_admin": True,
+        "profile": {
+            "user_id": user["user_id"], "login": user.get("login") or "", "full_name": user.get("full_name") or "",
+            "position": user.get("position") or "", "is_super_admin": bool(user.get("is_super_admin")),
+            "is_hr": (user.get("position") or "").strip().upper() == "HR", "permissions": user.get("permissions") or {},
+        }
+    })
+
+def _sync_dashboard_stats():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM users WHERE COALESCE(is_admin, FALSE) = FALSE AND COALESCE(is_fired, FALSE) = FALSE AND login IS NOT NULL")
+            active = cur.fetchone()[0] or 0
+            cur.execute("SELECT COUNT(*) FROM users WHERE login IS NOT NULL")
+            total = cur.fetchone()[0] or 0
+            cur.execute("SELECT COUNT(*) FROM users WHERE COALESCE(is_fired, FALSE) = TRUE")
+            fired = cur.fetchone()[0] or 0
+            cur.execute("SELECT COUNT(*) FROM users WHERE created_at::date = NOW()::date AND COALESCE(is_admin, FALSE) = FALSE AND COALESCE(is_fired, FALSE) = FALSE AND login IS NOT NULL")
+            new_today = cur.fetchone()[0] or 0
+            cur.execute("SELECT COUNT(*) FROM users WHERE created_at >= NOW() - INTERVAL '7 days' AND COALESCE(is_admin, FALSE) = FALSE AND COALESCE(is_fired, FALSE) = FALSE AND login IS NOT NULL")
+            new7 = cur.fetchone()[0] or 0
+            cur.execute("SELECT COUNT(*) FROM users WHERE COALESCE(is_admin, FALSE) = FALSE AND COALESCE(is_fired, FALSE) = FALSE AND login IS NOT NULL AND (last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL '7 days')")
+            inactive7 = cur.fetchone()[0] or 0
+            cur.execute("SELECT COUNT(*) FROM questions WHERE replied = FALSE")
+            questions_open = cur.fetchone()[0] or 0
+            cur.execute("SELECT COUNT(*) FROM news WHERE status = 'pending'")
+            news_pending = cur.fetchone()[0] or 0
+            cur.execute("SELECT COUNT(*) FROM standards WHERE status = 'pending'")
+            standards_pending = cur.fetchone()[0] or 0
+    return {"total": total, "active": active, "fired": fired, "new_today": new_today, "new7": new7, "inactive7": inactive7, "questions_open": questions_open, "news_pending": news_pending, "standards_pending": standards_pending}
+
+async def handle_admin_dashboard(request):
+    user, err = await get_admin_user(request)
+    if err: return denied(err)
+    stats = await _run(_sync_dashboard_stats)
+    return web.json_response({"stats": stats})
+
+# ============= MEDBOOK ALERTS =============
+def _sync_medbook_alerts():
+    doctors, tests, vaccines = _sync_get_medbook_refs()
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT user_id, full_name, position, medbook FROM users WHERE COALESCE(is_admin, FALSE) = FALSE AND COALESCE(is_fired, FALSE) = FALSE AND login IS NOT NULL")
+            users = [dict(r) for r in cur.fetchall()]
+    expiring = []
+    expired = []
+    for u in users:
+        mb = u.get("medbook") or {}
+        if isinstance(mb, str):
+            try: mb = json.loads(mb)
+            except Exception: mb = {}
+        status = compute_medbook_status(mb, doctors, tests, vaccines)
+        if status == "invalid":
+            has_expired = False
+            for date_str, validity in _mb_items(mb, doctors, tests, vaccines):
+                if entry_status(date_str, validity) == "expired": has_expired = True; break
+            if has_expired: expired.append({"user_id": u["user_id"], "full_name": u["full_name"] or "", "position": u["position"] or ""})
+        elif status == "expiring":
+            expiring.append({"user_id": u["user_id"], "full_name": u["full_name"] or "", "position": u["position"] or ""})
+    return expiring, expired
+
+async def handle_admin_medbook_alerts(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    expiring, expired = await _run(_sync_medbook_alerts)
+    return web.json_response({"expiring": expiring[:20], "expired": expired[:20], "expiring_count": len(expiring), "expired_count": len(expired)})
+
+# ============= USERS =============
+def _sync_list_users(search="", fired=False):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            base = """
+                SELECT u.user_id, u.login, u.full_name, u.phone, u.birth_date, u.position, u.restaurant_key, r.name AS restaurant_name,
+                       COALESCE(u.is_admin, FALSE) AS is_admin, COALESCE(u.is_super_admin, FALSE) AS is_super_admin,
+                       COALESCE(u.is_fired, FALSE) AS is_fired, COALESCE(u.is_certified, FALSE) AS is_certified,
+                       u.medbook, u.created_at, u.last_seen_at, u.fired_at, u.fired_by,
+                       u.hire_date, u.citizenship_id, c.name AS citizenship_name
+                FROM users u 
+                LEFT JOIN restaurants r ON u.restaurant_key = r.key
+                LEFT JOIN citizenships c ON u.citizenship_id = c.id
+                WHERE COALESCE(u.is_fired, FALSE) = %s AND u.login IS NOT NULL
+            """
+            params = [bool(fired)]
+            if search:
+                base += " AND (LOWER(COALESCE(u.full_name,'')) LIKE %s OR LOWER(COALESCE(u.login,'')) LIKE %s OR COALESCE(u.phone,'') LIKE %s OR CAST(u.user_id AS TEXT) LIKE %s)"
+                s = f"%{search.lower()}%"
+                params.extend([s, s, f"%{search}%", f"%{search}%"])
+            base += " ORDER BY u.user_id DESC"
+            cur.execute(base, params)
+            return [dict(r) for r in cur.fetchall()]
+
+async def handle_admin_users(request):
+    user, err = await get_admin_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: body = {}
+    search = (body.get("search") or "").strip()
+    fired = bool(body.get("fired"))
+    users = await _run(_sync_list_users, search, fired)
+    doctors, tests, vaccines = await _run(_sync_get_medbook_refs)
+    for u in users:
+        u["medbook_status"] = compute_medbook_status(u.get("medbook") or {}, doctors, tests, vaccines) if not u["is_admin"] else "—"
+        mb = u.get("medbook")
+        if isinstance(mb, str):
+            try: u["medbook"] = json.loads(mb or "{}")
+            except Exception: u["medbook"] = {}
+    return web.json_response({"users": users})
+
+def _sync_create_user(body, existing_logins, admin_id=None):
+    login = (body.get("login") or "").strip().lower()
+    full_name = body.get("full_name") or ""
+    password = body.get("password") or ""
+    if not full_name or not password or len(password) < 6: return None, "invalid"
+    if not login or not LOGIN_RE.match(login) or login in existing_logins: login = _generate_login_for(full_name, existing_logins)
+    restaurant_key = body.get("restaurant_key") or body.get("restaurant") or ""
+    hire_date = body.get("hire_date") or ""
+    citizenship_id = body.get("citizenship_id")
+    if citizenship_id == "": citizenship_id = None
+    if citizenship_id is not None: citizenship_id = _int(citizenship_id)
     
-    const imageHtml = n.image_url 
-      ? `<img src="${esc(n.image_url)}" class="news-item-img">` 
-      : `<div class="news-item-img" style="display:flex;align-items:center;justify-content:center;font-size:32px;background:var(--bg);">📰</div>`;
+    pw_hash = hash_password(password)
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("INSERT INTO users (login, password_hash, full_name, phone, birth_date, position, restaurant_key, is_certified, hire_date, citizenship_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *", 
+                        (login, pw_hash, full_name, body.get("phone") or "", body.get("birth_date") or "", body.get("position") or "", restaurant_key, bool(body.get("is_certified")), hire_date, citizenship_id))
+            new_user = dict(cur.fetchone())
+            cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin_id, "user_create", "user", str(new_user["user_id"]), f"login={login}"))
+    return new_user, None
 
-    return `
-      <div class="news-item" onclick="showNewsDetail(${n.id})">
-        ${imageHtml}
-        <div class="news-item-content">
-          <div class="news-item-meta">
-            <div class="news-date">${fmtDate(n.created_at)}</div>
-            ${badgeHtml}
-          </div>
-          <div class="news-item-title">${esc(n.title)}</div>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
+async def handle_admin_user_create(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "users_create")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    existing_logins = await _run(_sync_get_all_logins)
+    new_user, err_code = await _run(_sync_create_user, body, existing_logins, admin["user_id"])
+    if err_code: return web.json_response({"error": err_code}, status=400)
+    new_user.pop("password_hash", None)
+    return web.json_response({"ok": True, "user": new_user})
 
-function showNewsDetail(id) {
-  const n = (BOOT && BOOT.news || []).find(x => x.id === id);
-  if (!n) return;
+def _sync_get_user_by_id(user_id):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT u.user_id, u.login, u.full_name, u.phone, u.birth_date, u.position, u.restaurant_key, r.name AS restaurant_name,
+                       COALESCE(u.is_admin, FALSE) AS is_admin, COALESCE(u.is_super_admin, FALSE) AS is_super_admin,
+                       COALESCE(u.is_fired, FALSE) AS is_fired, COALESCE(u.is_certified, FALSE) AS is_certified,
+                       u.medbook, u.created_at, u.last_seen_at, u.fired_at, u.fired_by, u.permissions,
+                       u.hire_date, u.citizenship_id, c.name AS citizenship_name
+                FROM users u 
+                LEFT JOIN restaurants r ON u.restaurant_key = r.key 
+                LEFT JOIN citizenships c ON u.citizenship_id = c.id
+                WHERE u.user_id = %s
+            """, (user_id,))
+            row = cur.fetchone()
+            if row:
+                d = dict(row)
+                if isinstance(d.get("medbook"), str):
+                    try: d["medbook"] = json.loads(d["medbook"] or "{}")
+                    except Exception: d["medbook"] = {}
+                return d
+            return None
 
-  const lvl = ['urgent', 'important'].includes(n.level) ? n.level : 'normal';
-  let badgeHtml = '';
-  if (lvl === 'urgent') badgeHtml = '<span class="news-badge urgent">Срочно</span>';
-  else if (lvl === 'important') badgeHtml = '<span class="news-badge important">Важно</span>';
-  
-  const imageHtml = n.image_url ? `<img src="${esc(n.image_url)}" class="news-detail-img">` : '';
+async def handle_admin_user_get(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    uid = _int(body.get("user_id"))
+    if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    user = await _run(_sync_get_user_by_id, uid)
+    if not user: return web.json_response({"error": "not_found"}, status=404)
+    await _enrich_user_with_medbook_status(user)
+    return web.json_response({"user": user})
 
-  $('news-detail-box').innerHTML = `
-    <div class="news-detail-header">
-      <div class="news-item-meta" style="margin-bottom: 16px;">
-        <div class="news-date">${fmtDate(n.created_at)}</div>
-        ${badgeHtml}
-      </div>
-      <div class="news-detail-title">${esc(n.title)}</div>
-      ${imageHtml}
-      <div class="news-detail-text">${esc(n.body)}</div>
-    </div>
-  `;
+def _sync_update_user(uid, updates):
+    allowed_simple = {"full_name", "phone", "birth_date", "position", "restaurant_key", "is_certified", "hire_date", "citizenship_id"}
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            for k, v in updates.items():
+                if k in allowed_simple: 
+                    if k == "citizenship_id" and v == "": v = None
+                    elif k == "citizenship_id" and v is not None: v = _int(v)
+                    cur.execute(f"UPDATE users SET {k} = %s WHERE user_id = %s", (v, uid))
+            if "password" in updates and updates["password"]:
+                pw = hash_password(updates["password"])
+                cur.execute("UPDATE users SET password_hash = %s WHERE user_id = %s", (pw, uid))
+            if "is_admin" in updates:
+                cur.execute("UPDATE users SET is_admin = %s WHERE user_id = %s", (bool(updates["is_admin"]), uid))
+                if not updates["is_admin"]: cur.execute("UPDATE users SET permissions = '{}'::jsonb, is_super_admin = FALSE WHERE user_id = %s", (uid,))
+    return True
 
-  document.querySelector('.tabs').style.display = 'none';
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  $('sec-news-detail').classList.add('active');
-  window.scrollTo(0, 0);
-}
+async def handle_admin_user_update(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "users_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    uid = _int(body.get("user_id"))
+    if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    updates = body.get("updates") or {}
+    target = await _run(_sync_get_user_by_id, uid)
+    if not target: return web.json_response({"error": "not_found"}, status=404)
+    if "is_admin" in updates and not admin["is_super_admin"]: return web.json_response({"error": "forbidden_is_admin"}, status=403)
+    if target.get("is_super_admin") and not admin["is_super_admin"]: return web.json_response({"error": "cannot_edit_super"}, status=403)
+    if "restaurant" in updates: updates["restaurant_key"] = updates.pop("restaurant")
+    await _run(_sync_update_user, uid, updates)
+    updated = await _run(_sync_get_user_by_id, uid)
+    if updated: await _enrich_user_with_medbook_status(updated)
+    return web.json_response({"ok": True, "user": updated})
 
-$('news-detail-back').addEventListener('click', () => {
-  document.querySelector('.tabs').style.display = 'flex';
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  $('sec-news').classList.add('active');
-  document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
-  document.querySelector('.tabs button[data-sec="sec-news"]').classList.add('active');
-  window.scrollTo(0, 0);
-});
+async def handle_admin_user_fire(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "users_fire")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    uid = _int(body.get("user_id"))
+    if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    target = await _run(_sync_get_user_by_id, uid)
+    if not target: return web.json_response({"error": "not_found"}, status=404)
+    if target.get("is_super_admin"): return web.json_response({"error": "cannot_fire_super"}, status=403)
+    if target.get("is_admin") and not admin["is_super_admin"]: return web.json_response({"error": "cannot_fire_admin"}, status=403)
+    if uid == admin["user_id"]: return web.json_response({"error": "cannot_fire_self"}, status=403)
+    if target.get("is_fired"): return web.json_response({"error": "already_fired"}, status=400)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET is_fired = TRUE, fired_at = NOW(), fired_by = %s, is_admin = FALSE, is_super_admin = FALSE, permissions = '{}'::jsonb WHERE user_id = %s", (admin["login"], uid))
+            cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin["user_id"], "user_fire", "user", str(uid), f"by={admin['login']}"))
+    return web.json_response({"ok": True})
 
-/* ================== STANDARDS ================== */
-function renderStandardsFromBoot() {
-  const box = $('standards-list');
-  const list = (BOOT && BOOT.standards) || [];
-  
-  if (!list.length) { box.innerHTML = '<div class="no-results">Стандартов пока нет</div>'; return; }
+async def handle_admin_user_restore(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "users_fire")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    uid = _int(body.get("user_id"))
+    if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET is_fired = FALSE, fired_at = NULL, fired_by = NULL WHERE user_id = %s", (uid,))
+            cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin["user_id"], "user_restore", "user", str(uid), f"by={admin['login']}"))
+    return web.json_response({"ok": True})
 
-  currentStandardsData = list;
-  drawStandardsList(currentStandardsData);
-}
+async def handle_admin_user_delete(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "users_fire")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    uid = _int(body.get("user_id"))
+    if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    target = await _run(_sync_get_user_by_id, uid)
+    if not target: return web.json_response({"error": "not_found"}, status=404)
+    if target.get("is_super_admin"): return web.json_response({"error": "cannot_delete_super"}, status=403)
+    if target.get("is_admin") and not admin["is_super_admin"]: return web.json_response({"error": "cannot_delete_admin"}, status=403)
+    if uid == admin["user_id"]: return web.json_response({"error": "cannot_delete_self"}, status=403)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM users WHERE user_id = %s", (uid,))
+            cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin["user_id"], "user_delete", "user", str(uid), f"login={target.get('login')}"))
+    return web.json_response({"ok": True})
 
-function drawStandardsList(data) {
-  const box = $('standards-list');
-  if (!data.length) {
-    box.innerHTML = '<div class="no-results">Ничего не найдено</div>';
-    return;
-  }
+# ============= ADMINS / PERMISSIONS =============
+def _sync_list_admins():
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT user_id, login, full_name, position, permissions, COALESCE(is_admin, FALSE) AS is_admin, COALESCE(is_super_admin, FALSE) AS is_super_admin FROM users WHERE COALESCE(is_admin, FALSE) = TRUE AND COALESCE(is_fired, FALSE) = FALSE ORDER BY user_id")
+            return [dict(r) for r in cur.fetchall()]
 
-  box.innerHTML = data.map(s => {
-    const imageHtml = s.image_url 
-      ? `<img src="${esc(s.image_url)}" class="std-img">` 
-      : `<div class="std-img">📚</div>`;
+async def handle_admin_admins(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    if not admin["is_super_admin"]: return web.json_response({"error": "forbidden"}, status=403)
+    return web.json_response({"admins": await _run(_sync_list_admins)})
 
-    return `
-      <div class="std-card" onclick="showStandardDetail(${s.id})">
-        ${imageHtml}
-        <div class="std-content">
-          ${s.number ? `<div class="std-number">${esc(s.number)}</div>` : ''}
-          <div class="std-title">${esc(s.title)}</div>
-          <div class="std-snippet">${esc(s.body)}</div>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
+async def handle_admin_set_permissions(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    if not admin["is_super_admin"]: return web.json_response({"error": "forbidden"}, status=403)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    uid = _int(body.get("user_id"))
+    if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    perms = body.get("permissions") or {}
+    target = await _run(_sync_get_user_by_id, uid)
+    if not target: return web.json_response({"error": "not_found"}, status=404)
+    if target.get("is_super_admin"): return web.json_response({"error": "cannot_edit_super"}, status=403)
+    if not target.get("is_admin"): return web.json_response({"error": "not_admin"}, status=400)
+    cleaned = {k: True for k in PERM_KEYS if perms.get(k)}
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET permissions = %s WHERE user_id = %s", (Json(cleaned), uid))
+            cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin["user_id"], "set_permissions", "user", str(uid), ",".join(cleaned.keys())))
+    return web.json_response({"ok": True})
 
-function showStandardDetail(id) {
-  const s = (BOOT && BOOT.standards || []).find(x => x.id === id);
-  if (!s) return;
+# ============= CITIZENSHIPS =============
+def _sync_citizenships():
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM citizenships ORDER BY name")
+            return [dict(r) for r in cur.fetchall()]
 
-  const imageHtml = s.image_url ? `<img src="${esc(s.image_url)}" class="std-detail-img">` : '';
+async def handle_admin_citizenships(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    return web.json_response({"citizenships": await _run(_sync_citizenships)})
 
-  $('standard-detail-box').innerHTML = `
-    <div class="std-detail-header">
-      ${s.number ? `<div class="std-detail-number">${esc(s.number)}</div>` : ''}
-      <div class="std-detail-title">${esc(s.title)}</div>
-      ${imageHtml}
-      <div class="std-detail-text">${esc(s.body)}</div>
-    </div>
-  `;
+def _sync_citizenship_add(name):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("INSERT INTO citizenships (name) VALUES (%s) ON CONFLICT (name) DO NOTHING RETURNING *", (name,))
+            return cur.fetchone()
 
-  document.querySelector('.tabs').style.display = 'none';
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  $('sec-standard-detail').classList.add('active');
-  window.scrollTo(0, 0);
-}
+async def handle_admin_citizenship_add(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "citizenships_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    name = (body.get("name") or "").strip()
+    if not name: return web.json_response({"error": "invalid"}, status=400)
+    
+    new_c = await _run(_sync_citizenship_add, name)
+    if not new_c:
+        return web.json_response({"ok": False, "error": "duplicate"}, status=409)
+    return web.json_response({"ok": True, "citizenship": new_c})
 
-$('standard-detail-back').addEventListener('click', () => {
-  document.querySelector('.tabs').style.display = 'flex';
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  $('sec-standards').classList.add('active');
-  document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
-  document.querySelector('.tabs button[data-sec="sec-standards"]').classList.add('active');
-  window.scrollTo(0, 0);
-});
+# ============= RESTAURANTS =============
+def _sync_restaurants():
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT r.*, u.full_name AS territory_manager_name FROM restaurants r LEFT JOIN users u ON r.territory_manager_id = u.user_id ORDER BY r.sort, r.name")
+            return [dict(r) for r in cur.fetchall()]
 
-$('standard-search').addEventListener('input', (e) => {
-  const query = e.target.value.toLowerCase().trim();
-  if (!query) {
-    drawStandardsList(currentStandardsData);
-    return;
-  }
-  const filtered = currentStandardsData.filter(s => {
-    return (s.number || '').toLowerCase().includes(query) || 
-           (s.title || '').toLowerCase().includes(query) || 
-           (s.body || '').toLowerCase().includes(query);
-  });
-  drawStandardsList(filtered);
-});
+def _sync_tu_candidates():
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT user_id, full_name FROM users WHERE COALESCE(is_fired, FALSE) = FALSE AND LOWER(COALESCE(position,'')) LIKE '%%территориальный%%' ORDER BY full_name")
+            return [dict(r) for r in cur.fetchall()]
 
-/* ================== FAQ ================== */
-function renderFaqFromBoot() {
-  const box = $('faq-list');
-  const list = (BOOT && BOOT.faq) || [];
-  if (!list.length) { box.innerHTML = '<div class="no-results">Нет вопросов</div>'; return; }
-  
-  box.innerHTML = list.map(f => `
-    <div class="accordion">
-      <details>
-        <summary>${esc(f.question)}</summary>
-        <div class="content">${esc(f.answer)}</div>
-      </details>
-    </div>
-  `).join('');
-}
+async def handle_admin_restaurants(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    restaurants = await _run(_sync_restaurants)
+    tu = await _run(_sync_tu_candidates)
+    return web.json_response({"restaurants": restaurants, "tu_candidates": tu})
 
-$('send-question').addEventListener('click', async function() {
-  const btn = this;
-  const input = $('question-input');
-  const text = (input.value || '').trim();
-  if (!text) { showToast('Введите вопрос'); return; }
-  btn.disabled = true;
-  const oldLabel = btn.textContent;
-  btn.textContent = 'Отправляем…';
-  try {
-    await api('/api/questions', { question: text });
-    input.value = '';
-    showToast('✅ Вопрос отправлен');
-  } catch (e) {
-    if (e.message !== 'unauthorized' && e.message !== 'fired') showToast('Не удалось отправить', 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = oldLabel;
-  }
-});
+async def handle_admin_restaurant_add(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "restaurant_create")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    key = (body.get("key") or "").strip().lower().replace(" ", "_")
+    name = (body.get("name") or "").strip()
+    if not key or not name: return web.json_response({"error": "invalid"}, status=400)
+    address = body.get("address") or ""
+    hours = body.get("hours") or ""
+    phone = body.get("phone") or ""
+    org = body.get("org") or ""
+    lat = body.get("lat")
+    lon = body.get("lon")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT key FROM restaurants WHERE key = %s", (key,))
+            if cur.fetchone(): return web.json_response({"error": "duplicate"}, status=409)
+            cur.execute("INSERT INTO restaurants (key, name, address, hours, phone, org, lat, lon, force_status, sort) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'open', 100)", (key, name, address, hours, phone, org, lat, lon))
+            cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin["user_id"], "restaurant_create", "restaurant", key, f"name={name}"))
+    return web.json_response({"ok": True})
 
-/* ================== PWA ================== */
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
-  });
-}
+async def handle_admin_restaurant_update(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "restaurant_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    key = body.get("key") or ""
+    updates = body.get("updates") or {}
+    allowed = {"name", "address", "phone", "hours", "org", "lat", "lon"}
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            for k, v in updates.items():
+                if k in allowed: cur.execute(f"UPDATE restaurants SET {k} = %s WHERE key = %s", (v, key))
+    return web.json_response({"ok": True})
 
-/* ================== INIT ================== */
-(async function init() {
-  if (!getToken()) { showLogin(); return; }
-  await loadAndRender();
-})();
-</script>
-</body>
-</html>
+async def handle_admin_restaurant_tu(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "restaurant_tu")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    key = body.get("key") or ""
+    tu = body.get("territory_manager_id")
+    tu = _int(tu) if tu else None
+    if tu is not None and tu <= 0: tu = None
+    with get_conn() as conn:
+        with conn.cursor() as cur: cur.execute("UPDATE restaurants SET territory_manager_id = %s WHERE key = %s", (tu, key))
+    return web.json_response({"ok": True})
+
+async def handle_admin_restaurant_status(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "restaurant_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    key = body.get("key") or ""
+    st = body.get("status")
+    if st == "auto": st = "open"
+    with get_conn() as conn:
+        with conn.cursor() as cur: cur.execute("UPDATE restaurants SET force_status = %s WHERE key = %s", (st, key))
+    return web.json_response({"ok": True})
+
+# ============= MEDBOOKS =============
+def _sync_medbooks_full():
+    doctors, tests, vaccines = _sync_get_medbook_refs()
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT u.user_id, u.full_name, u.position, u.medbook, r.name AS restaurant_name FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key WHERE COALESCE(u.is_admin, FALSE) = FALSE AND COALESCE(u.is_fired, FALSE) = FALSE AND u.login IS NOT NULL ORDER BY u.full_name")
+            users = [dict(r) for r in cur.fetchall()]
+    for u in users:
+        mb = u.get("medbook") or {}
+        if isinstance(mb, str):
+            try: mb = json.loads(mb)
+            except Exception: mb = {}
+        u["medbook"] = mb
+        u["medbook_status"] = compute_medbook_status(mb, doctors, tests, vaccines)
+        missing, total = medbook_missing_count(mb, doctors, tests, vaccines)
+        u["missing"] = missing
+        u["total"] = total
+    return doctors, tests, vaccines, users
+
+async def handle_admin_medbooks(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    doctors, tests, vaccines, users = await _run(_sync_medbooks_full)
+    return web.json_response({"doctors": doctors, "tests": tests, "vaccines": vaccines, "users": users})
+
+async def handle_admin_medbook_get(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    uid = _int(body.get("user_id"))
+    if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    user = await _run(_sync_get_user_by_id, uid)
+    if not user: return web.json_response({"error": "not_found"}, status=404)
+    doctors, tests, vaccines = await _run(_sync_get_medbook_refs)
+    return web.json_response({
+        "user": {"user_id": user["user_id"], "full_name": user.get("full_name"), "position": user.get("position"), "restaurant_name": user.get("restaurant_name") or ""},
+        "medbook": user.get("medbook") or {}, "doctors": doctors, "tests": tests, "vaccines": vaccines,
+    })
+
+async def handle_admin_medbook_save(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "medbook_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    uid = _int(body.get("user_id"))
+    if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    mb = body.get("medbook") or {"doctors": {}, "tests": {}, "vaccines": {}}
+    with get_conn() as conn:
+        with conn.cursor() as cur: cur.execute("UPDATE users SET medbook = %s WHERE user_id = %s", (Json(mb), uid))
+    return web.json_response({"ok": True})
+
+async def handle_admin_medbook_ref_add(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    rtype = body.get("type")
+    if rtype not in REF_TYPE_PERM: return web.json_response({"error": "invalid_type"}, status=400)
+    perm_err = require_perm(admin, REF_TYPE_PERM[rtype])
+    if perm_err: return perm_err
+    name = (body.get("name") or "").strip()
+    if not name: return web.json_response({"error": "invalid"}, status=400)
+    months = max(1, min(120, _int(body.get("validity_months"), 12)))
+    required = bool(body.get("required"))
+    table = {"doctor": "medbook_doctors", "test": "medbook_tests", "vaccine": "medbook_vaccines"}[rtype]
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"SELECT COALESCE(MAX(sort), 0) FROM {table}")
+            sort = (cur.fetchone()[0] or 0) + 1
+            cur.execute(f"INSERT INTO {table} (name, required, validity_months, sort) VALUES (%s,%s,%s,%s)", (name, required, months, sort))
+    return web.json_response({"ok": True})
+
+async def handle_admin_medbook_ref_update(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    rtype = body.get("type")
+    rid = _int(body.get("id"))
+    if rtype not in REF_TYPE_PERM or not rid: return web.json_response({"error": "invalid"}, status=400)
+    perm_err = require_perm(admin, REF_TYPE_PERM[rtype])
+    if perm_err: return perm_err
+    table = {"doctor": "medbook_doctors", "test": "medbook_tests", "vaccine": "medbook_vaccines"}[rtype]
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if "name" in body: cur.execute(f"UPDATE {table} SET name = %s WHERE id = %s", (body["name"], rid))
+            if "validity_months" in body:
+                v = max(1, min(120, _int(body["validity_months"], 12)))
+                cur.execute(f"UPDATE {table} SET validity_months = %s WHERE id = %s", (v, rid))
+            if "required" in body: cur.execute(f"UPDATE {table} SET required = %s WHERE id = %s", (bool(body["required"]), rid))
+    return web.json_response({"ok": True})
+
+async def handle_admin_medbook_ref_delete(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    rtype = body.get("type")
+    rid = _int(body.get("id"))
+    if rtype not in REF_TYPE_PERM or not rid: return web.json_response({"error": "invalid"}, status=400)
+    perm_err = require_perm(admin, REF_TYPE_PERM[rtype])
+    if perm_err: return perm_err
+    table = {"doctor": "medbook_doctors", "test": "medbook_tests", "vaccine": "medbook_vaccines"}[rtype]
+    with get_conn() as conn:
+        with conn.cursor() as cur: cur.execute(f"DELETE FROM {table} WHERE id = %s", (rid,))
+    return web.json_response({"ok": True})
+
+# ============= NEWS =============
+def _sync_news_list():
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            _auto_publish_scheduled(cur)
+            cur.execute("SELECT * FROM news ORDER BY created_at DESC, id DESC")
+            return [dict(r) for r in cur.fetchall()]
+
+async def handle_admin_news_list(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    return web.json_response({"news": await _run(_sync_news_list)})
+
+def _check_can_publish(admin):
+    return admin["is_super_admin"] or (admin.get("position") or "").strip().upper() == "HR"
+
+async def handle_admin_news_add(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    can_publish = _check_can_publish(admin)
+    can_suggest = _sync_user_has_perm(admin, "news_suggest") or _sync_user_has_perm(admin, "news_write")
+    if not (can_publish or can_suggest): return web.json_response({"error": "forbidden"}, status=403)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    title = (body.get("title") or "").strip()
+    text = (body.get("body") or "").strip()
+    if not title or not text: return web.json_response({"error": "invalid"}, status=400)
+    level = body.get("level") or "normal"
+    intent = body.get("intent") or "suggest"
+    publish_at = body.get("publish_at")
+    image_url = body.get("image_url") or ""
+
+    if not can_publish:
+        status = "pending"
+        proposed_by = admin.get("full_name") or admin.get("login")
+    else:
+        if intent == "publish": status = "published"
+        elif intent == "schedule":
+            if not publish_at: return web.json_response({"error": "publish_at_required"}, status=400)
+            status = "scheduled"
+        else: status = "pending"
+        proposed_by = None
+
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("INSERT INTO news (title, body, level, status, publish_at, proposed_by, image_url) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING *", (title, text, level, status, publish_at, proposed_by, image_url))
+            news_row = dict(cur.fetchone())
+    return web.json_response({"ok": True, "status": status, "news": news_row})
+
+async def handle_admin_news_update(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "news_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    nid = _int(body.get("id"))
+    if nid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    allowed = {"title", "body", "level", "status", "publish_at", "image_url"}
+    updates = {k: body[k] for k in allowed if k in body}
+    if not updates: return web.json_response({"ok": True})
+    set_clause = ", ".join(f"{k} = %s" for k in updates)
+    with get_conn() as conn:
+        with conn.cursor() as cur: cur.execute(f"UPDATE news SET {set_clause} WHERE id = %s", (*updates.values(), nid))
+    return web.json_response({"ok": True})
+
+async def handle_admin_news_delete(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "news_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    nid = _int(body.get("id"))
+    if nid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    with get_conn() as conn:
+        with conn.cursor() as cur: cur.execute("DELETE FROM news WHERE id = %s", (nid,))
+    return web.json_response({"ok": True})
+
+async def handle_admin_news_approve(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    if not _check_can_publish(admin): return web.json_response({"error": "forbidden"}, status=403)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    nid = _int(body.get("id"))
+    if nid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    with get_conn() as conn:
+        with conn.cursor() as cur: cur.execute("UPDATE news SET status = 'published', approved_by = %s WHERE id = %s", (admin.get("full_name"), nid))
+    return web.json_response({"ok": True})
+
+async def handle_admin_news_reject(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    if not _check_can_publish(admin): return web.json_response({"error": "forbidden"}, status=403)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    nid = _int(body.get("id"))
+    if nid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    with get_conn() as conn:
+        with conn.cursor() as cur: cur.execute("DELETE FROM news WHERE id = %s AND status = 'pending'", (nid,))
+    return web.json_response({"ok": True})
+
+# ============= STANDARDS =============
+def _sync_standards_list():
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM standards ORDER BY created_at DESC, id DESC")
+            return [dict(r) for r in cur.fetchall()]
+
+async def handle_admin_standards(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    return web.json_response({"standards": await _run(_sync_standards_list)})
+
+async def handle_admin_standard_add(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    can_publish = _check_can_publish(admin)
+    can_suggest = _sync_user_has_perm(admin, "standards_edit")
+    if not (can_publish or can_suggest): return web.json_response({"error": "forbidden"}, status=403)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    number = (body.get("number") or "").strip()
+    title = (body.get("title") or "").strip()
+    text = (body.get("body") or "").strip()
+    image_url = body.get("image_url") or ""
+    
+    if not title or not text: return web.json_response({"error": "invalid"}, status=400)
+
+    if not can_publish:
+        status = "pending"
+        proposed_by = admin.get("full_name") or admin.get("login")
+    else:
+        status = "published"
+        proposed_by = None
+
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("INSERT INTO standards (number, title, body, status, proposed_by, image_url) VALUES (%s,%s,%s,%s,%s,%s) RETURNING *", 
+                        (number, title, text, status, proposed_by, image_url))
+            std_row = dict(cur.fetchone())
+    return web.json_response({"ok": True, "status": status, "standard": std_row})
+
+async def handle_admin_standard_update(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "standards_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    sid = _int(body.get("id"))
+    if sid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    allowed = {"number", "title", "body", "image_url"}
+    updates = {k: body[k] for k in allowed if k in body}
+    if not updates: return web.json_response({"ok": True})
+    set_clause = ", ".join(f"{k} = %s" for k in updates)
+    with get_conn() as conn:
+        with conn.cursor() as cur: cur.execute(f"UPDATE standards SET {set_clause} WHERE id = %s", (*updates.values(), sid))
+    return web.json_response({"ok": True})
+
+async def handle_admin_standard_delete(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "standards_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    sid = _int(body.get("id"))
+    if sid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    with get_conn() as conn:
+        with conn.cursor() as cur: cur.execute("DELETE FROM standards WHERE id = %s", (sid,))
+    return web.json_response({"ok": True})
+
+async def handle_admin_standard_approve(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    if not _check_can_publish(admin): return web.json_response({"error": "forbidden"}, status=403)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    sid = _int(body.get("id"))
+    if sid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    with get_conn() as conn:
+        with conn.cursor() as cur: cur.execute("UPDATE standards SET status = 'published', approved_by = %s WHERE id = %s", (admin.get("full_name"), sid))
+    return web.json_response({"ok": True})
+
+async def handle_admin_standard_reject(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    if not _check_can_publish(admin): return web.json_response({"error": "forbidden"}, status=403)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    sid = _int(body.get("id"))
+    if sid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    with get_conn() as conn:
+        with conn.cursor() as cur: cur.execute("DELETE FROM standards WHERE id = %s AND status = 'pending'", (sid,))
+    return web.json_response({"ok": True})
+
+# ============= FAQ / POSITIONS / QUESTIONS =============
+def _sync_faq_list():
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM faq ORDER BY id")
+            return [dict(r) for r in cur.fetchall()]
+
+async def handle_admin_faq(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    return web.json_response({"faq": await _run(_sync_faq_list)})
+
+async def handle_admin_faq_add(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "faq_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    with get_conn() as conn:
+        with conn.cursor() as cur: cur.execute("INSERT INTO faq (question, answer, category) VALUES (%s,%s,%s)", (body.get("question") or "", body.get("answer") or "", ""))
+    return web.json_response({"ok": True})
+
+async def handle_admin_faq_update(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "faq_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    field = body.get("field")
+    if field not in ("question", "answer"): return web.json_response({"error": "invalid"}, status=400)
+    fid = _int(body.get("id"))
+    if fid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    with get_conn() as conn:
+        with conn.cursor() as cur: cur.execute(f"UPDATE faq SET {field} = %s WHERE id = %s", (body.get("value") or "", fid))
+    return web.json_response({"ok": True})
+
+async def handle_admin_faq_delete(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "faq_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    fid = _int(body.get("id"))
+    if fid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    with get_conn() as conn:
+        with conn.cursor() as cur: cur.execute("DELETE FROM faq WHERE id = %s", (fid,))
+    return web.json_response({"ok": True})
+
+def _sync_positions():
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM positions ORDER BY is_archived, sort, name")
+            return [dict(r) for r in cur.fetchall()]
+
+async def handle_admin_positions(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    return web.json_response({"positions": await _run(_sync_positions)})
+
+async def handle_admin_position_add(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "positions_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    name = (body.get("name") or "").strip()
+    if not name: return web.json_response({"error": "invalid"}, status=400)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COALESCE(MAX(sort), 0) FROM positions")
+            sort = (cur.fetchone()[0] or 0) + 1
+            cur.execute("INSERT INTO positions (name, sort) VALUES (%s,%s) ON CONFLICT (name) DO NOTHING RETURNING id", (name, sort))
+            if not cur.fetchone(): return web.json_response({"ok": False, "error": "duplicate"}, status=409)
+    return web.json_response({"ok": True})
+
+async def handle_admin_position_archive(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "positions_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    pid = _int(body.get("id"))
+    if pid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    with get_conn() as conn:
+        with conn.cursor() as cur: cur.execute("UPDATE positions SET is_archived = TRUE WHERE id = %s", (pid,))
+    return web.json_response({"ok": True})
+
+def _sync_questions():
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT q.id, q.user_id, q.text, q.replied, q.created_at, u.full_name FROM questions q LEFT JOIN users u ON q.user_id = u.user_id ORDER BY q.created_at DESC LIMIT 200")
+            return [dict(r) for r in cur.fetchall()]
+
+async def handle_admin_questions(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    return web.json_response({"questions": await _run(_sync_questions)})
+
+async def handle_admin_question_reply(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "questions_reply")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    qid = _int(body.get("id"))
+    if qid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    text = (body.get("text") or "").strip()
+    with get_conn() as conn:
+        with conn.cursor() as cur: cur.execute("UPDATE questions SET replied = TRUE, reply_text = %s, replied_at = NOW(), replied_by = %s WHERE id = %s", (text, admin["user_id"], qid))
+    return web.json_response({"ok": True})
+
+# ============= AUDIT / REPORTS / PASSWORD =============
+def _sync_audit():
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM admin_audit ORDER BY created_at DESC LIMIT 300")
+            return [dict(r) for r in cur.fetchall()]
+
+async def handle_admin_audit(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    return web.json_response({"audit": await _run(_sync_audit)})
+
+async def handle_admin_reports(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    stats = await _run(_sync_dashboard_stats)
+    return web.json_response({"report": stats})
+
+async def handle_admin_change_password(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    old = body.get("old_password") or ""
+    new = body.get("new_password") or ""
+    if not verify_password(old, admin.get("password_hash") or ""): return web.json_response({"error": "wrong_password"}, status=401)
+    if len(new) < 8: return web.json_response({"error": "password_too_short"}, status=400)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET password_hash = %s WHERE user_id = %s", (hash_password(new), admin["user_id"]))
+            cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin["user_id"], "change_password", "user", str(admin["user_id"]), ""))
+    return web.json_response({"ok": True})
+
+# ============= ДИАГНОСТИКА =============
+async def handle_admin_debug_users(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    if not admin["is_super_admin"]: return web.json_response({"error": "forbidden"}, status=403)
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT user_id, login, full_name, is_admin, is_super_admin, is_fired, position FROM users ORDER BY user_id")
+            rows = [dict(r) for r in cur.fetchall()]
+    return web.json_response({"count": len(rows), "users": rows})
+
+# ============= BOOTSTRAP =============
+def _sync_bootstrap(user_id):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("UPDATE users SET last_seen_at = NOW() WHERE user_id = %s", (user_id,))
+            cur.execute("""
+                SELECT u.*, c.name AS citizenship_name 
+                FROM users u 
+                LEFT JOIN citizenships c ON u.citizenship_id = c.id
+                WHERE u.user_id = %s
+            """, (user_id,))
+            user = dict(cur.fetchone())
+            _auto_publish_scheduled(cur)
+
+            cur.execute("SELECT * FROM news WHERE status = 'published' ORDER BY created_at DESC LIMIT 50")
+            news_rows = [dict(r) for r in cur.fetchall()]
+            
+            cur.execute("SELECT * FROM standards WHERE status = 'published' ORDER BY created_at DESC")
+            std_rows = [dict(r) for r in cur.fetchall()]
+
+            cur.execute("SELECT * FROM faq ORDER BY id")
+            faq_rows = [dict(r) for r in cur.fetchall()]
+            cur.execute("SELECT * FROM restaurants WHERE key != 'office' ORDER BY sort, name")
+            rest_rows = [dict(r) for r in cur.fetchall()]
+
+            cur.execute("SELECT * FROM medbook_doctors ORDER BY sort, id")
+            doctors = [dict(r) for r in cur.fetchall()]
+            cur.execute("SELECT * FROM medbook_tests ORDER BY sort, id")
+            tests = [dict(r) for r in cur.fetchall()]
+            cur.execute("SELECT * FROM medbook_vaccines ORDER BY sort, id")
+            vaccines = [dict(r) for r in cur.fetchall()]
+
+            pos_lower = (user.get("position") or "").lower()
+            is_hr = pos_lower.strip() == "hr"
+            is_tu = "территориальный" in pos_lower
+            is_us = "управляющий сменой" in pos_lower
+            can_see_team = is_hr or is_tu or is_us
+
+            team_rows = []
+            if can_see_team:
+                cur.execute("""
+                    SELECT u.user_id, u.full_name, u.position, u.phone, u.restaurant_key, r.name AS restaurant_name,
+                           COALESCE(u.is_certified, FALSE) AS is_certified, u.medbook, mgr.full_name AS manager_name,
+                           c.name AS citizenship_name, u.hire_date
+                    FROM users u
+                    LEFT JOIN restaurants r ON u.restaurant_key = r.key
+                    LEFT JOIN users mgr ON r.territory_manager_id = mgr.user_id
+                    LEFT JOIN citizenships c ON u.citizenship_id = c.id
+                    WHERE u.user_id != %s AND COALESCE(u.is_fired, FALSE) = FALSE AND COALESCE(u.is_admin, FALSE) = FALSE AND u.login IS NOT NULL
+                    ORDER BY u.full_name
+                """, (user_id,))
+                all_staff = [dict(r) for r in cur.fetchall()]
+
+                if is_us:
+                    my_rest = user.get("restaurant_key")
+                    team_rows = [s for s in all_staff if s.get("restaurant_key") == my_rest]
+                elif is_tu:
+                    cur.execute("SELECT key FROM restaurants WHERE territory_manager_id = %s", (user_id,))
+                    my_rests = {r["key"] for r in cur.fetchall()}
+                    team_rows = [s for s in all_staff if s.get("restaurant_key") in my_rests]
+                else:
+                    team_rows = all_staff
+
+    user.pop("password_hash", None)
+    return (user, news_rows, std_rows, faq_rows, rest_rows, doctors, tests, vaccines, team_rows, can_see_team)
+
+async def handle_bootstrap(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    (u, news_rows, std_rows, faq_rows, rest_rows, doctors, tests, vaccines, team_rows, can_see_team) = await _run(_sync_bootstrap, user["user_id"])
+
+    restaurant_name = ""
+    restaurant_key = u.get("restaurant_key") or ""
+    for r in rest_rows:
+        if r["key"] == restaurant_key:
+            restaurant_name = r["name"]
+            break
+
+    profile = {
+        "full_name": u.get("full_name") or "", "first_name": (u.get("full_name") or "").split()[0] if u.get("full_name") else "",
+        "phone": u.get("phone") or "", "birth_date": u.get("birth_date") or "", "position": u.get("position") or "—",
+        "restaurant": restaurant_name or "—", "restaurant_key": restaurant_key, "is_certified": bool(u.get("is_certified")), "is_admin": bool(u.get("is_admin")),
+        "hire_date": u.get("hire_date") or "—", "citizenship_name": u.get("citizenship_name") or "—"
+    }
+
+    mb = u.get("medbook") or {}
+    if isinstance(mb, str):
+        try: mb = json.loads(mb)
+        except Exception: mb = {}
+
+    def build_section(items, source):
+        out = []
+        for it in items:
+            date_str = mb.get(source, {}).get(str(it["id"]), "")
+            st = entry_status(date_str, it["validity_months"])
+            out.append({"id": it["id"], "name": it["name"], "required": bool(it.get("required")), "validity_months": it["validity_months"], "date": date_str, "status": st})
+        return out
+
+    medbook_status = compute_medbook_status(mb, doctors, tests, vaccines)
+    missing, total = medbook_missing_count(mb, doctors, tests, vaccines)
+
+    medbook_payload = {
+        "status": medbook_status, "missing": missing, "total": total,
+        "doctors": build_section(doctors, "doctors"), "tests": build_section(tests, "tests"), "vaccines": build_section(vaccines, "vaccines"),
+    }
+
+    team_list = []
+    for t in team_rows:
+        tmb = t.get("medbook") or {}
+        if isinstance(tmb, str):
+            try: tmb = json.loads(tmb)
+            except Exception: tmb = {}
+        team_list.append({
+            "user_id": t["user_id"], "full_name": t["full_name"] or "", "position": t["position"] or "",
+            "phone": t["phone"] or "", "restaurant_key": t.get("restaurant_key") or "", "restaurant_name": t.get("restaurant_name") or "",
+            "manager_name": t.get("manager_name") or "", "is_certified": bool(t.get("is_certified")), "medbook_status": compute_medbook_status(tmb, doctors, tests, vaccines),
+            "hire_date": t.get("hire_date") or "—", "citizenship_name": t.get("citizenship_name") or "—"
+        })
+
+    return web.json_response({
+        "profile": profile, "medbook": medbook_payload, "news": news_rows, "standards": std_rows, "faq": faq_rows,
+        "restaurants": rest_rows, "team": team_list, "can_see_team": can_see_team,
+    })
+
+# ============= QUESTIONS (staff) =============
+async def handle_questions_staff(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    text = (body.get("question") or "").strip()
+    if not text or len(text) > 1000: return web.json_response({"error": "invalid"}, status=400)
+    with get_conn() as conn:
+        with conn.cursor() as cur: cur.execute("INSERT INTO questions (user_id, text) VALUES (%s,%s)", (user["user_id"], text))
+    return web.json_response({"ok": True})
+
+# ============= UPLOAD =============
+async def handle_admin_upload(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+        
+    b64 = body.get("image_base64", "")
+    if not b64.startswith("data:image/"): return web.json_response({"error": "invalid_image"}, status=400)
+    
+    try:
+        header, data = b64.split(",", 1)
+        ext = ".jpg"
+        if "png" in header: ext = ".png"
+        elif "webp" in header: ext = ".webp"
+        new_name = f"{uuid.uuid4().hex}{ext}"
+        
+        data_dir = os.getenv("DATA_DIR", "/data")
+        upload_dir = os.path.join(data_dir, "uploads")
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        with open(os.path.join(upload_dir, new_name), "wb") as f:
+            f.write(base64.b64decode(data))
+            
+        return web.json_response({"ok": True, "url": f"/uploads/{new_name}"})
+    except Exception as e:
+        logging.error(f"Upload error: {e}")
+        return web.json_response({"error": "upload_failed"}, status=500)
+
+async def handle_uploaded_file(request):
+    filename = request.match_info['filename']
+    data_dir = os.getenv("DATA_DIR", "/data")
+    file_path = os.path.join(data_dir, "uploads", filename)
+    if not os.path.exists(file_path): return web.Response(status=404)
+    return web.FileResponse(file_path)
+
+# ============= STATIC =============
+_INDEX_CACHE = {"data": None, "mtime": 0.0}
+_ADMIN_CACHE = {"data": None, "mtime": 0.0}
+_STATIC_FILES_CACHE = {}
+
+def _serve_file(name, cache):
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", name)
+    if not os.path.exists(p): return None
+    try:
+        mtime = os.stat(p).st_mtime
+        if cache["data"] is None or cache["mtime"] != mtime:
+            with open(p, "rb") as f: cache["data"] = f.read()
+            cache["mtime"] = mtime
+        return cache["data"]
+    except OSError: return None
+
+async def handle_index(request):
+    data = _serve_file("index.html", _INDEX_CACHE)
+    if not data: return web.Response(text="frontend/index.html not found", status=404)
+    return web.Response(body=data, content_type="text/html", charset="utf-8")
+
+async def handle_admin_page(request):
+    data = _serve_file("admin.html", _ADMIN_CACHE)
+    if not data: return web.Response(text="frontend/admin.html not found", status=404)
+    return web.Response(body=data, content_type="text/html", charset="utf-8")
+
+async def _send_static_file(name, content_type):
+    if name not in _STATIC_FILES_CACHE: _STATIC_FILES_CACHE[name] = {"data": None, "mtime": 0.0}
+    data = _serve_file(name, _STATIC_FILES_CACHE[name])
+    if not data: return web.Response(status=404)
+    kwargs = {"body": data, "content_type": content_type}
+    if content_type.startswith("text/") or content_type in ("application/javascript", "application/manifest+json"):
+        kwargs["charset"] = "utf-8"
+    return web.Response(**kwargs)
+
+async def handle_manifest(request): return await _send_static_file("manifest.json", "application/manifest+json")
+async def handle_sw(request): return await _send_static_file("sw.js", "application/javascript")
+async def handle_icon192(request): return await _send_static_file("icon-192.svg", "image/svg+xml")
+async def handle_icon512(request): return await _send_static_file("icon-512.svg", "image/svg+xml")
+async def handle_favicon(request): return web.Response(status=204)
+async def handle_health(request): return web.Response(text="OK")
+
+# ============= MIDDLEWARES =============
+@web.middleware
+async def error_middleware(request, handler):
+    try: return await handler(request)
+    except web.HTTPException: raise
+    except Exception as e:
+        logging.error("Unhandled %s %s: %s\n%s", request.method, request.path, type(e).__name__, traceback.format_exc())
+        return web.json_response({"error": "internal", "detail": str(e)[:200]}, status=500)
+
+_GZIP_TYPES = ("application/json", "text/plain", "text/html", "text/css", "application/javascript", "image/svg+xml")
+
+@web.middleware
+async def gzip_middleware(request, handler):
+    response = await handler(request)
+    body = getattr(response, "body", None)
+    if (body is not None and len(body) > 500 and "gzip" in request.headers.get("Accept-Encoding", "")
+            and not response.headers.get("Content-Encoding") and response.content_type in _GZIP_TYPES):
+        compressed = gzip.compress(body, compresslevel=6)
+        if len(compressed) < len(body):
+            response.body = compressed
+            response.headers["Content-Encoding"] = "gzip"
+            if "Content-Length" in response.headers: del response.headers["Content-Length"]
+            response.headers["Vary"] = "Accept-Encoding"
+    return response
+
+app = web.Application(middlewares=[error_middleware, gzip_middleware], client_max_size=20 * 1024 * 1024)
+
+# ============= ROUTES =============
+app.router.add_get("/", handle_index)
+app.router.add_get("/admin", handle_admin_page)
+app.router.add_get("/admin/", handle_admin_page)
+app.router.add_get("/favicon.ico", handle_favicon)
+app.router.add_get("/api/health", handle_health)
+app.router.add_get("/manifest.json", handle_manifest)
+app.router.add_get("/sw.js", handle_sw)
+app.router.add_get("/static/icon-192.svg", handle_icon192)
+app.router.add_get("/static/icon-512.svg", handle_icon512)
+app.router.add_get("/uploads/{filename}", handle_uploaded_file)
+
+app.router.add_post("/api/auth/login", handle_auth_login_staff)
+app.router.add_post("/api/auth/logout", handle_auth_logout)
+app.router.add_post("/api/bootstrap", handle_bootstrap)
+app.router.add_post("/api/questions", handle_questions_staff)
+
+app.router.add_post("/api/admin/login", handle_auth_login)
+app.router.add_post("/api/admin/me", handle_admin_me)
+app.router.add_post("/api/admin/dashboard", handle_admin_dashboard)
+app.router.add_post("/api/admin/medbook-alerts", handle_admin_medbook_alerts)
+app.router.add_post("/api/admin/upload", handle_admin_upload)
+
+app.router.add_post("/api/admin/citizenships", handle_admin_citizenships)
+app.router.add_post("/api/admin/citizenship/add", handle_admin_citizenship_add)
+
+app.router.add_post("/api/admin/users", handle_admin_users)
+app.router.add_post("/api/admin/user/get", handle_admin_user_get)
+app.router.add_post("/api/admin/user/create", handle_admin_user_create)
+app.router.add_post("/api/admin/user/update", handle_admin_user_update)
+app.router.add_post("/api/admin/user/delete", handle_admin_user_delete)
+app.router.add_post("/api/admin/user/fire", handle_admin_user_fire)
+app.router.add_post("/api/admin/user/restore", handle_admin_user_restore)
+
+app.router.add_post("/api/admin/admins", handle_admin_admins)
+app.router.add_post("/api/admin/set-permissions", handle_admin_set_permissions)
+app.router.add_post("/api/admin/debug/users", handle_admin_debug_users)
+
+app.router.add_post("/api/admin/restaurants", handle_admin_restaurants)
+app.router.add_post("/api/admin/restaurant/add", handle_admin_restaurant_add)
+app.router.add_post("/api/admin/restaurant/update", handle_admin_restaurant_update)
+app.router.add_post("/api/admin/restaurant/tu", handle_admin_restaurant_tu)
+app.router.add_post("/api/admin/restaurant/status", handle_admin_restaurant_status)
+
+app.router.add_post("/api/admin/medbooks", handle_admin_medbooks)
+app.router.add_post("/api/admin/medbook/get", handle_admin_medbook_get)
+app.router.add_post("/api/admin/medbook/save", handle_admin_medbook_save)
+app.router.add_post("/api/admin/medbook/reference/add", handle_admin_medbook_ref_add)
+app.router.add_post("/api/admin/medbook/reference/update", handle_admin_medbook_ref_update)
+app.router.add_post("/api/admin/medbook/reference/delete", handle_admin_medbook_ref_delete)
+
+app.router.add_post("/api/admin/news", handle_admin_news_list)
+app.router.add_post("/api/admin/news/add", handle_admin_news_add)
+app.router.add_post("/api/admin/news/update", handle_admin_news_update)
+app.router.add_post("/api/admin/news/delete", handle_admin_news_delete)
+app.router.add_post("/api/admin/news/approve", handle_admin_news_approve)
+app.router.add_post("/api/admin/news/reject", handle_admin_news_reject)
+
+app.router.add_post("/api/admin/standards", handle_admin_standards)
+app.router.add_post("/api/admin/standard/add", handle_admin_standard_add)
+app.router.add_post("/api/admin/standard/update", handle_admin_standard_update)
+app.router.add_post("/api/admin/standard/delete", handle_admin_standard_delete)
+app.router.add_post("/api/admin/standard/approve", handle_admin_standard_approve)
+app.router.add_post("/api/admin/standard/reject", handle_admin_standard_reject)
+
+app.router.add_post("/api/admin/faq", handle_admin_faq)
+app.router.add_post("/api/admin/faq/add", handle_admin_faq_add)
+app.router.add_post("/api/admin/faq/update", handle_admin_faq_update)
+app.router.add_post("/api/admin/faq/delete", handle_admin_faq_delete)
+app.router.add_post("/api/admin/positions", handle_admin_positions)
+app.router.add_post("/api/admin/position/add", handle_admin_position_add)
+app.router.add_post("/api/admin/position/archive", handle_admin_position_archive)
+app.router.add_post("/api/admin/questions", handle_admin_questions)
+app.router.add_post("/api/admin/question/reply", handle_admin_question_reply)
+
+app.router.add_post("/api/admin/audit", handle_admin_audit)
+app.router.add_post("/api/admin/reports", handle_admin_reports)
+app.router.add_post("/api/admin/change-password", handle_admin_change_password)
+
+# ============= MAIN =============
+async def main():
+    port = int(os.getenv("PORT", 8080))
+    if os.getenv("RUN_MIGRATIONS", "false").lower() == "true":
+        init_pool()
+        await _run(init_db_and_seed)
+    else:
+        logging.info("⏩ Миграции пропущены (RUN_MIGRATIONS != true)")
+        init_pool()
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    logging.info(f"✅ Server on port {port}")
+    logging.info(f"👤 Admin: {ADMIN_LOGIN}")
+
+    cleanup_task = asyncio.create_task(_cleanup_sessions_loop())
+
+    try:
+        await asyncio.Event().wait()
+    finally:
+        cleanup_task.cancel()
+        try: await cleanup_task
+        except asyncio.CancelledError: pass
+        await runner.cleanup()
+        if _pool: _pool.closeall()
+
+if __name__ == "__main__":
+    asyncio.run(main())

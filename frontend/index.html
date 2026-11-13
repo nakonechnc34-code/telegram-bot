@@ -674,10 +674,15 @@ function renderProfileFromBoot() {
       ${medbookHtml}
 
       <div class="actions-block">
-        <!-- НОВАЯ КНОПКА ТАБЕЛЯ (скрыта по умолчанию) -->
+        <!-- Кнопка включения PUSH-уведомлений -->
+        <button class="action-btn" id="enable-push-btn" style="display: none; background: var(--green); color: var(--green-text);">
+            🔔 Включить уведомления
+        </button>
+
+        <!-- Кнопка Табеля (скрыта по умолчанию) -->
         <a href="/timesheet" id="open-timesheet-btn" class="action-btn" style="display:none; background: linear-gradient(135deg, #00B0FF 0%, #007AFF 100%); color: #fff; text-decoration: none; border: none; box-shadow: 0 8px 24px rgba(0,122,255,0.3);">⏱ Открыть Табель</a>
 
-        <!-- НОВАЯ КНОПКА АКАДЕМИИ -->
+        <!-- Кнопка Академии -->
         <a href="/academy" class="action-btn" style="background: linear-gradient(135deg, #FF007F 0%, #FF7A00 100%); color: #fff; text-decoration: none; border: none; box-shadow: 0 8px 24px rgba(255,0,127,0.3);">🎓 Перейти в Академию</a>
         
         ${p.is_admin ? `<button class="action-btn admin" id="open-admin-btn">🛠 Открыть админ-панель</button>` : ''}
@@ -704,6 +709,9 @@ function renderProfileFromBoot() {
   });
   const adminBtn = $('open-admin-btn');
   if (adminBtn) adminBtn.addEventListener('click', () => { window.location.href = '/admin'; });
+
+  // Инициализация push-уведомлений
+  initPushNotifications();
 }
 
 async function logout() {
@@ -713,6 +721,51 @@ async function logout() {
   localStorage.removeItem('wokker_staff_name');
   BOOT = null;
   showLogin();
+}
+
+/* ================== PUSH NOTIFICATIONS ================== */
+async function initPushNotifications() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    console.log('Push-уведомления не поддерживаются на этом устройстве');
+    return;
+  }
+
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    
+    // Проверяем текущий статус разрешения
+    if (Notification.permission === 'granted') {
+      return; // Уже разрешено, кнопку не показываем
+    }
+    
+    if (Notification.permission === 'denied') {
+      return; // Запрещено пользователем в настройках браузера
+    }
+
+    // Показываем кнопку, если разрешение еще не выдано
+    const btn = $('enable-push-btn');
+    if (btn) {
+      btn.style.display = 'flex';
+      
+      // Удаляем старые слушатели, чтобы не было дублей при повторном рендере
+      const newBtn = btn.cloneNode(true);
+      btn.parentNode.replaceChild(newBtn, btn);
+      
+      newBtn.addEventListener('click', async () => {
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+          newBtn.style.display = 'none';
+          showToast('Уведомления включены!');
+          // Здесь в будущем можно вызвать функцию для отправки токена подписки на сервер
+          // await subscribeUserToPush(registration);
+        } else {
+          showToast('Вы отклонили уведомления', 'error');
+        }
+      });
+    }
+  } catch (e) {
+    console.error('Ошибка инициализации PWA:', e);
+  }
 }
 
 /* ================== TEAM ================== */
@@ -1009,7 +1062,7 @@ function drawStandardsList() {
   }
 
   box.innerHTML = filtered.map(s => {
-    // ИЗМЕНЕНИЕ: Если картинки нет, не выводим серую заглушку с книгой
+    // Если картинки нет, не выводим серую заглушку с книгой
     const imageHtml = s.image_url 
       ? `<img src="${esc(s.image_url)}" class="std-img">` 
       : '';

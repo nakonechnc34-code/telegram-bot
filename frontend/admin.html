@@ -472,6 +472,32 @@
     .modal { border-radius: 32px 32px 0 0; max-height: 90vh; max-height: 90dvh; }
     .stats-grid { grid-template-columns: 1fr; }
   }
+
+  /* ВИЗУАЛЬНЫЙ РЕДАКТОР (WYSIWYG) */
+  .rich-editor {
+    width: 100%;
+    border: 1px solid #E5E5EA;
+    border-radius: 20px;
+    padding: 16px 24px;
+    font-size: 15px;
+    background: #FAFAFA;
+    color: var(--text-main);
+    outline: none;
+    min-height: 200px;
+    overflow-y: auto;
+    transition: all 0.2s;
+    line-height: 1.6;
+  }
+  .rich-editor:focus {
+    border-color: var(--accent);
+    background: #fff;
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+  .rich-editor p { margin-bottom: 12px; }
+  .rich-editor ul, .rich-editor ol { margin-left: 20px; margin-bottom: 12px; }
+  .rich-editor li { margin-bottom: 6px; }
+  .rich-editor b, .rich-editor strong { font-weight: 800; }
+  .rich-editor h1, .rich-editor h2, .rich-editor h3 { margin-top: 16px; margin-bottom: 8px; color: var(--text-main); }
 </style>
 </head>
 <body>
@@ -2428,13 +2454,16 @@ function openStdAdd() {
     <div class="form-group">
       <label>Тип контента</label>
       <select class="form-select" id="std-content-type" onchange="switchContentTypeUI(this.value)">
-        <option value="text">Обычный текст</option>
+        <option value="text">Текст (визуальный редактор)</option>
         <option value="table">Таблица</option>
       </select>
     </div>
 
     <div id="std-text-area">
-      <div class="form-group"><label>Текст стандарта</label><textarea class="form-textarea" id="std-body" style="min-height:200px;"></textarea></div>
+      <div class="form-group">
+        <label>Текст стандарта (Можно вставлять прямо из Word / PDF)</label>
+        <div contenteditable="true" id="std-body" class="rich-editor"></div>
+      </div>
     </div>
 
     <div id="std-table-area" style="display:none; margin-bottom:24px;">
@@ -2539,10 +2568,10 @@ function openStdAdd() {
     };
     
     if (type === 'text') {
-      body.body = $('std-body').value.trim();
-      if (!body.body) { errEl.textContent = 'Заполните текст стандарта'; return; }
+      body.body = $('std-body').innerHTML;
+      if (!body.body.trim()) { errEl.textContent = 'Заполните текст стандарта'; return; }
     } else {
-      body.body = 'Таблица'; // Заглушка
+      body.body = 'Таблица';
       if (!_tableHeaders.length || !_tableRows.length) { errEl.textContent = 'Заполните таблицу'; return; }
     }
     
@@ -2616,13 +2645,16 @@ function openStdEdit(id, news) {
     <div class="form-group">
       <label>Тип контента</label>
       <select class="form-select" id="edit-std-content-type" onchange="switchContentTypeUI(this.value)">
-        <option value="text" ${!isTable ? 'selected' : ''}>Обычный текст</option>
+        <option value="text" ${!isTable ? 'selected' : ''}>Текст (визуальный редактор)</option>
         <option value="table" ${isTable ? 'selected' : ''}>Таблица</option>
       </select>
     </div>
 
     <div id="std-text-area" style="display: ${isTable ? 'none' : 'block'};">
-      <div class="form-group"><label>Текст</label><textarea class="form-textarea" id="edit-std-body" style="min-height:200px;">${esc(n.body)}</textarea></div>
+      <div class="form-group">
+        <label>Текст стандарта (Можно вставлять прямо из Word / PDF)</label>
+        <div contenteditable="true" id="edit-std-body" class="rich-editor">${!isTable ? (n.body || '') : ''}</div>
+      </div>
     </div>
 
     <div id="std-table-area" style="display: ${isTable ? 'block' : 'none'}; margin-bottom:24px;">
@@ -2729,9 +2761,9 @@ function openStdEdit(id, news) {
     };
     
     if (type === 'text') {
-      body.body = $('edit-std-body').value.trim();
+      body.body = $('edit-std-body').innerHTML;
     } else {
-      body.body = 'Таблица'; // Заглушка
+      body.body = 'Таблица';
     }
 
     try {

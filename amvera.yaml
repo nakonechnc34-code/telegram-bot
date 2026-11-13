@@ -2,9 +2,8 @@ meta:
   environment: python
   toolchain:
     name: pip
-    version: "3.12"
+    version: "3.10"
 
 run:
   scriptName: bot.py
   containerPort: 8080
-  persistenceMount: /data

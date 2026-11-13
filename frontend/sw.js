@@ -1,7 +1,6 @@
 const CACHE_NAME = 'wokker-cache-v1';
 const ASSETS_TO_CACHE = [
   '/',
-  '/index.html',
   '/admin',
   '/academy',
   '/timesheet',
@@ -10,13 +9,17 @@ const ASSETS_TO_CACHE = [
   '/static/icon-512.svg'
 ];
 
+// 1. Установка: кэшируем основные файлы
 self.addEventListener('install', (event) => {
-  self.skipWaiting(); // Активируем новый SW немедленно
+  self.skipWaiting(); // Принудительно активируем новый SW
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS_TO_CACHE))
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(ASSETS_TO_CACHE);
+    })
   );
 });
 
+// 2. Активация: удаляем старый кэш, если версия изменилась
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -31,11 +34,11 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// 3. Перехват запросов (Стратегия: Network First для API/HTML, Cache First для картинок)
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // API запросы и HTML всегда идем в сеть (Network First)
-  // Если сети нет, отдаем из кэша
+  // POST запросы и HTML страницы всегда идем в сеть (чтобы получать свежие данные)
   if (event.request.method === 'POST' || event.request.headers.get('accept').includes('text/html')) {
     event.respondWith(
       fetch(event.request)
@@ -52,7 +55,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Для статики (картинки, css, js) - Cache First
+  // Для статики (картинки, css, js) - Cache First (сначала смотрим в кэш)
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) return cachedResponse;
@@ -65,6 +68,55 @@ self.addEventListener('fetch', (event) => {
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
         return response;
       });
+    })
+  );
+});
+
+// 4. Обработка Push-уведомлений
+self.addEventListener('push', function(event) {
+  let data = { title: 'Wokker', body: 'У вас новое уведомление!' };
+  
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (e) {
+      data = { title: 'Wokker', body: event.data.text() };
+    }
+  }
+
+  const options = {
+    body: data.body,
+    icon: '/static/icon-192.svg',
+    badge: '/static/icon-192.svg',
+    vibrate: [100, 50, 100],
+    data: {
+      url: data.url || '/'
+    }
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, options)
+  );
+});
+
+// 5. Клик по уведомлению (открывает приложение)
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close();
+  const urlToOpen = event.notification.data.url || '/';
+  
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+      // Если приложение уже открыто, фокусируемся на нем
+      for (let i = 0; i < clientList.length; i++) {
+        const client = clientList[i];
+        if (client.url === urlToOpen && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      // Иначе открываем новое окно
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen);
+      }
     })
   );
 });

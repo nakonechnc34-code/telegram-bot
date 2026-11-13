@@ -23,27 +23,33 @@ from psycopg2 import sql
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
+# ============= JSON SERIALIZER =============
 def _json_default(obj):
-    if isinstance(obj, (datetime, date)): return obj.isoformat()
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
-def _json_dumps(data): return json.dumps(data, ensure_ascii=False, default=_json_default)
+def _json_dumps(data):
+    return json.dumps(data, ensure_ascii=False, default=_json_default)
 
 _orig_json_response = web.json_response
 def _safe_json_response(data=None, *args, **kwargs):
     kwargs.setdefault("dumps", _json_dumps)
     return _orig_json_response(data, *args, **kwargs)
 web.json_response = _safe_json_response
+# =========================================================
 
 DB_URL = os.getenv("DATABASE_URL")
-if not DB_URL: raise ValueError("DATABASE_URL is not set")
+if not DB_URL:
+    raise ValueError("DATABASE_URL is not set")
 
 ADMIN_LOGIN = os.getenv("ADMIN_LOGIN", "adm01").strip().lower()
 ADMIN_PASSWORD_ENV = os.getenv("ADMIN_PASSWORD")
 APP_ENV = os.getenv("ENV", "development").lower()
 
 if not ADMIN_PASSWORD_ENV:
-    if APP_ENV == "production": raise ValueError("ADMIN_PASSWORD must be set when ENV=production")
+    if APP_ENV == "production":
+        raise ValueError("ADMIN_PASSWORD must be set when ENV=production")
     ADMIN_PASSWORD = "Wokker2026"
     logging.warning("⚠️ ADMIN_PASSWORD не задан — дефолт только для dev.")
 else:
@@ -52,21 +58,26 @@ else:
 LOGIN_RE = re.compile(r"^[a-z]{3}\d{2}$")
 SESSION_TTL_DAYS = 30
 
+# ============= RATE LIMITING =============
 _login_attempts = {}
 _login_lock = threading.Lock()
 
 def _check_rate_limit(ip):
     now = time.time()
     with _login_lock:
-        if ip not in _login_attempts: _login_attempts[ip] = []
+        if ip not in _login_attempts:
+            _login_attempts[ip] = []
         _login_attempts[ip] = [t for t in _login_attempts[ip] if now - t < 60]
-        if len(_login_attempts[ip]) >= 5: return False
+        if len(_login_attempts[ip]) >= 5:
+            return False
         _login_attempts[ip].append(now)
         return True
 
 def _reset_rate_limit(ip):
-    with _login_lock: _login_attempts.pop(ip, None)
+    with _login_lock:
+        _login_attempts.pop(ip, None)
 
+# ============= ПРАВА =============
 PERMISSIONS_LIST = [
     {"key": "users_create", "label": "Добавлять сотрудников"},
     {"key": "users_edit", "label": "Редактировать сотрудников"},
@@ -93,8 +104,13 @@ PERMISSIONS_LIST = [
     {"key": "timesheet_access", "label": "Доступ к Табелю"},
 ]
 PERM_KEYS = [p["key"] for p in PERMISSIONS_LIST]
-REF_TYPE_PERM = {"doctor": "medbook_doctors_manage", "test": "medbook_tests_manage", "vaccine": "medbook_vaccines_manage"}
+REF_TYPE_PERM = {
+    "doctor": "medbook_doctors_manage",
+    "test": "medbook_tests_manage",
+    "vaccine": "medbook_vaccines_manage",
+}
 
+# ============= ПАРОЛИ =============
 def hash_password(password: str) -> str:
     salt = secrets.token_hex(16)
     dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 200_000)
@@ -103,12 +119,20 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, stored: str) -> bool:
     try:
         algo, salt, hash_hex = stored.split("$", 2)
-        if algo != "pbkdf2_sha256": return False
+        if algo != "pbkdf2_sha256":
+            return False
         dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 200_000)
         return secrets.compare_digest(dk.hex(), hash_hex)
-    except Exception: return False
+    except Exception:
+        return False
 
-TRANSLIT = {"а":"a","б":"b","в":"v","г":"g","д":"d","е":"e","ё":"e","ж":"zh","з":"z","и":"i","й":"y","к":"k","л":"l","м":"m","н":"n","о":"o","п":"p","р":"r","с":"s","т":"t","у":"u","ф":"f","х":"h","ц":"ts","ч":"ch","ш":"sh","щ":"sch","ъ":"","ы":"y","ь":"","э":"e","ю":"yu","я":"ya"}
+# ============= ЛОГИН =============
+TRANSLIT = {
+    "а":"a","б":"b","в":"v","г":"g","д":"d","е":"e","ё":"e","ж":"zh","з":"z",
+    "и":"i","й":"y","к":"k","л":"l","м":"m","н":"n","о":"o","п":"p","р":"r",
+    "с":"s","т":"t","у":"u","ф":"f","х":"h","ц":"ts","ч":"ch","ш":"sh","щ":"sch",
+    "ъ":"","ы":"y","ь":"","э":"e","ю":"yu","я":"ya",
+}
 
 def _generate_login_for(full_name, existing_logins):
     parts = (full_name or "").strip().split()
@@ -118,8 +142,10 @@ def _generate_login_for(full_name, existing_logins):
         if len(letters) >= 3: break
         t = TRANSLIT.get(ch)
         if t: letters += t
-    while len(letters) < 3: letters += random.choice("abcdefghijklmnopqrstuvwxyz")
+    while len(letters) < 3:
+        letters += random.choice("abcdefghijklmnopqrstuvwxyz")
     letters = letters[:3]
+
     digits = list(range(10, 100))
     random.shuffle(digits)
     for d in digits:
@@ -132,6 +158,7 @@ def _generate_login_for(full_name, existing_logins):
         if candidate not in existing_logins: return candidate
     raise RuntimeError("Не удалось сгенерировать логин")
 
+# ============= МЕДКНИЖКИ =============
 def parse_date_ddmmYYYY(s):
     if not s: return None
     m = re.match(r"^(\d{1,2})\.(\d{1,2})\.(\d{4})$", str(s).strip())
@@ -182,6 +209,7 @@ def medbook_missing_count(medbook, doctors, tests, vaccines):
     missing = sum(1 for date_str, v in items if entry_status(date_str, v) in ("missing", "invalid_date", "expired"))
     return missing, len(items)
 
+# ============= БД =============
 _pool = None
 _pool_lock = threading.Lock()
 
@@ -189,7 +217,8 @@ def init_pool():
     global _pool
     if _pool is None:
         with _pool_lock:
-            if _pool is None: _pool = ThreadedConnectionPool(2, 20, DB_URL)
+            if _pool is None:
+                _pool = ThreadedConnectionPool(2, 20, DB_URL)
 
 @contextmanager
 def get_conn():
@@ -226,8 +255,12 @@ async def _cleanup_sessions_loop():
         except Exception as e: logging.error(f"Cleanup sessions error: {e}")
 
 def _auto_publish_scheduled(cur):
-    cur.execute("UPDATE news SET status = 'published' WHERE status = 'scheduled' AND publish_at IS NOT NULL AND publish_at <= NOW()")
+    cur.execute("""
+        UPDATE news SET status = 'published'
+        WHERE status = 'scheduled' AND publish_at IS NOT NULL AND publish_at <= NOW()
+    """)
 
+# ============= SEED =============
 RESTAURANTS_SEED = [
     {"key": "belyaevo", "name": "Беляево", "address": "Москва, ул. Миклухо-Маклая, 32А, ТЦ «Капитолий», этаж 2", "hours": "Пн–вс: 10:00–22:00", "lat": 55.6437, "lon": 37.5302, "org": "vokker/13122472923", "phone": "+7 (985) 857-06-69"},
     {"key": "vernadka", "name": "Вернадка", "address": "Москва, проспект Вернадского, 6, ТЦ «Капитолий Вернадского», этаж 3", "hours": "Пн–вс: 10:00–22:00", "lat": 55.6845, "lon": 37.4948, "org": "vokker/91626648547", "phone": ""},
@@ -243,9 +276,27 @@ FAQ_SEED = [
 POSITIONS_SEED = ["Повар холодного цеха", "Повар горячего цеха", "Управляющий сменой", "Территориальный управляющий", "HR"]
 CITIZENSHIPS_SEED = ["Россия", "Кыргызстан", "Узбекистан", "Таджикистан"]
 
-DOCTORS_SEED = [{"name": "Терапевт", "required": True, "validity_months": 12, "sort": 0}, {"name": "Психиатр", "required": True, "validity_months": 12, "sort": 1}, {"name": "Нарколог", "required": True, "validity_months": 12, "sort": 2}, {"name": "Дерматовенеролог", "required": True, "validity_months": 12, "sort": 3}, {"name": "ЛОР", "required": False, "validity_months": 12, "sort": 4}, {"name": "Стоматолог", "required": False, "validity_months": 12, "sort": 5}]
-TESTS_SEED = [{"name": "Общий анализ крови", "required": True, "validity_months": 12, "sort": 0}, {"name": "Общий анализ мочи", "required": True, "validity_months": 12, "sort": 1}, {"name": "Флюорография", "required": True, "validity_months": 12, "sort": 2}, {"name": "Кровь на RW", "required": True, "validity_months": 6, "sort": 3}, {"name": "ЭКГ", "required": False, "validity_months": 12, "sort": 4}]
-VACCINES_SEED = [{"name": "Грипп", "required": False, "validity_months": 12, "sort": 0}, {"name": "Корь", "required": False, "validity_months": 60, "sort": 1}, {"name": "Дифтерия и столбняк (АДС-М)", "required": False, "validity_months": 120, "sort": 2}, {"name": "COVID-19", "required": False, "validity_months": 12, "sort": 3}]
+DOCTORS_SEED = [
+    {"name": "Терапевт", "required": True, "validity_months": 12, "sort": 0},
+    {"name": "Психиатр", "required": True, "validity_months": 12, "sort": 1},
+    {"name": "Нарколог", "required": True, "validity_months": 12, "sort": 2},
+    {"name": "Дерматовенеролог", "required": True, "validity_months": 12, "sort": 3},
+    {"name": "ЛОР", "required": False, "validity_months": 12, "sort": 4},
+    {"name": "Стоматолог", "required": False, "validity_months": 12, "sort": 5},
+]
+TESTS_SEED = [
+    {"name": "Общий анализ крови", "required": True, "validity_months": 12, "sort": 0},
+    {"name": "Общий анализ мочи", "required": True, "validity_months": 12, "sort": 1},
+    {"name": "Флюорография", "required": True, "validity_months": 12, "sort": 2},
+    {"name": "Кровь на RW", "required": True, "validity_months": 6, "sort": 3},
+    {"name": "ЭКГ", "required": False, "validity_months": 12, "sort": 4},
+]
+VACCINES_SEED = [
+    {"name": "Грипп", "required": False, "validity_months": 12, "sort": 0},
+    {"name": "Корь", "required": False, "validity_months": 60, "sort": 1},
+    {"name": "Дифтерия и столбняк (АДС-М)", "required": False, "validity_months": 120, "sort": 2},
+    {"name": "COVID-19", "required": False, "validity_months": 12, "sort": 3},
+]
 
 def init_db_and_seed():
     logging.info("⏳ Начинаю миграции и заполнение БД...")
@@ -260,11 +311,28 @@ def init_db_and_seed():
             is_super_admin BOOLEAN DEFAULT FALSE, permissions JSONB DEFAULT '{}', is_fired BOOLEAN DEFAULT FALSE,
             fired_at TIMESTAMPTZ, fired_by TEXT, is_certified BOOLEAN DEFAULT FALSE,
             medbook JSONB DEFAULT '{"doctors":{},"tests":{},"vaccines":{}}',
-            created_at TIMESTAMPTZ DEFAULT NOW(), last_seen_at TIMESTAMPTZ, hire_date TEXT, citizenship_id INT
+            created_at TIMESTAMPTZ DEFAULT NOW(), last_seen_at TIMESTAMPTZ,
+            hire_date TEXT, citizenship_id INT
         )
     """, "CREATE users")
 
-    for _col, _sql in [("login", "ALTER TABLE users ADD COLUMN IF NOT EXISTS login TEXT"), ("password_hash", "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT"), ("is_admin", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE"), ("is_super_admin", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN DEFAULT FALSE"), ("permissions", "ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT '{}'"), ("is_fired", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_fired BOOLEAN DEFAULT FALSE"), ("fired_at", "ALTER TABLE users ADD COLUMN IF NOT EXISTS fired_at TIMESTAMPTZ"), ("fired_by", "ALTER TABLE users ADD COLUMN IF NOT EXISTS fired_by TEXT"), ("is_certified", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_certified BOOLEAN DEFAULT FALSE"), ("medbook", "ALTER TABLE users ADD COLUMN IF NOT EXISTS medbook JSONB DEFAULT '{\"doctors\":{},\"tests\":{},\"vaccines\":{}}'"), ("last_seen_at", "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ"), ("restaurant_key", "ALTER TABLE users ADD COLUMN IF NOT EXISTS restaurant_key TEXT"), ("restaurant", "ALTER TABLE users ADD COLUMN IF NOT EXISTS restaurant TEXT"), ("hire_date", "ALTER TABLE users ADD COLUMN IF NOT EXISTS hire_date TEXT"), ("citizenship_id", "ALTER TABLE users ADD COLUMN IF NOT EXISTS citizenship_id INT")]:
+    for _col, _sql in [
+        ("login", "ALTER TABLE users ADD COLUMN IF NOT EXISTS login TEXT"),
+        ("password_hash", "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT"),
+        ("is_admin", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE"),
+        ("is_super_admin", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN DEFAULT FALSE"),
+        ("permissions", "ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT '{}'"),
+        ("is_fired", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_fired BOOLEAN DEFAULT FALSE"),
+        ("fired_at", "ALTER TABLE users ADD COLUMN IF NOT EXISTS fired_at TIMESTAMPTZ"),
+        ("fired_by", "ALTER TABLE users ADD COLUMN IF NOT EXISTS fired_by TEXT"),
+        ("is_certified", "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_certified BOOLEAN DEFAULT FALSE"),
+        ("medbook", "ALTER TABLE users ADD COLUMN IF NOT EXISTS medbook JSONB DEFAULT '{\"doctors\":{},\"tests\":{},\"vaccines\":{}}'"),
+        ("last_seen_at", "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ"),
+        ("restaurant_key", "ALTER TABLE users ADD COLUMN IF NOT EXISTS restaurant_key TEXT"),
+        ("restaurant", "ALTER TABLE users ADD COLUMN IF NOT EXISTS restaurant TEXT"),
+        ("hire_date", "ALTER TABLE users ADD COLUMN IF NOT EXISTS hire_date TEXT"),
+        ("citizenship_id", "ALTER TABLE users ADD COLUMN IF NOT EXISTS citizenship_id INT"),
+    ]:
         _run_migration(_sql, f"ADD {_col}")
 
     _run_migration("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_login ON users (LOWER(login)) WHERE login IS NOT NULL", "idx login")
@@ -285,37 +353,143 @@ def init_db_and_seed():
         END $$;
     """, "user_id sequence")
 
-    _run_migration("CREATE TABLE IF NOT EXISTS restaurants (key TEXT PRIMARY KEY, name TEXT NOT NULL, address TEXT, hours TEXT, lat REAL, lon REAL, org TEXT, phone TEXT DEFAULT '', force_status TEXT DEFAULT 'open', sort INT DEFAULT 100, territory_manager_id BIGINT)", "CREATE restaurants")
-    for _sql in ["ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS force_status TEXT DEFAULT 'open'", "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS sort INT DEFAULT 100", "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS territory_manager_id BIGINT"]:
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS restaurants (
+            key TEXT PRIMARY KEY, name TEXT NOT NULL, address TEXT, hours TEXT, lat REAL, lon REAL,
+            org TEXT, phone TEXT DEFAULT '', force_status TEXT DEFAULT 'open', sort INT DEFAULT 100, territory_manager_id BIGINT
+        )
+    """, "CREATE restaurants")
+
+    for _sql in [
+        "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS force_status TEXT DEFAULT 'open'",
+        "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS sort INT DEFAULT 100",
+        "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS territory_manager_id BIGINT",
+    ]:
         _run_migration(_sql, "restaurants alter")
 
-    _run_migration("CREATE TABLE IF NOT EXISTS medbook_doctors (id SERIAL PRIMARY KEY, name TEXT NOT NULL, required BOOLEAN DEFAULT FALSE, validity_months INT DEFAULT 12, sort INT DEFAULT 100)", "CREATE medbook_doctors")
-    _run_migration("CREATE TABLE IF NOT EXISTS medbook_tests (id SERIAL PRIMARY KEY, name TEXT NOT NULL, required BOOLEAN DEFAULT FALSE, validity_months INT DEFAULT 12, sort INT DEFAULT 100)", "CREATE medbook_tests")
-    _run_migration("CREATE TABLE IF NOT EXISTS medbook_vaccines (id SERIAL PRIMARY KEY, name TEXT NOT NULL, required BOOLEAN DEFAULT FALSE, validity_months INT DEFAULT 12, sort INT DEFAULT 100)", "CREATE medbook_vaccines")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS medbook_doctors (id SERIAL PRIMARY KEY, name TEXT NOT NULL, required BOOLEAN DEFAULT FALSE, validity_months INT DEFAULT 12, sort INT DEFAULT 100)
+    """, "CREATE medbook_doctors")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS medbook_tests (id SERIAL PRIMARY KEY, name TEXT NOT NULL, required BOOLEAN DEFAULT FALSE, validity_months INT DEFAULT 12, sort INT DEFAULT 100)
+    """, "CREATE medbook_tests")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS medbook_vaccines (id SERIAL PRIMARY KEY, name TEXT NOT NULL, required BOOLEAN DEFAULT FALSE, validity_months INT DEFAULT 12, sort INT DEFAULT 100)
+    """, "CREATE medbook_vaccines")
 
-    _run_migration("CREATE TABLE IF NOT EXISTS news (id SERIAL PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL, level TEXT DEFAULT 'normal', status TEXT DEFAULT 'published', publish_at TIMESTAMPTZ, proposed_by TEXT, approved_by TEXT, image_url TEXT DEFAULT '', created_at TIMESTAMPTZ DEFAULT NOW())", "CREATE news")
-    for _sql in ["ALTER TABLE news ADD COLUMN IF NOT EXISTS level TEXT DEFAULT 'normal'", "ALTER TABLE news ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'published'", "ALTER TABLE news ADD COLUMN IF NOT EXISTS publish_at TIMESTAMPTZ", "ALTER TABLE news ADD COLUMN IF NOT EXISTS proposed_by TEXT", "ALTER TABLE news ADD COLUMN IF NOT EXISTS approved_by TEXT", "ALTER TABLE news ADD COLUMN IF NOT EXISTS image_url TEXT DEFAULT ''"]:
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS news (
+            id SERIAL PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL, level TEXT DEFAULT 'normal',
+            status TEXT DEFAULT 'published', publish_at TIMESTAMPTZ, proposed_by TEXT, approved_by TEXT,
+            image_url TEXT DEFAULT '', created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """, "CREATE news")
+
+    for _sql in [
+        "ALTER TABLE news ADD COLUMN IF NOT EXISTS level TEXT DEFAULT 'normal'",
+        "ALTER TABLE news ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'published'",
+        "ALTER TABLE news ADD COLUMN IF NOT EXISTS publish_at TIMESTAMPTZ",
+        "ALTER TABLE news ADD COLUMN IF NOT EXISTS proposed_by TEXT",
+        "ALTER TABLE news ADD COLUMN IF NOT EXISTS approved_by TEXT",
+        "ALTER TABLE news ADD COLUMN IF NOT EXISTS image_url TEXT DEFAULT ''",
+    ]:
         _run_migration(_sql, "news alter")
 
-    _run_migration("CREATE TABLE IF NOT EXISTS standards (id SERIAL PRIMARY KEY, number TEXT DEFAULT '', title TEXT NOT NULL, body TEXT DEFAULT '', image_url TEXT DEFAULT '', status TEXT DEFAULT 'published', proposed_by TEXT, approved_by TEXT, created_at TIMESTAMPTZ DEFAULT NOW())", "CREATE standards")
-    for _sql in ["ALTER TABLE standards ADD COLUMN IF NOT EXISTS number TEXT DEFAULT ''", "ALTER TABLE standards ADD COLUMN IF NOT EXISTS body TEXT DEFAULT ''", "ALTER TABLE standards ADD COLUMN IF NOT EXISTS image_url TEXT DEFAULT ''", "ALTER TABLE standards ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'published'", "ALTER TABLE standards ADD COLUMN IF NOT EXISTS proposed_by TEXT", "ALTER TABLE standards ADD COLUMN IF NOT EXISTS approved_by TEXT", "ALTER TABLE standards ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()", "ALTER TABLE standards ADD COLUMN IF NOT EXISTS group_name TEXT DEFAULT 'Общее'", "ALTER TABLE standards ADD COLUMN IF NOT EXISTS content_type TEXT DEFAULT 'text'", "ALTER TABLE standards ADD COLUMN IF NOT EXISTS content_data JSONB", "ALTER TABLE standards ADD COLUMN IF NOT EXISTS file_url TEXT DEFAULT ''", "ALTER TABLE standards ADD COLUMN IF NOT EXISTS file_name TEXT DEFAULT ''"]:
+    # ===== STANDARDS =====
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS standards (
+            id SERIAL PRIMARY KEY, number TEXT DEFAULT '', title TEXT NOT NULL, body TEXT DEFAULT '', image_url TEXT DEFAULT '',
+            status TEXT DEFAULT 'published', proposed_by TEXT, approved_by TEXT, created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """, "CREATE standards")
+
+    for _sql in [
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS number TEXT DEFAULT ''",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS body TEXT DEFAULT ''",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS image_url TEXT DEFAULT ''",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'published'",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS proposed_by TEXT",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS approved_by TEXT",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS group_name TEXT DEFAULT 'Общее'",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS content_type TEXT DEFAULT 'text'",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS content_data JSONB",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS file_url TEXT DEFAULT ''",
+        "ALTER TABLE standards ADD COLUMN IF NOT EXISTS file_name TEXT DEFAULT ''",
+        "ALTER TABLE standards DROP COLUMN IF EXISTS category",
+        "ALTER TABLE standards DROP COLUMN IF EXISTS description",
+        "ALTER TABLE standards DROP COLUMN IF EXISTS url",
+    ]:
         _run_migration(_sql, "standards alter")
 
-    _run_migration("CREATE TABLE IF NOT EXISTS certification_questions (id SERIAL PRIMARY KEY, question TEXT NOT NULL, option_a TEXT NOT NULL, option_b TEXT NOT NULL, option_c TEXT NOT NULL, option_d TEXT NOT NULL, correct_option TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW())", "CREATE certification_questions")
+    # ===== CERTIFICATION =====
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS certification_questions (
+            id SERIAL PRIMARY KEY, question TEXT NOT NULL, 
+            option_a TEXT NOT NULL, option_b TEXT NOT NULL, option_c TEXT NOT NULL, option_d TEXT NOT NULL,
+            correct_option TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """, "CREATE certification_questions")
 
-    _run_migration("CREATE TABLE IF NOT EXISTS academy_courses (id SERIAL PRIMARY KEY, title TEXT NOT NULL, description TEXT, color TEXT DEFAULT 'pink', icon TEXT DEFAULT '🚀', created_at TIMESTAMPTZ DEFAULT NOW())", "CREATE academy_courses")
-    _run_migration("CREATE TABLE IF NOT EXISTS academy_lessons (id SERIAL PRIMARY KEY, course_id INT REFERENCES academy_courses(id) ON DELETE CASCADE, title TEXT NOT NULL, content TEXT, sort INT DEFAULT 0)", "CREATE academy_lessons")
-    _run_migration("CREATE TABLE IF NOT EXISTS academy_tests (id SERIAL PRIMARY KEY, course_id INT REFERENCES academy_courses(id) ON DELETE CASCADE, question TEXT NOT NULL, options JSONB NOT NULL, correct_index INT NOT NULL)", "CREATE academy_tests")
-    _run_migration("CREATE TABLE IF NOT EXISTS academy_progress (user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE, course_id INT REFERENCES academy_courses(id) ON DELETE CASCADE, status TEXT DEFAULT 'in_progress', score INT DEFAULT 0, updated_at TIMESTAMPTZ DEFAULT NOW(), PRIMARY KEY (user_id, course_id))", "CREATE academy_progress")
+    # ===== ACADEMY =====
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS academy_courses (
+            id SERIAL PRIMARY KEY, title TEXT NOT NULL, description TEXT, color TEXT DEFAULT 'pink', icon TEXT DEFAULT '🚀', created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """, "CREATE academy_courses")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS academy_lessons (
+            id SERIAL PRIMARY KEY, course_id INT REFERENCES academy_courses(id) ON DELETE CASCADE, title TEXT NOT NULL, content TEXT, sort INT DEFAULT 0
+        )
+    """, "CREATE academy_lessons")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS academy_tests (
+            id SERIAL PRIMARY KEY, course_id INT REFERENCES academy_courses(id) ON DELETE CASCADE, 
+            question TEXT NOT NULL, options JSONB NOT NULL, correct_index INT NOT NULL
+        )
+    """, "CREATE academy_tests")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS academy_progress (
+            user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE, course_id INT REFERENCES academy_courses(id) ON DELETE CASCADE,
+            status TEXT DEFAULT 'in_progress', score INT DEFAULT 0, updated_at TIMESTAMPTZ DEFAULT NOW(),
+            PRIMARY KEY (user_id, course_id)
+        )
+    """, "CREATE academy_progress")
 
-    _run_migration("CREATE TABLE IF NOT EXISTS timesheet_records (id SERIAL PRIMARY KEY, user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE, work_date DATE NOT NULL, hours NUMERIC(4,1) DEFAULT 0, status TEXT DEFAULT 'work', created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(user_id, work_date))", "CREATE timesheet_records")
+    # ===== TIMESHEET =====
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS timesheet_records (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,
+            work_date DATE NOT NULL,
+            hours NUMERIC(4,1) DEFAULT 0,
+            status TEXT DEFAULT 'work',
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW(),
+            UNIQUE(user_id, work_date)
+        )
+    """, "CREATE timesheet_records")
 
-    _run_migration("CREATE TABLE IF NOT EXISTS faq (id SERIAL PRIMARY KEY, question TEXT NOT NULL, answer TEXT NOT NULL, category TEXT DEFAULT '')", "CREATE faq")
-    _run_migration("CREATE TABLE IF NOT EXISTS positions (id SERIAL PRIMARY KEY, name TEXT NOT NULL UNIQUE, sort INT DEFAULT 100, is_archived BOOLEAN DEFAULT FALSE)", "CREATE positions")
-    _run_migration("CREATE TABLE IF NOT EXISTS citizenships (id SERIAL PRIMARY KEY, name TEXT UNIQUE NOT NULL)", "CREATE citizenships")
-    _run_migration("CREATE TABLE IF NOT EXISTS admin_audit (id SERIAL PRIMARY KEY, admin_id BIGINT, action TEXT, target_type TEXT, target_id TEXT, details TEXT, created_at TIMESTAMPTZ DEFAULT NOW())", "CREATE audit")
-    _run_migration("CREATE TABLE IF NOT EXISTS questions (id SERIAL PRIMARY KEY, user_id BIGINT NOT NULL, text TEXT NOT NULL, replied BOOLEAN DEFAULT FALSE, reply_text TEXT, replied_at TIMESTAMPTZ, replied_by BIGINT, created_at TIMESTAMPTZ DEFAULT NOW())", "CREATE questions")
-    _run_migration("CREATE TABLE IF NOT EXISTS web_sessions (token TEXT PRIMARY KEY, user_id BIGINT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(), last_used_at TIMESTAMPTZ DEFAULT NOW())", "CREATE sessions")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS faq (id SERIAL PRIMARY KEY, question TEXT NOT NULL, answer TEXT NOT NULL, category TEXT DEFAULT '')
+    """, "CREATE faq")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS positions (id SERIAL PRIMARY KEY, name TEXT NOT NULL UNIQUE, sort INT DEFAULT 100, is_archived BOOLEAN DEFAULT FALSE)
+    """, "CREATE positions")
+    
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS citizenships (id SERIAL PRIMARY KEY, name TEXT UNIQUE NOT NULL)
+    """, "CREATE citizenships")
+
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS admin_audit (id SERIAL PRIMARY KEY, admin_id BIGINT, action TEXT, target_type TEXT, target_id TEXT, details TEXT, created_at TIMESTAMPTZ DEFAULT NOW())
+    """, "CREATE audit")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS questions (id SERIAL PRIMARY KEY, user_id BIGINT NOT NULL, text TEXT NOT NULL, replied BOOLEAN DEFAULT FALSE, reply_text TEXT, replied_at TIMESTAMPTZ, replied_by BIGINT, created_at TIMESTAMPTZ DEFAULT NOW())
+    """, "CREATE questions")
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS web_sessions (token TEXT PRIMARY KEY, user_id BIGINT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(), last_used_at TIMESTAMPTZ DEFAULT NOW())
+    """, "CREATE sessions")
 
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -325,15 +499,18 @@ def init_db_and_seed():
                     sort = 999 if r["key"] == "office" else i
                     status = "closed" if r["key"] == "office" else "open"
                     cur.execute("INSERT INTO restaurants (key, name, address, hours, lat, lon, org, phone, sort, force_status) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (r["key"], r["name"], r["address"], r["hours"], r["lat"], r["lon"], r["org"], r["phone"], sort, status))
+
             cur.execute("SELECT COUNT(*) FROM faq")
             if cur.fetchone()[0] == 0:
                 for f in FAQ_SEED: cur.execute("INSERT INTO faq (question, answer, category) VALUES (%s,%s,%s)", (f["question"], f["answer"], f["category"]))
             cur.execute("SELECT COUNT(*) FROM positions")
             if cur.fetchone()[0] == 0:
                 for i, name in enumerate(POSITIONS_SEED): cur.execute("INSERT INTO positions (name, sort) VALUES (%s,%s)", (name, i))
+            
             cur.execute("SELECT COUNT(*) FROM citizenships")
             if cur.fetchone()[0] == 0:
                 for name in CITIZENSHIPS_SEED: cur.execute("INSERT INTO citizenships (name) VALUES (%s)", (name,))
+
             cur.execute("SELECT COUNT(*) FROM medbook_doctors")
             if cur.fetchone()[0] == 0:
                 for d in DOCTORS_SEED: cur.execute("INSERT INTO medbook_doctors (name, required, validity_months, sort) VALUES (%s,%s,%s,%s)", (d["name"], d["required"], d["validity_months"], d["sort"]))
@@ -343,13 +520,16 @@ def init_db_and_seed():
             cur.execute("SELECT COUNT(*) FROM medbook_vaccines")
             if cur.fetchone()[0] == 0:
                 for v in VACCINES_SEED: cur.execute("INSERT INTO medbook_vaccines (name, required, validity_months, sort) VALUES (%s,%s,%s,%s)", (v["name"], v["required"], v["validity_months"], v["sort"]))
+            
             cur.execute("SELECT COUNT(*) FROM news")
             if cur.fetchone()[0] == 0:
                 cur.execute("INSERT INTO news (title, body, level, status) VALUES (%s,%s,%s,%s)", ("Открытие новой точки", "Скоро открываем новый ресторан!", "urgent", "published"))
                 cur.execute("INSERT INTO news (title, body, level, status) VALUES (%s,%s,%s,%s)", ("Обновление меню", "Появились новые позиции в меню.", "normal", "published"))
+
             cur.execute("SELECT COUNT(*) FROM certification_questions")
             if cur.fetchone()[0] == 0:
                 cur.execute("INSERT INTO certification_questions (question, option_a, option_b, option_c, option_d, correct_option) VALUES (%s,%s,%s,%s,%s,%s)", ("Что нужно сделать перед открытием смены?", "Проверить чистоту и кассу", "Пойти покурить", "Позвонить другу", "Ничего", "a"))
+
             cur.execute("SELECT COUNT(*) FROM academy_courses")
             if cur.fetchone()[0] == 0:
                 cur.execute("INSERT INTO academy_courses (title, description, color, icon) VALUES (%s,%s,%s,%s) RETURNING id", ("Основы сервиса", "Как общаться с гостями, чтобы они возвращались.", "pink", "💖"))
@@ -357,6 +537,7 @@ def init_db_and_seed():
                 cur.execute("INSERT INTO academy_lessons (course_id, title, content, sort) VALUES (%s,%s,%s,%s)", (c1_id, "Улыбка решает всё", "Всегда улыбайтесь гостю. Это создает позитивное настроение.", 0))
                 cur.execute("INSERT INTO academy_lessons (course_id, title, content, sort) VALUES (%s,%s,%s,%s)", (c1_id, "Как реагировать на жалобы", "Слушайте, не перебивайте, предложите решение.", 1))
                 cur.execute("INSERT INTO academy_tests (course_id, question, options, correct_index) VALUES (%s,%s,%s,%s)", (c1_id, "Что делать, если гость жалуется?", '["Спорить", "Слушать и предложить решение", "Игнорировать", "Позвать охрану"]', 1))
+
             cur.execute("SELECT COUNT(*) FROM users WHERE is_super_admin = TRUE")
             if cur.fetchone()[0] == 0:
                 pw = hash_password(ADMIN_PASSWORD)
@@ -368,6 +549,7 @@ def init_db_and_seed():
                     cur.execute("INSERT INTO users (login, password_hash, full_name, position, is_admin, is_super_admin) VALUES (%s, %s, 'Администратор', 'Администратор', TRUE, TRUE)", (ADMIN_LOGIN, pw))
     logging.info("✅ БД инициализирована и заполнена")
 
+# ============= СИНХРОННЫЕ ХЕЛПЕРЫ =============
 def _sync_get_user_by_login(login):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -436,6 +618,7 @@ def _sync_user_has_perm(user, perm):
         except Exception: perms = {}
     return bool(perms.get(perm))
 
+# ============= AUTH =============
 async def get_auth_user(request):
     try: body = await request.json()
     except Exception: return None, 401
@@ -473,6 +656,7 @@ async def _enrich_user_with_medbook_status(user):
     user["medbook_status"] = compute_medbook_status(user.get("medbook") or {}, doctors, tests, vaccines)
     return user
 
+# ============= API: AUTH =============
 async def handle_auth_login(request):
     try: data = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
@@ -480,10 +664,16 @@ async def handle_auth_login(request):
     password = data.get("password") or ""
     if not LOGIN_RE.match(login): return web.json_response({"error": "invalid_login_format"}, status=400)
     if not password: return web.json_response({"error": "password_required"}, status=400)
+    
     ip = request.remote or "unknown"
-    if not _check_rate_limit(ip): return web.json_response({"error": "too_many_attempts"}, status=429)
+    if not _check_rate_limit(ip):
+        logging.warning(f"Rate limit exceeded for IP: {ip}")
+        return web.json_response({"error": "too_many_attempts"}, status=429)
+
     user = await _run(_sync_get_user_by_login, login)
-    if not user or not verify_password(password, user.get("password_hash") or ""): return web.json_response({"error": "invalid_credentials"}, status=401)
+    if not user or not verify_password(password, user.get("password_hash") or ""):
+        return web.json_response({"error": "invalid_credentials"}, status=401)
+    
     _reset_rate_limit(ip)
     if user.get("is_fired"): return web.json_response({"error": "fired"}, status=403)
     if not user.get("is_admin"): return web.json_response({"error": "not_admin"}, status=403)
@@ -497,10 +687,16 @@ async def handle_auth_login_staff(request):
     password = data.get("password") or ""
     if not LOGIN_RE.match(login): return web.json_response({"error": "invalid_login_format"}, status=400)
     if not password: return web.json_response({"error": "password_required"}, status=400)
+
     ip = request.remote or "unknown"
-    if not _check_rate_limit(ip): return web.json_response({"error": "too_many_attempts"}, status=429)
+    if not _check_rate_limit(ip):
+        logging.warning(f"Rate limit exceeded for IP: {ip}")
+        return web.json_response({"error": "too_many_attempts"}, status=429)
+
     user = await _run(_sync_get_user_by_login, login)
-    if not user or not verify_password(password, user.get("password_hash") or ""): return web.json_response({"error": "invalid_credentials"}, status=401)
+    if not user or not verify_password(password, user.get("password_hash") or ""):
+        return web.json_response({"error": "invalid_credentials"}, status=401)
+    
     _reset_rate_limit(ip)
     if user.get("is_fired"): return web.json_response({"error": "fired"}, status=403)
     token = await _run(_sync_create_session, user["user_id"])
@@ -513,10 +709,18 @@ async def handle_auth_logout(request):
     if token: await _run(_sync_delete_session, token)
     return web.json_response({"ok": True})
 
+# ============= API: ME / DASHBOARD =============
 async def handle_admin_me(request):
     user, err = await get_admin_user(request)
     if err: return denied(err)
-    return web.json_response({"is_admin": True, "profile": {"user_id": user["user_id"], "login": user.get("login") or "", "full_name": user.get("full_name") or "", "position": user.get("position") or "", "is_super_admin": bool(user.get("is_super_admin")), "is_hr": (user.get("position") or "").strip().upper() == "HR", "permissions": user.get("permissions") or {}}})
+    return web.json_response({
+        "is_admin": True,
+        "profile": {
+            "user_id": user["user_id"], "login": user.get("login") or "", "full_name": user.get("full_name") or "",
+            "position": user.get("position") or "", "is_super_admin": bool(user.get("is_super_admin")),
+            "is_hr": (user.get("position") or "").strip().upper() == "HR", "permissions": user.get("permissions") or {},
+        }
+    })
 
 def _sync_dashboard_stats():
     with get_conn() as conn:
@@ -547,6 +751,7 @@ async def handle_admin_dashboard(request):
     stats = await _run(_sync_dashboard_stats)
     return web.json_response({"stats": stats})
 
+# ============= MEDBOOK ALERTS =============
 def _sync_medbook_alerts():
     doctors, tests, vaccines = _sync_get_medbook_refs()
     with get_conn() as conn:
@@ -576,6 +781,7 @@ async def handle_admin_medbook_alerts(request):
     expiring, expired = await _run(_sync_medbook_alerts)
     return web.json_response({"expiring": expiring[:20], "expired": expired[:20], "expiring_count": len(expiring), "expired_count": len(expired)})
 
+# ============= USERS =============
 def _sync_list_users(search="", fired=False):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -628,10 +834,12 @@ def _sync_create_user(body, existing_logins, admin_id=None):
     citizenship_id = body.get("citizenship_id")
     if citizenship_id == "": citizenship_id = None
     if citizenship_id is not None: citizenship_id = int(citizenship_id)
+    
     pw_hash = hash_password(password)
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("INSERT INTO users (login, password_hash, full_name, phone, birth_date, position, restaurant_key, is_certified, hire_date, citizenship_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *", (login, pw_hash, full_name, body.get("phone") or "", body.get("birth_date") or "", body.get("position") or "", restaurant_key, bool(body.get("is_certified")), hire_date, citizenship_id))
+            cur.execute("INSERT INTO users (login, password_hash, full_name, phone, birth_date, position, restaurant_key, is_certified, hire_date, citizenship_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *", 
+                        (login, pw_hash, full_name, body.get("phone") or "", body.get("birth_date") or "", body.get("position") or "", restaurant_key, bool(body.get("is_certified")), hire_date, citizenship_id))
             new_user = dict(cur.fetchone())
             cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin_id, "user_create", "user", str(new_user["user_id"]), f"login={login}"))
     return new_user, None
@@ -717,7 +925,10 @@ async def handle_admin_user_update(request):
     if "is_admin" in updates and not admin["is_super_admin"]: return web.json_response({"error": "forbidden_is_admin"}, status=403)
     if target.get("is_super_admin") and not admin["is_super_admin"]: return web.json_response({"error": "cannot_edit_super"}, status=403)
     if "restaurant" in updates: updates["restaurant_key"] = updates.pop("restaurant")
-    if "full_name" in updates and len(updates["full_name"]) > 100: return web.json_response({"error": "full_name_too_long"}, status=400)
+    
+    if "full_name" in updates and len(updates["full_name"]) > 100:
+        return web.json_response({"error": "full_name_too_long"}, status=400)
+
     await _run(_sync_update_user, uid, updates)
     updated = await _run(_sync_get_user_by_id, uid)
     if updated: await _enrich_user_with_medbook_status(updated)
@@ -779,6 +990,7 @@ async def handle_admin_user_delete(request):
             cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin["user_id"], "user_delete", "user", str(uid), f"login={target.get('login')}"))
     return web.json_response({"ok": True})
 
+# ============= ADMINS / PERMISSIONS =============
 def _sync_list_admins():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -811,6 +1023,7 @@ async def handle_admin_set_permissions(request):
             cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin["user_id"], "set_permissions", "user", str(uid), ",".join(cleaned.keys())))
     return web.json_response({"ok": True})
 
+# ============= CITIZENSHIPS =============
 def _sync_citizenships():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -837,10 +1050,13 @@ async def handle_admin_citizenship_add(request):
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     name = (body.get("name") or "").strip()
     if not name or len(name) > 50: return web.json_response({"error": "invalid"}, status=400)
+    
     new_c = await _run(_sync_citizenship_add, name)
-    if not new_c: return web.json_response({"ok": False, "error": "duplicate"}, status=409)
+    if not new_c:
+        return web.json_response({"ok": False, "error": "duplicate"}, status=409)
     return web.json_response({"ok": True, "citizenship": new_c})
 
+# ============= RESTAURANTS =============
 def _sync_restaurants():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -931,6 +1147,7 @@ async def handle_admin_restaurant_status(request):
         with conn.cursor() as cur: cur.execute("UPDATE restaurants SET force_status = %s WHERE key = %s", (st, key))
     return web.json_response({"ok": True})
 
+# ============= MEDBOOKS =============
 def _sync_medbooks_full():
     doctors, tests, vaccines = _sync_get_medbook_refs()
     with get_conn() as conn:
@@ -965,7 +1182,10 @@ async def handle_admin_medbook_get(request):
     user = await _run(_sync_get_user_by_id, uid)
     if not user: return web.json_response({"error": "not_found"}, status=404)
     doctors, tests, vaccines = await _run(_sync_get_medbook_refs)
-    return web.json_response({"user": {"user_id": user["user_id"], "full_name": user.get("full_name"), "position": user.get("position"), "restaurant_name": user.get("restaurant_name") or ""}, "medbook": user.get("medbook") or {}, "doctors": doctors, "tests": tests, "vaccines": vaccines})
+    return web.json_response({
+        "user": {"user_id": user["user_id"], "full_name": user.get("full_name"), "position": user.get("position"), "restaurant_name": user.get("restaurant_name") or ""},
+        "medbook": user.get("medbook") or {}, "doctors": doctors, "tests": tests, "vaccines": vaccines,
+    })
 
 async def handle_admin_medbook_save(request):
     admin, err = await get_admin_user(request)
@@ -1015,11 +1235,13 @@ async def handle_admin_medbook_ref_update(request):
     table = {"doctor": "medbook_doctors", "test": "medbook_tests", "vaccine": "medbook_vaccines"}[rtype]
     with get_conn() as conn:
         with conn.cursor() as cur:
-            if "name" in body: cur.execute(sql.SQL("UPDATE {} SET name = %s WHERE id = %s").format(sql.Identifier(table)), (body["name"], rid))
+            if "name" in body:
+                cur.execute(sql.SQL("UPDATE {} SET name = %s WHERE id = %s").format(sql.Identifier(table)), (body["name"], rid))
             if "validity_months" in body:
                 v = max(1, min(120, int(body["validity_months"])))
                 cur.execute(sql.SQL("UPDATE {} SET validity_months = %s WHERE id = %s").format(sql.Identifier(table)), (v, rid))
-            if "required" in body: cur.execute(sql.SQL("UPDATE {} SET required = %s WHERE id = %s").format(sql.Identifier(table)), (bool(body["required"]), rid))
+            if "required" in body:
+                cur.execute(sql.SQL("UPDATE {} SET required = %s WHERE id = %s").format(sql.Identifier(table)), (bool(body["required"]), rid))
     return web.json_response({"ok": True})
 
 async def handle_admin_medbook_ref_delete(request):
@@ -1034,9 +1256,11 @@ async def handle_admin_medbook_ref_delete(request):
     if perm_err: return perm_err
     table = {"doctor": "medbook_doctors", "test": "medbook_tests", "vaccine": "medbook_vaccines"}[rtype]
     with get_conn() as conn:
-        with conn.cursor() as cur: cur.execute(sql.SQL("DELETE FROM {} WHERE id = %s").format(sql.Identifier(table)), (rid,))
+        with conn.cursor() as cur:
+            cur.execute(sql.SQL("DELETE FROM {} WHERE id = %s").format(sql.Identifier(table)), (rid,))
     return web.json_response({"ok": True})
 
+# ============= NEWS =============
 def _sync_news_list():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1062,11 +1286,13 @@ async def handle_admin_news_add(request):
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     title = (body.get("title") or "").strip()
     text = (body.get("body") or "").strip()
-    if not title or not text or len(title) > 200 or len(text) > 5000: return web.json_response({"error": "invalid_or_too_long"}, status=400)
+    if not title or not text or len(title) > 200 or len(text) > 5000:
+        return web.json_response({"error": "invalid_or_too_long"}, status=400)
     level = body.get("level") or "normal"
     intent = body.get("intent") or "suggest"
     publish_at = body.get("publish_at")
     image_url = body.get("image_url") or ""
+
     if not can_publish:
         status = "pending"
         proposed_by = admin.get("full_name") or admin.get("login")
@@ -1077,6 +1303,7 @@ async def handle_admin_news_add(request):
             status = "scheduled"
         else: status = "pending"
         proposed_by = None
+
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("INSERT INTO news (title, body, level, status, publish_at, proposed_by, image_url) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING *", (title, text, level, status, publish_at, proposed_by, image_url))
@@ -1095,8 +1322,10 @@ async def handle_admin_news_update(request):
     allowed = {"title", "body", "level", "status", "publish_at", "image_url"}
     updates = {k: body[k] for k in allowed if k in body}
     if not updates: return web.json_response({"ok": True})
+    
     if "title" in updates and len(updates["title"]) > 200: return web.json_response({"error": "title_too_long"}, status=400)
     if "body" in updates and len(updates["body"]) > 5000: return web.json_response({"error": "body_too_long"}, status=400)
+
     set_clause = sql.SQL(", ").join(sql.SQL("{} = %s").format(sql.Identifier(k)) for k in updates)
     query = sql.SQL("UPDATE news SET {} WHERE id = %s").format(set_clause)
     with get_conn() as conn:
@@ -1140,6 +1369,7 @@ async def handle_admin_news_reject(request):
         with conn.cursor() as cur: cur.execute("DELETE FROM news WHERE id = %s AND status = 'pending'", (nid,))
     return web.json_response({"ok": True})
 
+# ============= STANDARDS =============
 def _sync_standards_list():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1174,7 +1404,7 @@ async def handle_admin_standard_add(request):
     if not title: return web.json_response({"error": "title_required"}, status=400)
     if not text: return web.json_response({"error": "text_required"}, status=400)
     if len(title) > 200: return web.json_response({"error": "title_too_long"}, status=400)
-    if len(text) > 200000: return web.json_response({"error": "text_too_long"}, status=400)
+    if len(text) > 200000: return web.json_response({"error": "text_too_long"}, status=400) # Увеличили лимит
 
     if not can_publish:
         status = "pending"
@@ -1206,7 +1436,7 @@ async def handle_admin_standard_update(request):
     if "title" in updates and not updates["title"]: return web.json_response({"error": "title_required"}, status=400)
     if "title" in updates and len(updates["title"]) > 200: return web.json_response({"error": "title_too_long"}, status=400)
     if "body" in updates and not updates["body"]: return web.json_response({"error": "text_required"}, status=400)
-    if "body" in updates and len(updates["body"]) > 200000: return web.json_response({"error": "text_too_long"}, status=400)
+    if "body" in updates and len(updates["body"]) > 200000: return web.json_response({"error": "text_too_long"}, status=400) # Увеличили лимит
 
     set_clause = sql.SQL(", ").join(sql.SQL("{} = %s").format(sql.Identifier(k)) for k in updates)
     query = sql.SQL("UPDATE standards SET {} WHERE id = %s").format(set_clause)
@@ -1257,6 +1487,7 @@ async def handle_admin_standard_reject(request):
         with conn.cursor() as cur: cur.execute("DELETE FROM standards WHERE id = %s AND status = 'pending'", (sid,))
     return web.json_response({"ok": True})
 
+# ============= CERTIFICATION =============
 def _sync_certification_list():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1275,15 +1506,20 @@ async def handle_admin_certification_add(request):
     if perm_err: return perm_err
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
     q = (body.get("question") or "").strip()
     a = (body.get("option_a") or "").strip()
     b = (body.get("option_b") or "").strip()
     c = (body.get("option_c") or "").strip()
     d = (body.get("option_d") or "").strip()
     correct = (body.get("correct_option") or "").strip().lower()
-    if not q or not a or not b or not c or not d or correct not in ("a","b","c","d"): return web.json_response({"error": "invalid"}, status=400)
+    
+    if not q or not a or not b or not c or not d or correct not in ("a","b","c","d"):
+        return web.json_response({"error": "invalid"}, status=400)
+        
     with get_conn() as conn:
-        with conn.cursor() as cur: cur.execute("INSERT INTO certification_questions (question, option_a, option_b, option_c, option_d, correct_option) VALUES (%s,%s,%s,%s,%s,%s)", (q, a, b, c, d, correct))
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO certification_questions (question, option_a, option_b, option_c, option_d, correct_option) VALUES (%s,%s,%s,%s,%s,%s)", (q, a, b, c, d, correct))
     return web.json_response({"ok": True})
 
 async def handle_admin_certification_delete(request):
@@ -1302,39 +1538,60 @@ async def handle_admin_certification_delete(request):
 async def handle_staff_certification_get(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
+    
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT id, question, option_a, option_b, option_c, option_d FROM certification_questions ORDER BY random()")
             questions = [dict(r) for r in cur.fetchall()]
+    
     return web.json_response({"questions": questions})
 
 async def handle_staff_certification_submit(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
+    
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
     answers = body.get("answers") or {}
-    if not answers: return web.json_response({"error": "no_answers"}, status=400)
+    if not answers:
+        return web.json_response({"error": "no_answers"}, status=400)
+        
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT id, correct_option FROM certification_questions")
             correct_db = {str(r["id"]): r["correct_option"] for r in cur.fetchall()}
+            
             total = len(correct_db)
-            if total == 0: return web.json_response({"ok": True, "passed": True, "score": 100, "msg": "Вопросов нет, тест пройден автоматически"})
+            if total == 0:
+                return web.json_response({"ok": True, "passed": True, "score": 100, "msg": "Вопросов нет, тест пройден автоматически"})
+                
             correct_count = 0
             for qid, ans in answers.items():
-                if correct_db.get(qid) == ans: correct_count += 1
+                if correct_db.get(qid) == ans:
+                    correct_count += 1
+                    
             score = int((correct_count / total) * 100)
             passed = score >= 80
+            
             if passed:
                 cur.execute("UPDATE users SET is_certified = TRUE WHERE user_id = %s", (user["user_id"],))
                 cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (user["user_id"], "certification_pass", "user", str(user["user_id"]), f"score={score}"))
+                
     return web.json_response({"ok": True, "passed": passed, "score": score})
 
+# ============= ACADEMY =============
 def _sync_academy_courses(user_id):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT c.*, COALESCE(p.status, 'new') as status, COALESCE(p.score, 0) as score FROM academy_courses c LEFT JOIN academy_progress p ON c.id = p.course_id AND p.user_id = %s ORDER BY c.id", (user_id,))
+            cur.execute("""
+                SELECT c.*, 
+                       COALESCE(p.status, 'new') as status,
+                       COALESCE(p.score, 0) as score
+                FROM academy_courses c
+                LEFT JOIN academy_progress p ON c.id = p.course_id AND p.user_id = %s
+                ORDER BY c.id
+            """, (user_id,))
             return [dict(r) for r in cur.fetchall()]
 
 async def handle_academy_courses(request):
@@ -1349,10 +1606,13 @@ def _sync_academy_course_detail(course_id):
             cur.execute("SELECT * FROM academy_courses WHERE id = %s", (course_id,))
             course = cur.fetchone()
             if not course: return None, None, None
+            
             cur.execute("SELECT * FROM academy_lessons WHERE course_id = %s ORDER BY sort", (course_id,))
             lessons = [dict(r) for r in cur.fetchall()]
+            
             cur.execute("SELECT * FROM academy_tests WHERE course_id = %s", (course_id,))
             tests = [dict(r) for r in cur.fetchall()]
+            
             return dict(course), lessons, tests
 
 async def handle_academy_course_detail(request):
@@ -1360,41 +1620,69 @@ async def handle_academy_course_detail(request):
     if err: return denied(err)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
     cid = int(body.get("course_id", 0))
     if cid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    
     course, lessons, tests = await _run(_sync_academy_course_detail, cid)
     if not course: return web.json_response({"error": "not_found"}, status=404)
-    for t in tests: del t["correct_index"]
+    
+    for t in tests:
+        del t["correct_index"]
+        
     return web.json_response({"course": course, "lessons": lessons, "tests": tests})
 
 async def handle_academy_submit_test(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
+    
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
     cid = int(body.get("course_id", 0))
     answers = body.get("answers") or {}
-    if cid <= 0 or not answers: return web.json_response({"error": "invalid_data"}, status=400)
+    
+    if cid <= 0 or not answers:
+        return web.json_response({"error": "invalid_data"}, status=400)
+        
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT id, correct_index FROM academy_tests WHERE course_id = %s", (cid,))
             correct_db = {str(r["id"]): r["correct_index"] for r in cur.fetchall()}
+            
             total = len(correct_db)
-            if total == 0: return web.json_response({"ok": True, "passed": True, "score": 100})
+            if total == 0:
+                return web.json_response({"ok": True, "passed": True, "score": 100})
+                
             correct_count = 0
             for qid, ans in answers.items():
-                if str(correct_db.get(qid)) == str(ans): correct_count += 1
+                if str(correct_db.get(qid)) == str(ans):
+                    correct_count += 1
+                    
             score = int((correct_count / total) * 100)
             passed = score >= 80
+            
             if passed:
-                cur.execute("INSERT INTO academy_progress (user_id, course_id, status, score, updated_at) VALUES (%s, %s, 'completed', %s, NOW()) ON CONFLICT (user_id, course_id) DO UPDATE SET status = 'completed', score = GREATEST(academy_progress.score, EXCLUDED.score), updated_at = NOW()", (user["user_id"], cid, score))
-                cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (user["user_id"], "academy_test_pass", "course", str(cid), f"score={score}"))
+                cur.execute("""
+                    INSERT INTO academy_progress (user_id, course_id, status, score, updated_at)
+                    VALUES (%s, %s, 'completed', %s, NOW())
+                    ON CONFLICT (user_id, course_id) DO UPDATE 
+                    SET status = 'completed', score = GREATEST(academy_progress.score, EXCLUDED.score), updated_at = NOW()
+                """, (user["user_id"], cid, score))
+                
+                cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", 
+                            (user["user_id"], "academy_test_pass", "course", str(cid), f"score={score}"))
+                
     return web.json_response({"ok": True, "passed": passed, "score": score})
 
+# ============= TIMESHEET =============
 def _sync_timesheet_get(user_id, month, year):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT * FROM timesheet_records WHERE user_id = %s AND EXTRACT(MONTH FROM work_date) = %s AND EXTRACT(YEAR FROM work_date) = %s", (user_id, month, year))
+            cur.execute("""
+                SELECT * FROM timesheet_records 
+                WHERE user_id = %s AND EXTRACT(MONTH FROM work_date) = %s AND EXTRACT(YEAR FROM work_date) = %s
+            """, (user_id, month, year))
             return [dict(r) for r in cur.fetchall()]
 
 async def handle_timesheet_get(request):
@@ -1402,8 +1690,10 @@ async def handle_timesheet_get(request):
     if err: return denied(err)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
     month = int(body.get("month", datetime.now().month))
     year = int(body.get("year", datetime.now().year))
+    
     records = await _run(_sync_timesheet_get, user["user_id"], month, year)
     return web.json_response({"records": records})
 
@@ -1412,13 +1702,21 @@ async def handle_timesheet_save(request):
     if err: return denied(err)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
     work_date = body.get("work_date")
     hours = body.get("hours", 0)
     status = body.get("status", "work")
+    
     if not work_date: return web.json_response({"error": "invalid_date"}, status=400)
+    
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("INSERT INTO timesheet_records (user_id, work_date, hours, status, updated_at) VALUES (%s, %s, %s, %s, NOW()) ON CONFLICT (user_id, work_date) DO UPDATE SET hours = EXCLUDED.hours, status = EXCLUDED.status, updated_at = NOW()", (user["user_id"], work_date, hours, status))
+            cur.execute("""
+                INSERT INTO timesheet_records (user_id, work_date, hours, status, updated_at)
+                VALUES (%s, %s, %s, %s, NOW())
+                ON CONFLICT (user_id, work_date) DO UPDATE 
+                SET hours = EXCLUDED.hours, status = EXCLUDED.status, updated_at = NOW()
+            """, (user["user_id"], work_date, hours, status))
     return web.json_response({"ok": True})
 
 def _sync_timesheet_employees(user_id):
@@ -1427,12 +1725,21 @@ def _sync_timesheet_employees(user_id):
             cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
             u = cur.fetchone()
             if not u: return []
+            
             pos_lower = (u.get("position") or "").lower()
             is_hr = pos_lower.strip() == "hr"
             is_tu = "территориальный" in pos_lower
             is_us = "управляющий сменой" in pos_lower
-            if not (is_hr or is_tu or is_us): return []
-            query = "SELECT u.user_id, u.full_name, u.position, r.name AS restaurant_name FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key WHERE COALESCE(u.is_fired, FALSE) = FALSE AND COALESCE(u.is_admin, FALSE) = FALSE AND u.login IS NOT NULL"
+            
+            if not (is_hr or is_tu or is_us):
+                return []
+
+            query = """
+                SELECT u.user_id, u.full_name, u.position, r.name AS restaurant_name
+                FROM users u
+                LEFT JOIN restaurants r ON u.restaurant_key = r.key
+                WHERE COALESCE(u.is_fired, FALSE) = FALSE AND COALESCE(u.is_admin, FALSE) = FALSE AND u.login IS NOT NULL
+            """
             params = []
             if is_us:
                 query += " AND u.restaurant_key = %s"
@@ -1440,6 +1747,7 @@ def _sync_timesheet_employees(user_id):
             elif is_tu:
                 query += " AND u.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id = %s)"
                 params.append(user_id)
+                
             query += " ORDER BY u.full_name"
             cur.execute(query, params)
             return [dict(r) for r in cur.fetchall()]
@@ -1456,12 +1764,23 @@ def _sync_timesheet_reports(user_id, month, year):
             cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
             u = cur.fetchone()
             if not u: return []
+            
             pos_lower = (u.get("position") or "").lower()
             is_hr = pos_lower.strip() == "hr"
             is_tu = "территориальный" in pos_lower
             is_us = "управляющий сменой" in pos_lower
-            base = "SELECT u.full_name, u.position, r.name AS restaurant_name, SUM(t.hours) as total_hours FROM users u JOIN timesheet_records t ON u.user_id = t.user_id LEFT JOIN restaurants r ON u.restaurant_key = r.key WHERE COALESCE(u.is_fired, FALSE) = FALSE AND u.login IS NOT NULL AND EXTRACT(MONTH FROM t.work_date) = %s AND EXTRACT(YEAR FROM t.work_date) = %s"
+            
+            base = """
+                SELECT u.full_name, u.position, r.name AS restaurant_name, 
+                       SUM(t.hours) as total_hours
+                FROM users u
+                JOIN timesheet_records t ON u.user_id = t.user_id
+                LEFT JOIN restaurants r ON u.restaurant_key = r.key
+                WHERE COALESCE(u.is_fired, FALSE) = FALSE AND u.login IS NOT NULL
+                  AND EXTRACT(MONTH FROM t.work_date) = %s AND EXTRACT(YEAR FROM t.work_date) = %s
+            """
             params = [month, year]
+            
             if is_us:
                 base += " AND u.restaurant_key = %s"
                 params.append(u.get("restaurant_key"))
@@ -1471,6 +1790,7 @@ def _sync_timesheet_reports(user_id, month, year):
             elif not is_hr:
                 base += " AND u.user_id = %s"
                 params.append(user_id)
+                
             base += " GROUP BY u.user_id, u.full_name, u.position, r.name ORDER BY total_hours DESC"
             cur.execute(base, params)
             return [dict(r) for r in cur.fetchall()]
@@ -1480,11 +1800,14 @@ async def handle_timesheet_reports(request):
     if err: return denied(err)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
     month = int(body.get("month", datetime.now().month))
     year = int(body.get("year", datetime.now().year))
+    
     report = await _run(_sync_timesheet_reports, user["user_id"], month, year)
     return web.json_response({"report": report})
 
+# ============= FAQ / POSITIONS / QUESTIONS =============
 def _sync_faq_list():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1522,7 +1845,8 @@ async def handle_admin_faq_update(request):
     fid = int(body.get("id", 0))
     if fid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     val = body.get("value") or ""
-    if (field == "question" and len(val) > 500) or (field == "answer" and len(val) > 2000): return web.json_response({"error": "value_too_long"}, status=400)
+    if (field == "question" and len(val) > 500) or (field == "answer" and len(val) > 2000):
+        return web.json_response({"error": "value_too_long"}, status=400)
     query = sql.SQL("UPDATE faq SET {} = %s WHERE id = %s").format(sql.Identifier(field))
     with get_conn() as conn:
         with conn.cursor() as cur: cur.execute(query, (val, fid))
@@ -1608,6 +1932,7 @@ async def handle_admin_question_reply(request):
         with conn.cursor() as cur: cur.execute("UPDATE questions SET replied = TRUE, reply_text = %s, replied_at = NOW(), replied_by = %s WHERE id = %s", (text, admin["user_id"], qid))
     return web.json_response({"ok": True})
 
+# ============= AUDIT / REPORTS / PASSWORD =============
 def _sync_audit():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1640,6 +1965,7 @@ async def handle_admin_change_password(request):
             cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin["user_id"], "change_password", "user", str(admin["user_id"]), ""))
     return web.json_response({"ok": True})
 
+# ============= ДИАГНОСТИКА =============
 async def handle_admin_debug_users(request):
     admin, err = await get_admin_user(request)
     if err: return denied(err)
@@ -1650,32 +1976,44 @@ async def handle_admin_debug_users(request):
             rows = [dict(r) for r in cur.fetchall()]
     return web.json_response({"count": len(rows), "users": rows})
 
+# ============= BOOTSTRAP =============
 def _sync_bootstrap(user_id):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("UPDATE users SET last_seen_at = NOW() WHERE user_id = %s", (user_id,))
-            cur.execute("SELECT u.*, c.name AS citizenship_name FROM users u LEFT JOIN citizenships c ON u.citizenship_id = c.id WHERE u.user_id = %s", (user_id,))
+            cur.execute("""
+                SELECT u.*, c.name AS citizenship_name 
+                FROM users u 
+                LEFT JOIN citizenships c ON u.citizenship_id = c.id
+                WHERE u.user_id = %s
+            """, (user_id,))
             user = dict(cur.fetchone())
             _auto_publish_scheduled(cur)
+
             cur.execute("SELECT * FROM news WHERE status = 'published' ORDER BY created_at DESC LIMIT 50")
             news_rows = [dict(r) for r in cur.fetchall()]
+            
             cur.execute("SELECT * FROM standards WHERE status = 'published' ORDER BY created_at DESC")
             std_rows = [dict(r) for r in cur.fetchall()]
+
             cur.execute("SELECT * FROM faq ORDER BY id")
             faq_rows = [dict(r) for r in cur.fetchall()]
             cur.execute("SELECT * FROM restaurants WHERE key != 'office' ORDER BY sort, name")
             rest_rows = [dict(r) for r in cur.fetchall()]
+
             cur.execute("SELECT * FROM medbook_doctors ORDER BY sort, id")
             doctors = [dict(r) for r in cur.fetchall()]
             cur.execute("SELECT * FROM medbook_tests ORDER BY sort, id")
             tests = [dict(r) for r in cur.fetchall()]
             cur.execute("SELECT * FROM medbook_vaccines ORDER BY sort, id")
             vaccines = [dict(r) for r in cur.fetchall()]
+
             pos_lower = (user.get("position") or "").lower()
             is_hr = pos_lower.strip() == "hr"
             is_tu = "территориальный" in pos_lower
             is_us = "управляющий сменой" in pos_lower
             can_see_team = is_hr or is_tu or is_us
+
             team_rows = []
             if can_see_team:
                 cur.execute("""
@@ -1690,6 +2028,7 @@ def _sync_bootstrap(user_id):
                     ORDER BY u.full_name
                 """, (user_id,))
                 all_staff = [dict(r) for r in cur.fetchall()]
+
                 if is_us:
                     my_rest = user.get("restaurant_key")
                     team_rows = [s for s in all_staff if s.get("restaurant_key") == my_rest]
@@ -1697,7 +2036,9 @@ def _sync_bootstrap(user_id):
                     cur.execute("SELECT key FROM restaurants WHERE territory_manager_id = %s", (user_id,))
                     my_rests = {r["key"] for r in cur.fetchall()}
                     team_rows = [s for s in all_staff if s.get("restaurant_key") in my_rests]
-                else: team_rows = all_staff
+                else:
+                    team_rows = all_staff
+
     user.pop("password_hash", None)
     return (user, news_rows, std_rows, faq_rows, rest_rows, doctors, tests, vaccines, team_rows, can_see_team)
 
@@ -1705,12 +2046,14 @@ async def handle_bootstrap(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
     (u, news_rows, std_rows, faq_rows, rest_rows, doctors, tests, vaccines, team_rows, can_see_team) = await _run(_sync_bootstrap, user["user_id"])
+
     restaurant_name = ""
     restaurant_key = u.get("restaurant_key") or ""
     for r in rest_rows:
         if r["key"] == restaurant_key:
             restaurant_name = r["name"]
             break
+
     profile = {
         "full_name": u.get("full_name") or "", "first_name": (u.get("full_name") or "").split()[0] if u.get("full_name") else "",
         "phone": u.get("phone") or "", "birth_date": u.get("birth_date") or "", "position": u.get("position") or "—",
@@ -1718,10 +2061,12 @@ async def handle_bootstrap(request):
         "hire_date": u.get("hire_date") or "—", "citizenship_name": u.get("citizenship_name") or "—",
         "can_access_timesheet": _sync_user_has_perm(u, "timesheet_access"),
     }
+
     mb = u.get("medbook") or {}
     if isinstance(mb, str):
         try: mb = json.loads(mb)
         except Exception: mb = {}
+
     def build_section(items, source):
         out = []
         for it in items:
@@ -1729,9 +2074,15 @@ async def handle_bootstrap(request):
             st = entry_status(date_str, it["validity_months"])
             out.append({"id": it["id"], "name": it["name"], "required": bool(it.get("required")), "validity_months": it["validity_months"], "date": date_str, "status": st})
         return out
+
     medbook_status = compute_medbook_status(mb, doctors, tests, vaccines)
     missing, total = medbook_missing_count(mb, doctors, tests, vaccines)
-    medbook_payload = {"status": medbook_status, "missing": missing, "total": total, "doctors": build_section(doctors, "doctors"), "tests": build_section(tests, "tests"), "vaccines": build_section(vaccines, "vaccines")}
+
+    medbook_payload = {
+        "status": medbook_status, "missing": missing, "total": total,
+        "doctors": build_section(doctors, "doctors"), "tests": build_section(tests, "tests"), "vaccines": build_section(vaccines, "vaccines"),
+    }
+
     team_list = []
     for t in team_rows:
         tmb = t.get("medbook") or {}
@@ -1744,8 +2095,13 @@ async def handle_bootstrap(request):
             "manager_name": t.get("manager_name") or "", "is_certified": bool(t.get("is_certified")), "medbook_status": compute_medbook_status(tmb, doctors, tests, vaccines),
             "hire_date": t.get("hire_date") or "—", "citizenship_name": t.get("citizenship_name") or "—"
         })
-    return web.json_response({"profile": profile, "medbook": medbook_payload, "news": news_rows, "standards": std_rows, "faq": faq_rows, "restaurants": rest_rows, "team": team_list, "can_see_team": can_see_team})
 
+    return web.json_response({
+        "profile": profile, "medbook": medbook_payload, "news": news_rows, "standards": std_rows, "faq": faq_rows,
+        "restaurants": rest_rows, "team": team_list, "can_see_team": can_see_team,
+    })
+
+# ============= QUESTIONS (staff) =============
 async def handle_questions_staff(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
@@ -1757,6 +2113,7 @@ async def handle_questions_staff(request):
         with conn.cursor() as cur: cur.execute("INSERT INTO questions (user_id, text) VALUES (%s,%s)", (user["user_id"], text))
     return web.json_response({"ok": True})
 
+# ============= UPLOAD =============
 async def handle_admin_upload(request):
     admin, err = await get_admin_user(request)
     if err: return denied(err)
@@ -1803,10 +2160,12 @@ async def handle_uploaded_file(request):
     
     headers = {}
     if request.query.get("download"):
-        headers["Content-Disposition"] = f'attachment; filename="{os.path.basename(filename)}"'
+        orig_name = request.query.get("name") or os.path.basename(filename)
+        headers["Content-Disposition"] = f'attachment; filename="{orig_name}"'
         
     return web.FileResponse(safe_path, headers=headers)
 
+# ============= STATIC =============
 _INDEX_CACHE = {"data": None, "mtime": 0.0}
 _ADMIN_CACHE = {"data": None, "mtime": 0.0}
 _ACADEMY_CACHE = {"data": None, "mtime": 0.0}
@@ -1860,6 +2219,7 @@ async def handle_icon512(request): return await _send_static_file("icon-512.svg"
 async def handle_favicon(request): return web.Response(status=204)
 async def handle_health(request): return web.Response(text="OK")
 
+# ============= MIDDLEWARES =============
 @web.middleware
 async def error_middleware(request, handler):
     try: return await handler(request)
@@ -1891,12 +2251,21 @@ async def security_headers_middleware(request, handler):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    csp = ("default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://images.unsplash.com; connect-src 'self'; frame-ancestors 'none';")
+    csp = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data: https://images.unsplash.com; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none';"
+    )
     response.headers["Content-Security-Policy"] = csp
     return response
 
 app = web.Application(middlewares=[error_middleware, gzip_middleware, security_headers_middleware], client_max_size=20 * 1024 * 1024)
 
+# ============= ROUTES =============
 app.router.add_get("/", handle_index)
 app.router.add_get("/admin", handle_admin_page)
 app.router.add_get("/admin/", handle_admin_page)
@@ -1918,20 +2287,25 @@ app.router.add_post("/api/bootstrap", handle_bootstrap)
 app.router.add_post("/api/questions", handle_questions_staff)
 app.router.add_post("/api/certification/get", handle_staff_certification_get)
 app.router.add_post("/api/certification/submit", handle_staff_certification_submit)
+
 app.router.add_post("/api/academy/courses", handle_academy_courses)
 app.router.add_post("/api/academy/course", handle_academy_course_detail)
 app.router.add_post("/api/academy/submit-test", handle_academy_submit_test)
+
 app.router.add_post("/api/timesheet/get", handle_timesheet_get)
 app.router.add_post("/api/timesheet/save", handle_timesheet_save)
 app.router.add_post("/api/timesheet/employees", handle_timesheet_employees)
 app.router.add_post("/api/timesheet/reports", handle_timesheet_reports)
+
 app.router.add_post("/api/admin/login", handle_auth_login)
 app.router.add_post("/api/admin/me", handle_admin_me)
 app.router.add_post("/api/admin/dashboard", handle_admin_dashboard)
 app.router.add_post("/api/admin/medbook-alerts", handle_admin_medbook_alerts)
 app.router.add_post("/api/admin/upload", handle_admin_upload)
+
 app.router.add_post("/api/admin/citizenships", handle_admin_citizenships)
 app.router.add_post("/api/admin/citizenship/add", handle_admin_citizenship_add)
+
 app.router.add_post("/api/admin/users", handle_admin_users)
 app.router.add_post("/api/admin/user/get", handle_admin_user_get)
 app.router.add_post("/api/admin/user/create", handle_admin_user_create)
@@ -1939,35 +2313,42 @@ app.router.add_post("/api/admin/user/update", handle_admin_user_update)
 app.router.add_post("/api/admin/user/delete", handle_admin_user_delete)
 app.router.add_post("/api/admin/user/fire", handle_admin_user_fire)
 app.router.add_post("/api/admin/user/restore", handle_admin_user_restore)
+
 app.router.add_post("/api/admin/admins", handle_admin_admins)
 app.router.add_post("/api/admin/set-permissions", handle_admin_set_permissions)
 app.router.add_post("/api/admin/debug/users", handle_admin_debug_users)
+
 app.router.add_post("/api/admin/restaurants", handle_admin_restaurants)
 app.router.add_post("/api/admin/restaurant/add", handle_admin_restaurant_add)
 app.router.add_post("/api/admin/restaurant/update", handle_admin_restaurant_update)
 app.router.add_post("/api/admin/restaurant/tu", handle_admin_restaurant_tu)
 app.router.add_post("/api/admin/restaurant/status", handle_admin_restaurant_status)
+
 app.router.add_post("/api/admin/medbooks", handle_admin_medbooks)
 app.router.add_post("/api/admin/medbook/get", handle_admin_medbook_get)
 app.router.add_post("/api/admin/medbook/save", handle_admin_medbook_save)
 app.router.add_post("/api/admin/medbook/reference/add", handle_admin_medbook_ref_add)
 app.router.add_post("/api/admin/medbook/reference/update", handle_admin_medbook_ref_update)
 app.router.add_post("/api/admin/medbook/reference/delete", handle_admin_medbook_ref_delete)
+
 app.router.add_post("/api/admin/news", handle_admin_news_list)
 app.router.add_post("/api/admin/news/add", handle_admin_news_add)
 app.router.add_post("/api/admin/news/update", handle_admin_news_update)
 app.router.add_post("/api/admin/news/delete", handle_admin_news_delete)
 app.router.add_post("/api/admin/news/approve", handle_admin_news_approve)
 app.router.add_post("/api/admin/news/reject", handle_admin_news_reject)
+
 app.router.add_post("/api/admin/standards", handle_admin_standards)
 app.router.add_post("/api/admin/standard/add", handle_admin_standard_add)
 app.router.add_post("/api/admin/standard/update", handle_admin_standard_update)
 app.router.add_post("/api/admin/standard/delete", handle_admin_standard_delete)
 app.router.add_post("/api/admin/standard/approve", handle_admin_standard_approve)
 app.router.add_post("/api/admin/standard/reject", handle_admin_standard_reject)
+
 app.router.add_post("/api/admin/certification", handle_admin_certification_list)
 app.router.add_post("/api/admin/certification/add", handle_admin_certification_add)
 app.router.add_post("/api/admin/certification/delete", handle_admin_certification_delete)
+
 app.router.add_post("/api/admin/faq", handle_admin_faq)
 app.router.add_post("/api/admin/faq/add", handle_admin_faq_add)
 app.router.add_post("/api/admin/faq/update", handle_admin_faq_update)
@@ -1977,10 +2358,12 @@ app.router.add_post("/api/admin/position/add", handle_admin_position_add)
 app.router.add_post("/api/admin/position/archive", handle_admin_position_archive)
 app.router.add_post("/api/admin/questions", handle_admin_questions)
 app.router.add_post("/api/admin/question/reply", handle_admin_question_reply)
+
 app.router.add_post("/api/admin/audit", handle_admin_audit)
 app.router.add_post("/api/admin/reports", handle_admin_reports)
 app.router.add_post("/api/admin/change-password", handle_admin_change_password)
 
+# ============= MAIN =============
 async def main():
     port = int(os.getenv("PORT", 8080))
     if os.getenv("RUN_MIGRATIONS", "false").lower() == "true":

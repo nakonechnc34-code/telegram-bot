@@ -101,6 +101,7 @@ PERMISSIONS_LIST = [
     {"key": "questions_reply", "label": "Отвечать на вопросы"},
     {"key": "certification_edit", "label": "Управлять вопросами сертификации"},
     {"key": "academy_edit", "label": "Управлять Академией"},
+    {"key": "timesheet_access", "label": "Доступ к Табелю"},
 ]
 PERM_KEYS = [p["key"] for p in PERMISSIONS_LIST]
 REF_TYPE_PERM = {
@@ -449,6 +450,20 @@ def init_db_and_seed():
             PRIMARY KEY (user_id, course_id)
         )
     """, "CREATE academy_progress")
+
+    # ===== TIMESHEET =====
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS timesheet_records (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,
+            work_date DATE NOT NULL,
+            hours NUMERIC(4,1) DEFAULT 0,
+            status TEXT DEFAULT 'work',
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW(),
+            UNIQUE(user_id, work_date)
+        )
+    """, "CREATE timesheet_records")
     # =====================
 
     _run_migration("""
@@ -518,11 +533,6 @@ def init_db_and_seed():
                 cur.execute("INSERT INTO academy_lessons (course_id, title, content, sort) VALUES (%s,%s,%s,%s)", (c1_id, "Улыбка решает всё", "Всегда улыбайтесь гостю. Это создает позитивное настроение.", 0))
                 cur.execute("INSERT INTO academy_lessons (course_id, title, content, sort) VALUES (%s,%s,%s,%s)", (c1_id, "Как реагировать на жалобы", "Слушайте, не перебивайте, предложите решение.", 1))
                 cur.execute("INSERT INTO academy_tests (course_id, question, options, correct_index) VALUES (%s,%s,%s,%s)", (c1_id, "Что делать, если гость жалуется?", '["Спорить", "Слушать и предложить решение", "Игнорировать", "Позвать охрану"]', 1))
-
-                cur.execute("INSERT INTO academy_courses (title, description, color, icon) VALUES (%s,%s,%s,%s) RETURNING id", ("Гигиена и безопасность", "Базовые правила, которые спасают жизни.", "blue", "🧼"))
-                c2_id = cur.fetchone()[0]
-                cur.execute("INSERT INTO academy_lessons (course_id, title, content, sort) VALUES (%s,%s,%s,%s)", (c2_id, "Мытье рук", "Мойте руки не менее 20 секунд с мылом.", 0))
-                cur.execute("INSERT INTO academy_tests (course_id, question, options, correct_index) VALUES (%s,%s,%s,%s)", (c2_id, "Сколько секунд нужно мыть руки?", '["5 секунд", "10 секунд", "20 секунд", "1 минуту"]', 2))
 
             cur.execute("SELECT COUNT(*) FROM users WHERE is_super_admin = TRUE")
             if cur.fetchone()[0] == 0:
@@ -1597,7 +1607,6 @@ async def handle_academy_course_detail(request):
     course, lessons, tests = await _run(_sync_academy_course_detail, cid)
     if not course: return web.json_response({"error": "not_found"}, status=404)
     
-    # Обрезаем правильные ответы для клиента
     for t in tests:
         del t["correct_index"]
         
@@ -1645,6 +1654,139 @@ async def handle_academy_submit_test(request):
                             (user["user_id"], "academy_test_pass", "course", str(cid), f"score={score}"))
                 
     return web.json_response({"ok": True, "passed": passed, "score": score})
+
+# ============= TIMESHEET =============
+def _sync_timesheet_get(user_id, month, year):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT * FROM timesheet_records 
+                WHERE user_id = %s AND EXTRACT(MONTH FROM work_date) = %s AND EXTRACT(YEAR FROM work_date) = %s
+            """, (user_id, month, year))
+            return [dict(r) for r in cur.fetchall()]
+
+async def handle_timesheet_get(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    month = int(body.get("month", datetime.now().month))
+    year = int(body.get("year", datetime.now().year))
+    
+    records = await _run(_sync_timesheet_get, user["user_id"], month, year)
+    return web.json_response({"records": records})
+
+async def handle_timesheet_save(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    work_date = body.get("work_date")
+    hours = body.get("hours", 0)
+    status = body.get("status", "work")
+    
+    if not work_date: return web.json_response({"error": "invalid_date"}, status=400)
+    
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO timesheet_records (user_id, work_date, hours, status, updated_at)
+                VALUES (%s, %s, %s, %s, NOW())
+                ON CONFLICT (user_id, work_date) DO UPDATE 
+                SET hours = EXCLUDED.hours, status = EXCLUDED.status, updated_at = NOW()
+            """, (user["user_id"], work_date, hours, status))
+    return web.json_response({"ok": True})
+
+def _sync_timesheet_employees(user_id):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Проверяем права (если HR или ТУ или УС)
+            cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+            u = cur.fetchone()
+            if not u: return []
+            
+            pos_lower = (u.get("position") or "").lower()
+            is_hr = pos_lower.strip() == "hr"
+            is_tu = "территориальный" in pos_lower
+            is_us = "управляющий сменой" in pos_lower
+            
+            if not (is_hr or is_tu or is_us):
+                return []
+
+            query = """
+                SELECT u.user_id, u.full_name, u.position, r.name AS restaurant_name
+                FROM users u
+                LEFT JOIN restaurants r ON u.restaurant_key = r.key
+                WHERE COALESCE(u.is_fired, FALSE) = FALSE AND COALESCE(u.is_admin, FALSE) = FALSE AND u.login IS NOT NULL
+            """
+            params = []
+            if is_us:
+                query += " AND u.restaurant_key = %s"
+                params.append(u.get("restaurant_key"))
+            elif is_tu:
+                query += " AND u.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id = %s)"
+                params.append(user_id)
+                
+            query += " ORDER BY u.full_name"
+            cur.execute(query, params)
+            return [dict(r) for r in cur.fetchall()]
+
+async def handle_timesheet_employees(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    employees = await _run(_sync_timesheet_employees, user["user_id"])
+    return web.json_response({"employees": employees})
+
+def _sync_timesheet_reports(user_id, month, year):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+            u = cur.fetchone()
+            if not u: return []
+            
+            pos_lower = (u.get("position") or "").lower()
+            is_hr = pos_lower.strip() == "hr"
+            is_tu = "территориальный" in pos_lower
+            is_us = "управляющий сменой" in pos_lower
+            
+            base = """
+                SELECT u.full_name, u.position, r.name AS restaurant_name, 
+                       SUM(t.hours) as total_hours
+                FROM users u
+                JOIN timesheet_records t ON u.user_id = t.user_id
+                LEFT JOIN restaurants r ON u.restaurant_key = r.key
+                WHERE COALESCE(u.is_fired, FALSE) = FALSE AND u.login IS NOT NULL
+                  AND EXTRACT(MONTH FROM t.work_date) = %s AND EXTRACT(YEAR FROM t.work_date) = %s
+            """
+            params = [month, year]
+            
+            if is_us:
+                base += " AND u.restaurant_key = %s"
+                params.append(u.get("restaurant_key"))
+            elif is_tu:
+                base += " AND u.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id = %s)"
+                params.append(user_id)
+            elif not is_hr:
+                base += " AND u.user_id = %s"
+                params.append(user_id)
+                
+            base += " GROUP BY u.user_id, u.full_name, u.position, r.name ORDER BY total_hours DESC"
+            cur.execute(base, params)
+            return [dict(r) for r in cur.fetchall()]
+
+async def handle_timesheet_reports(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    month = int(body.get("month", datetime.now().month))
+    year = int(body.get("year", datetime.now().year))
+    
+    report = await _run(_sync_timesheet_reports, user["user_id"], month, year)
+    return web.json_response({"report": report})
 
 # ============= FAQ / POSITIONS / QUESTIONS =============
 def _sync_faq_list():
@@ -1897,7 +2039,8 @@ async def handle_bootstrap(request):
         "full_name": u.get("full_name") or "", "first_name": (u.get("full_name") or "").split()[0] if u.get("full_name") else "",
         "phone": u.get("phone") or "", "birth_date": u.get("birth_date") or "", "position": u.get("position") or "—",
         "restaurant": restaurant_name or "—", "restaurant_key": restaurant_key, "is_certified": bool(u.get("is_certified")), "is_admin": bool(u.get("is_admin")),
-        "hire_date": u.get("hire_date") or "—", "citizenship_name": u.get("citizenship_name") or "—"
+        "hire_date": u.get("hire_date") or "—", "citizenship_name": u.get("citizenship_name") or "—",
+        "can_access_timesheet": _sync_user_has_perm(u, "timesheet_access"),
     }
 
     mb = u.get("medbook") or {}
@@ -1997,6 +2140,7 @@ async def handle_uploaded_file(request):
 _INDEX_CACHE = {"data": None, "mtime": 0.0}
 _ADMIN_CACHE = {"data": None, "mtime": 0.0}
 _ACADEMY_CACHE = {"data": None, "mtime": 0.0}
+_TIMESHEET_CACHE = {"data": None, "mtime": 0.0}
 _STATIC_FILES_CACHE = {}
 
 def _serve_file(name, cache):
@@ -2023,6 +2167,11 @@ async def handle_admin_page(request):
 async def handle_academy_page(request):
     data = _serve_file("academy.html", _ACADEMY_CACHE)
     if not data: return web.Response(text="frontend/academy.html not found", status=404)
+    return web.Response(body=data, content_type="text/html", charset="utf-8")
+
+async def handle_timesheet_page(request):
+    data = _serve_file("timesheet.html", _TIMESHEET_CACHE)
+    if not data: return web.Response(text="frontend/timesheet.html not found", status=404)
     return web.Response(body=data, content_type="text/html", charset="utf-8")
 
 async def _send_static_file(name, content_type):
@@ -2093,6 +2242,8 @@ app.router.add_get("/admin", handle_admin_page)
 app.router.add_get("/admin/", handle_admin_page)
 app.router.add_get("/academy", handle_academy_page)
 app.router.add_get("/academy/", handle_academy_page)
+app.router.add_get("/timesheet", handle_timesheet_page)
+app.router.add_get("/timesheet/", handle_timesheet_page)
 app.router.add_get("/favicon.ico", handle_favicon)
 app.router.add_get("/api/health", handle_health)
 app.router.add_get("/manifest.json", handle_manifest)
@@ -2111,6 +2262,11 @@ app.router.add_post("/api/certification/submit", handle_staff_certification_subm
 app.router.add_post("/api/academy/courses", handle_academy_courses)
 app.router.add_post("/api/academy/course", handle_academy_course_detail)
 app.router.add_post("/api/academy/submit-test", handle_academy_submit_test)
+
+app.router.add_post("/api/timesheet/get", handle_timesheet_get)
+app.router.add_post("/api/timesheet/save", handle_timesheet_save)
+app.router.add_post("/api/timesheet/employees", handle_timesheet_employees)
+app.router.add_post("/api/timesheet/reports", handle_timesheet_reports)
 
 app.router.add_post("/api/admin/login", handle_auth_login)
 app.router.add_post("/api/admin/me", handle_admin_me)

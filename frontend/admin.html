@@ -232,7 +232,6 @@
   .dash-list { display: flex; flex-direction: column; gap: 16px; margin-top: 20px; }
   .dash-list-item { display: flex; align-items: center; gap: 16px; padding: 12px; background: rgba(255,255,255,0.02); border-radius: 12px; border-left: 3px solid transparent; transition: all 0.2s; }
   .dash-list-item:hover { background: rgba(255,255,255,0.05); }
-  .dash-list-item.yellow { border-left-color: var(--dash-accent); }
   .dash-list-avatar { width: 44px; height: 44px; border-radius: 50%; background: #333; object-fit: cover; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; }
   .dash-list-content { flex: 1; min-width: 0; }
   .dash-list-title { font-size: 14px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -242,11 +241,22 @@
 
   .dash-bottom-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-top: 0; grid-column: 1 / -1; }
   .dash-bottom-card { background: var(--dash-card); border-radius: 16px; padding: 24px; }
-  .dash-table { width: 100%; border-collapse: collapse; }
-  .dash-table th { text-align: left; font-size: 11px; color: var(--dash-muted); padding: 0 0 16px 0; font-weight: 500; border-bottom: 1px solid rgba(255,255,255,0.05); }
-  .dash-table td { padding: 12px 0; font-size: 13px; color: #fff; border-bottom: 1px solid rgba(255,255,255,0.02); }
-  .dash-table tr:last-child td { border-bottom: none; }
-  .dash-table td:last-child { text-align: right; }
+
+  /* Стили для списков в дашборде (вместо таблиц) */
+  .dash-user-list, .dash-alert-list { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+  .dash-user-item { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .dash-user-item:last-child { border-bottom: none; }
+  .dash-user-avatar { width: 32px; height: 32px; border-radius: 50%; background: #444; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; font-size: 12px; flex-shrink: 0; }
+  .dash-user-info { flex: 1; min-width: 0; }
+  .dash-user-name { font-size: 14px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dash-user-pos { font-size: 12px; color: var(--dash-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  
+  .dash-alert-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .dash-alert-item:last-child { border-bottom: none; }
+  .dash-alert-name { font-size: 14px; color: #fff; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 10px; }
+  .dash-alert-status { font-size: 11px; font-weight: 700; padding: 4px 8px; border-radius: 6px; white-space: nowrap; }
+  .dash-alert-status.red { background: rgba(255, 59, 48, 0.2); color: var(--accent); }
+  .dash-alert-status.amber { background: rgba(255, 149, 0, 0.2); color: var(--amber); }
 
   @keyframes skeleton-pulse {
     0% { background-color: rgba(255,255,255,0.05); }
@@ -900,12 +910,9 @@ async function loadDashboard() {
       <div class="dash-bottom-grid">
         <div class="dash-bottom-card">
           <div class="dash-section-title">Новые сотрудники</div>
-          <table class="dash-table">
-            <thead><tr><th>Имя</th><th>Должность</th></tr></thead>
-            <tbody id="dash-users-container">
-              ${[1,2,3].map(() => `<tr><td><div class="skeleton skeleton-text" style="width: 80%; margin:0;"></div></td><td><div class="skeleton skeleton-text" style="width: 60%; margin:0;"></div></td></tr>`).join('')}
-            </tbody>
-          </table>
+          <div class="dash-user-list" id="dash-users-container">
+            ${[1,2,3].map(() => `<div class="dash-user-item"><div class="skeleton skeleton-avatar" style="width:32px; height:32px;"></div><div class="dash-user-info"><div class="skeleton skeleton-text" style="width: 80%; margin: 0 0 4px 0;"></div><div class="skeleton skeleton-text" style="width: 60%; margin:0; height: 10px;"></div></div></div>`).join('')}
+          </div>
         </div>
         
         <div class="dash-bottom-card">
@@ -917,12 +924,9 @@ async function loadDashboard() {
 
         <div class="dash-bottom-card">
           <div class="dash-section-title">Внимание: Медкнижки</div>
-          <table class="dash-table">
-            <thead><tr><th>Сотрудник</th><th>Статус</th></tr></thead>
-            <tbody id="dash-medbook-container">
-              ${[1,2,3].map(() => `<tr><td><div class="skeleton skeleton-text" style="width: 70%; margin:0;"></div></td><td><div class="skeleton skeleton-text" style="width: 50%; margin:0; float:right;"></div></td></tr>`).join('')}
-            </tbody>
-          </table>
+          <div class="dash-alert-list" id="dash-medbook-container">
+            ${[1,2,3].map(() => `<div class="dash-alert-item"><div class="skeleton skeleton-text" style="width: 60%; margin:0;"></div><div class="skeleton skeleton-text" style="width: 30%; margin:0;"></div></div>`).join('')}
+          </div>
         </div>
       </div>
     </div>`;
@@ -932,19 +936,24 @@ async function loadDashboard() {
   let medbookAlerts = [];
   
   try {
+    // ВАЖНО: Запрашиваем /api/admin/medbooks вместо medbook-alerts, 
+    // чтобы видеть ВСЕХ проблемных сотрудников (включая тех, у кого не заполнено)
     const results = await Promise.allSettled([
       api('/api/admin/dashboard', {}), 
       api('/api/admin/news', {}), 
       api('/api/admin/questions', {}), 
       api('/api/admin/users', {}), 
-      api('/api/admin/medbook-alerts', {})
+      api('/api/admin/medbooks', {})
     ]);
     
     if (results[0].status === 'fulfilled' && results[0].value.stats) stats = results[0].value.stats;
     if (results[1].status === 'fulfilled' && results[1].value.news) newsList = results[1].value.news;
     if (results[2].status === 'fulfilled' && results[2].value.questions) qsList = results[2].value.questions;
     if (results[3].status === 'fulfilled' && results[3].value.users) usersList = results[3].value.users;
-    if (results[4].status === 'fulfilled' && results[4].value) medbookAlerts = [...(results[4].value.expired || []), ...(results[4].value.expiring || [])];
+    
+    if (results[4].status === 'fulfilled' && results[4].value.users) {
+      medbookAlerts = results[4].value.users.filter(u => u.medbook_status === 'invalid' || u.medbook_status === 'expiring');
+    }
   } catch(e) { console.error('Dashboard load error', e); }
 
   // 1. Заполняем карточки статистики
@@ -986,16 +995,16 @@ async function loadDashboard() {
     const newUsers = usersList.slice(0, 4);
     if (newUsers.length) {
       usersContainer.innerHTML = newUsers.map(u => `
-        <tr>
-          <td style="display: flex; align-items: center; gap: 8px;">
-            <div class="dash-list-avatar" style="width: 24px; height: 24px; font-size: 10px; background: #444;">${esc((u.full_name || '?').charAt(0))}</div>
-            ${esc(u.full_name || '—')}
-          </td>
-          <td style="color: var(--dash-muted);">${esc(u.position || '—')}</td>
-        </tr>
+        <div class="dash-user-item">
+          <div class="dash-user-avatar">${esc((u.full_name || '?').charAt(0))}</div>
+          <div class="dash-user-info">
+            <div class="dash-user-name">${esc(u.full_name || '—')}</div>
+            <div class="dash-user-pos">${esc(u.position || '—')}</div>
+          </div>
+        </div>
       `).join('');
     } else {
-      usersContainer.innerHTML = '<tr><td colspan="2" style="text-align: center; color: var(--dash-muted);">Нет данных</td></tr>';
+      usersContainer.innerHTML = '<div style="color: var(--dash-muted); font-size: 14px; text-align: center; margin-top: 20px;">Нет данных</div>';
     }
   }
 
@@ -1038,14 +1047,19 @@ async function loadDashboard() {
   const medbookContainer = $('dash-medbook-container');
   if (medbookContainer) {
     if (medbookAlerts.length) {
-      medbookContainer.innerHTML = medbookAlerts.slice(0, 4).map(u => `
-        <tr>
-          <td style="color: #fff;">${esc(u.full_name)}</td>
-          <td style="color: var(--accent); font-weight: 600;">Истекает</td>
-        </tr>
-      `).join('');
+      medbookContainer.innerHTML = medbookAlerts.slice(0, 5).map(u => {
+        const isExpiring = u.medbook_status === 'expiring';
+        return `
+          <div class="dash-alert-item">
+            <div class="dash-alert-name">${esc(u.full_name)}</div>
+            <div class="dash-alert-status ${isExpiring ? 'amber' : 'red'}">
+              ${isExpiring ? 'Истекает' : 'Просрочена'}
+            </div>
+          </div>
+        `;
+      }).join('');
     } else {
-      medbookContainer.innerHTML = '<tr><td colspan="2" style="text-align: center; color: var(--dash-muted);">Все в порядке</td></tr>';
+      medbookContainer.innerHTML = '<div style="color: var(--dash-muted); font-size: 14px; text-align: center; margin-top: 20px;">Все в порядке</div>';
     }
   }
 }

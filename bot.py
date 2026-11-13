@@ -13,6 +13,7 @@ import traceback
 import base64
 import uuid
 import time
+import bleach
 from datetime import datetime, date, timezone as _tz
 from contextlib import contextmanager
 
@@ -76,6 +77,22 @@ def _check_rate_limit(ip):
 def _reset_rate_limit(ip):
     with _login_lock:
         _login_attempts.pop(ip, None)
+
+# ============= БЕЗОПАСНОСТЬ HTML (XSS) =============
+ALLOWED_TAGS = ['p', 'br', 'strong', 'b', 'i', 'em', 'u', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'blockquote', 'a', 'span', 'div', 'img']
+ALLOWED_ATTRS = {
+    'a': ['href', 'target', 'rel'],
+    'td': ['colspan', 'rowspan'],
+    'th': ['colspan', 'rowspan'],
+    'img': ['src', 'alt', 'width', 'height'],
+    '*': ['style', 'class']
+}
+
+def sanitize_html(html_str):
+    if not html_str:
+        return ""
+    # Очищаем HTML, разрешая только безопасные теги
+    return bleach.clean(html_str, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS, strip=True)
 
 # ============= ПРАВА =============
 PERMISSIONS_LIST = [
@@ -247,7 +264,8 @@ async def _cleanup_sessions_loop():
             def _do_cleanup():
                 with get_conn() as conn:
                     with conn.cursor() as cur:
-                        cur.execute("DELETE FROM web_sessions WHERE last_used_at < NOW() - INTERVAL '%s days'" % int(SESSION_TTL_DAYS))
+                        # Параметризованный запрос для безопасности
+                        cur.execute("DELETE FROM web_sessions WHERE last_used_at < NOW() - INTERVAL %s", (f"{int(SESSION_TTL_DAYS)} days",))
                         return cur.rowcount
             count = await _run(_do_cleanup)
             if count: logging.info(f"🧹 Очищено старых сессий: {count}")
@@ -620,9 +638,15 @@ def _sync_user_has_perm(user, perm):
 
 # ============= AUTH =============
 async def get_auth_user(request):
-    try: body = await request.json()
-    except Exception: return None, 401
-    token = body.get("webToken") or ""
+    try:
+        # Пытаемся получить токен из query (для загрузки файлов) или из JSON
+        token = request.query.get("token") or request.query.get("webToken")
+        if not token:
+            body = await request.json()
+            token = body.get("webToken") or ""
+    except Exception:
+        return None, 401
+        
     if not token: return None, 401
     user_id = await _run(_sync_get_session_user, token)
     if not user_id: return None, 401
@@ -1405,6 +1429,10 @@ async def handle_admin_standard_add(request):
     if len(title) > 200: return web.json_response({"error": "title_too_long"}, status=400)
     if len(text) > 200000: return web.json_response({"error": "text_too_long"}, status=400)
 
+    # XSS CLEANING
+    if content_type == 'text':
+        text = sanitize_html(text)
+
     if not can_publish:
         status = "pending"
         proposed_by = admin.get("full_name") or admin.get("login")
@@ -1436,6 +1464,10 @@ async def handle_admin_standard_update(request):
     if "title" in updates and len(updates["title"]) > 200: return web.json_response({"error": "title_too_long"}, status=400)
     if "body" in updates and not updates["body"]: return web.json_response({"error": "text_required"}, status=400)
     if "body" in updates and len(updates["body"]) > 200000: return web.json_response({"error": "text_too_long"}, status=400)
+
+    # XSS CLEANING
+    if updates.get("content_type") == "text" and "body" in updates:
+        updates["body"] = sanitize_html(updates["body"])
 
     set_clause = sql.SQL(", ").join(sql.SQL("{} = %s").format(sql.Identifier(k)) for k in updates)
     query = sql.SQL("UPDATE standards SET {} WHERE id = %s").format(set_clause)
@@ -2112,38 +2144,57 @@ async def handle_questions_staff(request):
 
 # ============= UPLOAD =============
 async def handle_admin_upload(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-        
-    b64 = body.get("image_base64") or body.get("file_base64")
-    filename = body.get("filename") or "file.bin"
+    # Получаем токен из query-параметров
+    token = request.query.get("token") or request.query.get("webToken")
+    if not token:
+        return web.json_response({"error": "unauthorized"}, status=401)
     
-    if not b64: return web.json_response({"error": "invalid_file"}, status=400)
+    user_id = await _run(_sync_get_session_user, token)
+    if not user_id:
+        return web.json_response({"error": "unauthorized"}, status=401)
     
-    try:
-        if "," in b64:
-            header, data = b64.split(",", 1)
-        else:
-            data = b64
+    admin = await _run(_sync_get_user, user_id)
+    if not admin or not admin.get("is_admin"):
+        return web.json_response({"error": "forbidden"}, status=403)
 
-        ext = os.path.splitext(filename)[1]
-        if not ext: ext = ".bin"
+    try:
+        # Читаем Multipart данные
+        reader = await request.multipart()
+        field = await reader.next()
         
+        if not field or field.name != 'file':
+            return web.json_response({"error": "invalid_file"}, status=400)
+            
+        filename = field.filename
+        if not filename:
+            return web.json_response({"error": "filename_required"}, status=400)
+            
+        ext = os.path.splitext(filename)[1]
+        if not ext:
+            ext = ".bin"
+            
         new_name = f"{uuid.uuid4().hex}{ext}"
         
         data_dir = os.getenv("DATA_DIR", "/data")
         upload_dir = os.path.join(data_dir, "uploads")
         os.makedirs(upload_dir, exist_ok=True)
         
-        with open(os.path.join(upload_dir, new_name), "wb") as f:
-            f.write(base64.b64decode(data))
-            
+        file_path = os.path.join(upload_dir, new_name)
+        
+        # Сохраняем файл по частям, чтобы не забить память
+        with open(file_path, "wb") as f:
+            while True:
+                chunk = await field.read_chunk()
+                if not chunk:
+                    break
+                f.write(chunk)
+                
         return web.json_response({"ok": True, "url": f"/uploads/{new_name}", "name": filename})
+        
     except Exception as e:
         logging.error(f"Upload error: {e}")
         return web.json_response({"error": "upload_failed"}, status=500)
+
 
 async def handle_uploaded_file(request):
     filename = request.match_info['filename']

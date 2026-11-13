@@ -637,6 +637,8 @@ function cleanHTML(html) {
     clean = clean.replace(/<meta[^>]*>/gi, '');
     clean = clean.replace(/<link[^>]*>/gi, '');
     clean = clean.replace(/\s*(class|id)="[^"]*"/gi, '');
+    clean = clean.replace(/font-size\s*:\s*[^;"]+;?/gi, '');
+    clean = clean.replace(/line-height\s*:\s*[^;"]+;?/gi, '');
     clean = clean.replace(/<p><br><\/p>/gi, '');
     clean = clean.replace(/<p>&nbsp;<\/p>/gi, '');
     return clean.trim();
@@ -2257,7 +2259,7 @@ async function loadStandards() {
             </div>
             ${n.image_url ? `<img src="${esc(n.image_url)}" style="max-height: 160px; border-radius: 16px; margin-bottom: 16px; display: block;">` : ''}
             <div class="pc-title"><span class="tag gray">${esc(n.number || '—')}</span> <span class="tag purple" style="margin-right:8px;">${esc(n.group_name || 'Общее')}</span> ${esc(n.title)}</div>
-            <div class="pc-body">${esc(n.body)}</div>
+            <div class="pc-body">${esc(n.body.replace(/<[^>]*>?/gm, ''))}</div>
             <div class="pc-actions">
               <button class="btn green small" data-approve="${n.id}">✅ Согласовать и опубликовать</button>
               <button class="btn danger small" data-reject="${n.id}">❌ Отклонить</button>

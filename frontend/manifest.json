@@ -1,14 +1,12 @@
 {
-  "name": "Wokker — Кабинет сотрудника",
+  "name": "Wokker · Кабинет сотрудника",
   "short_name": "Wokker",
-  "description": "Внутренний портал сети ресторанов Wokker",
+  "description": "Корпоративный портал для сотрудников Wokker",
   "start_url": "/",
-  "scope": "/",
   "display": "standalone",
-  "background_color": "#F8F9FA",
-  "theme_color": "#FF3B30",
+  "background_color": "#F8F5F2",
+  "theme_color": "#F8F5F2",
   "orientation": "portrait",
-  "lang": "ru",
   "icons": [
     {
       "src": "/static/icon-192.svg",

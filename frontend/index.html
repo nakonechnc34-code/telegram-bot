@@ -385,6 +385,7 @@
 const TOKEN_KEY = 'wokker_staff_token';
 const SEEN_NEWS_KEY = 'wokker_seen_news';
 const LOGIN_RE = /^[a-z]{3}\d{2}$/;
+const VAPID_PUBLIC_KEY = "YOUR_PUBLIC_KEY_HERE"; // <-- ВСТАВЬТЕ ВАШ ПУБЛИЧНЫЙ КЛЮЧ
 
 let BOOT = null;
 let currentStandardsData = [];
@@ -674,15 +675,12 @@ function renderProfileFromBoot() {
       ${medbookHtml}
 
       <div class="actions-block">
-        <!-- Кнопка включения PUSH-уведомлений -->
         <button class="action-btn" id="enable-push-btn" style="display: none; background: var(--green); color: var(--green-text);">
             🔔 Включить уведомления
         </button>
 
-        <!-- Кнопка Табеля (скрыта по умолчанию) -->
         <a href="/timesheet" id="open-timesheet-btn" class="action-btn" style="display:none; background: linear-gradient(135deg, #00B0FF 0%, #007AFF 100%); color: #fff; text-decoration: none; border: none; box-shadow: 0 8px 24px rgba(0,122,255,0.3);">⏱ Открыть Табель</a>
 
-        <!-- Кнопка Академии -->
         <a href="/academy" class="action-btn" style="background: linear-gradient(135deg, #FF007F 0%, #FF7A00 100%); color: #fff; text-decoration: none; border: none; box-shadow: 0 8px 24px rgba(255,0,127,0.3);">🎓 Перейти в Академию</a>
         
         ${p.is_admin ? `<button class="action-btn admin" id="open-admin-btn">🛠 Открыть админ-панель</button>` : ''}
@@ -692,7 +690,6 @@ function renderProfileFromBoot() {
     </div>
   `;
 
-  // Показываем кнопку Табеля, если есть доступ
   const timesheetBtn = $('open-timesheet-btn');
   if (timesheetBtn && BOOT.profile.can_access_timesheet) {
     timesheetBtn.style.display = 'flex';
@@ -710,7 +707,6 @@ function renderProfileFromBoot() {
   const adminBtn = $('open-admin-btn');
   if (adminBtn) adminBtn.addEventListener('click', () => { window.location.href = '/admin'; });
 
-  // Инициализация push-уведомлений
   initPushNotifications();
 }
 
@@ -724,44 +720,48 @@ async function logout() {
 }
 
 /* ================== PUSH NOTIFICATIONS ================== */
-async function initPushNotifications() {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    console.log('Push-уведомления не поддерживаются на этом устройстве');
-    return;
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
   }
+  return outputArray;
+}
+
+async function initPushNotifications() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
 
   try {
     const registration = await navigator.serviceWorker.ready;
-    
-    // Проверяем текущий статус разрешения
-    if (Notification.permission === 'granted') {
-      return; // Уже разрешено, кнопку не показываем
-    }
-    
-    if (Notification.permission === 'denied') {
-      return; // Запрещено пользователем в настройках браузера
-    }
+    let subscription = await registration.pushManager.getSubscription();
 
-    // Показываем кнопку, если разрешение еще не выдано
-    const btn = $('enable-push-btn');
-    if (btn) {
-      btn.style.display = 'flex';
-      
-      // Удаляем старые слушатели, чтобы не было дублей при повторном рендере
-      const newBtn = btn.cloneNode(true);
-      btn.parentNode.replaceChild(newBtn, btn);
-      
-      newBtn.addEventListener('click', async () => {
-        const permission = await Notification.requestPermission();
-        if (permission === 'granted') {
-          newBtn.style.display = 'none';
-          showToast('Уведомления включены!');
-          // Здесь в будущем можно вызвать функцию для отправки токена подписки на сервер
-          // await subscribeUserToPush(registration);
-        } else {
-          showToast('Вы отклонили уведомления', 'error');
-        }
-      });
+    if (!subscription && Notification.permission !== 'denied') {
+      const btn = $('enable-push-btn');
+      if (btn) {
+        btn.style.display = 'flex';
+        const newBtn = btn.cloneNode(true);
+        btn.parentNode.replaceChild(newBtn, btn);
+        
+        newBtn.addEventListener('click', async () => {
+          const permission = await Notification.requestPermission();
+          if (permission === 'granted') {
+            subscription = await registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+            });
+            await api('/api/push/subscribe', { subscription });
+            newBtn.style.display = 'none';
+            showToast('Уведомления включены!');
+          } else {
+            showToast('Вы отклонили уведомления', 'error');
+          }
+        });
+      }
+    } else if (subscription) {
+        await api('/api/push/subscribe', { subscription });
     }
   } catch (e) {
     console.error('Ошибка инициализации PWA:', e);
@@ -1062,7 +1062,6 @@ function drawStandardsList() {
   }
 
   box.innerHTML = filtered.map(s => {
-    // Если картинки нет, не выводим серую заглушку с книгой
     const imageHtml = s.image_url 
       ? `<img src="${esc(s.image_url)}" class="std-img">` 
       : '';
@@ -1081,7 +1080,6 @@ function drawStandardsList() {
   }).join('');
 }
 
-// Функция принудительного скачивания
 async function downloadFile(url, filename) {
   try {
     showToast('Скачивание началось...');
@@ -1143,7 +1141,6 @@ function showStandardDetail(id) {
     `;
   }
 
-  // ВЫВОДИМ В КРАСИВОЙ ОБЕРТКЕ
   $('standard-detail-box').innerHTML = `
     <div class="std-detail-page">
       <div class="std-detail-meta">
@@ -1211,14 +1208,12 @@ $('send-question').addEventListener('click', async function() {
   }
 });
 
-/* ================== PWA ================== */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   });
 }
 
-/* ================== INIT ================== */
 (async function init() {
   if (!getToken()) { showLogin(); return; }
   await loadAndRender();

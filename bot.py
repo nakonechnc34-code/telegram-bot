@@ -26,8 +26,8 @@ from pywebpush import webpush, WebPushException
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 # ============= PUSH SETTINGS =============
-VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "YOUR_PUBLIC_KEY_HERE")
-VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "YOUR_PRIVATE_KEY_HERE")
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "BMwTeMsr3z1qBO1igGp9Fh2I3ZtAG7ZiuwZiKpCbu3na77MFJJwN2fvk2agYtR0MgjxX_CDjhpfamLV0oBR0TC4")
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "gy-5yLP8ymvrjDzf43zsSjWkLbuknlw11wQyI6Ef1kI")
 VAPID_CLAIMS = {"sub": "mailto:admin@wokker.ru"}
 
 # ============= JSON SERIALIZER =============
@@ -1912,7 +1912,6 @@ def _sync_save_cell(user_id, target_uid, work_date, hours):
                 """, (target_uid, work_date, hours))
 
 def _check_can_edit_user(editor_user, target_uid):
-    """Проверяет, имеет ли текущий юзер право редактировать target_uid"""
     if editor_user["is_super_admin"] or (editor_user.get("position") or "").strip().upper() == "HR":
         return True
     if editor_user["user_id"] == target_uid:

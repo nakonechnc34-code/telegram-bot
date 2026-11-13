@@ -1400,11 +1400,10 @@ async def handle_admin_standard_add(request):
     file_url = body.get("file_url") or ""
     file_name = body.get("file_name") or ""
     
-    # Разделяем ошибки для удобства отладки
     if not title: return web.json_response({"error": "title_required"}, status=400)
     if not text: return web.json_response({"error": "text_required"}, status=400)
     if len(title) > 200: return web.json_response({"error": "title_too_long"}, status=400)
-    if len(text) > 200000: return web.json_response({"error": "text_too_long"}, status=400) # Увеличили лимит
+    if len(text) > 200000: return web.json_response({"error": "text_too_long"}, status=400)
 
     if not can_publish:
         status = "pending"
@@ -1436,7 +1435,7 @@ async def handle_admin_standard_update(request):
     if "title" in updates and not updates["title"]: return web.json_response({"error": "title_required"}, status=400)
     if "title" in updates and len(updates["title"]) > 200: return web.json_response({"error": "title_too_long"}, status=400)
     if "body" in updates and not updates["body"]: return web.json_response({"error": "text_required"}, status=400)
-    if "body" in updates and len(updates["body"]) > 200000: return web.json_response({"error": "text_too_long"}, status=400) # Увеличили лимит
+    if "body" in updates and len(updates["body"]) > 200000: return web.json_response({"error": "text_too_long"}, status=400)
 
     set_clause = sql.SQL(", ").join(sql.SQL("{} = %s").format(sql.Identifier(k)) for k in updates)
     query = sql.SQL("UPDATE standards SET {} WHERE id = %s").format(set_clause)
@@ -1965,7 +1964,6 @@ async def handle_admin_change_password(request):
             cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin["user_id"], "change_password", "user", str(admin["user_id"]), ""))
     return web.json_response({"ok": True})
 
-# ============= ДИАГНОСТИКА =============
 async def handle_admin_debug_users(request):
     admin, err = await get_admin_user(request)
     if err: return denied(err)
@@ -1976,7 +1974,6 @@ async def handle_admin_debug_users(request):
             rows = [dict(r) for r in cur.fetchall()]
     return web.json_response({"count": len(rows), "users": rows})
 
-# ============= BOOTSTRAP =============
 def _sync_bootstrap(user_id):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:

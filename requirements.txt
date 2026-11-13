@@ -1,3 +1,5 @@
 aiohttp
 psycopg2-binary
 bleach==6.1.0
+pywebpush==2.0.0
+py-vapid==1.9.0

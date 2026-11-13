@@ -184,7 +184,15 @@
   .std-detail-number { display: inline-block; background: var(--accent-soft); color: var(--accent); padding: 6px 12px; border-radius: 100px; font-size: 13px; font-weight: 800; margin-bottom: 16px; }
   .std-detail-title { font-size: 32px; font-weight: 800; margin-bottom: 24px; line-height: 1.2; letter-spacing: -1px; }
   .std-detail-img { width: 100%; height: auto; border-radius: var(--radius); margin-bottom: 24px; box-shadow: var(--shadow); display: block; object-fit: contain; }
-  .std-detail-text { font-size: 17px; color: #333; line-height: 1.7; white-space: pre-wrap; font-weight: 500; }
+  
+  /* Стили для визуального редактора (Rich Text) */
+  .std-detail-text { font-size: 17px; color: #333; line-height: 1.7; font-weight: 500; }
+  .std-detail-text p { margin-bottom: 12px; }
+  .std-detail-text ul, .std-detail-text ol { margin-left: 20px; margin-bottom: 12px; }
+  .std-detail-text li { margin-bottom: 6px; }
+  .std-detail-text b, .std-detail-text strong { font-weight: 800; }
+  .std-detail-text h1, .std-detail-text h2, .std-detail-text h3 { margin-top: 20px; margin-bottom: 10px; color: var(--text-main); font-weight: 800; }
+  .std-detail-text span { font-family: inherit !important; } /* Сохраняем шрифт приложения, но оставляем цвета */
 
   /* Стили для красивой таблицы внутри стандарта */
   .std-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top: 16px; background: #fff; border-radius: var(--radius-sm); box-shadow: var(--shadow); border: 1px solid var(--border); }
@@ -965,7 +973,7 @@ function drawStandardsList() {
           ${s.number ? `<div class="std-number">${esc(s.number)}</div>` : ''}
           <div class="std-group-tag">${esc(s.group_name || 'Общее')}</div>
           <div class="std-title">${esc(s.title)}</div>
-          <div class="std-snippet">${esc(s.body)}</div>
+          <div class="std-snippet">${esc(s.body.replace(/<[^>]*>?/gm, ''))}</div>
         </div>
       </div>
     `;
@@ -999,7 +1007,8 @@ function showStandardDetail(id) {
     `;
     contentHtml = tableHtml;
   } else {
-    contentHtml = `<div class="std-detail-text">${esc(s.body)}</div>`;
+    // Рендер текста (Rich Text) - используем innerHTML, чтобы сохранить форматирование
+    contentHtml = `<div class="std-detail-text">${s.body}</div>`;
   }
 
   // Блок с прикрепленным файлом

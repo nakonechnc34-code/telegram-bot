@@ -1,2 +1,3 @@
 aiohttp
 psycopg2-binary
+bleach==6.1.0

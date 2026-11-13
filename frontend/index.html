@@ -597,6 +597,9 @@ function renderProfileFromBoot() {
       ${medbookHtml}
 
       <div class="actions-block">
+        <!-- НОВАЯ КНОПКА ТАБЕЛЯ (скрыта по умолчанию) -->
+        <a href="/timesheet" id="open-timesheet-btn" class="action-btn" style="display:none; background: linear-gradient(135deg, #00B0FF 0%, #007AFF 100%); color: #fff; text-decoration: none; border: none; box-shadow: 0 8px 24px rgba(0,122,255,0.3);">⏱ Открыть Табель</a>
+
         <!-- НОВАЯ КНОПКА АКАДЕМИИ -->
         <a href="/academy" class="action-btn" style="background: linear-gradient(135deg, #FF007F 0%, #FF7A00 100%); color: #fff; text-decoration: none; border: none; box-shadow: 0 8px 24px rgba(255,0,127,0.3);">🎓 Перейти в Академию</a>
         
@@ -606,6 +609,12 @@ function renderProfileFromBoot() {
       </div>
     </div>
   `;
+
+  // Показываем кнопку Табеля, если есть доступ
+  const timesheetBtn = $('open-timesheet-btn');
+  if (timesheetBtn && BOOT.profile.can_access_timesheet) {
+    timesheetBtn.style.display = 'flex';
+  }
 
   $('logout-btn').addEventListener('click', logout);
   $('report-bug-btn').addEventListener('click', () => {

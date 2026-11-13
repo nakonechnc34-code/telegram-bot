@@ -39,6 +39,14 @@
     --shadow-hover: 0 16px 40px rgba(0,0,0,0.1); 
     --shadow-lg: 0 24px 64px rgba(0,0,0,0.14);
     --font: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    
+    /* Переменные для темного дашборда */
+    --dash-bg: #1e2229;
+    --dash-card: #272c35;
+    --dash-text: #ffffff;
+    --dash-muted: #8e96a3;
+    --dash-accent: #f5c518; /* Желтый из референса */
+    --dash-blue: #3b82f6;
   }
   
   * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
@@ -168,40 +176,86 @@
   .search-bar input { flex: 1; max-width: 400px; border: 1px solid var(--border); border-radius: 100px; padding: 14px 24px; font-size: 15px; outline: none; background: #fff; color: var(--text-main); transition: all 0.2s; box-shadow: var(--shadow-sm); }
   .search-bar input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
 
-  /* DASHBOARD */
-  .dash-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; align-items: start; }
-  .dash-main { display: flex; flex-direction: column; gap: 24px; }
-  .dash-side { display: flex; flex-direction: column; gap: 24px; }
+  /* ================== DARK DASHBOARD THEME ================== */
+  #page-content.dark-dash {
+    background: var(--dash-bg);
+    margin: -32px -40px;
+    padding: 32px 40px;
+    min-height: calc(100vh - 85px);
+    color: var(--dash-text);
+  }
   
-  .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-  .stat-card { padding: 24px; position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; min-height: 120px; }
-  .stat-card::before { content: ''; position: absolute; top: -30px; right: -30px; width: 100px; height: 100px; background: #F2F2F7; border-radius: 50%; filter: blur(10px); z-index: 0; transition: all 0.3s; }
-  .stat-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-hover); }
-  .stat-card:hover::before { transform: scale(1.2); }
-  .stat-card.green::before { background: var(--green-soft); }
-  .stat-card.amber::before { background: var(--amber-soft); }
-  .stat-card.accent::before { background: var(--accent-soft); }
-  .stat-card > * { position: relative; z-index: 1; }
-  .stat-card .label { font-size: 13px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-  .stat-card .value { font-size: 32px; font-weight: 800; letter-spacing: -1px; color: var(--text-main); line-height: 1.1; margin-top: 8px; }
-  .stat-card .hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
-  .stat-card.accent .value { color: var(--accent); }
-  .stat-card.green .value { color: #1B7A36; }
-  .stat-card.amber .value { color: #C77700; }
+  /* Topbar dark overrides when dashboard is active */
+  body.dash-active .topbar { background: var(--dash-bg); border-bottom-color: rgba(255,255,255,0.05); box-shadow: none; }
+  body.dash-active .topbar-title { color: #fff; }
+  body.dash-active .topbar-search { background: rgba(255,255,255,0.05); color: var(--dash-muted); }
+  body.dash-active .topbar-search input { color: #fff; }
+  body.dash-active .topbar-icon-btn { background: rgba(255,255,255,0.05); color: var(--dash-muted); }
+  
+  .dash-layout {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 24px;
+  }
+  
+  .dash-row-1 { grid-column: 1 / -1; margin-bottom: 8px; }
+  .dash-section-title { font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 16px; }
+  
+  /* Carousel */
+  .dash-carousel-wrap { position: relative; }
+  .dash-carousel { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: none; scroll-behavior: smooth; }
+  .dash-carousel::-webkit-scrollbar { display: none; }
+  .dash-rest-card { flex: 0 0 220px; background: var(--dash-card); border-radius: 16px; overflow: hidden; position: relative; cursor: pointer; transition: transform 0.2s; }
+  .dash-rest-card:hover { transform: translateY(-4px); }
+  .dash-rest-img { width: 100%; height: 120px; object-fit: cover; background: #333; }
+  .dash-rest-info { padding: 16px; }
+  .dash-rest-name { font-weight: 600; font-size: 15px; margin-bottom: 8px; }
+  .dash-rest-stars { color: var(--dash-accent); font-size: 12px; letter-spacing: 2px; margin-bottom: 12px; }
+  .dash-rest-link { font-size: 12px; color: var(--dash-blue); text-decoration: none; display: inline-block; }
+  
+  /* Chart area */
+  .dash-chart-card { background: var(--dash-card); border-radius: 16px; padding: 24px; }
+  .dash-chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+  .dash-chart-toggles { display: flex; gap: 8px; background: rgba(255,255,255,0.05); padding: 4px; border-radius: 100px; }
+  .dash-chart-toggle { padding: 6px 16px; border-radius: 100px; font-size: 13px; font-weight: 500; color: var(--dash-muted); transition: all 0.2s; }
+  .dash-chart-toggle.active { background: #fff; color: #000; }
+  .dash-chart-area { position: relative; height: 200px; width: 100%; }
+  .dash-chart-svg { width: 100%; height: 100%; overflow: visible; }
+  .dash-chart-labels { display: flex; justify-content: space-between; margin-top: 16px; color: var(--dash-muted); font-size: 12px; }
+  
+  /* Top Lists */
+  .dash-list-card { background: var(--dash-card); border-radius: 16px; padding: 24px; height: 100%; }
+  .dash-list { display: flex; flex-direction: column; gap: 16px; margin-top: 20px; }
+  .dash-list-item { display: flex; align-items: center; gap: 16px; padding: 12px; background: rgba(255,255,255,0.02); border-radius: 12px; border-left: 3px solid transparent; transition: all 0.2s; }
+  .dash-list-item:hover { background: rgba(255,255,255,0.05); }
+  .dash-list-item.yellow { border-left-color: var(--dash-accent); }
+  .dash-list-avatar { width: 44px; height: 44px; border-radius: 50%; background: #333; object-fit: cover; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; }
+  .dash-list-content { flex: 1; min-width: 0; }
+  .dash-list-title { font-size: 14px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dash-list-sub { font-size: 12px; color: var(--dash-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dash-list-price { font-size: 14px; font-weight: 700; color: var(--dash-accent); white-space: nowrap; }
+  .dash-list-price.blue { color: var(--dash-blue); }
 
-  .quick-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .quick-action-card { padding: 20px; display: flex; align-items: center; gap: 16px; cursor: pointer; }
-  .quick-action-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); border-color: rgba(0,0,0,0.1); }
-  .quick-action-card .ico { width: 48px; height: 48px; border-radius: 16px; background: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 24px; }
-  .quick-action-card .text { font-weight: 700; font-size: 15px; }
-
-  .feed-list { display: flex; flex-direction: column; gap: 12px; }
-  .feed-item { display: flex; gap: 16px; padding: 16px; border-radius: 16px; background: #FAFAFA; border: 1px solid var(--border); }
-  .feed-icon { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
-  .feed-content { flex: 1; }
-  .feed-title { font-weight: 700; font-size: 14px; margin-bottom: 2px; }
-  .feed-desc { font-size: 13px; color: var(--text-muted); }
-  .feed-time { font-size: 11px; color: var(--text-muted); margin-top: 4px; font-weight: 600; }
+  /* Bottom Grid */
+  .dash-bottom-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-top: 24px; grid-column: 1 / -1; }
+  .dash-bottom-card { background: var(--dash-card); border-radius: 16px; padding: 24px; }
+  .dash-table { width: 100%; border-collapse: collapse; }
+  .dash-table th { text-align: left; font-size: 11px; color: var(--dash-muted); padding: 0 0 16px 0; font-weight: 500; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .dash-table td { padding: 12px 0; font-size: 13px; color: #fff; border-bottom: 1px solid rgba(255,255,255,0.02); }
+  .dash-table tr:last-child td { border-bottom: none; }
+  .dash-table td:last-child { text-align: right; }
+  
+  @media (max-width: 1100px) {
+    .dash-layout { grid-template-columns: 1fr; }
+    .dash-bottom-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 900px) {
+    #page-content.dark-dash { margin: -20px; padding: 20px; }
+  }
+  @media (max-width: 480px) {
+    #page-content.dark-dash { margin: -16px; padding: 16px; }
+  }
+  /* ================== END DARK DASHBOARD ================== */
 
   /* MODALS */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; backdrop-filter: blur(4px); }
@@ -304,7 +358,6 @@
     .topbar-title { text-align: left; font-size: 18px; }
     .topbar .actions { gap: 8px; }
     .content { padding: 20px; }
-    .dash-layout { grid-template-columns: 1fr; }
     .modal-overlay { padding: 12px; }
     .modal { max-width: 100%; border-radius: 32px; }
     .modal-body { padding: 24px; }
@@ -337,7 +390,6 @@
     .modal-overlay { padding: 0; align-items: flex-end; }
     .modal { border-radius: 32px 32px 0 0; max-height: 90vh; max-height: 90dvh; }
     .stats-grid { grid-template-columns: 1fr; }
-    .quick-actions { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -538,6 +590,7 @@ function showLogin() {
   $('login-error').textContent = '';
   $('login-login').value = '';
   $('login-password').value = '';
+  document.body.classList.remove('dash-active');
 }
 function showApp() { $('login-screen').style.display = 'none'; $('app').style.display = 'block'; }
 
@@ -672,6 +725,16 @@ function navigate(sec) {
   $('page-title').textContent = SECTION_TITLES[sec];
   $('page-actions').innerHTML = '';
   $('page-content').innerHTML = '<div class="loading">Загрузка…</div>';
+  
+  // Переключаем темный режим только для дашборда
+  if (sec === 'dashboard') {
+    document.body.classList.add('dash-active');
+    $('page-content').classList.add('dark-dash');
+  } else {
+    document.body.classList.remove('dash-active');
+    $('page-content').classList.remove('dark-dash');
+  }
+
   const loader = SECTION_LOADERS[sec];
   if (!loader) return;
   Promise.resolve()
@@ -708,139 +771,186 @@ async function refreshCounters() {
   } catch (e) {}
 }
 
-/* ================== DASHBOARD ================== */
+/* ================== DASHBOARD (DARK PREMIUM) ================== */
 async function loadDashboard() {
   let stats = { active: 0, total: 0, new7: 0, new_today: 0, fired: 0, questions_open: 0, news_pending: 0, standards_pending: 0 };
-  let newsList = [];
-  let qsList = [];
+  let newsList = [], qsList = [], usersList = [], restsList = [];
   
-  try {
-    const res = await api('/api/admin/dashboard', {});
-    if (res && res.stats) stats = res.stats;
-  } catch (e) { console.error('Failed to load stats', e); }
-  
-  try {
-    const res = await api('/api/admin/news', {});
-    if (res && res.news) newsList = res.news;
-  } catch (e) {}
-  
-  try {
-    const res = await api('/api/admin/questions', {});
-    if (res && res.questions) qsList = res.questions;
-  } catch (e) {}
+  try { const res = await api('/api/admin/dashboard', {}); if (res && res.stats) stats = res.stats; } catch (e) {}
+  try { const res = await api('/api/admin/news', {}); if (res && res.news) newsList = res.news; } catch (e) {}
+  try { const res = await api('/api/admin/questions', {}); if (res && res.questions) qsList = res.questions; } catch (e) {}
+  try { const res = await api('/api/admin/users', {}); if (res && res.users) usersList = res.users; } catch (e) {}
+  try { const res = await api('/api/admin/restaurants', {}); if (res && res.restaurants) restsList = res.restaurants; } catch (e) {}
 
   const pendingNews = newsList.filter(x => x.status === 'pending');
   const openQs = qsList.filter(x => !x.replied);
-  const canManage = canPublish();
+  const newUsers = usersList.slice(0, 4); // Последние 4
+  
+  // 1. Карусель ресторанов
+  const restCarousel = restsList.slice(0, 5).map(r => `
+    <div class="dash-rest-card" onclick="navigate('restaurants')">
+      <img src="https://images.unsplash.com/photo-1552566626-52f8b828add9?q=80&w=400&auto=format&fit=crop" class="dash-rest-img" alt="${esc(r.name)}">
+      <div class="dash-rest-info">
+        <div class="dash-rest-name">${esc(r.name)}</div>
+        <div class="dash-rest-stars">★★★★★</div>
+        <a href="javascript:void(0)" class="dash-rest-link">Подробнее</a>
+      </div>
+    </div>
+  `).join('');
 
-  let attentionHtml = '';
-  if (canManage && (pendingNews.length > 0 || stats.standards_pending > 0 || openQs.length > 0)) {
-    attentionHtml = `
-      <div class="quick-action-card" style="grid-column: span 2; background: var(--amber-soft); border-color: rgba(255,149,0,0.2);">
-        <div class="ico" style="background: #fff;">⚠️</div>
-        <div>
-          <div class="text" style="color: #C77700;">Требует вашего внимания</div>
-          <div style="font-size: 13px; color: #C77700; opacity: 0.8; margin-top: 4px;">
-            ${pendingNews.length ? `• ${pendingNews.length} новостей на модерации<br>` : ''}
-            ${stats.standards_pending ? `• ${stats.standards_pending} стандартов на согласовании<br>` : ''}
-            ${openQs.length ? `• ${openQs.length} неотвеченных вопросов` : ''}
-          </div>
+  // 2. Вопросы (Top Menus в референсе)
+  const qsHtml = openQs.slice(0, 4).map(q => `
+    <div class="dash-list-item">
+      <div class="dash-list-avatar" style="background: var(--dash-blue);">${esc((q.full_name || 'С').charAt(0))}</div>
+      <div class="dash-list-content">
+        <div class="dash-list-title">${esc(q.full_name || 'Сотрудник')}</div>
+        <div class="dash-list-sub">${esc(q.text)}</div>
+      </div>
+      <button class="btn primary small" style="padding: 4px 12px; font-size: 11px;" onclick="navigate('questions')">Ответить</button>
+    </div>
+  `).join('');
+  if (!qsHtml) qsHtml = '<div style="color: var(--dash-muted); font-size: 14px; text-align: center; margin-top: 20px;">Нет активных вопросов</div>';
+
+  // 3. Новые сотрудники (Table overview)
+  const newUsersHtml = newUsers.map(u => `
+    <tr>
+      <td style="display: flex; align-items: center; gap: 8px;">
+        <div class="dash-list-avatar" style="width: 24px; height: 24px; font-size: 10px; background: #444;">${esc((u.full_name || '?').charAt(0))}</div>
+        ${esc(u.full_name || '—')}
+      </td>
+      <td style="color: var(--dash-muted);">${esc(u.position || '—')}</td>
+      <td><span style="color: var(--dash-blue); cursor: pointer;" onclick="navigate('users')">Профиль</span></td>
+    </tr>
+  `).join('');
+  if (!newUsersHtml) newUsersHtml = '<tr><td colspan="3" style="text-align: center; color: var(--dash-muted);">Нет данных</td></tr>';
+
+  // 4. Модерация (Top offers)
+  let modHtml = '';
+  if (pendingNews.length) {
+    modHtml += pendingNews.slice(0, 2).map(n => `
+      <div class="dash-list-item">
+        <div class="dash-list-avatar" style="background: var(--dash-accent); color: #000;">📰</div>
+        <div class="dash-list-content">
+          <div class="dash-list-title">${esc(n.title)}</div>
+          <div class="dash-list-sub">Новость на модерации</div>
         </div>
-      </div>`;
+        <div class="dash-list-price">Модерация</div>
+      </div>
+    `).join('');
   }
-
-  let recentNewsHtml = newsList.slice(0, 3).map(n => `
-    <div class="feed-item">
-      <div class="feed-icon" style="background: var(--blue-soft); color: #0055CC;">📰</div>
-      <div class="feed-content">
-        <div class="feed-title">${esc(n.title)}</div>
-        <div class="feed-desc">${n.status === 'published' ? 'Опубликовано' : 'На модерации'} · ${esc(n.level)}</div>
-        <div class="feed-time">${fmtDate(n.created_at, true)}</div>
+  if (stats.standards_pending > 0) {
+    modHtml += `
+      <div class="dash-list-item">
+        <div class="dash-list-avatar" style="background: var(--dash-blue);">📚</div>
+        <div class="dash-list-content">
+          <div class="dash-list-title">Новые стандарты</div>
+          <div class="dash-list-sub">Ожидают согласования</div>
+        </div>
+        <div class="dash-list-price blue">${stats.standards_pending} шт.</div>
       </div>
-    </div>
-  `).join('');
-  if (!recentNewsHtml) recentNewsHtml = '<div style="color: var(--text-muted); font-size: 14px;">Нет новостей</div>';
+    `;
+  }
+  if (!modHtml) modHtml = '<div style="color: var(--dash-muted); font-size: 14px; text-align: center; margin-top: 20px;">Все проверено</div>';
 
-  let recentQsHtml = openQs.slice(0, 3).map(q => `
-    <div class="feed-item">
-      <div class="feed-icon" style="background: var(--green-soft); color: #1B7A36;">💬</div>
-      <div class="feed-content">
-        <div class="feed-title">${esc(q.full_name || 'Сотрудник')}</div>
-        <div class="feed-desc" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 250px;">${esc(q.text)}</div>
-        <div class="feed-time">${fmtDate(q.created_at, true)}</div>
-      </div>
-    </div>
+  // 5. Медкнижки (Top hotels)
+  let medbookAlerts = [];
+  try {
+      const res = await api('/api/admin/medbook-alerts', {});
+      if (res) medbookAlerts = [...(res.expired || []), ...(res.expiring || [])];
+  } catch(e) {}
+  
+  const medbookHtml = medbookAlerts.slice(0, 4).map(u => `
+    <tr>
+      <td style="color: #fff;">${esc(u.full_name)}</td>
+      <td style="color: var(--accent); font-weight: 600;">Истекает</td>
+    </tr>
   `).join('');
-  if (!recentQsHtml) recentQsHtml = '<div style="color: var(--text-muted); font-size: 14px;">Нет новых вопросов</div>';
+  if (!medbookHtml) medbookHtml = '<tr><td colspan="2" style="text-align: center; color: var(--dash-muted);">Все в порядке</td></tr>';
 
+  // Собираем HTML
   $('page-content').innerHTML = `
     <div class="dash-layout">
-      <div class="dash-main">
-        <div class="stats-grid">
-          <div class="stat-card accent">
-            <div class="label">Сотрудники</div>
-            <div class="value">${stats.active || 0}</div>
-            <div class="hint">Активных (из ${stats.total || 0})</div>
-          </div>
-          <div class="stat-card green">
-            <div class="label">Новые за 7 дней</div>
-            <div class="value">+${stats.new7 || 0}</div>
-            <div class="hint">Сегодня: +${stats.new_today || 0}</div>
-          </div>
-          <div class="stat-card amber">
-            <div class="label">Уволенные</div>
-            <div class="value">${stats.fired || 0}</div>
-            <div class="hint">Всего в архиве</div>
-          </div>
-          <div class="stat-card" style="background: var(--purple-soft);">
-            <div class="label" style="color: var(--purple);">Медкнижки</div>
-            <div class="value" style="color: var(--purple);" id="medbook-stat">...</div>
-            <div class="hint" style="color: var(--purple); opacity: 0.8;">Требуют внимания</div>
-          </div>
-        </div>
-
-        <div style="margin-top: 24px;">
-          <h3 style="font-size: 16px; font-weight: 800; margin-bottom: 16px;">Быстрые действия</h3>
-          <div class="quick-actions">
-            ${attentionHtml}
-            ${hasPerm('users_create') ? `<div class="quick-action-card" onclick="navigate('users'); setTimeout(openUserCreate, 300);"><div class="ico">👤</div><div class="text">Добавить сотрудника</div></div>` : ''}
-            ${hasPerm('news_write') || canManage ? `<div class="quick-action-card" onclick="navigate('news'); setTimeout(openNewsAdd, 300);"><div class="ico">📰</div><div class="text">Создать новость</div></div>` : ''}
-            ${hasPerm('standards_edit') || canManage ? `<div class="quick-action-card" onclick="navigate('standards'); setTimeout(openStdAdd, 300);"><div class="ico">📚</div><div class="text">Предложить стандарт</div></div>` : ''}
-            ${hasPerm('questions_reply') ? `<div class="quick-action-card" onclick="navigate('questions');"><div class="ico">💬</div><div class="text">Ответить на вопросы</div></div>` : ''}
+      
+      <!-- TOP RESTAURANTS -->
+      <div class="dash-row-1">
+        <div class="dash-section-title">Наши рестораны</div>
+        <div class="dash-carousel-wrap">
+          <div class="dash-carousel">
+            ${restCarousel}
           </div>
         </div>
       </div>
 
-      <div class="dash-side">
-        <div class="chart-card" style="padding: 24px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h3 style="font-size: 16px; font-weight: 800; margin: 0;">Последние новости</h3>
-            <button class="btn ghost small" onclick="navigate('news')">Все</button>
+      <!-- CHART & QUESTIONS -->
+      <div class="dash-chart-card">
+        <div class="dash-chart-header">
+          <div class="dash-section-title" style="margin: 0;">Статистика активности</div>
+          <div class="dash-chart-toggles">
+            <div class="dash-chart-toggle active">Сотрудники</div>
+            <div class="dash-chart-toggle">Новости</div>
+            <div class="dash-chart-toggle">Вопросы</div>
           </div>
-          <div class="feed-list">${recentNewsHtml}</div>
+        </div>
+        <div class="dash-chart-area">
+          <!-- SVG График (Мокап) -->
+          <svg class="dash-chart-svg" viewBox="0 0 800 200" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="grad1" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" style="stop-color:var(--dash-blue);stop-opacity:0.4" />
+                <stop offset="100%" style="stop-color:var(--dash-blue);stop-opacity:0" />
+              </linearGradient>
+              <linearGradient id="grad2" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" style="stop-color:var(--dash-accent);stop-opacity:0.3" />
+                <stop offset="100%" style="stop-color:var(--dash-accent);stop-opacity:0" />
+              </linearGradient>
+            </defs>
+            <path d="M0,150 C100,150 150,50 250,80 C350,110 450,20 550,50 C650,80 700,150 800,100 L800,200 L0,200 Z" fill="url(#grad1)" />
+            <path d="M0,170 C120,140 180,180 280,130 C380,80 500,120 600,90 C700,60 750,100 800,80 L800,200 L0,200 Z" fill="url(#grad2)" />
+            <path d="M0,150 C100,150 150,50 250,80 C350,110 450,20 550,50 C650,80 700,150 800,100" fill="none" stroke="var(--dash-blue)" stroke-width="3" />
+            <path d="M0,170 C120,140 180,180 280,130 C380,80 500,120 600,90 C700,60 750,100 800,80" fill="none" stroke="var(--dash-accent)" stroke-width="3" />
+          </svg>
+        </div>
+        <div class="dash-chart-labels">
+          <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span>
+        </div>
+      </div>
+
+      <div class="dash-list-card">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div class="dash-section-title" style="margin: 0;">Вопросы сотрудников</div>
+          <div style="color: var(--dash-muted); cursor: pointer;">•••</div>
+        </div>
+        <div class="dash-list">${qsHtml}</div>
+      </div>
+
+      <!-- BOTTOM GRID -->
+      <div class="dash-bottom-grid">
+        
+        <div class="dash-bottom-card">
+          <div class="dash-section-title">Новые сотрудники</div>
+          <table class="dash-table">
+            <thead><tr><th>Имя</th><th>Должность</th><th></th></tr></thead>
+            <tbody>${newUsersHtml}</tbody>
+          </table>
         </div>
 
-        <div class="chart-card" style="padding: 24px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h3 style="font-size: 16px; font-weight: 800; margin: 0;">Вопросы сотрудников</h3>
-            <button class="btn ghost small" onclick="navigate('questions')">Все</button>
+        <div class="dash-bottom-card">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <div class="dash-section-title" style="margin: 0;">На модерации</div>
           </div>
-          <div class="feed-list">${recentQsHtml}</div>
+          <div class="dash-list" style="margin-top: 0;">${modHtml}</div>
         </div>
+
+        <div class="dash-bottom-card">
+          <div class="dash-section-title">Внимание: Медкнижки</div>
+          <table class="dash-table">
+            <thead><tr><th>Сотрудник</th><th>Статус</th></tr></thead>
+            <tbody>${medbookHtml}</tbody>
+          </table>
+        </div>
+
       </div>
     </div>`;
-
-  try {
-    const alerts = await api('/api/admin/medbook-alerts', {});
-    const statEl = $('medbook-stat');
-    if (statEl) {
-      const total = (alerts.expired_count || 0) + (alerts.expiring_count || 0);
-      statEl.textContent = total;
-      if (total > 0) {
-        statEl.style.color = 'var(--accent)';
-      }
-    }
-  } catch(e) {}
 }
 
 /* ================== USERS ================== */

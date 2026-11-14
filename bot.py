@@ -2747,7 +2747,6 @@ async def gzip_middleware(request, handler):
             response.headers["Vary"] = "Accept-Encoding"
     return response
 
-# ============= ИСПРАВЛЕНО: убран nonce, добавлен 'unsafe-inline' для onclick =============
 @web.middleware
 async def security_headers_middleware(request, handler):
     response = await handler(request)
@@ -2759,7 +2758,7 @@ async def security_headers_middleware(request, handler):
 
     csp = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "script-src 'self' 'unsafe-inline'; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data: https://images.unsplash.com; "

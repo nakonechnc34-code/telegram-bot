@@ -23,7 +23,6 @@ from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.extras import RealDictCursor, Json
 from psycopg2 import sql
 from pywebpush import webpush, WebPushException
-from pydantic import BaseModel, Field, ValidationError, field_validator
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -56,31 +55,82 @@ IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
 _session_cache = {}
 _session_cache_lock = threading.Lock()
 
-# ============= PYDANTIC MODELS (Валидация) =============
-class LoginModel(BaseModel):
-    login: str
-    password: str
+# ============= РУЧНАЯ ВАЛИДАЦИЯ ВМЕСТО PYDANTIC =============
+def validate_login_data(body):
+    if not isinstance(body, dict):
+        return None, "invalid_json"
+    login = body.get("login")
+    password = body.get("password")
+    if not isinstance(login, str) or not isinstance(password, str):
+        return None, "invalid_data"
+    login = login.strip().lower()
+    if not LOGIN_RE.match(login):
+        return None, "invalid_login_format"
+    if not password:
+        return None, "password_required"
+    return {"login": login, "password": password}, None
 
-class UserCreateModel(BaseModel):
-    full_name: str = Field(..., max_length=100)
-    password: str = Field(..., min_length=6)
-    phone: Optional[str] = ""
-    birth_date: Optional[str] = ""
-    position: Optional[str] = ""
-    restaurant_key: Optional[str] = ""
-    is_certified: bool = False
-    hire_date: Optional[str] = ""
-    citizenship_id: Optional[int] = None
-    payment_type: str = "hourly"
+def validate_user_create_data(body):
+    if not isinstance(body, dict):
+        return None, "invalid_json"
+    full_name = (body.get("full_name") or "").strip()
+    password = body.get("password") or ""
+    if not full_name or len(full_name) > 100:
+        return None, "invalid_full_name"
+    if not password or len(password) < 6:
+        return None, "invalid_password"
+    payment_type = body.get("payment_type") or "hourly"
+    if payment_type not in ('hourly', 'fixed'):
+        return None, "invalid_payment_type"
+    citizenship_id = body.get("citizenship_id")
+    if citizenship_id == "":
+        citizenship_id = None
+    elif citizenship_id is not None:
+        try:
+            citizenship_id = int(citizenship_id)
+        except (ValueError, TypeError):
+            return None, "invalid_citizenship_id"
+    return {
+        "full_name": full_name,
+        "password": password,
+        "phone": (body.get("phone") or "")[:50],
+        "birth_date": (body.get("birth_date") or "")[:20],
+        "position": (body.get("position") or "")[:100],
+        "restaurant_key": (body.get("restaurant_key") or body.get("restaurant") or "")[:100],
+        "is_certified": bool(body.get("is_certified")),
+        "hire_date": (body.get("hire_date") or "")[:20],
+        "citizenship_id": citizenship_id,
+        "payment_type": payment_type,
+    }, None
 
-    @field_validator('payment_type')
-    def check_payment_type(cls, v):
-        if v not in ('hourly', 'fixed'):
-            raise ValueError('must be hourly or fixed')
-        return v
-
-class TimesheetBulkSaveModel(BaseModel):
-    cells: List[Dict[str, Any]]
+def validate_bulk_save_data(body):
+    if not isinstance(body, dict):
+        return None, "invalid_json"
+    cells = body.get("cells")
+    if not isinstance(cells, list):
+        return None, "invalid_cells"
+    cleaned = []
+    for cell in cells:
+        if not isinstance(cell, dict):
+            return None, "invalid_cell"
+        try:
+            uid = int(cell.get("user_id", 0))
+            hours = float(cell.get("hours", 0))
+        except (ValueError, TypeError):
+            return None, "invalid_cell_data"
+        status = cell.get("status", "work")
+        if status not in ("work", "vacation", "sick", "absent"):
+            return None, "invalid_status"
+        work_date = cell.get("work_date")
+        if not isinstance(work_date, str):
+            return None, "invalid_date"
+        cleaned.append({
+            "user_id": uid,
+            "work_date": work_date,
+            "hours": hours,
+            "status": status,
+        })
+    return {"cells": cleaned}, None
 
 # ============= JSON SERIALIZER =============
 def _json_default(obj):
@@ -760,15 +810,15 @@ async def _enrich_user_with_medbook_status(user):
 async def handle_auth_login(request):
     try: 
         body = await request.json()
-        data = LoginModel(**body)
-    except ValidationError as e:
-        return web.json_response({"error": "invalid_data", "detail": e.errors()}, status=400)
     except Exception: 
         return web.json_response({"error": "invalid_json"}, status=400)
     
-    login = data.login.strip().lower()
-    password = data.password
-    if not LOGIN_RE.match(login): return web.json_response({"error": "invalid_login_format"}, status=400)
+    data, err = validate_login_data(body)
+    if err:
+        return web.json_response({"error": err}, status=400)
+    
+    login = data["login"]
+    password = data["password"]
     
     ip = request.remote or "unknown"
     if not _check_rate_limit(ip):
@@ -788,15 +838,15 @@ async def handle_auth_login(request):
 async def handle_auth_login_staff(request):
     try: 
         body = await request.json()
-        data = LoginModel(**body)
-    except ValidationError as e:
-        return web.json_response({"error": "invalid_data", "detail": e.errors()}, status=400)
     except Exception: 
         return web.json_response({"error": "invalid_json"}, status=400)
+    
+    data, err = validate_login_data(body)
+    if err:
+        return web.json_response({"error": err}, status=400)
         
-    login = data.login.strip().lower()
-    password = data.password
-    if not LOGIN_RE.match(login): return web.json_response({"error": "invalid_login_format"}, status=400)
+    login = data["login"]
+    password = data["password"]
 
     ip = request.remote or "unknown"
     if not _check_rate_limit(ip):
@@ -992,11 +1042,11 @@ async def handle_admin_users(request):
             except Exception: u["medbook"] = {}
     return web.json_response({"users": users})
 
-def _sync_create_user(data: UserCreateModel, existing_logins, admin_id=None):
-    full_name = data.full_name
+def _sync_create_user(data, existing_logins, admin_id=None):
+    full_name = data["full_name"]
     login = _generate_login_for(full_name, existing_logins)
     
-    restaurant_key = data.restaurant_key or ""
+    restaurant_key = data.get("restaurant_key") or ""
     if restaurant_key:
         with get_conn() as conn:
             with conn.cursor() as cur:
@@ -1004,11 +1054,11 @@ def _sync_create_user(data: UserCreateModel, existing_logins, admin_id=None):
                 if not cur.fetchone():
                     return None, "invalid_restaurant"
 
-    pw_hash = hash_password(data.password)
+    pw_hash = hash_password(data["password"])
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("INSERT INTO users (login, password_hash, full_name, phone, birth_date, position, restaurant_key, is_certified, hire_date, citizenship_id, payment_type) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *", 
-                        (login, pw_hash, full_name, data.phone, data.birth_date, data.position, restaurant_key, data.is_certified, data.hire_date, data.citizenship_id, data.payment_type))
+                        (login, pw_hash, full_name, data.get("phone", ""), data.get("birth_date", ""), data.get("position", ""), restaurant_key, data.get("is_certified", False), data.get("hire_date", ""), data.get("citizenship_id"), data.get("payment_type", "hourly")))
             new_user = dict(cur.fetchone())
             cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin_id, "user_create", "user", str(new_user["user_id"]), f"login={login}"))
     return new_user, None
@@ -1021,11 +1071,12 @@ async def handle_admin_user_create(request):
     
     try:
         body = await request.json()
-        data = UserCreateModel(**body)
-    except ValidationError as e:
-        return web.json_response({"error": "validation_error", "detail": e.errors()}, status=400)
     except Exception: 
         return web.json_response({"error": "invalid_json"}, status=400)
+    
+    data, err = validate_user_create_data(body)
+    if err:
+        return web.json_response({"error": err}, status=400)
         
     existing_logins = await _run(_sync_get_all_logins)
     new_user, err_code = await _run(_sync_create_user, data, existing_logins, admin["user_id"])
@@ -2088,18 +2139,19 @@ async def handle_timesheet_bulk_save(request):
     if err: return denied(err)
     try: 
         body = await request.json()
-        data = TimesheetBulkSaveModel(**body)
-    except ValidationError as e:
-        return web.json_response({"error": "validation_error", "detail": e.errors()}, status=400)
     except Exception: 
         return web.json_response({"error": "invalid_json"}, status=400)
     
-    cells = data.cells
+    data, err = validate_bulk_save_data(body)
+    if err:
+        return web.json_response({"error": err}, status=400)
+    
+    cells = data["cells"]
     if not cells: return web.json_response({"ok": True})
     
     unique_uids = set()
     for cell in cells:
-        uid = _safe_int(cell.get("user_id"))
+        uid = cell["user_id"]
         if uid > 0:
             unique_uids.add(uid)
             

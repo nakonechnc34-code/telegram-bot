@@ -31,8 +31,6 @@ DB_URL = os.getenv("DATABASE_URL")
 if not DB_URL:
     raise ValueError("DATABASE_URL is not set")
 
-# ВНИМАНИЕ: Дефолтные ключи оставлены для совместимости.
-# В продакшене обязательно задайте их через переменные окружения!
 VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "BMwTeMsr3z1qBO1igGp9Fh2I3ZtAG7ZiuwZiKpCbu3na77MFJJwN2fvk2agYtR0MgjxX_CDjhpfamLV0oBR0TC4")
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "gy-5yLP8ymvrjDzf43zsSjWkLbuknlw11wQyI6Ef1kI")
 
@@ -2749,31 +2747,24 @@ async def gzip_middleware(request, handler):
             response.headers["Vary"] = "Accept-Encoding"
     return response
 
+# ============= ИСПРАВЛЕНО: убран nonce, добавлен 'unsafe-inline' для onclick =============
 @web.middleware
 async def security_headers_middleware(request, handler):
-    nonce = secrets.token_urlsafe(16)
-    request['csp_nonce'] = nonce
-    
     response = await handler(request)
-    
-    if response.content_type == 'text/html' and response.body:
-        html = response.body.decode('utf-8')
-        html = html.replace('__CSP_NONCE__', nonce)
-        response.body = html.encode('utf-8')
 
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    
+
     csp = (
-        f"default-src 'self'; "
-        f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net; "
-        f"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        f"font-src 'self' https://fonts.gstatic.com; "
-        f"img-src 'self' data: https://images.unsplash.com; "
-        f"connect-src 'self' https://fonts.googleapis.com; "
-        f"frame-ancestors 'none';"
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data: https://images.unsplash.com; "
+        "connect-src 'self' https://fonts.googleapis.com; "
+        "frame-ancestors 'none';"
     )
     response.headers["Content-Security-Policy"] = csp
     return response

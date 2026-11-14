@@ -17,6 +17,7 @@ import bleach
 from datetime import datetime, date, timezone as _tz
 from contextlib import contextmanager
 from typing import Optional, List, Dict, Any
+from decimal import Decimal  # <--- ДОБАВЛЕНО
 
 from aiohttp import web
 from psycopg2.pool import ThreadedConnectionPool
@@ -132,6 +133,8 @@ def validate_bulk_save_data(body):
 def _json_default(obj):
     if isinstance(obj, (datetime, date)):
         return obj.isoformat()
+    if isinstance(obj, Decimal):  # <--- ДОБАВЛЕНО
+        return float(obj)
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 def _json_dumps(data):
@@ -2876,7 +2879,6 @@ app.router.add_post("/api/admin/change-password", handle_admin_change_password)
 # ============= MAIN =============
 async def main():
     port = int(os.getenv("PORT", 8080))
-    # Меняем дефолт на "true", чтобы база всегда обновлялась при старте
     if os.getenv("RUN_MIGRATIONS", "true").lower() == "true":
         init_pool()
         await _run(init_db_and_seed)

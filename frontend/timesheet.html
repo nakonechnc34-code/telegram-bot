@@ -15,82 +15,83 @@
     --green: #34C759; --green-soft: #E8F8EB; 
     --red: #FF3B30; --red-soft: #FFEBEA;
     --amber: #FF9500; --amber-soft: #FFF8E1;
-    --purple: #AF52DE; --purple-soft: #F4E5FB;
     --border: rgba(0,0,0,0.08); --font: 'Inter', sans-serif;
+    --radius: 12px;
   }
   * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
-  body { font-family: var(--font); background: var(--bg); color: var(--text-main); min-height: 100vh; display: flex; flex-direction: column; }
+  body { font-family: var(--font); background: var(--bg); color: var(--text-main); min-height: 100vh; display: flex; flex-direction: column; font-size: 13px; }
   
-  /* HEADER */
-  .header { background: #fff; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 20; box-shadow: 0 2px 10px rgba(0,0,0,0.02); }
-  .logo { font-size: 20px; font-weight: 800; display: flex; align-items: center; gap: 10px; }
-  .btn-close { background: #F2F2F7; padding: 10px 20px; border-radius: 100px; font-weight: 600; color: var(--text-main); text-decoration: none; font-size: 13px; }
+  /* HEADER (Компактный) */
+  .header { background: #fff; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 20; }
+  .logo { font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+  .btn-close { background: #F2F2F7; padding: 6px 14px; border-radius: 100px; font-weight: 600; color: var(--text-main); text-decoration: none; font-size: 12px; }
   
-  /* TABS */
-  .tabs { display: flex; gap: 8px; padding: 12px 24px; background: #fff; border-bottom: 1px solid var(--border); overflow-x: auto; z-index: 15; }
-  .tab { background: none; border: none; padding: 10px 20px; font-weight: 600; font-size: 14px; color: var(--text-muted); border-radius: 100px; cursor: pointer; white-space: nowrap; transition: all 0.2s; }
+  /* TABS (Компактный) */
+  .tabs { display: flex; gap: 4px; padding: 6px 16px; background: #fff; border-bottom: 1px solid var(--border); overflow-x: auto; z-index: 15; }
+  .tab { background: none; border: none; padding: 6px 14px; font-weight: 600; font-size: 13px; color: var(--text-muted); border-radius: 100px; cursor: pointer; white-space: nowrap; transition: all 0.2s; }
   .tab.active { background: var(--accent-soft); color: var(--accent); }
   
   /* CONTENT */
-  .content { padding: 20px; flex: 1; display: flex; flex-direction: column; }
+  .content { padding: 12px; flex: 1; display: flex; flex-direction: column; }
   .section { display: none; height: 100%; }
   .section.active { display: flex; flex-direction: column; animation: fadeIn 0.3s; }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
   
   /* TOOLBAR */
-  .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; background: #fff; padding: 12px 20px; border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); flex-shrink: 0; flex-wrap: wrap; gap: 12px; }
+  .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; background: #fff; padding: 8px 12px; border-radius: var(--radius); box-shadow: 0 2px 8px rgba(0,0,0,0.04); flex-shrink: 0; flex-wrap: wrap; gap: 8px; }
   
-  /* НОВЫЙ ПЕРЕКЛЮЧАТЕЛЬ */
-  .view-toggle { display: flex; background: #F2F2F7; border-radius: 100px; padding: 4px; }
-  .view-toggle button { background: none; border: none; padding: 8px 16px; border-radius: 100px; font-weight: 600; font-size: 14px; color: var(--text-muted); cursor: pointer; transition: all 0.2s; }
-  .view-toggle button.active { background: #fff; color: var(--text-main); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  .view-toggle { display: flex; background: #F2F2F7; border-radius: 100px; padding: 2px; }
+  .view-toggle button { background: none; border: none; padding: 6px 14px; border-radius: 100px; font-weight: 600; font-size: 12px; color: var(--text-muted); cursor: pointer; transition: all 0.2s; }
+  .view-toggle button.active { background: #fff; color: var(--text-main); box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
 
-  .month-selector { display: flex; align-items: center; gap: 16px; }
-  .month-selector button { background: #F2F2F7; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s; }
+  .month-selector { display: flex; align-items: center; gap: 8px; }
+  .month-selector button { background: #F2F2F7; border: none; width: 28px; height: 28px; border-radius: 50%; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s; }
   .month-selector button:hover { background: #E5E5EA; }
-  .month-title { font-size: 18px; font-weight: 700; min-width: 150px; text-align: center; }
+  .month-title { font-size: 14px; font-weight: 700; min-width: 130px; text-align: center; }
   
   .toolbar-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .hint-text { font-size: 12px; color: var(--text-muted); margin-right: 12px; font-weight: 500; }
-  .btn-tool { background: #F2F2F7; border: 1px solid var(--border); padding: 8px 16px; border-radius: 100px; font-weight: 600; font-size: 13px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
+  .hint-text { font-size: 11px; color: var(--text-muted); margin-right: 4px; font-weight: 500; }
+  .btn-tool { background: #F2F2F7; border: 1px solid var(--border); padding: 6px 12px; border-radius: 100px; font-weight: 600; font-size: 12px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 4px; }
   .btn-tool:hover { background: #E5E5EA; }
   .btn-tool.primary { background: var(--accent); color: #fff; border-color: transparent; }
-  .btn-tool.primary:hover { background: #0062CC; }
+  
+  .norm-badge { background:var(--amber-soft); color:#C77700; padding:6px 12px; border-radius:100px; font-weight:700; font-size:12px; }
 
   /* TABLE WRAPPER */
-  .table-scroll { flex: 1; overflow: auto; background: #fff; border-radius: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.06); position: relative; max-height: calc(100vh - 220px); }
+  .table-scroll { flex: 1; overflow: auto; background: #fff; border-radius: var(--radius); box-shadow: 0 2px 12px rgba(0,0,0,0.06); position: relative; max-height: calc(100vh - 160px); }
   table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; }
-  th, td { padding: 8px 6px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); font-size: 13px; text-align: center; white-space: nowrap; }
+  
+  /* Компактные ячейки */
+  th, td { padding: 4px 2px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); font-size: 12px; text-align: center; white-space: nowrap; }
   
   /* Sticky Headers & Columns */
-  thead th { position: sticky; top: 0; background: #F9F9FB; z-index: 10; font-weight: 700; color: var(--text-muted); font-size: 11px; text-transform: uppercase; padding: 12px 6px; }
-  th.sticky-col, td.sticky-col { position: sticky; left: 0; background: #fff; z-index: 5; text-align: left; border-right: 2px solid var(--border); min-width: 200px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; padding-left: 16px; }
-  thead th.sticky-col { z-index: 15; background: #F9F9FB; }
+  thead th { position: sticky; top: 0; background: #F9F9FB; z-index: 10; font-weight: 700; color: var(--text-muted); font-size: 10px; text-transform: uppercase; padding: 6px 2px; }
+  th.sticky-col, td.sticky-col { position: sticky; left: 0; background: #fff; z-index: 5; text-align: left; border-right: 2px solid var(--border); min-width: 150px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; padding-left: 8px; }
+  thead th.sticky-col { z-index: 15; background: #F9F9FB; font-size: 11px; }
   
   /* Выделение выходных */
   th.weekend { color: var(--red); }
 
-  /* Заголовки ресторанов в табеле */
-  .rest-header td { background: #F5F5F7 !important; font-weight: 800; padding: 12px 16px; border-bottom: 2px solid var(--border); text-transform: uppercase; font-size: 13px; letter-spacing: 0.5px; }
+  /* Заголовки ресторанов */
+  .rest-header td { background: #F5F5F7 !important; font-weight: 800; padding: 6px 8px; border-bottom: 2px solid var(--border); text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
   .rest-header td.sticky-col { background: #F5F5F7 !important; color: var(--accent); }
 
-  /* Инпуты в ячейках */
-  .cell-input { width: 100%; min-width: 36px; border: 1px solid transparent; border-radius: 6px; padding: 6px; text-align: center; font-weight: 600; font-size: 13px; background: transparent; transition: all 0.2s; outline: none; }
+  /* Прямой ввод в ячейку */
+  .cell-input { width: 100%; border: 1px solid transparent; border-radius: 4px; text-align: center; font-weight: 600; font-size: 12px; background: transparent; transition: all 0.2s; outline: none; }
   .cell-input:hover { background: #F2F2F7; }
   .cell-input:focus { background: #fff; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
   .cell-input.error { background: #FFEBEA; border-color: var(--red); color: var(--red); }
 
-  /* Прямой ввод в ячейку */
   .cell-input.direct-input {
     width: 100%;
     height: 100%;
-    min-height: 44px;
+    min-height: 32px;
     border: none;
     text-align: center;
     font-weight: 700;
-    font-size: 14px;
     background: transparent;
     border-radius: 0;
+    padding: 2px;
   }
   .cell-input.direct-input:focus {
     background: #fff;
@@ -98,36 +99,36 @@
   }
 
   /* Специальные колонки */
-  .col-rate { background: #F9F9FB; }
-  .col-rate input { background: #fff; border: 1px solid var(--border); }
-  .col-total { font-weight: 800; background: #FAFCFF; }
-  .col-salary { font-weight: 800; color: var(--green); background: #F0FDF4; }
+  .col-rate { background: #F9F9FB; min-width: 80px; }
+  .col-rate input { background: #fff; border: 1px solid var(--border); padding: 4px; font-size: 12px; }
+  .col-total { font-weight: 800; background: #FAFCFF; min-width: 50px; font-size: 13px; }
+  .col-salary { font-weight: 800; color: var(--green); background: #F0FDF4; min-width: 80px; font-size: 13px; }
 
   /* Индикатор сохранения */
-  .save-indicator { position: fixed; bottom: 24px; right: 24px; background: var(--text-main); color: #fff; padding: 12px 24px; border-radius: 100px; font-weight: 600; font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 100; }
+  .save-indicator { position: fixed; bottom: 16px; right: 16px; background: var(--text-main); color: #fff; padding: 8px 16px; border-radius: 100px; font-weight: 600; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,0.2); opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 100; }
   .save-indicator.show { opacity: 1; }
 
-  .loader { text-align: center; padding: 40px; color: var(--text-muted); font-weight: 600; }
+  .loader { text-align: center; padding: 32px; color: var(--text-muted); font-weight: 600; font-size: 13px; }
 
-  /* SETTINGS TAB */
-  .settings-container { padding: 24px; background: #fff; border-radius: 20px; box-shadow: 0 4px 16px rgba(0,0,0,0.04); max-width: 600px; margin: 0 auto; }
-  .settings-title { font-size: 20px; font-weight: 800; margin-bottom: 24px; }
-  .setting-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  /* SETTINGS & REPORTS */
+  .settings-container { padding: 16px; background: #fff; border-radius: var(--radius); box-shadow: 0 2px 12px rgba(0,0,0,0.04); max-width: 600px; margin: 0 auto; }
+  .settings-title { font-size: 16px; font-weight: 800; margin-bottom: 16px; }
+  .setting-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); }
   .setting-row:last-child { border-bottom: none; }
-  .setting-row span { font-weight: 600; font-size: 15px; }
-  .setting-row input { width: 120px; text-align: right; padding: 8px 12px; border: 1px solid #E5E5EA; border-radius: 8px; font-size: 15px; outline: none; }
+  .setting-row span { font-weight: 600; font-size: 13px; }
+  .setting-row input { width: 100px; text-align: right; padding: 6px 10px; border: 1px solid #E5E5EA; border-radius: 6px; font-size: 13px; outline: none; }
   .setting-row input:focus { border-color: var(--accent); }
-  .btn-save-settings { width: 100%; background: var(--accent); color: #fff; border-radius: 12px; padding: 16px; font-size: 16px; font-weight: 700; margin-top: 24px; border: none; cursor: pointer; }
+  .btn-save-settings { width: 100%; background: var(--accent); color: #fff; border-radius: 8px; padding: 12px; font-size: 14px; font-weight: 700; margin-top: 16px; border: none; cursor: pointer; }
 
   @media (max-width: 600px) {
-    .content { padding: 10px; }
-    .toolbar { padding: 12px; }
-    .month-title { font-size: 16px; min-width: 120px; }
-    th, td { padding: 4px 2px; }
-    .cell-input { min-width: 30px; font-size: 12px; }
-    th.sticky-col, td.sticky-col { min-width: 140px; max-width: 140px; font-size: 12px; padding-left: 8px; }
-    .settings-container { padding: 16px; }
-    .hint-text { display: none; } /* Скрываем подсказку на мобилках, чтобы не мешала */
+    .content { padding: 8px; }
+    .toolbar { padding: 8px; gap: 6px; }
+    .month-title { font-size: 13px; min-width: 110px; }
+    .hint-text { display: none; }
+    .cell-input.direct-input { min-height: 28px; font-size: 11px; }
+    th.sticky-col, td.sticky-col { min-width: 120px; max-width: 120px; font-size: 10px; padding-left: 4px; }
+    .col-rate, .col-salary { min-width: 60px; }
+    .col-total { min-width: 40px; }
   }
 </style>
 </head>
@@ -162,7 +163,7 @@
       
       <div class="toolbar-actions">
         <div class="hint-text">В — отпуск, Б — больничный, Н — прогул</div>
-        <div class="norm-badge" id="norm-label" style="background:var(--amber-soft); color:#C77700; padding:8px 16px; border-radius:100px; font-weight:700; font-size:13px;">Норма: - ч</div>
+        <div class="norm-badge" id="norm-label">Норма: - ч</div>
         <button class="btn-tool" onclick="fillWeekdays()">⚡ Заполнить будни</button>
       </div>
     </div>
@@ -264,7 +265,7 @@ document.querySelectorAll('.tab').forEach(t => {
 function getMonday(d) {
   d = new Date(d);
   var day = d.getDay(),
-      diff = d.getDate() - day + (day == 0 ? -6 : 1); // adjust when day is sunday
+      diff = d.getDate() - day + (day == 0 ? -6 : 1);
   return new Date(d.setDate(diff));
 }
 
@@ -322,7 +323,6 @@ function setViewMode(mode) {
   document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.view-toggle button')[mode === 'month' ? 0 : 1].classList.add('active');
   
-  // Синхронизируем даты
   if (mode === 'week') {
     CURRENT_WEEK_START = getMonday(new Date(CURRENT_YEAR, CURRENT_MONTH - 1, 15));
   } else {
@@ -385,7 +385,6 @@ function renderMatrix() {
 
   const { start, end } = getPeriodDates();
 
-  // Группировка по ресторанам
   const grouped = {};
   EMPLOYEES_DATA.forEach(emp => {
     const rest = emp.restaurant_name || 'Без ресторана';
@@ -412,7 +411,6 @@ function renderMatrix() {
 
   let tbody = '<tbody>';
   
-  // Рендер по группам
   for (const [restName, employees] of Object.entries(grouped)) {
     tbody += `<tr class="rest-header">
       <td class="sticky-col">📍 ${esc(restName)}</td>
@@ -421,7 +419,7 @@ function renderMatrix() {
 
     employees.forEach(emp => {
       tbody += `<tr data-uid="${emp.user_id}">
-        <td class="sticky-col" title="${esc(emp.full_name)}"><b>${esc(emp.full_name)}</b><br><span style="font-size:11px; color:var(--text-muted);">${esc(emp.position || '')}</span></td>`;
+        <td class="sticky-col" title="${esc(emp.full_name)}"><b>${esc(emp.full_name)}</b><br><span style="font-size:10px; color:var(--text-muted);">${esc(emp.position || '')}</span></td>`;
       
       let totalHours = 0;
 
@@ -449,7 +447,7 @@ function renderMatrix() {
 
       tbody += `<td class="col-rate">
           <input type="number" class="cell-input rate-input" data-uid="${emp.user_id}" value="${rate || ''}" min="0" step="10" placeholder="0" onclick="event.stopPropagation()" onchange="handleRateChange(event)">
-          ${emp.payment_type === 'fixed' ? '<div style="font-size:9px; font-weight:800; color:var(--amber); margin-top:4px; text-transform:uppercase;">Оклад</div>' : ''}
+          ${emp.payment_type === 'fixed' ? '<div style="font-size:8px; font-weight:800; color:var(--amber); margin-top:2px; text-transform:uppercase;">Оклад</div>' : ''}
         </td>
         <td class="col-total total-hours">${totalHours}</td>
         <td class="col-salary total-salary">${salary.toLocaleString('ru-RU')}</td>
@@ -480,10 +478,8 @@ async function saveCellDirect(inp) {
     inp.value = hours || ''; 
   }
 
-  // Формируем корректную дату (используем текущий месяц/год из диапазона)
   const { start } = getPeriodDates();
   const targetDate = new Date(start.getFullYear(), start.getMonth(), day);
-  // Если день меньше start.getDate(), значит это следующий месяц (для недельного вида)
   if (day < start.getDate()) {
       targetDate.setMonth(targetDate.getMonth() + 1);
   }
@@ -503,7 +499,7 @@ async function saveCellDirect(inp) {
       emp.data[day] = { h: hours, s: status };
     }
     
-    renderMatrix(); // Перерисовываем, чтобы обновить итоги
+    renderMatrix();
     showSaveIndicator();
   } catch (err) {
     alert('Ошибка сохранения: ' + err.message);
@@ -546,7 +542,6 @@ async function fillWeekdays() {
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
       const dayNum = d.getDate();
       
-      // Проверяем, пустая ли ячейка
       const cellData = emp.data[dayNum];
       if (!isWeekend && (!cellData || !cellData.h)) {
         cellsToSave.push({

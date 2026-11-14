@@ -2094,10 +2094,9 @@ def _sync_timesheet_matrix(user_id, date_from, date_to):
             u = cur.fetchone()
             if not u: return []
             
-            pos_lower = (u.get("position") or "").lower()
-            is_hr = pos_lower.strip() == "hr"
-            is_tu = "территориальный" in pos_lower
-            is_us = "управляющий сменой" in pos_lower
+            is_hr_or_super = _is_hr_or_super(u)
+            is_tu = _is_tu(u)
+            is_us = "управляющий сменой" in (u.get("position") or "").lower()
             
             query = """
                 SELECT u.user_id, u.full_name, u.position, 
@@ -2116,7 +2115,7 @@ def _sync_timesheet_matrix(user_id, date_from, date_to):
             elif is_tu:
                 query += " AND u.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id = %s)"
                 params.append(user_id)
-            elif not is_hr:
+            elif not is_hr_or_super: # <- ИСПРАВЛЕНО
                 query += " AND u.user_id = %s"
                 params.append(user_id)
                 
@@ -2305,12 +2304,11 @@ def _sync_timesheet_employees(user_id):
             u = cur.fetchone()
             if not u: return []
             
-            pos_lower = (u.get("position") or "").lower()
-            is_hr = pos_lower.strip() == "hr"
-            is_tu = "территориальный" in pos_lower
-            is_us = "управляющий сменой" in pos_lower
-            
-            if not (is_hr or is_tu or is_us):
+            is_hr_or_super = _is_hr_or_super(u)
+            is_tu = _is_tu(u)
+            is_us = "управляющий сменой" in (u.get("position") or "").lower()
+
+            if not (is_hr_or_super or is_tu or is_us): # <- ИСПРАВЛЕНО
                 return []
 
             query = """
@@ -2345,9 +2343,7 @@ def _sync_settings_get(user_id):
             u = cur.fetchone()
             if not u: return []
             
-            pos_lower = (u.get("position") or "").lower()
-            is_hr = pos_lower.strip() == "hr"
-            if not (is_hr or u.get("is_super_admin") or u.get("is_admin")):
+            if not _is_hr_or_super(u): # <- ИСПРАВЛЕНО (вместо ручной проверки)
                 return []
 
             cur.execute("""
@@ -2369,8 +2365,7 @@ async def handle_timesheet_settings_save(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
     
-    pos_lower = (user.get("position") or "").lower()
-    if not (pos_lower.strip() == "hr" or user.get("is_super_admin") or user.get("is_admin")):
+    if not _is_hr_or_super(user): # <- ИСПРАВЛЕНО
         return web.json_response({"error": "forbidden"}, status=403)
 
     try: body = await request.json()
@@ -2400,10 +2395,9 @@ def _sync_timesheet_reports(user_id, date_from, date_to):
             u = cur.fetchone()
             if not u: return []
             
-            pos_lower = (u.get("position") or "").lower()
-            is_hr = pos_lower.strip() == "hr"
-            is_tu = "территориальный" in pos_lower
-            is_us = "управляющий сменой" in pos_lower
+            is_hr_or_super = _is_hr_or_super(u)
+            is_tu = _is_tu(u)
+            is_us = "управляющий сменой" in (u.get("position") or "").lower()
             
             base = """
                 SELECT u.full_name, u.position, r.name AS restaurant_name, 
@@ -2429,7 +2423,7 @@ def _sync_timesheet_reports(user_id, date_from, date_to):
             elif is_tu:
                 base += " AND u.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id = %s)"
                 params.append(user_id)
-            elif not is_hr:
+            elif not is_hr_or_super: # <- ИСПРАВЛЕНО
                 base += " AND u.user_id = %s"
                 params.append(user_id)
                 

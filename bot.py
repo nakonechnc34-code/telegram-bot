@@ -65,6 +65,10 @@ else:
 LOGIN_RE = re.compile(r"^[a-z]{3}\d{2}$")
 SESSION_TTL_DAYS = 30
 
+# Разрешенные расширения для загрузки
+ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.csv'}
+IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+
 def _safe_int(val, default=0):
     try:
         return int(val)
@@ -97,7 +101,7 @@ ALLOWED_ATTRS = {
     'td': ['colspan', 'rowspan'],
     'th': ['colspan', 'rowspan'],
     'img': ['src', 'alt', 'width', 'height'],
-    '*': ['style', 'class']
+    '*': ['class'] # Убрали 'style' для предотвращения CSS-инъекций
 }
 
 def sanitize_html(html_str):
@@ -367,6 +371,7 @@ def init_db_and_seed():
         _run_migration(_sql, f"ADD {_col}")
 
     _run_migration("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_login ON users (LOWER(login)) WHERE login IS NOT NULL", "idx login")
+    _run_migration("CREATE INDEX IF NOT EXISTS idx_users_rest ON users(restaurant_key)", "idx users rest")
     _run_migration("UPDATE users SET is_fired = FALSE WHERE is_fired IS NULL", "NULL is_fired")
     _run_migration("UPDATE users SET is_admin = FALSE WHERE is_admin IS NULL", "NULL is_admin")
     _run_migration("UPDATE users SET is_super_admin = FALSE WHERE is_super_admin IS NULL", "NULL is_super_admin")
@@ -415,6 +420,7 @@ def init_db_and_seed():
             image_url TEXT DEFAULT '', created_at TIMESTAMPTZ DEFAULT NOW()
         )
     """, "CREATE news")
+    _run_migration("CREATE INDEX IF NOT EXISTS idx_news_status ON news(status)", "idx news status")
 
     for _sql in [
         "ALTER TABLE news ADD COLUMN IF NOT EXISTS level TEXT DEFAULT 'normal'",
@@ -433,6 +439,7 @@ def init_db_and_seed():
             status TEXT DEFAULT 'published', proposed_by TEXT, approved_by TEXT, created_at TIMESTAMPTZ DEFAULT NOW()
         )
     """, "CREATE standards")
+    _run_migration("CREATE INDEX IF NOT EXISTS idx_std_status ON standards(status)", "idx std status")
 
     for _sql in [
         "ALTER TABLE standards ADD COLUMN IF NOT EXISTS number TEXT DEFAULT ''",
@@ -500,6 +507,7 @@ def init_db_and_seed():
             UNIQUE(user_id, work_date)
         )
     """, "CREATE timesheet_records")
+    _run_migration("CREATE INDEX IF NOT EXISTS idx_ts_date ON timesheet_records(work_date)", "idx ts date")
 
     _run_migration("""
         CREATE TABLE IF NOT EXISTS faq (id SERIAL PRIMARY KEY, question TEXT NOT NULL, answer TEXT NOT NULL, category TEXT DEFAULT '')
@@ -518,6 +526,7 @@ def init_db_and_seed():
     _run_migration("""
         CREATE TABLE IF NOT EXISTS questions (id SERIAL PRIMARY KEY, user_id BIGINT NOT NULL, text TEXT NOT NULL, replied BOOLEAN DEFAULT FALSE, reply_text TEXT, replied_at TIMESTAMPTZ, replied_by BIGINT, created_at TIMESTAMPTZ DEFAULT NOW())
     """, "CREATE questions")
+    _run_migration("CREATE INDEX IF NOT EXISTS idx_q_replied ON questions(replied)", "idx q replied")
     _run_migration("""
         CREATE TABLE IF NOT EXISTS web_sessions (token TEXT PRIMARY KEY, user_id BIGINT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(), last_used_at TIMESTAMPTZ DEFAULT NOW())
     """, "CREATE sessions")
@@ -616,7 +625,9 @@ def _sync_get_session_user(token):
                 if (now - lu).days > SESSION_TTL_DAYS:
                     cur.execute("DELETE FROM web_sessions WHERE token = %s", (token,))
                     return None
-            cur.execute("UPDATE web_sessions SET last_used_at = NOW() WHERE token = %s", (token,))
+            
+            # ОПТИМИЗАЦИЯ: Обновляем last_used_at не чаще раза в час
+            cur.execute("UPDATE web_sessions SET last_used_at = NOW() WHERE token = %s AND (last_used_at IS NULL OR last_used_at < NOW() - INTERVAL '1 hour')", (token,))
             return uid
 
 def _sync_create_session(user_id):
@@ -940,8 +951,19 @@ def _sync_create_user(body, existing_logins, admin_id=None):
     citizenship_id = body.get("citizenship_id")
     if citizenship_id == "": citizenship_id = None
     if citizenship_id is not None: citizenship_id = int(citizenship_id)
-    payment_type = body.get("payment_type") or "hourly"
     
+    payment_type = body.get("payment_type") or "hourly"
+    if payment_type not in ('hourly', 'fixed'):
+        return None, "invalid_payment_type"
+
+    # Валидация ресторана
+    if restaurant_key:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT key FROM restaurants WHERE key = %s", (restaurant_key,))
+                if not cur.fetchone():
+                    return None, "invalid_restaurant"
+
     pw_hash = hash_password(password)
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1001,6 +1023,17 @@ async def handle_admin_user_get(request):
 
 def _sync_update_user(uid, updates):
     allowed_simple = {"full_name", "phone", "birth_date", "position", "restaurant_key", "is_certified", "hire_date", "citizenship_id", "payment_type"}
+    
+    if "payment_type" in updates and updates["payment_type"] not in ('hourly', 'fixed'):
+        return "invalid_payment_type"
+        
+    if "restaurant_key" in updates and updates["restaurant_key"]:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT key FROM restaurants WHERE key = %s", (updates["restaurant_key"],))
+                if not cur.fetchone():
+                    return "invalid_restaurant"
+
     with get_conn() as conn:
         with conn.cursor() as cur:
             for k, v in updates.items():
@@ -1015,7 +1048,7 @@ def _sync_update_user(uid, updates):
             if "is_admin" in updates:
                 cur.execute("UPDATE users SET is_admin = %s WHERE user_id = %s", (bool(updates["is_admin"]), uid))
                 if not updates["is_admin"]: cur.execute("UPDATE users SET permissions = '{}'::jsonb, is_super_admin = FALSE WHERE user_id = %s", (uid,))
-    return True
+    return None
 
 async def handle_admin_user_update(request):
     admin, err = await get_admin_user(request)
@@ -1036,7 +1069,9 @@ async def handle_admin_user_update(request):
     if "full_name" in updates and len(updates["full_name"]) > 100:
         return web.json_response({"error": "full_name_too_long"}, status=400)
 
-    await _run(_sync_update_user, uid, updates)
+    err_code = await _run(_sync_update_user, uid, updates)
+    if err_code: return web.json_response({"error": err_code}, status=400)
+    
     updated = await _run(_sync_get_user_by_id, uid)
     if updated: await _enrich_user_with_medbook_status(updated)
     return web.json_response({"ok": True, "user": updated})
@@ -1236,6 +1271,15 @@ async def handle_admin_restaurant_tu(request):
     tu = body.get("territory_manager_id")
     tu = _safe_int(tu) if tu else None
     if tu is not None and tu <= 0: tu = None
+    
+    if tu is not None:
+        # Проверяем, что это действительно ТУ
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT user_id FROM users WHERE user_id = %s AND LOWER(COALESCE(position,'')) LIKE '%%территориальный%%' AND COALESCE(is_fired, FALSE) = FALSE", (tu,))
+                if not cur.fetchone():
+                    return web.json_response({"error": "invalid_tu"}, status=400)
+
     with get_conn() as conn:
         with conn.cursor() as cur: cur.execute("UPDATE restaurants SET territory_manager_id = %s WHERE key = %s", (tu, key))
     return web.json_response({"ok": True})
@@ -1555,7 +1599,8 @@ async def handle_admin_standard_update(request):
     if "body" in updates and not updates["body"]: return web.json_response({"error": "text_required"}, status=400)
     if "body" in updates and len(updates["body"]) > 200000: return web.json_response({"error": "text_too_long"}, status=400)
 
-    if updates.get("content_type") == "text" and "body" in updates:
+    # Всегда санитизируем, если передан body (для защиты от XSS)
+    if "body" in updates:
         updates["body"] = sanitize_html(updates["body"])
 
     set_clause = sql.SQL(", ").join(sql.SQL("{} = %s").format(sql.Identifier(k)) for k in updates)
@@ -2000,10 +2045,12 @@ async def handle_timesheet_bulk_save(request):
     cells = body.get("cells", [])
     if not cells: return web.json_response({"ok": True})
     
-    target_uid = _safe_int(cells[0].get("user_id"))
-    allowed = await _run(_check_can_edit_user, user, target_uid)
-    if not allowed:
-        return web.json_response({"error": "forbidden_edit_other"}, status=403)
+    # ИСПРАВЛЕНО: Проверяем права для КАЖДОГО уникального пользователя в запросе
+    unique_uids = set(c.get("user_id") for c in cells if c.get("user_id"))
+    for uid in unique_uids:
+        allowed = await _run(_check_can_edit_user, user, int(uid))
+        if not allowed:
+            return web.json_response({"error": "forbidden_edit_other"}, status=403)
         
     await _run(_sync_bulk_save_cells, user["user_id"], cells)
     return web.json_response({"ok": True})
@@ -2452,9 +2499,9 @@ async def handle_admin_upload(request):
         if not filename:
             return web.json_response({"error": "filename_required"}, status=400)
             
-        ext = os.path.splitext(filename)[1]
-        if not ext:
-            ext = ".bin"
+        ext = os.path.splitext(filename)[1].lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            return web.json_response({"error": "invalid_file_type"}, status=400)
             
         new_name = f"{uuid.uuid4().hex}{ext}"
         
@@ -2483,15 +2530,25 @@ async def handle_uploaded_file(request):
     data_dir = os.getenv("DATA_DIR", "/data")
     upload_dir = os.path.abspath(os.path.join(data_dir, "uploads"))
     safe_path = os.path.abspath(os.path.join(upload_dir, os.path.basename(filename)))
+    
     if not safe_path.startswith(upload_dir + os.sep):
         logging.warning(f"Path traversal attempt blocked: {filename}")
         return web.Response(status=403)
     if not os.path.exists(safe_path): return web.Response(status=404)
     
+    ext = os.path.splitext(safe_path)[1].lower()
     headers = {}
-    if request.query.get("download"):
+    
+    # ИСПРАВЛЕНО: Запрещаем браузеру рендерить потенциально опасные файлы (HTML, SVG)
+    if ext not in IMAGE_EXTENSIONS:
         orig_name = request.query.get("name") or os.path.basename(filename)
         headers["Content-Disposition"] = f'attachment; filename="{orig_name}"'
+    else:
+        # Явно указываем MIME-тип для изображений
+        if ext in ('.jpg', '.jpeg'): headers["Content-Type"] = "image/jpeg"
+        elif ext == '.png': headers["Content-Type"] = "image/png"
+        elif ext == '.gif': headers["Content-Type"] = "image/gif"
+        elif ext == '.webp': headers["Content-Type"] = "image/webp"
         
     return web.FileResponse(safe_path, headers=headers)
 

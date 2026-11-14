@@ -340,7 +340,8 @@ def init_db_and_seed():
             fired_at TIMESTAMPTZ, fired_by TEXT, is_certified BOOLEAN DEFAULT FALSE,
             medbook JSONB DEFAULT '{"doctors":{},"tests":{},"vaccines":{}}',
             created_at TIMESTAMPTZ DEFAULT NOW(), last_seen_at TIMESTAMPTZ,
-            hire_date TEXT, citizenship_id INT, rate NUMERIC(10,2) DEFAULT 0
+            hire_date TEXT, citizenship_id INT, rate NUMERIC(10,2) DEFAULT 0,
+            payment_type TEXT DEFAULT 'hourly'
         )
     """, "CREATE users")
 
@@ -361,6 +362,7 @@ def init_db_and_seed():
         ("hire_date", "ALTER TABLE users ADD COLUMN IF NOT EXISTS hire_date TEXT"),
         ("citizenship_id", "ALTER TABLE users ADD COLUMN IF NOT EXISTS citizenship_id INT"),
         ("rate", "ALTER TABLE users ADD COLUMN IF NOT EXISTS rate NUMERIC(10,2) DEFAULT 0"),
+        ("payment_type", "ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_type TEXT DEFAULT 'hourly'"),
     ]:
         _run_migration(_sql, f"ADD {_col}")
 
@@ -877,29 +879,13 @@ async def handle_push_subscribe(request):
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            # Проверяем, есть ли уже такая подписка для этого пользователя
             cur.execute("SELECT id FROM push_subscriptions WHERE user_id = %s AND subscription->>'endpoint' = %s", (user["user_id"], endpoint))
             row = cur.fetchone()
             if row:
-                # Если есть, просто обновляем её (на случай изменения ключей)
                 cur.execute("UPDATE push_subscriptions SET subscription = %s WHERE id = %s", (Json(subscription), row[0]))
             else:
-                # Если нет, вставляем новую
                 cur.execute("INSERT INTO push_subscriptions (user_id, subscription) VALUES (%s, %s)", (user["user_id"], Json(subscription)))
     return web.json_response({"ok": True})
-
-# Временный эндпоинт для очистки старых подписок
-async def handle_clear_pushes(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
-    if not admin["is_super_admin"]: 
-        return web.json_response({"error": "Только для супер-админа"}, status=403)
-    
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM push_subscriptions")
-            count = cur.rowcount
-    return web.json_response({"ok": True, "message": f"Удалено подписок: {count}. Теперь подпишитесь заново на телефоне."})
 
 # ============= USERS =============
 def _sync_list_users(search="", fired=False):
@@ -910,7 +896,7 @@ def _sync_list_users(search="", fired=False):
                        COALESCE(u.is_admin, FALSE) AS is_admin, COALESCE(u.is_super_admin, FALSE) AS is_super_admin,
                        COALESCE(u.is_fired, FALSE) AS is_fired, COALESCE(u.is_certified, FALSE) AS is_certified,
                        u.medbook, u.created_at, u.last_seen_at, u.fired_at, u.fired_by,
-                       u.hire_date, u.citizenship_id, c.name AS citizenship_name
+                       u.hire_date, u.citizenship_id, c.name AS citizenship_name, u.payment_type
                 FROM users u 
                 LEFT JOIN restaurants r ON u.restaurant_key = r.key
                 LEFT JOIN citizenships c ON u.citizenship_id = c.id
@@ -954,12 +940,13 @@ def _sync_create_user(body, existing_logins, admin_id=None):
     citizenship_id = body.get("citizenship_id")
     if citizenship_id == "": citizenship_id = None
     if citizenship_id is not None: citizenship_id = int(citizenship_id)
+    payment_type = body.get("payment_type") or "hourly"
     
     pw_hash = hash_password(password)
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("INSERT INTO users (login, password_hash, full_name, phone, birth_date, position, restaurant_key, is_certified, hire_date, citizenship_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *", 
-                        (login, pw_hash, full_name, body.get("phone") or "", body.get("birth_date") or "", body.get("position") or "", restaurant_key, bool(body.get("is_certified")), hire_date, citizenship_id))
+            cur.execute("INSERT INTO users (login, password_hash, full_name, phone, birth_date, position, restaurant_key, is_certified, hire_date, citizenship_id, payment_type) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *", 
+                        (login, pw_hash, full_name, body.get("phone") or "", body.get("birth_date") or "", body.get("position") or "", restaurant_key, bool(body.get("is_certified")), hire_date, citizenship_id, payment_type))
             new_user = dict(cur.fetchone())
             cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin_id, "user_create", "user", str(new_user["user_id"]), f"login={login}"))
     return new_user, None
@@ -985,7 +972,7 @@ def _sync_get_user_by_id(user_id):
                        COALESCE(u.is_admin, FALSE) AS is_admin, COALESCE(u.is_super_admin, FALSE) AS is_super_admin,
                        COALESCE(u.is_fired, FALSE) AS is_fired, COALESCE(u.is_certified, FALSE) AS is_certified,
                        u.medbook, u.created_at, u.last_seen_at, u.fired_at, u.fired_by, u.permissions,
-                       u.hire_date, u.citizenship_id, c.name AS citizenship_name
+                       u.hire_date, u.citizenship_id, c.name AS citizenship_name, u.payment_type
                 FROM users u 
                 LEFT JOIN restaurants r ON u.restaurant_key = r.key 
                 LEFT JOIN citizenships c ON u.citizenship_id = c.id
@@ -1013,7 +1000,7 @@ async def handle_admin_user_get(request):
     return web.json_response({"user": user})
 
 def _sync_update_user(uid, updates):
-    allowed_simple = {"full_name", "phone", "birth_date", "position", "restaurant_key", "is_certified", "hire_date", "citizenship_id"}
+    allowed_simple = {"full_name", "phone", "birth_date", "position", "restaurant_key", "is_certified", "hire_date", "citizenship_id", "payment_type"}
     with get_conn() as conn:
         with conn.cursor() as cur:
             for k, v in updates.items():
@@ -1865,7 +1852,7 @@ def _sync_timesheet_matrix(user_id, month, year):
             is_us = "управляющий сменой" in pos_lower
             
             query = """
-                SELECT u.user_id, u.full_name, u.position, COALESCE(u.rate, 0) AS rate, r.name AS restaurant_name
+                SELECT u.user_id, u.full_name, u.position, COALESCE(u.rate, 0) AS rate, u.payment_type, r.name AS restaurant_name
                 FROM users u
                 LEFT JOIN restaurants r ON u.restaurant_key = r.key
                 WHERE COALESCE(u.is_fired, FALSE) = FALSE AND COALESCE(u.is_admin, FALSE) = FALSE AND u.login IS NOT NULL
@@ -1891,7 +1878,7 @@ def _sync_timesheet_matrix(user_id, month, year):
             emp_ids = [e["user_id"] for e in employees]
             
             cur.execute("""
-                SELECT user_id, work_date, hours 
+                SELECT user_id, work_date, hours, status 
                 FROM timesheet_records 
                 WHERE user_id = ANY(%s) 
                   AND EXTRACT(MONTH FROM work_date) = %s 
@@ -1900,13 +1887,16 @@ def _sync_timesheet_matrix(user_id, month, year):
             
             records = cur.fetchall()
             
-            hours_map = {eid: {} for eid in emp_ids}
+            data_map = {eid: {} for eid in emp_ids}
             for r in records:
                 day = r["work_date"].day
-                hours_map[r["user_id"]][str(day)] = float(r["hours"])
+                data_map[r["user_id"]][str(day)] = {
+                    "h": float(r["hours"]),
+                    "s": r["status"]
+                }
                 
             for e in employees:
-                e["hours"] = hours_map[e["user_id"]]
+                e["data"] = data_map[e["user_id"]]
                 
             return employees
 
@@ -1922,18 +1912,18 @@ async def handle_timesheet_matrix(request):
     employees = await _run(_sync_timesheet_matrix, user["user_id"], month, year)
     return web.json_response({"employees": employees})
 
-def _sync_save_cell(user_id, target_uid, work_date, hours):
+def _sync_save_cell(user_id, target_uid, work_date, hours, status):
     with get_conn() as conn:
         with conn.cursor() as cur:
-            if hours <= 0:
+            if hours <= 0 and status == 'work':
                 cur.execute("DELETE FROM timesheet_records WHERE user_id = %s AND work_date = %s", (target_uid, work_date))
             else:
                 cur.execute("""
                     INSERT INTO timesheet_records (user_id, work_date, hours, status, updated_at)
-                    VALUES (%s, %s, %s, 'work', NOW())
+                    VALUES (%s, %s, %s, %s, NOW())
                     ON CONFLICT (user_id, work_date) DO UPDATE 
-                    SET hours = EXCLUDED.hours, updated_at = NOW()
-                """, (target_uid, work_date, hours))
+                    SET hours = EXCLUDED.hours, status = EXCLUDED.status, updated_at = NOW()
+                """, (target_uid, work_date, hours, status))
 
 def _check_can_edit_user(editor_user, target_uid):
     if editor_user["is_super_admin"] or (editor_user.get("position") or "").strip().upper() == "HR":
@@ -1969,6 +1959,7 @@ async def handle_timesheet_save_cell(request):
     target_uid = _safe_int(body.get("user_id"))
     work_date = body.get("work_date")
     hours = float(body.get("hours", 0))
+    status = body.get("status", "work")
     
     if not work_date or target_uid <= 0: return web.json_response({"error": "invalid_data"}, status=400)
     
@@ -1976,7 +1967,45 @@ async def handle_timesheet_save_cell(request):
     if not allowed:
         return web.json_response({"error": "forbidden_edit_other"}, status=403)
     
-    await _run(_sync_save_cell, user["user_id"], target_uid, work_date, hours)
+    await _run(_sync_save_cell, user["user_id"], target_uid, work_date, hours, status)
+    return web.json_response({"ok": True})
+
+def _sync_bulk_save_cells(user_id, cells):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            for cell in cells:
+                target_uid = cell.get("user_id")
+                work_date = cell.get("work_date")
+                hours = cell.get("hours", 0)
+                status = cell.get("status", "work")
+                
+                if not work_date or not target_uid: continue
+                
+                if hours <= 0 and status == 'work':
+                    cur.execute("DELETE FROM timesheet_records WHERE user_id = %s AND work_date = %s", (target_uid, work_date))
+                else:
+                    cur.execute("""
+                        INSERT INTO timesheet_records (user_id, work_date, hours, status, updated_at)
+                        VALUES (%s, %s, %s, %s, NOW())
+                        ON CONFLICT (user_id, work_date) DO UPDATE 
+                        SET hours = EXCLUDED.hours, status = EXCLUDED.status, updated_at = NOW()
+                    """, (target_uid, work_date, hours, status))
+
+async def handle_timesheet_bulk_save(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    cells = body.get("cells", [])
+    if not cells: return web.json_response({"ok": True})
+    
+    target_uid = _safe_int(cells[0].get("user_id"))
+    allowed = await _run(_check_can_edit_user, user, target_uid)
+    if not allowed:
+        return web.json_response({"error": "forbidden_edit_other"}, status=403)
+        
+    await _run(_sync_bulk_save_cells, user["user_id"], cells)
     return web.json_response({"ok": True})
 
 async def handle_timesheet_update_rate(request):
@@ -2052,8 +2081,11 @@ def _sync_timesheet_reports(user_id, month, year):
             
             base = """
                 SELECT u.full_name, u.position, r.name AS restaurant_name, 
-                       SUM(t.hours) as total_hours, COALESCE(u.rate, 0) as rate,
-                       (SUM(t.hours) * COALESCE(u.rate, 0)) as total_salary
+                       SUM(t.hours) as total_hours, COALESCE(u.rate, 0) as rate, u.payment_type,
+                       CASE 
+                           WHEN u.payment_type = 'fixed' THEN COALESCE(u.rate, 0)
+                           ELSE (SUM(t.hours) * COALESCE(u.rate, 0))
+                       END as total_salary
                 FROM users u
                 JOIN timesheet_records t ON u.user_id = t.user_id
                 LEFT JOIN restaurants r ON u.restaurant_key = r.key
@@ -2072,7 +2104,7 @@ def _sync_timesheet_reports(user_id, month, year):
                 base += " AND u.user_id = %s"
                 params.append(user_id)
                 
-            base += " GROUP BY u.user_id, u.full_name, u.position, r.name, u.rate ORDER BY total_hours DESC"
+            base += " GROUP BY u.user_id, u.full_name, u.position, r.name, u.rate, u.payment_type ORDER BY total_hours DESC"
             cur.execute(base, params)
             return [dict(r) for r in cur.fetchall()]
 
@@ -2555,7 +2587,7 @@ async def security_headers_middleware(request, handler):
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data: https://images.unsplash.com; "
-        "connect-src 'self'; "
+        "connect-src 'self' https://fonts.googleapis.com; "
         "frame-ancestors 'none';"
     )
     response.headers["Content-Security-Policy"] = csp
@@ -2595,6 +2627,7 @@ app.router.add_post("/api/timesheet/get", handle_timesheet_get)
 app.router.add_post("/api/timesheet/save", handle_timesheet_save)
 app.router.add_post("/api/timesheet/matrix", handle_timesheet_matrix)
 app.router.add_post("/api/timesheet/save_cell", handle_timesheet_save_cell)
+app.router.add_post("/api/timesheet/bulk_save", handle_timesheet_bulk_save)
 app.router.add_post("/api/timesheet/update_rate", handle_timesheet_update_rate)
 app.router.add_post("/api/timesheet/employees", handle_timesheet_employees)
 app.router.add_post("/api/timesheet/reports", handle_timesheet_reports)
@@ -2604,9 +2637,6 @@ app.router.add_post("/api/admin/me", handle_admin_me)
 app.router.add_post("/api/admin/dashboard", handle_admin_dashboard)
 app.router.add_post("/api/admin/medbook-alerts", handle_admin_medbook_alerts)
 app.router.add_post("/api/admin/upload", handle_admin_upload)
-
-# Временный маршрут для очистки подписок (удалите его после использования)
-app.router.add_post("/api/admin/clear-pushes", handle_clear_pushes)
 
 app.router.add_post("/api/admin/citizenships", handle_admin_citizenships)
 app.router.add_post("/api/admin/citizenship/add", handle_admin_citizenship_add)

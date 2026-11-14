@@ -39,12 +39,19 @@
   
   /* TOOLBAR */
   .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; background: #fff; padding: 12px 20px; border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); flex-shrink: 0; flex-wrap: wrap; gap: 12px; }
+  
+  /* НОВЫЙ ПЕРЕКЛЮЧАТЕЛЬ */
+  .view-toggle { display: flex; background: #F2F2F7; border-radius: 100px; padding: 4px; }
+  .view-toggle button { background: none; border: none; padding: 8px 16px; border-radius: 100px; font-weight: 600; font-size: 14px; color: var(--text-muted); cursor: pointer; transition: all 0.2s; }
+  .view-toggle button.active { background: #fff; color: var(--text-main); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+
   .month-selector { display: flex; align-items: center; gap: 16px; }
   .month-selector button { background: #F2F2F7; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s; }
   .month-selector button:hover { background: #E5E5EA; }
   .month-title { font-size: 18px; font-weight: 700; min-width: 150px; text-align: center; }
   
   .toolbar-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .hint-text { font-size: 12px; color: var(--text-muted); margin-right: 12px; font-weight: 500; }
   .btn-tool { background: #F2F2F7; border: 1px solid var(--border); padding: 8px 16px; border-radius: 100px; font-weight: 600; font-size: 13px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
   .btn-tool:hover { background: #E5E5EA; }
   .btn-tool.primary { background: var(--accent); color: #fff; border-color: transparent; }
@@ -72,12 +79,23 @@
   .cell-input:hover { background: #F2F2F7; }
   .cell-input:focus { background: #fff; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
   .cell-input.error { background: #FFEBEA; border-color: var(--red); color: var(--red); }
-  
-  /* Статусы в ячейках */
-  .cell-status { font-size: 9px; font-weight: 800; text-transform: uppercase; padding: 2px 4px; border-radius: 4px; display: inline-block; margin-top: 4px; }
-  .cell-status.vacation { background: var(--accent-soft); color: var(--accent); }
-  .cell-status.sick { background: var(--red-soft); color: var(--red); }
-  .cell-status.absent { background: #333; color: #fff; }
+
+  /* Прямой ввод в ячейку */
+  .cell-input.direct-input {
+    width: 100%;
+    height: 100%;
+    min-height: 44px;
+    border: none;
+    text-align: center;
+    font-weight: 700;
+    font-size: 14px;
+    background: transparent;
+    border-radius: 0;
+  }
+  .cell-input.direct-input:focus {
+    background: #fff;
+    box-shadow: inset 0 0 0 2px var(--accent);
+  }
 
   /* Специальные колонки */
   .col-rate { background: #F9F9FB; }
@@ -90,30 +108,6 @@
   .save-indicator.show { opacity: 1; }
 
   .loader { text-align: center; padding: 40px; color: var(--text-muted); font-weight: 600; }
-
-  /* MODAL */
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); z-index: 1000; display: none; align-items: center; justify-content: center; padding: 20px; }
-  .modal-overlay.show { display: flex; }
-  .modal { background: #fff; border-radius: 24px; width: 100%; max-width: 400px; padding: 24px; box-shadow: 0 24px 64px rgba(0,0,0,0.15); animation: slideUp 0.3s; }
-  @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-  .modal h3 { font-size: 20px; font-weight: 800; margin-bottom: 8px; }
-  .modal-sub { font-size: 14px; color: var(--text-muted); margin-bottom: 24px; }
-  .form-group { margin-bottom: 16px; }
-  .form-group label { display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; }
-  .form-input, .form-select { width: 100%; border: 1px solid #E5E5EA; border-radius: 12px; padding: 12px 16px; font-size: 16px; outline: none; background: #FAFAFA; transition: all 0.2s; }
-  .form-input:focus, .form-select:focus { border-color: var(--accent); background: #fff; }
-  
-  .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
-  .status-btn { padding: 12px; border-radius: 12px; border: 1px solid var(--border); background: #fff; font-size: 14px; font-weight: 600; cursor: pointer; text-align: center; transition: all 0.2s; }
-  .status-btn:hover { background: #FAFAFA; }
-  .status-btn.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
-  .status-btn.active[data-val="vacation"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
-  .status-btn.active[data-val="sick"] { border-color: var(--red); background: var(--red-soft); color: var(--red); }
-  .status-btn.active[data-val="absent"] { border-color: #333; background: #333; color: #fff; }
-
-  .btn-save { width: 100%; background: var(--accent); color: #fff; border-radius: 12px; padding: 16px; font-size: 16px; font-weight: 700; margin-top: 8px; border: none; cursor: pointer; }
-  .btn-save:active { transform: scale(0.98); }
-  .btn-cancel { width: 100%; background: #F2F2F7; color: var(--text-main); border-radius: 12px; padding: 16px; font-size: 16px; font-weight: 700; margin-top: 8px; border: none; cursor: pointer; }
 
   /* SETTINGS TAB */
   .settings-container { padding: 24px; background: #fff; border-radius: 20px; box-shadow: 0 4px 16px rgba(0,0,0,0.04); max-width: 600px; margin: 0 auto; }
@@ -129,10 +123,11 @@
     .content { padding: 10px; }
     .toolbar { padding: 12px; }
     .month-title { font-size: 16px; min-width: 120px; }
-    th, td { padding: 8px 4px; }
-    .cell-input { min-width: 30px; padding: 4px; font-size: 12px; }
+    th, td { padding: 4px 2px; }
+    .cell-input { min-width: 30px; font-size: 12px; }
     th.sticky-col, td.sticky-col { min-width: 140px; max-width: 140px; font-size: 12px; padding-left: 8px; }
     .settings-container { padding: 16px; }
+    .hint-text { display: none; } /* Скрываем подсказку на мобилках, чтобы не мешала */
   }
 </style>
 </head>
@@ -154,12 +149,19 @@
   <div class="section active" id="tab-sheet">
     
     <div class="toolbar">
-      <div class="month-selector">
-        <button onclick="changeMonth(-1)">←</button>
-        <div class="month-title" id="current-month-title">Месяц</div>
-        <button onclick="changeMonth(1)">→</button>
+      <div class="view-toggle">
+        <button class="active" onclick="setViewMode('month')">Месяц</button>
+        <button onclick="setViewMode('week')">Неделя</button>
       </div>
+      
+      <div class="month-selector">
+        <button onclick="changePeriod(-1)">←</button>
+        <div class="month-title" id="current-period-title">Месяц</div>
+        <button onclick="changePeriod(1)">→</button>
+      </div>
+      
       <div class="toolbar-actions">
+        <div class="hint-text">В — отпуск, Б — больничный, Н — прогул</div>
         <div class="norm-badge" id="norm-label" style="background:var(--amber-soft); color:#C77700; padding:8px 16px; border-radius:100px; font-weight:700; font-size:13px;">Норма: - ч</div>
         <button class="btn-tool" onclick="fillWeekdays()">⚡ Заполнить будни</button>
       </div>
@@ -173,10 +175,14 @@
   <!-- ВКЛАДКА: ОТЧЁТЫ -->
   <div class="section" id="tab-reports">
     <div class="toolbar">
+      <div class="view-toggle" style="opacity: 0.5; pointer-events: none;">
+        <button id="rep-view-month" class="active">Месяц</button>
+        <button id="rep-view-week">Неделя</button>
+      </div>
       <div class="month-selector">
-        <button onclick="changeMonth(-1)">←</button>
-        <div class="month-title" id="report-month-title">Месяц</div>
-        <button onclick="changeMonth(1)">→</button>
+        <button onclick="changePeriod(-1)">←</button>
+        <div class="month-title" id="report-period-title">Месяц</div>
+        <button onclick="changePeriod(1)">→</button>
       </div>
     </div>
     <div class="table-scroll">
@@ -203,41 +209,16 @@
 
 <div class="save-indicator" id="save-indicator">✓ Сохранено</div>
 
-<!-- МОДАЛКА РЕДАКТИРОВАНИЯ ЯЧЕЙКИ -->
-<div class="modal-overlay" id="cell-modal">
-  <div class="modal">
-    <h3 id="modal-title">Редактировать день</h3>
-    <div class="modal-sub" id="modal-sub">Сотрудник</div>
-    
-    <div class="form-group">
-      <label>Статус</label>
-      <div class="status-grid">
-        <button class="status-btn active" data-val="work">🟢 Работа</button>
-        <button class="status-btn" data-val="vacation">🏖 Отпуск</button>
-        <button class="status-btn" data-val="sick">🤒 Больничный</button>
-        <button class="status-btn" data-val="absent">⚫ Прогул</button>
-      </div>
-    </div>
-
-    <div class="form-group" id="hours-group">
-      <label>Количество часов</label>
-      <input class="form-input" type="number" id="modal-hours" step="0.5" min="0" max="24" value="8">
-    </div>
-    
-    <button class="btn-save" id="modal-save">Сохранить</button>
-    <button class="btn-cancel" onclick="closeCellModal()">Отмена</button>
-  </div>
-</div>
-
 <script>
 const TOKEN_KEY = 'wokker_staff_token';
 let CURRENT_DATE = new Date();
 let CURRENT_MONTH = CURRENT_DATE.getMonth() + 1;
 let CURRENT_YEAR = CURRENT_DATE.getFullYear();
+let CURRENT_WEEK_START = getMonday(new Date());
+
+let VIEW_MODE = 'month'; // 'month' | 'week'
 let EMPLOYEES_DATA = [];
 let SETTINGS_DATA = [];
-
-let EDITING_CELL = { uid: null, day: null, dateStr: null };
 
 const $ = id => document.getElementById(id);
 const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -280,37 +261,92 @@ document.querySelectorAll('.tab').forEach(t => {
   });
 });
 
-function calculateNorm(month, year) {
+function getMonday(d) {
+  d = new Date(d);
+  var day = d.getDay(),
+      diff = d.getDate() - day + (day == 0 ? -6 : 1); // adjust when day is sunday
+  return new Date(d.setDate(diff));
+}
+
+function formatDate(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+
+function formatDateShort(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}.${pad(d.getMonth()+1)}`;
+}
+
+function getPeriodDates() {
+  if (VIEW_MODE === 'month') {
+    const start = new Date(CURRENT_YEAR, CURRENT_MONTH - 1, 1);
+    const end = new Date(CURRENT_YEAR, CURRENT_MONTH, 0);
+    return { start, end };
+  } else {
+    const start = new Date(CURRENT_WEEK_START);
+    const end = new Date(CURRENT_WEEK_START.getTime() + 6 * 86400000);
+    return { start, end };
+  }
+}
+
+function calculateNorm(start, end) {
   let workDays = 0;
-  const daysInMonth = new Date(year, month, 0).getDate();
-  for (let d = 1; d <= daysInMonth; d++) {
-    const date = new Date(year, month - 1, d);
-    const dayOfWeek = date.getDay();
-    if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-      workDays++;
-    }
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const dayOfWeek = d.getDay();
+    if (dayOfWeek >= 1 && dayOfWeek <= 5) workDays++;
   }
   return workDays * 8;
 }
 
-function updateMonthTitles() {
+function updatePeriodTitle() {
+  const { start, end } = getPeriodDates();
   const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
-  const title = `${months[CURRENT_MONTH - 1]} ${CURRENT_YEAR}`;
-  $('current-month-title').textContent = title;
-  $('report-month-title').textContent = title;
   
-  const norm = calculateNorm(CURRENT_MONTH, CURRENT_YEAR);
+  let title = '';
+  if (VIEW_MODE === 'month') {
+    title = `${months[CURRENT_MONTH - 1]} ${CURRENT_YEAR}`;
+  } else {
+    title = `${formatDateShort(start)} — ${formatDateShort(end)}`;
+  }
+
+  $('current-period-title').textContent = title;
+  $('report-period-title').textContent = title;
+  
+  const norm = calculateNorm(start, end);
   $('norm-label').textContent = `Норма: ${norm} ч`;
 }
 
-function changeMonth(delta) {
-  let m = CURRENT_MONTH + delta;
-  let y = CURRENT_YEAR;
-  if (m > 12) { m = 1; y++; }
-  if (m < 1) { m = 12; y--; }
-  CURRENT_MONTH = m;
-  CURRENT_YEAR = y;
-  updateMonthTitles();
+function setViewMode(mode) {
+  VIEW_MODE = mode;
+  document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.view-toggle button')[mode === 'month' ? 0 : 1].classList.add('active');
+  
+  // Синхронизируем даты
+  if (mode === 'week') {
+    CURRENT_WEEK_START = getMonday(new Date(CURRENT_YEAR, CURRENT_MONTH - 1, 15));
+  } else {
+    CURRENT_MONTH = CURRENT_WEEK_START.getMonth() + 1;
+    CURRENT_YEAR = CURRENT_WEEK_START.getFullYear();
+  }
+
+  updatePeriodTitle();
+  loadMatrix();
+}
+
+function changePeriod(delta) {
+  if (VIEW_MODE === 'month') {
+    let m = CURRENT_MONTH + delta;
+    let y = CURRENT_YEAR;
+    if (m > 12) { m = 1; y++; }
+    if (m < 1) { m = 12; y--; }
+    CURRENT_MONTH = m;
+    CURRENT_YEAR = y;
+  } else {
+    CURRENT_WEEK_START.setDate(CURRENT_WEEK_START.getDate() + delta * 7);
+  }
+  
+  updatePeriodTitle();
   
   const activeSec = document.querySelector('.section.active').id;
   if (activeSec === 'tab-sheet') loadMatrix();
@@ -320,13 +356,25 @@ function changeMonth(delta) {
 // ================== МАТРИЦА ТАБЕЛЯ ==================
 async function loadMatrix() {
   $('matrix-container').innerHTML = '<div class="loader">Загрузка табеля...</div>';
+  
+  const { start, end } = getPeriodDates();
+  const dateFrom = formatDate(start);
+  const dateTo = formatDate(end);
+
   try {
-    const res = await api('/api/timesheet/matrix', { month: CURRENT_MONTH, year: CURRENT_YEAR });
+    const res = await api('/api/timesheet/matrix', { date_from: dateFrom, date_to: dateTo });
     EMPLOYEES_DATA = res.employees || [];
     renderMatrix();
   } catch (e) {
     $('matrix-container').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
   }
+}
+
+function getCellDisplayValue(c) {
+  if (c.s === 'vacation') return 'В';
+  if (c.s === 'sick') return 'Б';
+  if (c.s === 'absent') return 'Н';
+  return c.h || '';
 }
 
 function renderMatrix() {
@@ -335,8 +383,8 @@ function renderMatrix() {
     return;
   }
 
-  const daysInMonth = new Date(CURRENT_YEAR, CURRENT_MONTH, 0).getDate();
-  
+  const { start, end } = getPeriodDates();
+
   // Группировка по ресторанам
   const grouped = {};
   EMPLOYEES_DATA.forEach(emp => {
@@ -347,13 +395,16 @@ function renderMatrix() {
 
   let thead = `<thead><tr>
     <th class="sticky-col">Сотрудник</th>`;
-  for (let d = 1; d <= daysInMonth; d++) {
-    const date = new Date(CURRENT_YEAR, CURRENT_MONTH - 1, d);
-    const dayOfWeek = date.getDay();
+  
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const dayOfWeek = d.getDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    thead += `<th class="${isWeekend ? 'weekend' : ''}">${d}<br><span style="font-size:9px;">${['Вс','Пн','Вт','Ср','Чт','Пт','Сб'][dayOfWeek]}</span></th>`;
+    thead += `<th class="${isWeekend ? 'weekend' : ''}">${d.getDate()}<br><span style="font-size:9px;">${['Вс','Пн','Вт','Ср','Чт','Пт','Сб'][dayOfWeek]}</span></th>`;
   }
-  // Убрали колонку "Переработки"
+  
+  let dayCount = 0;
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) dayCount++;
+
   thead += `<th class="col-rate">Ставка (₽)</th>
             <th class="col-total">Часов</th>
             <th class="col-salary">К оплате (₽)</th>
@@ -365,33 +416,32 @@ function renderMatrix() {
   for (const [restName, employees] of Object.entries(grouped)) {
     tbody += `<tr class="rest-header">
       <td class="sticky-col">📍 ${esc(restName)}</td>
-      <td colspan="${daysInMonth + 3}"></td>
+      <td colspan="${dayCount + 3}"></td>
     </tr>`;
 
     employees.forEach(emp => {
       tbody += `<tr data-uid="${emp.user_id}">
         <td class="sticky-col" title="${esc(emp.full_name)}"><b>${esc(emp.full_name)}</b><br><span style="font-size:11px; color:var(--text-muted);">${esc(emp.position || '')}</span></td>`;
       
-      for (let d = 1; d <= daysInMonth; d++) {
-        const cellData = emp.data[d] || { h: '', s: 'work' };
-        let extraClass = '';
-        let statusLabel = '';
-        
-        if (cellData.s === 'vacation') { extraClass = 'vacation'; statusLabel = 'Отпуск'; }
-        else if (cellData.s === 'sick') { extraClass = 'sick'; statusLabel = 'Больн.'; }
-        else if (cellData.s === 'absent') { extraClass = 'absent'; statusLabel = 'Прогул'; }
-
-        tbody += `<td onclick="openCellModal(${emp.user_id}, ${d})" style="cursor:pointer; background: ${cellData.s !== 'work' ? 'var(--bg)' : 'transparent'};">
-          <div style="font-weight:700; color: ${cellData.s !== 'work' ? 'var(--text-muted)' : 'var(--text-main)'};">${cellData.h || '-'}</div>
-          ${statusLabel ? `<div class="cell-status ${extraClass}">${statusLabel}</div>` : ''}
-        </td>`;
-      }
-
       let totalHours = 0;
-      for (let d = 1; d <= daysInMonth; d++) {
-        const val = emp.data[d];
-        if (val && val.s === 'work') totalHours += parseFloat(val.h || 0);
-        else if (val && (val.s === 'vacation' || val.s === 'sick')) totalHours += 8;
+
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dayNum = d.getDate();
+        const cellData = emp.data[dayNum] || { h: '', s: 'work' };
+        
+        if (cellData.s === 'work') totalHours += parseFloat(cellData.h || 0);
+        else if (cellData.s === 'vacation' || cellData.s === 'sick') totalHours += 8;
+
+        tbody += `<td style="padding:0; background: ${cellData.s !== 'work' ? 'var(--bg)' : 'transparent'};">
+          <input type="text" class="cell-input direct-input" 
+                 data-uid="${emp.user_id}" data-day="${dayNum}"
+                 value="${getCellDisplayValue(cellData)}"
+                 title="В = отпуск, Б = больничный, Н = прогул"
+                 onchange="saveCellDirect(this)"
+                 onfocus="this.select()"
+                 onkeydown="if(event.key==='Enter') this.blur()"
+                 style="color: ${cellData.s !== 'work' ? 'var(--text-muted)' : 'var(--text-main)'};">
+        </td>`;
       }
       
       const rate = emp.rate || 0;
@@ -411,77 +461,55 @@ function renderMatrix() {
   $('matrix-container').innerHTML = `<table>${thead}${tbody}</table>`;
 }
 
-// ================== МОДАЛКА РЕДАКТИРОВАНИЯ ЯЧЕЙКИ ==================
-function openCellModal(uid, day) {
-  const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
-  if (!emp) return;
+// ================== ПРЯМОЕ СОХРАНЕНИЕ ЯЧЕЙКИ ==================
+async function saveCellDirect(inp) {
+  const uid = parseInt(inp.dataset.uid);
+  const day = parseInt(inp.dataset.day);
+  let val = inp.value.trim().toUpperCase();
   
-  EDITING_CELL.uid = uid;
-  EDITING_CELL.day = day;
-  EDITING_CELL.dateStr = `${CURRENT_YEAR}-${String(CURRENT_MONTH).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  
-  const cellData = emp.data[day] || { h: 8, s: 'work' };
-  
-  $('modal-title').textContent = `День: ${day} ${['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'][CURRENT_MONTH-1]}`;
-  $('modal-sub').textContent = emp.full_name;
-  
-  document.querySelectorAll('.status-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.val === cellData.s);
-  });
-  
-  $('modal-hours').value = cellData.h;
-  updateHoursVisibility(cellData.s);
-  
-  $('cell-modal').classList.add('show');
-}
+  let hours = 0;
+  let status = 'work';
 
-function updateHoursVisibility(status) {
-  if (status === 'work') {
-    $('hours-group').style.display = 'block';
-  } else {
-    $('hours-group').style.display = 'none';
+  if (val === 'В') { status = 'vacation'; hours = 8; inp.value = 'В'; }
+  else if (val === 'Б') { status = 'sick'; hours = 8; inp.value = 'Б'; }
+  else if (val === 'Н') { status = 'absent'; hours = 0; inp.value = 'Н'; }
+  else if (val === '') { status = 'work'; hours = 0; inp.value = ''; }
+  else { 
+    status = 'work'; 
+    hours = parseFloat(val.replace(',', '.')) || 0; 
+    inp.value = hours || ''; 
   }
-}
 
-document.querySelectorAll('.status-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.status-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    updateHoursVisibility(btn.dataset.val);
-  });
-});
-
-function closeCellModal() {
-  $('cell-modal').classList.remove('show');
-}
-
-$('modal-save').addEventListener('click', async () => {
-  const activeStatusBtn = document.querySelector('.status-btn.active');
-  const status = activeStatusBtn ? activeStatusBtn.dataset.val : 'work';
-  let hours = parseFloat($('modal-hours').value) || 0;
+  // Формируем корректную дату (используем текущий месяц/год из диапазона)
+  const { start } = getPeriodDates();
+  const targetDate = new Date(start.getFullYear(), start.getMonth(), day);
+  // Если день меньше start.getDate(), значит это следующий месяц (для недельного вида)
+  if (day < start.getDate()) {
+      targetDate.setMonth(targetDate.getMonth() + 1);
+  }
   
-  if (status === 'vacation' || status === 'sick') hours = 8;
-  if (status === 'absent') hours = 0;
+  const dateStr = formatDate(targetDate);
 
   try {
-    await api('/api/timesheet/save_cell', { 
-      user_id: EDITING_CELL.uid, 
-      work_date: EDITING_CELL.dateStr, 
-      hours: hours, 
-      status: status 
+    await api('/api/timesheet/save_cell', {
+      user_id: uid,
+      work_date: dateStr,
+      hours: hours,
+      status: status
     });
     
-    const emp = EMPLOYEES_DATA.find(x => x.user_id === EDITING_CELL.uid);
+    const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
     if (emp) {
-      emp.data[EDITING_CELL.day] = { h: hours, s: status };
-      renderMatrix();
+      emp.data[day] = { h: hours, s: status };
     }
+    
+    renderMatrix(); // Перерисовываем, чтобы обновить итоги
     showSaveIndicator();
-    closeCellModal();
   } catch (err) {
     alert('Ошибка сохранения: ' + err.message);
+    renderMatrix();
   }
-});
+}
 
 // ================== СТАВКА ==================
 async function handleRateChange(e) {
@@ -507,22 +535,23 @@ async function handleRateChange(e) {
 
 // ================== МАССОВОЕ ЗАПОЛНЕНИЕ ==================
 async function fillWeekdays() {
-  if (!confirm('Заполнить все будние дни (Пн-Пт) по 8 часов для всех сотрудников?')) return;
+  if (!confirm('Заполнить все будние дни в выбранном периоде по 8 часов?')) return;
   
-  const daysInMonth = new Date(CURRENT_YEAR, CURRENT_MONTH, 0).getDate();
+  const { start, end } = getPeriodDates();
   const cellsToSave = [];
   
   EMPLOYEES_DATA.forEach(emp => {
-    for (let d = 1; d <= daysInMonth; d++) {
-      const date = new Date(CURRENT_YEAR, CURRENT_MONTH - 1, d);
-      const dayOfWeek = date.getDay();
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dayOfWeek = d.getDay();
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-      const cellData = emp.data[d];
+      const dayNum = d.getDate();
       
-      if (!isWeekend && !cellData) {
+      // Проверяем, пустая ли ячейка
+      const cellData = emp.data[dayNum];
+      if (!isWeekend && (!cellData || !cellData.h)) {
         cellsToSave.push({
           user_id: emp.user_id,
-          work_date: `${CURRENT_YEAR}-${String(CURRENT_MONTH).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+          work_date: formatDate(d),
           hours: 8,
           status: 'work'
         });
@@ -554,12 +583,17 @@ async function fillWeekdays() {
 // ================== ОТЧЕТЫ ==================
 async function loadReports() {
   $('report-list').innerHTML = '<tr><td colspan="5" class="loader">Загрузка...</td></tr>';
+  
+  const { start, end } = getPeriodDates();
+  const dateFrom = formatDate(start);
+  const dateTo = formatDate(end);
+
   try {
-    const res = await api('/api/timesheet/reports', { month: CURRENT_MONTH, year: CURRENT_YEAR });
+    const res = await api('/api/timesheet/reports', { date_from: dateFrom, date_to: dateTo });
     const report = res.report || [];
     
     if (!report.length) {
-      $('report-list').innerHTML = '<tr><td colspan="5" class="loader">Нет данных за этот месяц</td></tr>';
+      $('report-list').innerHTML = '<tr><td colspan="5" class="loader">Нет данных за этот период</td></tr>';
       return;
     }
     
@@ -623,13 +657,9 @@ async function saveSettings() {
   }
 }
 
-$('cell-modal').addEventListener('click', e => {
-  if (e.target === $('cell-modal')) closeCellModal();
-});
-
 (async function init() {
   if (!getToken()) { window.location.href = '/'; return; }
-  updateMonthTitles();
+  updatePeriodTitle();
   await loadMatrix();
 })();
 </script>

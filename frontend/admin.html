@@ -65,7 +65,7 @@
   .login-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 32px; padding: 48px 40px; width: 100%; max-width: 440px; box-shadow: var(--shadow-lg); text-align: center; }
   .login-card h1 { font-size: 28px; font-weight: 800; margin-bottom: 8px; letter-spacing: -0.5px; color: var(--text-main); }
   .login-card .sub { color: var(--text-muted); margin-bottom: 32px; font-size: 15px; font-weight: 500; }
-  .login-logo { width: 72px; height: 72px; background: var(--accent-soft); border-radius: 24px; display: inline-flex; align-items: center; justify-content: center; font-size: 36px; margin-bottom: 24px; color: var(--accent); }
+  .login-logo { width: 72px; height: 72px; background: var(--text-main); border-radius: 24px; display: inline-flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 800; color: #fff; margin-bottom: 24px; }
   .login-input { width: 100%; border: 1px solid #E5E5EA; border-radius: 100px; padding: 16px 24px; font-size: 16px; background: #FAFAFA; outline: none; margin-bottom: 16px; font-weight: 600; color: var(--text-main); transition: all 0.2s; text-align: center; }
   .login-input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 4px var(--accent-soft); }
   .login-btn { width: 100%; background: var(--accent); color: #fff; border-radius: 100px; padding: 16px; font-size: 16px; font-weight: 700; margin-top: 8px; transition: all 0.2s; }
@@ -84,12 +84,11 @@
   .sidebar nav { display: flex; flex-direction: column; flex: 1; overflow-y: auto; scrollbar-width: none; }
   .nav-group-title { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 1px; margin: 20px 0 8px 16px; }
   .nav-group-title:first-child { margin-top: 0; }
-  .nav-item { background: none; border: 0; color: rgba(255,255,255,0.7); text-align: left; padding: 12px 16px; border-radius: 12px; font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 14px; white-space: nowrap; transition: all 0.2s; position: relative; margin-bottom: 2px; }
+  .nav-item { background: none; border: 0; color: rgba(255,255,255,0.7); text-align: left; padding: 12px 16px; border-radius: 12px; font-size: 14px; font-weight: 500; display: flex; align-items: center; justify-content: space-between; white-space: nowrap; transition: all 0.2s; position: relative; margin-bottom: 2px; }
   .nav-item:hover { background: var(--sidebar-hover); color: #fff; transform: translateX(4px); }
   .nav-item.active { background: var(--accent); color: #fff; font-weight: 600; border-radius: 12px; }
   .nav-item.active:hover { transform: none; }
-  .nav-item .ico { width: 20px; display: inline-block; text-align: center; font-size: 18px; }
-  .nav-item .count { margin-left: auto; background: rgba(255,255,255,0.2); color: #fff; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+  .nav-item .count { background: rgba(255,255,255,0.2); color: #fff; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; }
   .nav-item.active .count { background: rgba(0,0,0,0.2); }
   
   .sidebar-footer { padding: 20px 0 0; border-top: 1px solid rgba(255,255,255,0.1); margin-top: auto; font-size: 12px; }
@@ -99,7 +98,7 @@
   .sidebar-footer .badge-role.super { background: var(--purple); color: #fff; }
   .sidebar-footer .badge-role.hr { background: var(--blue); color: #fff; }
   .sidebar-footer .badge-role.regular { background: rgba(255,255,255,0.2); color: #fff; }
-  .sidebar-footer button { background: transparent; border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.8); padding: 12px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; width: 100%; margin-top: 8px; transition: all 0.2s; display: flex; align-items: center; gap: 8px; }
+  .sidebar-footer button { background: transparent; border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.8); padding: 12px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; width: 100%; margin-top: 8px; transition: all 0.2s; display: flex; align-items: center; justify-content: center; }
   .sidebar-footer button:hover { background: rgba(255,255,255,0.1); color: #fff; }
   .sidebar-footer button.danger:hover { background: rgba(255, 59, 48, 0.8); color: #fff; border-color: transparent; }
   .sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); z-index: 150; display: none; }
@@ -116,7 +115,7 @@
   .topbar-right { display: flex; align-items: center; gap: 16px; flex: 1; justify-content: flex-end; }
   .topbar-icon-btn { width: 44px; height: 44px; border-radius: 50%; background: #F5F5F7; display: flex; align-items: center; justify-content: center; font-size: 18px; color: var(--text-main); transition: all 0.2s; position: relative; }
   .topbar-icon-btn:hover { background: #E5E5EA; transform: translateY(-2px); }
-  .topbar-avatar { width: 44px; height: 44px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff; font-size: 18px; border: 2px solid #fff; box-shadow: 0 4px 10px rgba(255,59,48,0.3); }
+  .topbar-avatar { width: 44px; height: 44px; border-radius: 50%; background: var(--text-main); display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff; font-size: 18px; border: 2px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
   .topbar .actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
   .content { padding: 32px 40px; flex: 1; }
   .hamburger { display: none; background: #F2F2F7; border: 1px solid var(--border); border-radius: 12px; width: 44px; height: 44px; font-size: 20px; align-items: center; justify-content: center; flex-shrink: 0; color: var(--text-main); }
@@ -164,7 +163,7 @@
   .login-cell { font-family: monospace; font-weight: 700; font-size: 13px; background: #F2F2F7; padding: 4px 10px; border-radius: 8px; color: var(--text-main); }
 
   .actions-cell { display: flex; gap: 8px; justify-content: flex-end; }
-  .icon-btn { background: #F2F2F7; border: 1px solid var(--border); border-radius: 50%; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; font-size: 16px; transition: all 0.2s; color: var(--text-main);}
+  .icon-btn { background: #F2F2F7; border: 1px solid var(--border); border-radius: 50%; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; transition: all 0.2s; color: var(--text-main);}
   .icon-btn:hover { background: #E5E5EA; transform: translateY(-2px); box-shadow: var(--shadow-sm); }
   .icon-btn.danger { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
   .icon-btn.danger:hover { background: #FFD6D4; }
@@ -214,7 +213,6 @@
   }
   .dash-stat-card .ds-label { font-size: 13px; font-weight: 500; color: var(--dash-muted); margin-bottom: 12px; z-index: 1; }
   .dash-stat-card .ds-value { font-size: 36px; font-weight: 800; line-height: 1; color: #fff; z-index: 1; }
-  .dash-stat-card .ds-icon { position: absolute; right: 16px; bottom: 16px; font-size: 56px; opacity: 0.1; z-index: 0; }
   .dash-stat-card.green .ds-value { color: var(--green); }
   .dash-stat-card.blue .ds-value { color: var(--dash-blue); }
   .dash-stat-card.amber .ds-value { color: var(--amber); }
@@ -222,7 +220,6 @@
 
   .dash-section-title { font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 16px; }
   
-  /* Новый график */
   .dash-chart-card { background: var(--dash-card); border-radius: 16px; padding: 24px; grid-column: 1 / 2; }
   .dash-bar-chart { display: flex; align-items: flex-end; gap: 16px; height: 200px; margin-top: 24px; }
   .dash-bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 8px; }
@@ -239,7 +236,7 @@
   .dash-list-item { display: flex; align-items: center; gap: 16px; padding: 12px; background: rgba(255,255,255,0.02); border-radius: 12px; border-left: 3px solid transparent; transition: all 0.2s; }
   .dash-list-item:hover { background: rgba(255,255,255,0.05); }
   .dash-list-item.yellow { border-left-color: var(--dash-accent); }
-  .dash-list-avatar { width: 44px; height: 44px; border-radius: 50%; background: #333; object-fit: cover; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; }
+  .dash-list-avatar { width: 44px; height: 44px; border-radius: 50%; background: #333; object-fit: cover; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; font-size: 16px; }
   .dash-list-content { flex: 1; min-width: 0; }
   .dash-list-title { font-size: 14px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dash-list-sub { font-size: 12px; color: var(--dash-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -249,7 +246,6 @@
   .dash-bottom-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-top: 0; grid-column: 1 / -1; }
   .dash-bottom-card { background: var(--dash-card); border-radius: 16px; padding: 24px; }
 
-  /* Стили для списков в дашборде (вместо таблиц) */
   .dash-user-list, .dash-alert-list { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
   .dash-user-item { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
   .dash-user-item:last-child { border-bottom: none; }
@@ -338,11 +334,6 @@
     border-radius: 24px;
     border: 1px dashed var(--border);
   }
-  .empty .emoji { 
-    display: block; 
-    font-size: 48px; 
-    margin-bottom: 16px; 
-  }
 
   /* MODALS */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; backdrop-filter: blur(4px); }
@@ -377,11 +368,9 @@
   .perm-item:hover { background: #F2F2F7; transform: translateY(-1px); }
   .perm-item.checked { background: var(--green-soft); border-color: rgba(52,199,89,0.3); }
   .perm-item input { width: 18px; height: 18px; accent-color: var(--green); flex-shrink: 0; pointer-events: none; }
-  .perm-item .perm-icon { font-size: 18px; }
   .perm-item .perm-label { flex: 1; font-weight: 500; color: var(--text-main); }
 
   .login-preview { background: var(--green-soft); border: 1px solid rgba(52,199,89,0.3); border-radius: 20px; padding: 20px; margin-bottom: 24px; display: flex; align-items: center; gap: 20px; }
-  .login-preview .lp-icon { font-size: 28px; }
   .login-preview .lp-label { font-size: 11px; font-weight: 700; color: #1B7A36; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;}
   .login-preview .lp-value { font-family: monospace; font-size: 24px; font-weight: 800; color: #1B7A36; letter-spacing: 2px; }
   .login-preview .lp-hint { font-size: 12px; color: #1B7A36; opacity: 0.8; margin-top: 4px; }
@@ -510,7 +499,7 @@
 
 <div id="login-screen">
   <div class="login-card">
-    <div class="login-logo">🛠</div>
+    <div class="login-logo">W</div>
     <h1>Wokker Admin</h1>
     <div class="sub">Вход в панель управления</div>
     <input class="login-input" id="login-login" type="text" placeholder="Логин" maxlength="5" style="text-transform: lowercase;" autocomplete="username">
@@ -527,31 +516,31 @@
       
       <nav id="nav">
         <div class="nav-group-title">Управление</div>
-        <button class="nav-item" data-sec="dashboard"><span class="ico">📊</span> Дашборд</button>
-        <button class="nav-item" data-sec="users"><span class="ico">👥</span> Сотрудники</button>
-        <button class="nav-item" data-sec="medbooks"><span class="ico">🩺</span> Медкнижки</button>
+        <button class="nav-item" data-sec="dashboard">Дашборд</button>
+        <button class="nav-item" data-sec="users">Сотрудники</button>
+        <button class="nav-item" data-sec="medbooks">Медкнижки</button>
         
         <div class="nav-group-title">Контент</div>
-        <button class="nav-item" data-sec="news"><span class="ico">📰</span> Новости <span class="count" id="news-pending-count" style="display:none;">0</span></button>
-        <button class="nav-item" data-sec="standards"><span class="ico">📚</span> Стандарты <span class="count" id="standards-pending-count" style="display:none;">0</span></button>
-        <button class="nav-item" data-sec="certification"><span class="ico">🎓</span> Сертификация</button>
-        <button class="nav-item" data-sec="faq"><span class="ico">❓</span> FAQ</button>
+        <button class="nav-item" data-sec="news">Новости <span class="count" id="news-pending-count" style="display:none;">0</span></button>
+        <button class="nav-item" data-sec="standards">Стандарты <span class="count" id="standards-pending-count" style="display:none;">0</span></button>
+        <button class="nav-item" data-sec="certification">Сертификация</button>
+        <button class="nav-item" data-sec="faq">FAQ</button>
         
         <div class="nav-group-title">Настройки и данные</div>
-        <button class="nav-item" data-sec="restaurants"><span class="ico">🏪</span> Рестораны</button>
-        <button class="nav-item" data-sec="positions"><span class="ico">💼</span> Должности</button>
-        <button class="nav-item" data-sec="questions"><span class="ico">💬</span> Вопросы <span class="count" id="q-count" style="display:none;">0</span></button>
-        <button class="nav-item" data-sec="admins" id="nav-admins" style="display:none;"><span class="ico">👑</span> Администраторы</button>
-        <button class="nav-item" data-sec="reports"><span class="ico">📈</span> Отчёты</button>
-        <button class="nav-item" data-sec="audit"><span class="ico">📜</span> История</button>
+        <button class="nav-item" data-sec="restaurants">Рестораны</button>
+        <button class="nav-item" data-sec="positions">Должности</button>
+        <button class="nav-item" data-sec="questions">Вопросы <span class="count" id="q-count" style="display:none;">0</span></button>
+        <button class="nav-item" data-sec="admins" id="nav-admins" style="display:none;">Администраторы</button>
+        <button class="nav-item" data-sec="reports">Отчёты</button>
+        <button class="nav-item" data-sec="audit">История</button>
       </nav>
       
       <div class="sidebar-footer">
         <div class="who" id="admin-name">—</div>
         <div class="login-line" id="admin-login">—</div>
         <div class="badge-role regular" id="admin-role">—</div>
-        <button id="change-password-btn"><span class="ico">🔐</span> Сменить пароль</button>
-        <button id="logout-btn" class="danger"><span class="ico">🚪</span> Выйти</button>
+        <button id="change-password-btn">Сменить пароль</button>
+        <button id="logout-btn" class="danger">Выйти</button>
       </div>
     </aside>
 
@@ -562,7 +551,6 @@
         <div class="topbar-left">
           <button class="hamburger" id="hamburger" aria-label="Меню">☰</button>
           <div class="topbar-search">
-              <span>🔍</span>
               <input type="text" placeholder="Поиск..." disabled>
           </div>
         </div>
@@ -571,7 +559,7 @@
         
         <div class="topbar-right">
           <div class="actions" id="page-actions"></div>
-          <button class="topbar-icon-btn" title="Уведомления">🔔</button>
+          <button class="topbar-icon-btn" title="Уведомления">!</button>
           <div class="topbar-avatar" id="topbar-avatar">?</div>
         </div>
       </div>
@@ -599,29 +587,29 @@ const TOKEN_KEY = 'wokker_admin_token';
 const LOGIN_RE = /^[a-z]{3}\d{2}$/;
 
 const PERMISSIONS_LIST = [
-  { key: 'users_create', label: 'Добавлять сотрудников', icon: '➕' },
-  { key: 'users_edit', label: 'Редактировать сотрудников', icon: '✏️' },
-  { key: 'users_fire', label: 'Увольнять сотрудников', icon: '🚪' },
-  { key: 'citizenships_edit', label: 'Управлять гражданствами', icon: '🌍' },
-  { key: 'medbook_edit', label: 'Заполнять медкнижки', icon: '📝' },
-  { key: 'medbook_doctors_manage', label: 'Врачи: добавление и сроки', icon: '👨‍⚕️' },
-  { key: 'medbook_tests_manage', label: 'Анализы: добавление и сроки', icon: '🧪' },
-  { key: 'medbook_vaccines_manage', label: 'Прививки: добавление и сроки', icon: '💉' },
-  { key: 'restaurant_tu', label: 'Менять ТУ у ресторанов', icon: '👔' },
-  { key: 'restaurant_create', label: 'Добавлять рестораны', icon: '➕' },
-  { key: 'restaurant_edit', label: 'Редактировать рестораны', icon: '🏪' },
-  { key: 'standards_edit', label: 'Предлагать стандарты', icon: '📚' },
-  { key: 'checklist_create', label: 'Создавать чек-листы', icon: '📋' },
-  { key: 'checklist_edit', label: 'Редактировать чек-листы', icon: '✏️' },
-  { key: 'news_write', label: 'Писать новости', icon: '📝' },
-  { key: 'news_edit', label: 'Редактировать новости', icon: '✏️' },
-  { key: 'news_suggest', label: 'Предлагать новости', icon: '💭' },
-  { key: 'faq_edit', label: 'Редактировать FAQ', icon: '❓' },
-  { key: 'positions_edit', label: 'Управлять должностями', icon: '💼' },
-  { key: 'questions_reply', label: 'Отвечать на вопросы', icon: '💬' },
-  { key: 'certification_edit', label: 'Управлять вопросами сертификации', icon: '🎓' },
-  { key: 'academy_edit', label: 'Управлять Академией', icon: '🏫' },
-  { key: 'timesheet_access', label: 'Доступ к Табелю', icon: '⏱' },
+  { key: 'users_create', label: 'Добавлять сотрудников' },
+  { key: 'users_edit', label: 'Редактировать сотрудников' },
+  { key: 'users_fire', label: 'Увольнять сотрудников' },
+  { key: 'citizenships_edit', label: 'Управлять гражданствами' },
+  { key: 'medbook_edit', label: 'Заполнять медкнижки' },
+  { key: 'medbook_doctors_manage', label: 'Врачи: добавление и сроки' },
+  { key: 'medbook_tests_manage', label: 'Анализы: добавление и сроки' },
+  { key: 'medbook_vaccines_manage', label: 'Прививки: добавление и сроки' },
+  { key: 'restaurant_tu', label: 'Менять ТУ у ресторанов' },
+  { key: 'restaurant_create', label: 'Добавлять рестораны' },
+  { key: 'restaurant_edit', label: 'Редактировать рестораны' },
+  { key: 'standards_edit', label: 'Предлагать стандарты' },
+  { key: 'checklist_create', label: 'Создавать чек-листы' },
+  { key: 'checklist_edit', label: 'Редактировать чек-листы' },
+  { key: 'news_write', label: 'Писать новости' },
+  { key: 'news_edit', label: 'Редактировать новости' },
+  { key: 'news_suggest', label: 'Предлагать новости' },
+  { key: 'faq_edit', label: 'Редактировать FAQ' },
+  { key: 'positions_edit', label: 'Управлять должностями' },
+  { key: 'questions_reply', label: 'Отвечать на вопросы' },
+  { key: 'certification_edit', label: 'Управлять вопросами сертификации' },
+  { key: 'academy_edit', label: 'Управлять Академией' },
+  { key: 'timesheet_access', label: 'Доступ к Табелю' },
 ];
 
 const STANDARD_GROUPS = [
@@ -768,8 +756,8 @@ async function doLogin() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ login, password }),
     });
-    if (res.status === 401) { errEl.textContent = '❌ Неверный логин или пароль'; return; }
-    if (res.status === 403) { errEl.textContent = '❌ Аккаунт уволен или нет прав администратора'; return; }
+    if (res.status === 401) { errEl.textContent = 'Неверный логин или пароль'; return; }
+    if (res.status === 403) { errEl.textContent = 'Аккаунт уволен или нет прав администратора'; return; }
     if (!res.ok) { errEl.textContent = 'Ошибка сервера'; return; }
     const data = await res.json();
     if (!data.token) { errEl.textContent = 'Ошибка'; return; }
@@ -800,10 +788,10 @@ async function checkAdminAndLoad() {
     }
 
     const roleEl = $('admin-role');
-    if (ME.is_super_admin) { roleEl.textContent = '👑 Супер-админ'; roleEl.className = 'badge-role super'; }
-    else if (ME.is_hr) { roleEl.textContent = '💼 HR'; roleEl.className = 'badge-role hr'; }
-    else { roleEl.textContent = '🛡 Админ'; roleEl.className = 'badge-role regular'; }
-    $('nav-admins').style.display = ME.is_super_admin ? 'flex' : 'none';
+    if (ME.is_super_admin) { roleEl.textContent = 'Супер-админ'; roleEl.className = 'badge-role super'; }
+    else if (ME.is_hr) { roleEl.textContent = 'HR'; roleEl.className = 'badge-role hr'; }
+    else { roleEl.textContent = 'Админ'; roleEl.className = 'badge-role regular'; }
+    $('nav-admins').style.display = ME.is_super_admin ? 'block' : 'none';
     showApp();
     navigate('dashboard');
     refreshCounters();
@@ -822,7 +810,7 @@ $('change-password-btn').addEventListener('click', () => { closeSidebar(); openC
 
 /* ================== CHANGE PASSWORD ================== */
 function openChangePassword() {
-  openModal('🔐 Сменить пароль', `
+  openModal('Сменить пароль', `
     <div class="form-group"><label>Текущий пароль</label><input class="form-input" id="cp-old" type="password"></div>
     <div class="form-group"><label>Новый пароль</label><input class="form-input" id="cp-new" type="password"><div class="form-hint">Минимум 8 символов</div></div>
     <div class="form-group"><label>Повторите</label><input class="form-input" id="cp-new2" type="password"></div>
@@ -903,7 +891,7 @@ function navigate(sec) {
     .catch(e => {
       console.error('load:', e);
       if (e.message !== 'unauthorized' && e.message !== 'fired') {
-        $('page-content').innerHTML = '<div class="empty"><span class="emoji">⚠️</span>Ошибка: ' + esc(e.message) + '</div>';
+        $('page-content').innerHTML = '<div class="empty">Ошибка: ' + esc(e.message) + '</div>';
       }
     });
 }
@@ -942,22 +930,18 @@ async function loadDashboard() {
         <div class="dash-stat-card green">
           <div class="ds-label">Активные сотрудники</div>
           <div class="ds-value" id="stat-active"><div class="skeleton skeleton-stat"></div></div>
-          <div class="ds-icon">👥</div>
         </div>
         <div class="dash-stat-card blue">
           <div class="ds-label">Новые за 7 дней</div>
           <div class="ds-value" id="stat-new7"><div class="skeleton skeleton-stat"></div></div>
-          <div class="ds-icon">📈</div>
         </div>
         <div class="dash-stat-card accent">
           <div class="ds-label">Открытые вопросы</div>
           <div class="ds-value" id="stat-questions"><div class="skeleton skeleton-stat"></div></div>
-          <div class="ds-icon">💬</div>
         </div>
         <div class="dash-stat-card amber">
           <div class="ds-label">Требуют внимания</div>
           <div class="ds-value" id="stat-medbooks"><div class="skeleton skeleton-stat"></div></div>
-          <div class="ds-icon">🩺</div>
         </div>
       </div>
 
@@ -967,7 +951,6 @@ async function loadDashboard() {
           <div class="dash-section-title" style="margin: 0;">Структура персонала</div>
         </div>
         <div class="dash-bar-chart" id="dash-chart-container">
-          <!-- Сюда рендерится график -->
           <div style="width:100%; text-align:center; color: var(--dash-muted); margin-top: 40px;">Загрузка данных...</div>
         </div>
       </div>
@@ -1030,7 +1013,6 @@ async function loadDashboard() {
     }
   } catch(e) { console.error('Dashboard load error', e); }
 
-  // Обновляем статы
   const statActiveEl = $('stat-active');
   if (statActiveEl) statActiveEl.textContent = stats.active || 0;
   
@@ -1043,7 +1025,6 @@ async function loadDashboard() {
   const statMedbooksEl = $('stat-medbooks');
   if (statMedbooksEl) statMedbooksEl.textContent = medbookAlerts.length || 0;
 
-  // Рисуем бар-чарт
   const chartContainer = $('dash-chart-container');
   if (chartContainer && stats.total > 0) {
     const maxVal = Math.max(stats.active, stats.fired, stats.new7, 1);
@@ -1109,7 +1090,7 @@ async function loadDashboard() {
     if (pendingNews.length) {
       modHtml += pendingNews.slice(0, 2).map(n => `
         <div class="dash-list-item">
-          <div class="dash-list-avatar" style="background: var(--dash-accent); color: #000;">📰</div>
+          <div class="dash-list-avatar" style="background: var(--dash-accent); color: #000;">Н</div>
           <div class="dash-list-content">
             <div class="dash-list-title">${esc(n.title)}</div>
             <div class="dash-list-sub">Новость</div>
@@ -1121,7 +1102,7 @@ async function loadDashboard() {
     if (stats.standards_pending > 0) {
       modHtml += `
         <div class="dash-list-item">
-          <div class="dash-list-avatar" style="background: var(--dash-blue);">📚</div>
+          <div class="dash-list-avatar" style="background: var(--dash-blue);">С</div>
           <div class="dash-list-content">
             <div class="dash-list-title">Новые стандарты</div>
             <div class="dash-list-sub">Ожидают согласования</div>
@@ -1173,7 +1154,7 @@ async function loadCitizenships() {
 async function loadUsers(search) {
   _usersCurrentSearch = search || '';
   const canCreate = hasPerm('users_create');
-  $('page-actions').innerHTML = canCreate ? '<button class="btn primary small" id="users-create">+ Создать</button>' : '';
+  $('page-actions').innerHTML = canCreate ? '<button class="btn primary small" id="users-create">Создать</button>' : '';
   if (canCreate) $('users-create').addEventListener('click', openUserCreate);
 
   $('page-content').innerHTML = `
@@ -1247,16 +1228,16 @@ function renderUsersTbody(users) {
           <td data-label="Должность">${esc(u.position || '—')}</td>
           <td data-label="Уволен" style="font-size:13px;color:var(--text-muted);">${fmtDate(u.fired_at, false)}</td>
           <td class="actions-cell" data-label="">
-            ${canFire ? `<button class="icon-btn restore" data-restore="${u.user_id}" title="Восстановить">↩️</button>` : ''}
+            ${canFire ? `<button class="icon-btn restore" data-restore="${u.user_id}" title="Восстановить">Восст.</button>` : ''}
           </td>
         </tr>`;
     }
     const mbStatus = u.medbook_status || 'invalid';
     let mbTag = '';
     if (u.is_admin) mbTag = '<span class="tag gray">—</span>';
-    else if (mbStatus === 'ok') mbTag = '<span class="tag green">✅</span>';
-    else if (mbStatus === 'expiring') mbTag = '<span class="tag amber">⚠️</span>';
-    else mbTag = '<span class="tag red">❌</span>';
+    else if (mbStatus === 'ok') mbTag = '<span class="tag green">ОК</span>';
+    else if (mbStatus === 'expiring') mbTag = '<span class="tag amber">Скоро</span>';
+    else mbTag = '<span class="tag red">Ошибка</span>';
     const showFireBtn = canFire && !u.is_super_admin && u.user_id !== ME.user_id;
     const ptTag = u.payment_type === 'fixed' ? '<span class="tag amber" style="font-size:10px; padding: 2px 6px;">Оклад</span>' : '<span class="tag gray" style="font-size:10px; padding: 2px 6px;">Почасовка</span>';
     return `
@@ -1266,9 +1247,9 @@ function renderUsersTbody(users) {
         <td data-label="Должность">${esc(u.position || '—')}</td>
         <td data-label="Медкнижка">${mbTag}</td>
         <td class="actions-cell" data-label="">
-          ${!u.is_admin && canMedbook ? `<button class="icon-btn" data-medbook="${u.user_id}" title="Медкнижка">🩺</button>` : ''}
-          ${canEdit ? `<button class="icon-btn" data-edit="${u.user_id}">✏️</button>` : ''}
-          ${showFireBtn ? `<button class="icon-btn fire" data-fire="${u.user_id}" title="Уволить">🚪</button>` : ''}
+          ${!u.is_admin && canMedbook ? `<button class="icon-btn" data-medbook="${u.user_id}" title="Медкнижка">Мед.</button>` : ''}
+          ${canEdit ? `<button class="icon-btn" data-edit="${u.user_id}">Ред.</button>` : ''}
+          ${showFireBtn ? `<button class="icon-btn fire" data-fire="${u.user_id}" title="Уволить">Увол.</button>` : ''}
         </td>
       </tr>`;
   }).join('');
@@ -1315,7 +1296,6 @@ async function openUserCreate() {
         <div class="form-hint">Логин будет сгенерирован из фамилии автоматически</div>
       </div>
       <div class="login-preview" id="login-preview" style="display:none;">
-        <div class="lp-icon">🔑</div>
         <div style="flex:1;">
           <div class="lp-label">Логин будет выдан</div>
           <div class="lp-value" id="lp-value">—</div>
@@ -1345,8 +1325,8 @@ async function openUserCreate() {
       <div class="form-group">
         <label>Тип оплаты</label>
         <select class="form-select" id="nc-payment-type">
-            <option value="hourly">⏱ Почасовая</option>
-            <option value="fixed">💰 Фиксированный оклад</option>
+            <option value="hourly">Почасовая</option>
+            <option value="fixed">Фиксированный оклад</option>
         </select>
       </div>
 
@@ -1390,12 +1370,10 @@ async function openUserCreate() {
           payment_type: $('nc-payment-type').value
         });
         closeModal();
-        openModal('✅ Сотрудник создан', `
+        openModal('Сотрудник создан', `
           <div style="text-align:center; padding: 10px 0;">
-            <div style="font-size:56px; margin-bottom:16px;">🎉</div>
-            <div style="font-size:20px; font-weight:800; margin-bottom:8px; color:var(--text-main);">${esc(res.user.full_name)}</div>
-            <div class="login-preview" style="display:inline-flex; text-align:left; margin:20px auto 0;">
-              <div class="lp-icon">🔑</div>
+            <div style="font-size:20px; font-weight:800; margin-bottom:16px; color:var(--text-main);">${esc(res.user.full_name)}</div>
+            <div class="login-preview" style="display:inline-flex; text-align:left; margin:0 auto;">
               <div><div class="lp-label">Логин</div>
               <div class="lp-value" style="font-size:28px;">${esc(res.user.login)}</div>
               <div class="lp-hint">Сообщите сотруднику вместе с паролем</div></div>
@@ -1435,15 +1413,15 @@ async function openUserEditor(uid) {
     const mbStatus = u.medbook_status || 'invalid';
     let mbBadge = '';
     if (!u.is_admin) {
-      if (mbStatus === 'ok') mbBadge = '<span class="tag green">✅ Действительна</span>';
-      else if (mbStatus === 'expiring') mbBadge = '<span class="tag amber">⚠️ Скоро истекает</span>';
-      else mbBadge = '<span class="tag red">❌ Недействительна</span>';
+      if (mbStatus === 'ok') mbBadge = '<span class="tag green">Действительна</span>';
+      else if (mbStatus === 'expiring') mbBadge = '<span class="tag amber">Скоро истекает</span>';
+      else mbBadge = '<span class="tag red">Недействительна</span>';
     }
     const showFireBtn = canFire && !u.is_super_admin && u.user_id !== ME.user_id
                         && !u.is_fired && (!u.is_admin || isSuperAdmin());
 
     openModal('Редактирование сотрудника', `
-      <div class="form-group"><label>Логин</label><input class="form-input" value="${esc(u.login || '')}" readonly><div class="form-hint">🔒 Не изменяется</div></div>
+      <div class="form-group"><label>Логин</label><input class="form-input" value="${esc(u.login || '')}" readonly><div class="form-hint">Не изменяется</div></div>
       ${canEdit ? `<div class="form-group"><label>Новый пароль</label><input class="form-input" id="eu-password" placeholder="Оставьте пустым"></div>` : ''}
       <div class="form-group"><label>ФИО</label><input class="form-input" id="eu-name" value="${esc(u.full_name)}" ${canEdit?'':'disabled'}></div>
       <div class="form-row">
@@ -1467,20 +1445,20 @@ async function openUserEditor(uid) {
       <div class="form-group">
         <label>Тип оплаты</label>
         <select class="form-select" id="eu-payment-type" ${canEdit?'':'disabled'}>
-            <option value="hourly" ${u.payment_type === 'hourly' ? 'selected' : ''}>⏱ Почасовая</option>
-            <option value="fixed" ${u.payment_type === 'fixed' ? 'selected' : ''}>💰 Фиксированный оклад</option>
+            <option value="hourly" ${u.payment_type === 'hourly' ? 'selected' : ''}>Почасовая</option>
+            <option value="fixed" ${u.payment_type === 'fixed' ? 'selected' : ''}>Фиксированный оклад</option>
         </select>
       </div>
 
       <div class="form-group">
         <div class="checkbox-row"><input type="checkbox" id="eu-cert" ${u.is_certified ? 'checked' : ''} ${canEdit?'':'disabled'}><label for="eu-cert">Сертификация</label></div>
-        ${!u.is_admin ? `<div style="margin-top:16px;"><label style="font-size:12px;color:var(--text-muted);font-weight:700;text-transform:uppercase; margin-left:8px;">МЕД. КНИЖКА</label><div style="margin-top:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">${mbBadge} <button class="btn ghost small" id="eu-open-mb" ${hasPerm('medbook_edit')?'':'disabled'}>🩺 Открыть</button></div></div>` : ''}
+        ${!u.is_admin ? `<div style="margin-top:16px;"><label style="font-size:12px;color:var(--text-muted);font-weight:700;text-transform:uppercase; margin-left:8px;">МЕД. КНИЖКА</label><div style="margin-top:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">${mbBadge} <button class="btn ghost small" id="eu-open-mb" ${hasPerm('medbook_edit')?'':'disabled'}>Открыть</button></div></div>` : ''}
         ${isSuperAdmin() && !u.is_super_admin ? `<div class="checkbox-row" style="margin-top:16px;"><input type="checkbox" id="eu-admin" ${u.is_admin ? 'checked' : ''}><label for="eu-admin">Права администратора</label></div>` : ''}
-        ${u.is_super_admin ? '<div class="tag purple" style="margin-top:16px;">👑 Супер-администратор</div>' : ''}
+        ${u.is_super_admin ? '<div class="tag purple" style="margin-top:16px;">Супер-администратор</div>' : ''}
       </div>
       <div class="form-hint error" id="eu-error"></div>
     `, `
-      <div>${showFireBtn ? `<button class="btn danger" id="eu-fire-btn">🚪 Уволить</button>` : ''}</div>
+      <div>${showFireBtn ? `<button class="btn danger" id="eu-fire-btn">Уволить</button>` : ''}</div>
       <div class="right-side">
         <button class="btn ghost" onclick="closeModal()">Отмена</button>
         ${canEdit ? `<button class="btn primary" id="eu-save">Сохранить</button>` : ''}
@@ -1560,10 +1538,10 @@ async function loadMedbooks() {
 
   const tabs = `
     <div class="subtabs">
-      <button class="subtab ${_medbooksTab==='staff'?'active':''}" data-mb-tab="staff">👥 Сотрудники</button>
-      <button class="subtab ${_medbooksTab==='doctors'?'active':''}" data-mb-tab="doctors">👨‍⚕️ Врачи</button>
-      <button class="subtab ${_medbooksTab==='tests'?'active':''}" data-mb-tab="tests">🧪 Анализы</button>
-      <button class="subtab ${_medbooksTab==='vaccines'?'active':''}" data-mb-tab="vaccines">💉 Прививки</button>
+      <button class="subtab ${_medbooksTab==='staff'?'active':''}" data-mb-tab="staff">Сотрудники</button>
+      <button class="subtab ${_medbooksTab==='doctors'?'active':''}" data-mb-tab="doctors">Врачи</button>
+      <button class="subtab ${_medbooksTab==='tests'?'active':''}" data-mb-tab="tests">Анализы</button>
+      <button class="subtab ${_medbooksTab==='vaccines'?'active':''}" data-mb-tab="vaccines">Прививки</button>
     </div>`;
 
   let contentHtml = '';
@@ -1571,16 +1549,16 @@ async function loadMedbooks() {
     const staff = data.users || [];
     const rows = staff.map(u => {
       let statusTag = '';
-      if (u.medbook_status === 'ok') statusTag = '<span class="tag green">✅</span>';
-      else if (u.medbook_status === 'expiring') statusTag = '<span class="tag amber">⚠️</span>';
-      else statusTag = `<span class="tag red">❌ ${u.missing}/${u.total}</span>`;
+      if (u.medbook_status === 'ok') statusTag = '<span class="tag green">ОК</span>';
+      else if (u.medbook_status === 'expiring') statusTag = '<span class="tag amber">Скоро</span>';
+      else statusTag = `<span class="tag red">${u.missing}/${u.total}</span>`;
       return `
         <tr class="row-clickable" data-mb-user="${u.user_id}">
           <td data-label="ФИО"><b>${esc(u.full_name)}</b></td>
           <td data-label="Должность">${esc(u.position || '—')}</td>
           <td data-label="Статус">${statusTag}</td>
           <td class="actions-cell" data-label="">
-            ${canEdit ? `<button class="icon-btn" data-mb-edit="${u.user_id}" title="Заполнить">🩺</button>` : '<span style="color:var(--text-muted);font-size:14px;">🔒</span>'}
+            ${canEdit ? `<button class="icon-btn" data-mb-edit="${u.user_id}" title="Заполнить">Ред.</button>` : '<span style="color:var(--text-muted);font-size:14px;">—</span>'}
           </td>
         </tr>`;
     }).join('');
@@ -1593,7 +1571,7 @@ async function loadMedbooks() {
         <div class="stat-card amber"><div class="label">Скоро истекают</div><div class="value">${expiring}</div></div>
         <div class="stat-card accent"><div class="label">Недействительны</div><div class="value">${invalid}</div></div>
       </div>
-      ${!canEdit ? '<div class="card" style="margin-bottom:24px;padding:20px 24px;background:#FAFAFA;border-radius:20px;font-size:14px;color:var(--text-muted);border:1px solid var(--border);">🔒 Нет права заполнять медкнижки</div>' : ''}
+      ${!canEdit ? '<div class="card" style="margin-bottom:24px;padding:20px 24px;background:#FAFAFA;border-radius:20px;font-size:14px;color:var(--text-muted);border:1px solid var(--border);">Нет права заполнять медкнижки</div>' : ''}
       <div class="table-wrap">
         <table>
           <thead><tr><th>ФИО</th><th>Должность</th><th>Статус</th><th></th></tr></thead>
@@ -1613,13 +1591,13 @@ async function loadMedbooks() {
         <div style="text-align:center;">${item.required ? '<span class="ref-badge req">Обяз.</span>' : '<span class="ref-badge opt">Опц.</span>'}</div>
         <div class="ref-months">${item.validity_months}м</div>
         <div class="actions-cell" style="justify-content:flex-end;">
-          ${canManage ? `<button class="icon-btn" data-ref-edit="${item.id}" data-ref-type="${type}">✏️</button>
-            <button class="icon-btn danger" data-ref-del="${item.id}" data-ref-type="${type}">🗑</button>` : '<span style="color:var(--text-muted);font-size:14px;">🔒</span>'}
+          ${canManage ? `<button class="icon-btn" data-ref-edit="${item.id}" data-ref-type="${type}">Ред.</button>
+            <button class="icon-btn danger" data-ref-del="${item.id}" data-ref-type="${type}">Удал.</button>` : '<span style="color:var(--text-muted);font-size:14px;">—</span>'}
         </div>
       </div>
     `).join('');
     contentHtml = `
-      ${!canManage ? `<div class="card" style="margin-bottom:24px;padding:20px 24px;background:#FAFAFA;border-radius:20px;font-size:14px;color:var(--text-muted);border:1px solid var(--border);">🔒 Нет права управлять справочником</div>` : ''}
+      ${!canManage ? `<div class="card" style="margin-bottom:24px;padding:20px 24px;background:#FAFAFA;border-radius:20px;font-size:14px;color:var(--text-muted);border:1px solid var(--border);">Нет права управлять справочником</div>` : ''}
       <div class="table-card" style="padding: 24px;">
         <div class="ref-row" style="font-size:12px; font-weight:700; color:var(--text-muted); text-transform:uppercase; border-bottom:1px solid var(--border); padding-top:0;">
           <div>Название</div><div style="text-align:center;">Обяз.</div><div class="ref-months">Срок</div><div></div>
@@ -1632,7 +1610,7 @@ async function loadMedbooks() {
               <input class="form-input" id="ref-new-months" type="number" value="12" min="1" max="120" style="flex:1;" placeholder="Срок (мес.)">
               <label style="display:flex; align-items:center; gap:8px; font-size:14px; white-space:nowrap; color:var(--text-muted); cursor:pointer;"><input type="checkbox" id="ref-new-required" style="width:20px;height:20px;accent-color:var(--accent);"> Обязательно</label>
             </div>
-            <button class="btn primary" id="ref-add-btn" data-ref-type="${type}" style="justify-content:center;">+ Добавить</button>
+            <button class="btn primary" id="ref-add-btn" data-ref-type="${type}" style="justify-content:center;">Добавить</button>
           </div>
         ` : ''}
       </div>`;
@@ -1726,17 +1704,17 @@ async function openMedbookEditor(userId) {
       </div>`;
   }).join('');
 
-  openModal(`🩺 Медкнижка: ${esc(user.full_name)}`, `
+  openModal(`Медкнижка: ${esc(user.full_name)}`, `
     <div style="background:#FAFAFA; padding:20px 24px; border-radius:20px; margin-bottom:24px; font-size:15px; border:1px solid var(--border);">
       <b style="color:var(--text-main);">${esc(user.full_name)}</b> <span style="color:var(--text-muted);">· ${esc(user.position || '—')}${user.restaurant_name ? ' · ' + esc(user.restaurant_name) : ''}</span>
     </div>
     <div class="medbook-status-banner invalid" id="mb-banner">Статус будет рассчитан после сохранения</div>
     <div class="form-hint" style="margin-bottom:32px;">
-      ⚠️ Медкнижка действительна только когда заполнены ВСЕ пункты и не просрочены. Формат даты: ДД.ММ.ГГГГ.
+      Медкнижка действительна только когда заполнены ВСЕ пункты и не просрочены. Формат даты: ДД.ММ.ГГГГ.
     </div>
-    <div class="medbook-section"><h4>👨‍⚕️ Врачи</h4>${renderRows(doctors, 'doctors')}</div>
-    <div class="medbook-section"><h4>🧪 Анализы</h4>${renderRows(tests, 'tests')}</div>
-    <div class="medbook-section"><h4>💉 Прививки</h4>${renderRows(vaccines, 'vaccines')}</div>
+    <div class="medbook-section"><h4>Врачи</h4>${renderRows(doctors, 'doctors')}</div>
+    <div class="medbook-section"><h4>Анализы</h4>${renderRows(tests, 'tests')}</div>
+    <div class="medbook-section"><h4>Прививки</h4>${renderRows(vaccines, 'vaccines')}</div>
     <div class="form-hint error" id="mb-error"></div>
   `, `<button class="btn ghost" onclick="closeModal()">Отмена</button><button class="btn primary" id="mb-save">Сохранить</button>`, { wide: true });
 
@@ -1766,13 +1744,13 @@ async function openMedbookEditor(userId) {
       const parts = [];
       if (emptyCount > 0) parts.push(`не заполнено: ${emptyCount}`);
       if (expiredCount > 0) parts.push(`просрочено: ${expiredCount}`);
-      banner.textContent = `❌ Медкнижка НЕДЕЙСТВИТЕЛЬНА — ${parts.join(', ')} из ${total} пунктов`;
+      banner.textContent = `Медкнижка НЕДЕЙСТВИТЕЛЬНА — ${parts.join(', ')} из ${total} пунктов`;
     } else if (expiringCount > 0) {
       banner.className = 'medbook-status-banner expiring';
-      banner.textContent = `⚠️ Все заполнено, но ${expiringCount} пунктов истекают в ближайшие 30 дней`;
+      banner.textContent = `Все заполнено, но ${expiringCount} пунктов истекают в ближайшие 30 дней`;
     } else {
       banner.className = 'medbook-status-banner ok';
-      banner.textContent = '✅ Медкнижка действительна — все пункты заполнены и в сроке';
+      banner.textContent = 'Медкнижка действительна — все пункты заполнены и в сроке';
     }
     document.querySelectorAll('[data-mb-input]').forEach(inp => {
       const [src, idStr] = inp.dataset.mbInput.split(':');
@@ -1836,26 +1814,26 @@ function openRefEdit(type, id) {
 /* ================== ADMINS ================== */
 async function loadAdmins() {
   if (!isSuperAdmin()) {
-    $('page-content').innerHTML = '<div class="empty"><span class="emoji">🔒</span>Раздел только для супер-администратора</div>';
+    $('page-content').innerHTML = '<div class="empty">Раздел только для супер-администратора</div>';
     return;
   }
   const data = await api('/api/admin/admins', {});
   const admins = data.admins || [];
   const rows = admins.map(a => {
-    const tag = a.is_super_admin ? '<span class="tag purple">👑 Супер</span>'
-      : a.position === 'HR' ? '<span class="tag blue">💼 HR</span>'
-      : '<span class="tag gray">🛡 Обычный</span>';
+    const tag = a.is_super_admin ? '<span class="tag purple">Супер</span>'
+      : a.position === 'HR' ? '<span class="tag blue">HR</span>'
+      : '<span class="tag gray">Обычный</span>';
     return `
       <tr>
         <td data-label="Логин"><span class="login-cell">${esc(a.login)}</span></td>
         <td data-label="ФИО"><b>${esc(a.full_name)}</b></td>
         <td data-label="Роль">${tag}</td>
-        <td class="actions-cell" data-label="">${!a.is_super_admin ? `<button class="icon-btn" data-perms="${a.user_id}">✏️</button>` : '—'}</td>
+        <td class="actions-cell" data-label="">${!a.is_super_admin ? `<button class="icon-btn" data-perms="${a.user_id}">Ред.</button>` : '—'}</td>
       </tr>`;
   }).join('');
   $('page-content').innerHTML = `
     <div class="card" style="margin-bottom:32px; padding:24px; background:var(--purple-soft); border-left:6px solid var(--purple); border-radius:24px; border-top:1px solid var(--border); border-right:1px solid var(--border); border-bottom:1px solid var(--border);">
-      <b style="font-size:18px; color:var(--purple);">👑 Управление администраторами</b>
+      <b style="font-size:18px; color:var(--purple);">Управление администраторами</b>
       <div style="font-size:15px; color:var(--text-muted); margin-top:12px; line-height:1.6;">
         Публиковать новости и стандарты могут только супер-админ и HR. Остальные могут только предлагать на модерацию.
       </div>
@@ -1876,10 +1854,9 @@ function openPermEditor(uid, admins) {
   const rows = PERMISSIONS_LIST.map(p => `
     <div class="perm-item ${perms[p.key] ? 'checked' : ''}" data-perm="${p.key}">
       <input type="checkbox" ${perms[p.key] ? 'checked' : ''} data-perm-check="${p.key}">
-      <span class="perm-icon">${p.icon}</span>
       <span class="perm-label">${p.label}</span>
     </div>`).join('');
-  openModal(`🔐 Права: ${esc(a.full_name)}`, `
+  openModal(`Права: ${esc(a.full_name)}`, `
     <div class="form-hint" style="margin-bottom:24px;">
       Права публикации новостей и стандартов — только супер-админ и HR. Остальные могут только предлагать.
     </div>
@@ -1911,17 +1888,17 @@ async function loadRestaurants() {
   const canCreate = hasPerm('restaurant_create');
   const canEdit = hasPerm('restaurant_edit');
 
-  $('page-actions').innerHTML = canCreate ? '<button class="btn primary small" id="rest-add-btn">+ Добавить</button>' : '';
+  $('page-actions').innerHTML = canCreate ? '<button class="btn primary small" id="rest-add-btn">Добавить</button>' : '';
   if (canCreate) $('rest-add-btn').addEventListener('click', openRestaurantAdd);
 
   const rows = data.restaurants.map(r => `
     <tr>
       <td data-label="Название"><b>${esc(r.name)}</b></td>
-      <td data-label="Статус">${r.force_status !== 'closed' ? '<span class="tag green">🟢 Открыт</span>' : '<span class="tag red">🔴 Закрыт</span>'}</td>
+      <td data-label="Статус">${r.force_status !== 'closed' ? '<span class="tag green">Открыт</span>' : '<span class="tag red">Закрыт</span>'}</td>
       <td data-label="ТУ">${esc(r.territory_manager_name || '—')}</td>
       <td class="actions-cell" data-label="">
-        ${canEdit ? `<button class="icon-btn" data-edit="${esc(r.key)}">✏️</button>` : ''}
-        ${canTu ? `<button class="icon-btn" data-tu="${esc(r.key)}" title="Назначить ТУ">👔</button>` : ''}
+        ${canEdit ? `<button class="icon-btn" data-edit="${esc(r.key)}">Ред.</button>` : ''}
+        ${canTu ? `<button class="icon-btn" data-tu="${esc(r.key)}" title="Назначить ТУ">ТУ</button>` : ''}
       </td>
     </tr>`).join('');
   $('page-content').innerHTML = `
@@ -2052,7 +2029,7 @@ async function loadNews() {
   const canWrite = hasPerm('news_write') || hasPerm('news_suggest') || canPublishFlag;
   const canEdit = hasPerm('news_edit');
   
-  $('page-actions').innerHTML = canWrite ? `<button class="btn primary small" id="news-add-btn">+ ${canPublishFlag ? 'Новость' : 'Предложить'}</button>` : '';
+  $('page-actions').innerHTML = canWrite ? `<button class="btn primary small" id="news-add-btn">${canPublishFlag ? 'Создать' : 'Предложить'}</button>` : '';
   if (canWrite) $('news-add-btn').addEventListener('click', openNewsAdd);
   
   let pendingHtml = '';
@@ -2060,20 +2037,20 @@ async function loadNews() {
     pendingHtml = `
       <div style="margin-bottom:40px;">
         <h3 style="font-size:16px;text-transform:uppercase;color:var(--text-muted);letter-spacing:1px;margin-bottom:20px;">
-          💭 На модерации (${pending.length})
+          На модерации (${pending.length})
         </h3>
         ${pending.map(n => `
           <div class="pending-card">
             <div class="pc-header">
-              <div class="pc-author">✍️ ${esc(n.proposed_by || '—')} · ${fmtDate(n.created_at, true)}</div>
+              <div class="pc-author">${esc(n.proposed_by || '—')} · ${fmtDate(n.created_at, true)}</div>
               <span class="tag amber">Предложено</span>
             </div>
             ${n.image_url ? `<img src="${esc(n.image_url)}" style="max-height: 160px; border-radius: 16px; margin-bottom: 16px; display: block;">` : ''}
             <div class="pc-title">${esc(n.title)}</div>
             <div class="pc-body">${esc(n.body)}</div>
             <div class="pc-actions">
-              <button class="btn green small" data-approve="${n.id}">✅ Опубликовать</button>
-              <button class="btn danger small" data-reject="${n.id}">❌ Отклонить</button>
+              <button class="btn green small" data-approve="${n.id}">Опубликовать</button>
+              <button class="btn danger small" data-reject="${n.id}">Отклонить</button>
             </div>
           </div>
         `).join('')}
@@ -2082,16 +2059,16 @@ async function loadNews() {
   const rows = others.map(n => {
     const lvl = n.level === 'urgent' ? '<span class="tag red">Срочно</span>'
       : n.level === 'important' ? '<span class="tag amber">Важно</span>' : '<span class="tag gray">Обычная</span>';
-    const status = n.status === 'published' ? '<span class="tag green">✅</span>'
-      : n.status === 'scheduled' ? `<span class="tag blue">⏰ ${fmtDate(n.publish_at, false)}</span>` : '<span class="tag amber">Модерация</span>';
+    const status = n.status === 'published' ? '<span class="tag green">Опубл.</span>'
+      : n.status === 'scheduled' ? `<span class="tag blue">Отложено</span>` : '<span class="tag amber">Модерация</span>';
     return `
       <tr>
-        <td data-label="Фото">${n.image_url ? `<img src="${esc(n.image_url)}" style="width: 48px; height: 48px; object-fit: cover; border-radius: 12px;">` : '<div style="width:48px; height:48px; background:#F2F2F7; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px;">📰</div>'}</td>
+        <td data-label="Фото">${n.image_url ? `<img src="${esc(n.image_url)}" style="width: 48px; height: 48px; object-fit: cover; border-radius: 12px;">` : '<div style="width:48px; height:48px; background:#F2F2F7; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--text-muted);">Нет</div>'}</td>
         <td data-label="Заголовок"><b>${esc(n.title)}</b><br><span style="font-size:12px; color:var(--text-muted);">${lvl}</span></td>
         <td data-label="Статус">${status}</td>
         <td class="actions-cell" data-label="">
-          ${canEdit ? `<button class="icon-btn" data-title="${n.id}">✏️</button>` : ''}
-          ${canEdit && n.status !== 'pending' ? `<button class="icon-btn danger" data-del="${n.id}">🗑</button>` : ''}
+          ${canEdit ? `<button class="icon-btn" data-title="${n.id}">Ред.</button>` : ''}
+          ${canEdit && n.status !== 'pending' ? `<button class="icon-btn danger" data-del="${n.id}">Удал.</button>` : ''}
         </td>
       </tr>`;
   }).join('');
@@ -2136,8 +2113,8 @@ async function loadNews() {
 function openNewsAdd() {
   const canPublishFlag = canPublish();
   const intentOpts = canPublishFlag
-    ? `<option value="publish">📤 Опубликовать сейчас</option><option value="schedule">⏰ Отложить</option><option value="suggest">💭 Предложить</option>`
-    : `<option value="suggest">💭 Предложить (на модерацию)</option>`;
+    ? `<option value="publish">Опубликовать сейчас</option><option value="schedule">Отложить</option><option value="suggest">Предложить</option>`
+    : `<option value="suggest">Предложить (на модерацию)</option>`;
     
   _uploadedNewsImageUrl = '';
   
@@ -2145,7 +2122,7 @@ function openNewsAdd() {
     <div class="form-group">
       <label>Фотография (опционально)</label>
       <input type="file" id="n-image-file" accept="image/*" style="display: none;">
-      <button type="button" class="btn ghost" id="n-image-btn" style="width: 100%; padding: 20px; border-style:dashed; border-radius:24px;">📷 Прикрепить фото</button>
+      <button type="button" class="btn ghost" id="n-image-btn" style="width: 100%; padding: 20px; border-style:dashed; border-radius:24px;">Прикрепить фото</button>
       <div id="n-image-preview-box" style="display: none; margin-top: 16px; text-align: center;">
         <img id="n-image-preview" style="max-width: 100%; max-height: 200px; border-radius: 16px; object-fit: contain;">
       </div>
@@ -2154,7 +2131,7 @@ function openNewsAdd() {
     <div class="form-group"><label>Текст</label><textarea class="form-textarea" id="n-body"></textarea></div>
     <div class="form-group"><label>Уровень</label>
       <select class="form-select" id="n-level">
-        <option value="normal">🔵 Обычная</option><option value="important">🟡 Важная</option><option value="urgent">🔴 Срочная</option>
+        <option value="normal">Обычная</option><option value="important">Важная</option><option value="urgent">Срочная</option>
       </select>
     </div>
     <div class="form-group"><label>Действие</label><select class="form-select" id="n-intent">${intentOpts}</select></div>
@@ -2168,7 +2145,7 @@ function openNewsAdd() {
     if (file.size > 15 * 1024 * 1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
     
     const btn = $('n-image-btn');
-    btn.textContent = '⏳ Загрузка...';
+    btn.textContent = 'Загрузка...';
     btn.disabled = true;
     
     try {
@@ -2176,12 +2153,12 @@ function openNewsAdd() {
         _uploadedNewsImageUrl = res.url;
         $('n-image-preview').src = res.url;
         $('n-image-preview-box').style.display = 'block';
-        btn.textContent = '✅ Фото загружено';
+        btn.textContent = 'Фото загружено';
         btn.style.borderColor = 'var(--green)';
         btn.style.color = '#1B7A36';
     } catch (err) {
         toast(err.message, 'error');
-        btn.textContent = '📷 Прикрепить фото';
+        btn.textContent = 'Прикрепить фото';
     } finally {
         btn.disabled = false;
     }
@@ -2229,7 +2206,7 @@ function openNewsEdit(id, news) {
     <div class="form-group">
       <label>Фотография</label>
       <input type="file" id="n-image-file" accept="image/*" style="display: none;">
-      <button type="button" class="btn ghost" id="n-image-btn" style="width: 100%; padding: 20px; border-style:dashed; border-radius:24px;">📷 Заменить фото</button>
+      <button type="button" class="btn ghost" id="n-image-btn" style="width: 100%; padding: 20px; border-style:dashed; border-radius:24px;">Заменить фото</button>
       <div id="n-image-preview-box" style="display: ${n.image_url ? 'block' : 'none'}; margin-top: 16px; text-align: center;">
         <img id="n-image-preview" src="${esc(n.image_url || '')}" style="max-width: 100%; max-height: 200px; border-radius: 16px; object-fit: contain;">
       </div>
@@ -2238,9 +2215,9 @@ function openNewsEdit(id, news) {
     <div class="form-group"><label>Текст</label><textarea class="form-textarea" id="edit-n-body">${esc(n.body)}</textarea></div>
     <div class="form-group"><label>Уровень</label>
       <select class="form-select" id="edit-n-level">
-        <option value="normal" ${n.level==='normal'?'selected':''}>🔵 Обычная</option>
-        <option value="important" ${n.level==='important'?'selected':''}>🟡 Важная</option>
-        <option value="urgent" ${n.level==='urgent'?'selected':''}>🔴 Срочная</option>
+        <option value="normal" ${n.level==='normal'?'selected':''}>Обычная</option>
+        <option value="important" ${n.level==='important'?'selected':''}>Важная</option>
+        <option value="urgent" ${n.level==='urgent'?'selected':''}>Срочная</option>
       </select>
     </div>
   `, `<button class="btn ghost" onclick="closeModal()">Отмена</button><button class="btn primary" id="save-title-btn">Сохранить</button>`);
@@ -2252,7 +2229,7 @@ function openNewsEdit(id, news) {
     if (file.size > 15 * 1024 * 1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
     
     const btn = $('n-image-btn');
-    btn.textContent = '⏳ Загрузка...';
+    btn.textContent = 'Загрузка...';
     btn.disabled = true;
     
     try {
@@ -2260,10 +2237,10 @@ function openNewsEdit(id, news) {
         _uploadedNewsImageUrl = res.url;
         $('n-image-preview').src = res.url;
         $('n-image-preview-box').style.display = 'block';
-        btn.textContent = '✅ Фото загружено';
+        btn.textContent = 'Фото загружено';
     } catch (err) {
         toast(err.message, 'error');
-        btn.textContent = '📷 Заменить фото';
+        btn.textContent = 'Заменить фото';
     } finally {
         btn.disabled = false;
     }
@@ -2299,7 +2276,7 @@ async function loadStandards() {
   const canWrite = hasPerm('standards_edit') || canPublishFlag;
   const canEdit = hasPerm('standards_edit');
   
-  $('page-actions').innerHTML = canWrite ? `<button class="btn primary small" id="std-add-btn">+ ${canPublishFlag ? 'Стандарт' : 'Предложить'}</button>` : '';
+  $('page-actions').innerHTML = canWrite ? `<button class="btn primary small" id="std-add-btn">${canPublishFlag ? 'Создать' : 'Предложить'}</button>` : '';
   if (canWrite) $('std-add-btn').addEventListener('click', openStdAdd);
   
   let pendingHtml = '';
@@ -2307,38 +2284,38 @@ async function loadStandards() {
     pendingHtml = `
       <div style="margin-bottom:40px;">
         <h3 style="font-size:16px;text-transform:uppercase;color:var(--text-muted);letter-spacing:1px;margin-bottom:20px;">
-          💭 На согласовании (${pending.length})
+          На согласовании (${pending.length})
         </h3>
         ${pending.map(n => `
           <div class="pending-card">
             <div class="pc-header">
-              <div class="pc-author">✍️ ${esc(n.proposed_by || '—')} · ${fmtDate(n.created_at, true)}</div>
+              <div class="pc-author">${esc(n.proposed_by || '—')} · ${fmtDate(n.created_at, true)}</div>
               <span class="tag amber">Предложено</span>
             </div>
             ${n.image_url ? `<img src="${esc(n.image_url)}" style="max-height: 160px; border-radius: 16px; margin-bottom: 16px; display: block;">` : ''}
             <div class="pc-title"><span class="tag gray">${esc(n.number || '—')}</span> <span class="tag purple" style="margin-right:8px;">${esc(n.group_name || 'Общее')}</span> ${esc(n.title)}</div>
             <div class="pc-body">${esc(n.body.replace(/<[^>]*>?/gm, ''))}</div>
             <div class="pc-actions">
-              <button class="btn green small" data-approve="${n.id}">✅ Согласовать и опубликовать</button>
-              <button class="btn danger small" data-reject="${n.id}">❌ Отклонить</button>
+              <button class="btn green small" data-approve="${n.id}">Согласовать</button>
+              <button class="btn danger small" data-reject="${n.id}">Отклонить</button>
             </div>
           </div>
         `).join('')}
       </div>`;
   }
   const rows = others.map(n => {
-    const status = n.status === 'published' ? '<span class="tag green">✅</span>' : '<span class="tag amber">Модерация</span>';
+    const status = n.status === 'published' ? '<span class="tag green">Опубл.</span>' : '<span class="tag amber">Модерация</span>';
     return `
       <tr>
-        <td data-label="Фото">${n.image_url ? `<img src="${esc(n.image_url)}" style="width: 48px; height: 48px; object-fit: cover; border-radius: 12px;">` : '<div style="width:48px; height:48px; background:#F2F2F7; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px;">📚</div>'}</td>
+        <td data-label="Фото">${n.image_url ? `<img src="${esc(n.image_url)}" style="width: 48px; height: 48px; object-fit: cover; border-radius: 12px;">` : '<div style="width:48px; height:48px; background:#F2F2F7; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--text-muted);">Нет</div>'}</td>
         <td data-label="Номер"><span class="tag gray">${esc(n.number || '—')}</span></td>
         <td data-label="Группа"><span class="tag purple">${esc(n.group_name || 'Общее')}</span></td>
         <td data-label="Заголовок"><b>${esc(n.title)}</b></td>
-        <td data-label="Файл">${n.file_url ? '📎 Да' : '—'}</td>
+        <td data-label="Файл">${n.file_url ? 'Да' : '—'}</td>
         <td data-label="Статус">${status}</td>
         <td class="actions-cell" data-label="">
-          ${canEdit ? `<button class="icon-btn" data-title="${n.id}">✏️</button>` : ''}
-          ${canEdit && n.status !== 'pending' ? `<button class="icon-btn danger" data-del="${n.id}">🗑</button>` : ''}
+          ${canEdit ? `<button class="icon-btn" data-title="${n.id}">Ред.</button>` : ''}
+          ${canEdit && n.status !== 'pending' ? `<button class="icon-btn danger" data-del="${n.id}">Удал.</button>` : ''}
         </td>
       </tr>`;
   }).join('');
@@ -2389,7 +2366,7 @@ function renderTableEditor(headers, rows) {
           <input class="form-input" style="padding:8px; border-radius:8px; font-size:13px;" value="${esc(row[cIdx] || '')}" onchange="updateTableCell(${rIdx}, ${cIdx})">
         </td>
       `).join('')}
-      <td style="padding:4px;"><button type="button" class="icon-btn danger small" onclick="removeTableRow(${rIdx})">✕</button></td>
+      <td style="padding:4px;"><button type="button" class="icon-btn danger small" onclick="removeTableRow(${rIdx})">Удал.</button></td>
     </tr>
   `).join('');
 
@@ -2401,7 +2378,7 @@ function renderTableEditor(headers, rows) {
       </table>
     </div>
     <div style="display:flex; gap:8px; margin-top:16px;">
-      <button type="button" class="btn ghost small" onclick="addTableRow()">+ Добавить строку</button>
+      <button type="button" class="btn ghost small" onclick="addTableRow()">Добавить строку</button>
     </div>
   `;
 }
@@ -2447,7 +2424,7 @@ window.parsePastedTable = function(text) {
   const pasteArea = document.getElementById('paste-table-area');
   if (pasteArea) {
       pasteArea.value = '';
-      pasteArea.placeholder = '✅ Таблица успешно вставлена! Можете отредактировать её ниже.';
+      pasteArea.placeholder = 'Таблица успешно вставлена. Можете отредактировать её ниже.';
   }
 };
 
@@ -2495,7 +2472,7 @@ function openStdAdd() {
       <div class="form-group">
         <label>Обложка (фото)</label>
         <input type="file" id="std-image-file" accept="image/*" style="display: none;">
-        <button type="button" class="btn ghost" id="std-image-btn" style="width: 100%; padding: 16px; border-style:dashed; border-radius:24px;">📷 Прикрепить фото</button>
+        <button type="button" class="btn ghost" id="std-image-btn" style="width: 100%; padding: 16px; border-style:dashed; border-radius:24px;">Прикрепить фото</button>
         <div id="std-image-preview-box" style="display: none; margin-top: 12px; text-align: center;">
           <img id="std-image-preview" style="max-width: 100%; max-height: 100px; border-radius: 16px; object-fit: contain;">
         </div>
@@ -2503,14 +2480,13 @@ function openStdAdd() {
       <div class="form-group">
         <label>Документ (PDF, Word, Excel)</label>
         <input type="file" id="std-file-file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" style="display: none;">
-        <button type="button" class="btn ghost" id="std-file-btn" style="width: 100%; padding: 16px; border-style:dashed; border-radius:24px;">📎 Прикрепить файл</button>
+        <button type="button" class="btn ghost" id="std-file-btn" style="width: 100%; padding: 16px; border-style:dashed; border-radius:24px;">Прикрепить файл</button>
         <div id="std-file-preview-box" style="display: none; margin-top: 12px; padding: 12px; background: #FAFAFA; border-radius: 12px; align-items: center; gap: 12px;">
-          <span style="font-size: 24px;">📄</span>
           <div style="flex: 1; min-width: 0;">
             <div id="std-file-name" style="font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
             <div id="std-file-status" style="font-size: 12px; color: var(--text-muted);"></div>
           </div>
-          <button type="button" class="icon-btn danger" onclick="_uploadedStandardFileUrl=''; _uploadedStandardFileName=''; renderFilePreviewUI();">✕</button>
+          <button type="button" class="icon-btn danger" onclick="_uploadedStandardFileUrl=''; _uploadedStandardFileName=''; renderFilePreviewUI();">Удал.</button>
         </div>
       </div>
     </div>
@@ -2567,7 +2543,7 @@ function openStdAdd() {
     if (file.size > 15 * 1024 * 1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
     
     const btn = $('std-image-btn');
-    btn.textContent = '⏳ Загрузка...';
+    btn.textContent = 'Загрузка...';
     btn.disabled = true;
     
     try {
@@ -2575,12 +2551,12 @@ function openStdAdd() {
         _uploadedStandardImageUrl = res.url;
         $('std-image-preview').src = res.url;
         $('std-image-preview-box').style.display = 'block';
-        btn.textContent = '✅ Фото загружено';
+        btn.textContent = 'Фото загружено';
         btn.style.borderColor = 'var(--green)';
         btn.style.color = '#1B7A36';
     } catch (err) {
         toast(err.message, 'error');
-        btn.textContent = '📷 Прикрепить фото';
+        btn.textContent = 'Прикрепить фото';
     } finally {
         btn.disabled = false;
     }
@@ -2593,7 +2569,7 @@ function openStdAdd() {
     if (file.size > 15 * 1024 * 1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
     
     const btn = $('std-file-btn');
-    btn.textContent = '⏳ Загрузка...';
+    btn.textContent = 'Загрузка...';
     btn.disabled = true;
     
     try {
@@ -2605,7 +2581,7 @@ function openStdAdd() {
         toast(err.message, 'error');
     } finally {
         btn.disabled = false;
-        btn.textContent = '📎 Прикрепить файл';
+        btn.textContent = 'Прикрепить файл';
     }
   });
   
@@ -2679,7 +2655,7 @@ function openStdEdit(id, news) {
       <div class="form-group">
         <label>Обложка (фото)</label>
         <input type="file" id="std-image-file" accept="image/*" style="display: none;">
-        <button type="button" class="btn ghost" id="std-image-btn" style="width: 100%; padding: 16px; border-style:dashed; border-radius:24px;">📷 Заменить фото</button>
+        <button type="button" class="btn ghost" id="std-image-btn" style="width: 100%; padding: 16px; border-style:dashed; border-radius:24px;">Заменить фото</button>
         <div id="std-image-preview-box" style="display: ${n.image_url ? 'block' : 'none'}; margin-top: 12px; text-align: center;">
           <img id="std-image-preview" src="${esc(n.image_url || '')}" style="max-width: 100%; max-height: 100px; border-radius: 16px; object-fit: contain;">
         </div>
@@ -2687,14 +2663,13 @@ function openStdEdit(id, news) {
       <div class="form-group">
         <label>Документ (PDF, Word, Excel)</label>
         <input type="file" id="std-file-file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" style="display: none;">
-        <button type="button" class="btn ghost" id="std-file-btn" style="width: 100%; padding: 16px; border-style:dashed; border-radius:24px; display: ${n.file_url ? 'none' : 'block'};">📎 Прикрепить файл</button>
+        <button type="button" class="btn ghost" id="std-file-btn" style="width: 100%; padding: 16px; border-style:dashed; border-radius:24px; display: ${n.file_url ? 'none' : 'block'};">Прикрепить файл</button>
         <div id="std-file-preview-box" style="display: ${n.file_url ? 'flex' : 'none'}; margin-top: 12px; padding: 12px; background: #FAFAFA; border-radius: 12px; align-items: center; gap: 12px;">
-          <span style="font-size: 24px;">📄</span>
           <div style="flex: 1; min-width: 0;">
             <div id="std-file-name" style="font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${esc(n.file_name || 'Документ')}</div>
             <div id="std-file-status" style="font-size: 12px; color: var(--text-muted);">Готов к сохранению</div>
           </div>
-          <button type="button" class="icon-btn danger" onclick="_uploadedStandardFileUrl=''; _uploadedStandardFileName=''; renderFilePreviewUI();">✕</button>
+          <button type="button" class="icon-btn danger" onclick="_uploadedStandardFileUrl=''; _uploadedStandardFileName=''; renderFilePreviewUI();">Удал.</button>
         </div>
       </div>
     </div>
@@ -2753,7 +2728,7 @@ function openStdEdit(id, news) {
     if (file.size > 15 * 1024 * 1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
     
     const btn = $('std-image-btn');
-    btn.textContent = '⏳ Загрузка...';
+    btn.textContent = 'Загрузка...';
     btn.disabled = true;
     
     try {
@@ -2761,10 +2736,10 @@ function openStdEdit(id, news) {
         _uploadedStandardImageUrl = res.url;
         $('std-image-preview').src = res.url;
         $('std-image-preview-box').style.display = 'block';
-        btn.textContent = '✅ Фото загружено';
+        btn.textContent = 'Фото загружено';
     } catch (err) {
         toast(err.message, 'error');
-        btn.textContent = '📷 Заменить фото';
+        btn.textContent = 'Заменить фото';
     } finally {
         btn.disabled = false;
     }
@@ -2777,7 +2752,7 @@ function openStdEdit(id, news) {
     if (file.size > 15 * 1024 * 1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
     
     const btn = $('std-file-btn');
-    btn.textContent = '⏳ Загрузка...';
+    btn.textContent = 'Загрузка...';
     btn.disabled = true;
     
     try {
@@ -2789,7 +2764,7 @@ function openStdEdit(id, news) {
         toast(err.message, 'error');
     } finally {
         btn.disabled = false;
-        btn.textContent = '📎 Прикрепить файл';
+        btn.textContent = 'Прикрепить файл';
     }
   });
 
@@ -2835,7 +2810,7 @@ async function loadCertification() {
   const data = await api('/api/admin/certification', {});
   const canEdit = hasPerm('certification_edit');
   
-  $('page-actions').innerHTML = canEdit ? '<button class="btn primary small" id="cert-add-btn">+ Добавить вопрос</button>' : '';
+  $('page-actions').innerHTML = canEdit ? '<button class="btn primary small" id="cert-add-btn">Добавить</button>' : '';
   if (canEdit) $('cert-add-btn').addEventListener('click', openCertAdd);
 
   const rows = (data.questions || []).map(q => `
@@ -2846,7 +2821,7 @@ async function loadCertification() {
         ${esc(q['option_' + q.correct_option] || '')}
       </td>
       <td class="actions-cell" data-label="">
-        ${canEdit ? `<button class="icon-btn danger" data-del="${q.id}">🗑</button>` : '—'}
+        ${canEdit ? `<button class="icon-btn danger" data-del="${q.id}">Удал.</button>` : '—'}
       </td>
     </tr>`).join('');
 
@@ -2905,15 +2880,15 @@ function openCertAdd() {
 /* ================== FAQ / POSITIONS / QUESTIONS ================== */
 async function loadFaq() {
   const canEdit = hasPerm('faq_edit');
-  $('page-actions').innerHTML = canEdit ? '<button class="btn primary small" id="faq-add-btn">+ Добавить</button>' : '';
+  $('page-actions').innerHTML = canEdit ? '<button class="btn primary small" id="faq-add-btn">Добавить</button>' : '';
   if (canEdit) $('faq-add-btn').addEventListener('click', openFaqAdd);
   const data = await api('/api/admin/faq', {});
   const rows = data.faq.map(f => `
     <tr>
       <td data-label="Вопрос"><b>${esc(f.question)}</b></td>
       <td class="actions-cell" data-label="">
-        ${canEdit ? `<button class="icon-btn" data-edit="${f.id}">✏️</button>
-        <button class="icon-btn danger" data-del="${f.id}">🗑</button>` : '—'}
+        ${canEdit ? `<button class="icon-btn" data-edit="${f.id}">Ред.</button>
+        <button class="icon-btn danger" data-del="${f.id}">Удал.</button>` : '—'}
       </td>
     </tr>`).join('');
   $('page-content').innerHTML = `
@@ -2969,14 +2944,14 @@ function openFaqEdit(id, list) {
 
 async function loadPositions() {
   const canEdit = hasPerm('positions_edit');
-  $('page-actions').innerHTML = canEdit ? '<button class="btn primary small" id="pos-add-btn">+ Добавить</button>' : '';
+  $('page-actions').innerHTML = canEdit ? '<button class="btn primary small" id="pos-add-btn">Добавить</button>' : '';
   if (canEdit) $('pos-add-btn').addEventListener('click', openPosAdd);
   const data = await api('/api/admin/positions', {});
   const active = data.positions.filter(p => !p.is_archived);
   const arch = data.positions.filter(p => p.is_archived);
   const rows = active.map(p => `
     <tr><td data-label="Должность"><b>${esc(p.name)}</b></td>
-    <td class="actions-cell" data-label="">${canEdit ? `<button class="icon-btn danger" data-arch="${p.id}">📦</button>` : '—'}</td></tr>`).join('');
+    <td class="actions-cell" data-label="">${canEdit ? `<button class="icon-btn danger" data-arch="${p.id}">Архив</button>` : '—'}</td></tr>`).join('');
   $('page-content').innerHTML = `
     <div class="table-wrap">
       <table>
@@ -2984,7 +2959,7 @@ async function loadPositions() {
         <tbody>${rows}</tbody>
       </table>
     </div>
-    ${arch.length ? `<h3 style="margin-top:40px; margin-bottom:20px; color:var(--text-muted); font-size:14px; text-transform:uppercase;">📦 Архив (${arch.length})</h3>
+    ${arch.length ? `<h3 style="margin-top:40px; margin-bottom:20px; color:var(--text-muted); font-size:14px; text-transform:uppercase;">Архив (${arch.length})</h3>
     <div class="table-wrap" style="opacity: 0.6;">
       <table>
         <thead><tr><th>Название</th></tr></thead>
@@ -3024,9 +2999,9 @@ async function loadQuestions() {
   const rows = data.questions.map(q => `
     <tr>
       <td data-label="Кто"><b>${esc(q.full_name || '—')}</b></td>
-      <td data-label="Статус">${q.replied ? '<span class="tag green">✅ Отвечен</span>' : '<span class="tag amber">❓ Ждет</span>'}</td>
+      <td data-label="Статус">${q.replied ? '<span class="tag green">Отвечен</span>' : '<span class="tag amber">Ждет</span>'}</td>
       <td data-label="Когда" style="font-size:13px;color:var(--text-muted);">${fmtDate(q.created_at, false)}</td>
-      <td class="actions-cell" data-label="">${!q.replied && canReply ? `<button class="icon-btn" data-reply="${q.id}">✍️</button>` : ''}</td>
+      <td class="actions-cell" data-label="">${!q.replied && canReply ? `<button class="icon-btn" data-reply="${q.id}">Ответить</button>` : ''}</td>
     </tr>`).join('');
   $('page-content').innerHTML = `
     <div class="table-wrap">

@@ -631,10 +631,26 @@ function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
 function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
 function clearToken() { localStorage.removeItem(TOKEN_KEY); }
 
-// Вспомогательная функция для добавления токена к ссылкам на файлы
 function getFileUrl(url) {
     if (!url) return '';
     return url + '?token=' + getToken();
+}
+
+// ================= КЕШ =================
+let _cache = {};
+async function cachedApi(path, body, ttl = 30000) {
+    const key = path + (body ? JSON.stringify(body) : '');
+    const now = Date.now();
+    if (_cache[key] && now - _cache[key].time < ttl) {
+        return _cache[key].data;
+    }
+    const data = await api(path, body);
+    _cache[key] = { data, time: now };
+    return data;
+}
+
+function clearCache() {
+    _cache = {};
 }
 
 function cleanHTML(html) {
@@ -741,6 +757,7 @@ function showLogin() {
   $('login-login').value = '';
   $('login-password').value = '';
   document.body.classList.remove('dash-active');
+  clearCache();
 }
 function showApp() { $('login-screen').style.display = 'none'; $('app').style.display = 'block'; }
 
@@ -769,6 +786,7 @@ async function doLogin() {
     const data = await res.json();
     if (!data.token) { errEl.textContent = 'Ошибка'; return; }
     setToken(data.token);
+    clearCache();
     await checkAdminAndLoad();
   } catch (e) {
     errEl.textContent = 'Сеть недоступна';
@@ -811,7 +829,7 @@ async function checkAdminAndLoad() {
 $('logout-btn').addEventListener('click', async () => {
   if (!confirm('Выйти?')) return;
   try { await api('/api/auth/logout', {}); } catch (e) {}
-  clearToken(); ME = null; closeSidebar(); showLogin();
+  clearToken(); ME = null; closeSidebar(); clearCache(); showLogin();
 });
 $('change-password-btn').addEventListener('click', () => { closeSidebar(); openChangePassword(); });
 
@@ -1003,11 +1021,11 @@ async function loadDashboard() {
   
   try {
     const results = await Promise.allSettled([
-      api('/api/admin/dashboard', {}), 
-      api('/api/admin/news', {}), 
-      api('/api/admin/questions', {}), 
-      api('/api/admin/users', {}), 
-      api('/api/admin/medbooks', {})
+      cachedApi('/api/admin/dashboard', {}, 10000), 
+      cachedApi('/api/admin/news', {}, 10000), 
+      cachedApi('/api/admin/questions', {}, 10000), 
+      cachedApi('/api/admin/users', {}, 10000), 
+      cachedApi('/api/admin/medbooks', {}, 10000)
     ]);
     
     if (results[0].status === 'fulfilled' && results[0].value.stats) stats = results[0].value.stats;
@@ -1205,7 +1223,7 @@ async function loadUsers(search) {
     const tr = e.target.closest('tr[data-uid]'); if (tr) openUserEditor(parseInt(tr.dataset.uid));
   });
 
-  const data = await api('/api/admin/users', { search: _usersCurrentSearch.trim(), fired: _usersTab === 'fired' });
+  const data = await cachedApi('/api/admin/users', { search: _usersCurrentSearch.trim(), fired: _usersTab === 'fired' });
   renderUsersTbody(data.users);
   if (_usersCurrentSearch) { inp.focus(); const l = inp.value.length; inp.setSelectionRange(l, l); }
 }
@@ -1267,6 +1285,7 @@ async function fireUser(uid) {
   try {
     await api('/api/admin/user/fire', { user_id: uid });
     toast('Сотрудник уволен', 'success');
+    clearCache();
     loadUsers(_usersCurrentSearch);
   } catch (e) {
     const map = { forbidden: 'Нет права увольнять', cannot_fire_super: 'Нельзя уволить супер-админа',
@@ -1280,6 +1299,7 @@ async function restoreUser(uid) {
   try {
     await api('/api/admin/user/restore', { user_id: uid });
     toast('Восстановлен', 'success');
+    clearCache();
     loadUsers(_usersCurrentSearch);
   } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
 }
@@ -1376,6 +1396,7 @@ async function openUserCreate() {
           hire_date: $('nc-hire-date').value, citizenship_id: $('nc-citizenship').value,
           payment_type: $('nc-payment-type').value
         });
+        clearCache();
         closeModal();
         openModal('Сотрудник создан', `
           <div style="text-align:center; padding: 10px 0;">
@@ -1491,6 +1512,7 @@ async function openUserEditor(uid) {
       try {
         await api('/api/admin/user/update', { user_id: uid, updates });
         toast('Сохранено', 'success');
+        clearCache();
         closeModal();
         refreshUsersTable(_usersCurrentSearch);
       } catch (e) {
@@ -1539,7 +1561,7 @@ let _medbooksTab = 'staff';
 let _medbooksData = null;
 
 async function loadMedbooks() {
-  const data = await api('/api/admin/medbooks', {});
+  const data = await cachedApi('/api/admin/medbooks', {});
   _medbooksData = data;
   const canEdit = hasPerm('medbook_edit');
 
@@ -1644,6 +1666,7 @@ async function loadMedbooks() {
     try {
       await api('/api/admin/medbook/reference/delete', { type: b.dataset.refType, id: parseInt(b.dataset.refDel) });
       toast('Удалено', 'success');
+      clearCache();
       loadMedbooks();
     } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
   }));
@@ -1658,6 +1681,7 @@ async function loadMedbooks() {
         type: addBtn.dataset.refType, name, required, validity_months: months,
       });
       toast('Добавлено', 'success');
+      clearCache();
       loadMedbooks();
     } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
   });
@@ -1782,6 +1806,7 @@ async function openMedbookEditor(userId) {
     try {
       await api('/api/admin/medbook/save', { user_id: userId, medbook: newMb });
       toast('Медкнижка сохранена', 'success');
+      clearCache();
       closeModal();
       if (document.querySelector('#page-content [data-mb-tab]')) loadMedbooks();
       if (document.querySelector('#users-tbody')) refreshUsersTable(_usersCurrentSearch);
@@ -1812,6 +1837,7 @@ function openRefEdit(type, id) {
         required: $('ref-e-required').checked,
       });
       toast('Сохранено', 'success');
+      clearCache();
       closeModal();
       loadMedbooks();
     } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
@@ -1824,7 +1850,7 @@ async function loadAdmins() {
     $('page-content').innerHTML = '<div class="empty">Раздел только для супер-администратора</div>';
     return;
   }
-  const data = await api('/api/admin/admins', {});
+  const data = await cachedApi('/api/admin/admins', {});
   const admins = data.admins || [];
   const rows = admins.map(a => {
     const tag = a.is_super_admin ? '<span class="tag purple">Супер</span>'
@@ -1882,6 +1908,7 @@ function openPermEditor(uid, admins) {
     try {
       await api('/api/admin/set-permissions', { user_id: uid, permissions: newPerms });
       toast('Права обновлены', 'success');
+      clearCache();
       closeModal();
       loadAdmins();
     } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
@@ -1890,7 +1917,7 @@ function openPermEditor(uid, admins) {
 
 /* ================== RESTAURANTS ================== */
 async function loadRestaurants() {
-  const data = await api('/api/admin/restaurants', {});
+  const data = await cachedApi('/api/admin/restaurants', {});
   const canTu = hasPerm('restaurant_tu');
   const canCreate = hasPerm('restaurant_create');
   const canEdit = hasPerm('restaurant_edit');
@@ -1962,6 +1989,7 @@ function openRestaurantAdd() {
         hours: $('ra-hours').value.trim()
       });
       toast('Ресторан добавлен', 'success');
+      clearCache();
       closeModal();
       loadRestaurants();
     } catch (e) {
@@ -1998,6 +2026,7 @@ function openRestaurantEditor(key, rests) {
         lon: $('rf-lon').value ? parseFloat($('rf-lon').value) : null,
       }});
       toast('Сохранено', 'success');
+      clearCache();
       closeModal();
       loadRestaurants();
     } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
@@ -2018,6 +2047,7 @@ function openTuEditor(key, candidates, rests) {
     try {
       await api('/api/admin/restaurant/tu', { key, territory_manager_id: v ? parseInt(v) : null });
       toast('Сохранено', 'success');
+      clearCache();
       closeModal();
       loadRestaurants();
     } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
@@ -2028,7 +2058,7 @@ function openTuEditor(key, candidates, rests) {
 let _uploadedNewsImageUrl = '';
 
 async function loadNews() {
-  const data = await api('/api/admin/news', {});
+  const data = await cachedApi('/api/admin/news', {});
   const all = data.news || [];
   const pending = all.filter(n => n.status === 'pending');
   const others = all.filter(n => n.status !== 'pending');
@@ -2093,6 +2123,7 @@ async function loadNews() {
     try {
       await api('/api/admin/news/approve', { id: parseInt(b.dataset.approve) });
       toast('Опубликовано', 'success');
+      clearCache();
       loadNews();
       refreshCounters();
     } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
@@ -2102,6 +2133,7 @@ async function loadNews() {
     try {
       await api('/api/admin/news/reject', { id: parseInt(b.dataset.reject) });
       toast('Отклонено', 'success');
+      clearCache();
       loadNews();
       refreshCounters();
     } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
@@ -2112,6 +2144,7 @@ async function loadNews() {
     try {
       await api('/api/admin/news/delete', { id: parseInt(b.dataset.del) });
       toast('Удалена', 'success');
+      clearCache();
       loadNews();
     } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
   }));
@@ -2191,6 +2224,7 @@ function openNewsAdd() {
       const res = await api('/api/admin/news/add', body);
       const msgs = { published: 'Опубликовано', scheduled: 'Отложено', pending: 'Отправлено на модерацию' };
       toast(msgs[res.status] || 'Готово', 'success');
+      clearCache();
       closeModal();
       loadNews();
       refreshCounters();
@@ -2263,6 +2297,7 @@ function openNewsEdit(id, news) {
         image_url: _uploadedNewsImageUrl
       });
       toast('Сохранено', 'success');
+      clearCache();
       closeModal();
       loadNews();
     } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
@@ -2275,7 +2310,7 @@ let _uploadedStandardFileUrl = '';
 let _uploadedStandardFileName = '';
 
 async function loadStandards() {
-  const data = await api('/api/admin/standards', {});
+  const data = await cachedApi('/api/admin/standards', {});
   const all = data.standards || [];
   const pending = all.filter(n => n.status === 'pending');
   const others = all.filter(n => n.status !== 'pending');
@@ -2340,6 +2375,7 @@ async function loadStandards() {
     try {
       await api('/api/admin/standard/approve', { id: parseInt(b.dataset.approve) });
       toast('Стандарт опубликован', 'success');
+      clearCache();
       loadStandards();
       refreshCounters();
     } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
@@ -2349,6 +2385,7 @@ async function loadStandards() {
     try {
       await api('/api/admin/standard/reject', { id: parseInt(b.dataset.reject) });
       toast('Отклонено', 'success');
+      clearCache();
       loadStandards();
       refreshCounters();
     } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
@@ -2359,6 +2396,7 @@ async function loadStandards() {
     try {
       await api('/api/admin/standard/delete', { id: parseInt(b.dataset.del) });
       toast('Удален', 'success');
+      clearCache();
       loadStandards();
     } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
   }));
@@ -2621,6 +2659,7 @@ function openStdAdd() {
       const res = await api('/api/admin/standard/add', body);
       const msg = res.status === 'published' ? 'Опубликован' : 'Отправлено на согласование';
       toast(msg, 'success');
+      clearCache();
       closeModal();
       loadStandards();
       refreshCounters();
@@ -2798,6 +2837,7 @@ function openStdEdit(id, news) {
     try {
       await api('/api/admin/standard/update', body);
       toast('Сохранено', 'success');
+      clearCache();
       closeModal();
       loadStandards();
     } catch (e) { 
@@ -2814,7 +2854,7 @@ function openStdEdit(id, news) {
 
 /* ================== CERTIFICATION ================== */
 async function loadCertification() {
-  const data = await api('/api/admin/certification', {});
+  const data = await cachedApi('/api/admin/certification', {});
   const canEdit = hasPerm('certification_edit');
   
   $('page-actions').innerHTML = canEdit ? '<button class="btn primary small" id="cert-add-btn">Добавить</button>' : '';
@@ -2846,6 +2886,7 @@ async function loadCertification() {
       try {
         await api('/api/admin/certification/delete', { id: parseInt(b.dataset.del) });
         toast('Удалено', 'success');
+        clearCache();
         loadCertification();
       } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
     }));
@@ -2878,6 +2919,7 @@ function openCertAdd() {
     try {
       await api('/api/admin/certification/add', { question: q, option_a: a, option_b: b, option_c: c, option_d: d, correct_option: correct });
       toast('Вопрос добавлен', 'success');
+      clearCache();
       closeModal();
       loadCertification();
     } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
@@ -2889,7 +2931,7 @@ async function loadFaq() {
   const canEdit = hasPerm('faq_edit');
   $('page-actions').innerHTML = canEdit ? '<button class="btn primary small" id="faq-add-btn">Добавить</button>' : '';
   if (canEdit) $('faq-add-btn').addEventListener('click', openFaqAdd);
-  const data = await api('/api/admin/faq', {});
+  const data = await cachedApi('/api/admin/faq', {});
   const rows = data.faq.map(f => `
     <tr>
       <td data-label="Вопрос"><b>${esc(f.question)}</b></td>
@@ -2912,6 +2954,7 @@ async function loadFaq() {
       try {
         await api('/api/admin/faq/delete', { id: parseInt(b.dataset.del) });
         toast('Удалено', 'success');
+        clearCache();
         loadFaq();
       } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
     }));
@@ -2926,6 +2969,7 @@ function openFaqAdd() {
     try {
       await api('/api/admin/faq/add', { question: $('f-q').value.trim(), answer: $('f-a').value.trim() });
       toast('Создан', 'success');
+      clearCache();
       closeModal();
       loadFaq();
     } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
@@ -2943,6 +2987,7 @@ function openFaqEdit(id, list) {
       await api('/api/admin/faq/update', { id, field: 'question', value: $('fe-q').value.trim() });
       await api('/api/admin/faq/update', { id, field: 'answer', value: $('fe-a').value.trim() });
       toast('Сохранено', 'success');
+      clearCache();
       closeModal();
       loadFaq();
     } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
@@ -2953,7 +2998,7 @@ async function loadPositions() {
   const canEdit = hasPerm('positions_edit');
   $('page-actions').innerHTML = canEdit ? '<button class="btn primary small" id="pos-add-btn">Добавить</button>' : '';
   if (canEdit) $('pos-add-btn').addEventListener('click', openPosAdd);
-  const data = await api('/api/admin/positions', {});
+  const data = await cachedApi('/api/admin/positions', {});
   const active = data.positions.filter(p => !p.is_archived);
   const arch = data.positions.filter(p => p.is_archived);
   const rows = active.map(p => `
@@ -2979,6 +3024,7 @@ async function loadPositions() {
       try {
         await api('/api/admin/position/archive', { id: parseInt(b.dataset.arch) });
         toast('В архиве', 'success');
+        clearCache();
         loadPositions();
       } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
     }));
@@ -2992,6 +3038,7 @@ function openPosAdd() {
     try {
       await api('/api/admin/position/add', { name: $('p-name').value.trim() });
       toast('Создана', 'success');
+      clearCache();
       closeModal();
       loadPositions();
     } catch (e) {
@@ -3002,7 +3049,7 @@ function openPosAdd() {
 
 async function loadQuestions() {
   const canReply = hasPerm('questions_reply');
-  const data = await api('/api/admin/questions', {});
+  const data = await cachedApi('/api/admin/questions', {});
   const rows = data.questions.map(q => `
     <tr>
       <td data-label="Кто"><b>${esc(q.full_name || '—')}</b></td>
@@ -3035,6 +3082,7 @@ function openReply(id, list) {
     try {
       await api('/api/admin/question/reply', { id, text });
       toast('Сохранено', 'success');
+      clearCache();
       closeModal();
       loadQuestions();
     } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
@@ -3042,7 +3090,7 @@ function openReply(id, list) {
 }
 
 async function loadReports() {
-  const { report } = await api('/api/admin/reports', {});
+  const { report } = await cachedApi('/api/admin/reports', {});
   $('page-content').innerHTML = `
     <div class="stats-grid">
       <div class="stat-card"><div class="label">Всего</div><div class="value">${report.total}</div></div>
@@ -3054,7 +3102,7 @@ async function loadReports() {
 }
 
 async function loadAudit() {
-  const data = await api('/api/admin/audit', {});
+  const data = await cachedApi('/api/admin/audit', {});
   const rows = data.audit.map(a => `
     <tr>
       <td data-label="Когда" style="font-size:12px;color:var(--text-muted);white-space:nowrap;">${fmtDate(a.created_at, true)}</td>

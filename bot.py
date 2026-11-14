@@ -769,6 +769,22 @@ def _sync_user_has_perm(user, perm):
         except Exception: perms = {}
     return bool(perms.get(perm))
 
+# ============= ROLE HELPERS =============
+def _is_hr_or_super(user):
+    if not user: return False
+    return user.get("is_super_admin") or (user.get("position") or "").strip().upper() == "HR"
+
+def _is_tu(user):
+    if not user: return False
+    if _is_hr_or_super(user): return False
+    return "территориальный" in (user.get("position") or "").lower()
+
+def _sync_get_tu_rests(user_id):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT key FROM restaurants WHERE territory_manager_id = %s", (user_id,))
+            return [r[0] for r in cur.fetchall()]
+
 # ============= AUTH =============
 async def get_auth_user(request):
     try:
@@ -1008,7 +1024,7 @@ async def handle_push_subscribe(request):
     return web.json_response({"ok": True})
 
 # ============= USERS =============
-def _sync_list_users(search="", fired=False):
+def _sync_list_users(search="", fired=False, tu_rests=None):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             base = """
@@ -1023,10 +1039,18 @@ def _sync_list_users(search="", fired=False):
                 WHERE COALESCE(u.is_fired, FALSE) = %s AND u.login IS NOT NULL
             """
             params = [bool(fired)]
+            
+            if tu_rests is not None:
+                if not tu_rests:
+                    return []
+                base += " AND u.restaurant_key = ANY(%s)"
+                params.append(tu_rests)
+                
             if search:
                 base += " AND (LOWER(COALESCE(u.full_name,'')) LIKE %s OR LOWER(COALESCE(u.login,'')) LIKE %s OR COALESCE(u.phone,'') LIKE %s OR CAST(u.user_id AS TEXT) LIKE %s)"
                 s = f"%{search.lower()}%"
                 params.extend([s, s, f"%{search}%", f"%{search}%"])
+                
             base += " ORDER BY u.user_id DESC"
             cur.execute(base, params)
             return [dict(r) for r in cur.fetchall()]
@@ -1038,7 +1062,12 @@ async def handle_admin_users(request):
     except Exception: body = {}
     search = (body.get("search") or "").strip()
     fired = bool(body.get("fired"))
-    users = await _run(_sync_list_users, search, fired)
+    
+    tu_rests = None
+    if _is_tu(user):
+        tu_rests = await _run(_sync_get_tu_rests, user["user_id"])
+        
+    users = await _run(_sync_list_users, search, fired, tu_rests)
     doctors, tests, vaccines = await _run(_sync_get_medbook_refs)
     for u in users:
         u["medbook_status"] = compute_medbook_status(u.get("medbook") or {}, doctors, tests, vaccines) if not u["is_admin"] else "—"
@@ -1084,6 +1113,11 @@ async def handle_admin_user_create(request):
     if err:
         return web.json_response({"error": err}, status=400)
         
+    if _is_tu(admin):
+        allowed_rests = await _run(_sync_get_tu_rests, admin["user_id"])
+        if data.get("restaurant_key") not in allowed_rests:
+            return web.json_response({"error": "forbidden_restaurant"}, status=403)
+            
     existing_logins = await _run(_sync_get_all_logins)
     new_user, err_code = await _run(_sync_create_user, data, existing_logins, admin["user_id"])
     if err_code: return web.json_response({"error": err_code}, status=400)
@@ -1122,6 +1156,12 @@ async def handle_admin_user_get(request):
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     user = await _run(_sync_get_user_by_id, uid)
     if not user: return web.json_response({"error": "not_found"}, status=404)
+    
+    if _is_tu(admin):
+        allowed = await _run(_sync_get_tu_rests, admin["user_id"])
+        if user.get("restaurant_key") not in allowed:
+            return web.json_response({"error": "forbidden"}, status=403)
+            
     await _enrich_user_with_medbook_status(user)
     return web.json_response({"user": user})
 
@@ -1166,6 +1206,14 @@ async def handle_admin_user_update(request):
     updates = body.get("updates") or {}
     target = await _run(_sync_get_user_by_id, uid)
     if not target: return web.json_response({"error": "not_found"}, status=404)
+    
+    if _is_tu(admin):
+        allowed = await _run(_sync_get_tu_rests, admin["user_id"])
+        if target.get("restaurant_key") not in allowed:
+            return web.json_response({"error": "forbidden"}, status=403)
+        if "restaurant_key" in updates and updates["restaurant_key"] not in allowed:
+            return web.json_response({"error": "forbidden_restaurant"}, status=403)
+            
     if "is_admin" in updates and not admin["is_super_admin"]: return web.json_response({"error": "forbidden_is_admin"}, status=403)
     if target.get("is_super_admin") and not admin["is_super_admin"]: return web.json_response({"error": "cannot_edit_super"}, status=403)
     if "restaurant" in updates: updates["restaurant_key"] = updates.pop("restaurant")
@@ -1191,6 +1239,12 @@ async def handle_admin_user_fire(request):
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     target = await _run(_sync_get_user_by_id, uid)
     if not target: return web.json_response({"error": "not_found"}, status=404)
+    
+    if _is_tu(admin):
+        allowed = await _run(_sync_get_tu_rests, admin["user_id"])
+        if target.get("restaurant_key") not in allowed:
+            return web.json_response({"error": "forbidden"}, status=403)
+            
     if target.get("is_super_admin"): return web.json_response({"error": "cannot_fire_super"}, status=403)
     if target.get("is_admin") and not admin["is_super_admin"]: return web.json_response({"error": "cannot_fire_admin"}, status=403)
     if uid == admin["user_id"]: return web.json_response({"error": "cannot_fire_self"}, status=403)
@@ -1211,6 +1265,14 @@ async def handle_admin_user_restore(request):
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     uid = _safe_int(body.get("user_id"))
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    target = await _run(_sync_get_user_by_id, uid)
+    if not target: return web.json_response({"error": "not_found"}, status=404)
+    
+    if _is_tu(admin):
+        allowed = await _run(_sync_get_tu_rests, admin["user_id"])
+        if target.get("restaurant_key") not in allowed:
+            return web.json_response({"error": "forbidden"}, status=403)
+            
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET is_fired = FALSE, fired_at = NULL, fired_by = NULL WHERE user_id = %s", (uid,))
@@ -1229,6 +1291,12 @@ async def handle_admin_user_delete(request):
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     target = await _run(_sync_get_user_by_id, uid)
     if not target: return web.json_response({"error": "not_found"}, status=404)
+    
+    if _is_tu(admin):
+        allowed = await _run(_sync_get_tu_rests, admin["user_id"])
+        if target.get("restaurant_key") not in allowed:
+            return web.json_response({"error": "forbidden"}, status=403)
+            
     if target.get("is_super_admin"): return web.json_response({"error": "cannot_delete_super"}, status=403)
     if target.get("is_admin") and not admin["is_super_admin"]: return web.json_response({"error": "cannot_delete_admin"}, status=403)
     if uid == admin["user_id"]: return web.json_response({"error": "cannot_delete_self"}, status=403)
@@ -1311,6 +1379,12 @@ def _sync_restaurants():
             cur.execute("SELECT r.*, u.full_name AS territory_manager_name FROM restaurants r LEFT JOIN users u ON r.territory_manager_id = u.user_id ORDER BY r.sort, r.name")
             return [dict(r) for r in cur.fetchall()]
 
+def _sync_restaurants_by_tu(user_id):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT r.*, u.full_name AS territory_manager_name FROM restaurants r LEFT JOIN users u ON r.territory_manager_id = u.user_id WHERE r.territory_manager_id = %s ORDER BY r.sort, r.name", (user_id,))
+            return [dict(r) for r in cur.fetchall()]
+
 def _sync_tu_candidates():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1320,7 +1394,12 @@ def _sync_tu_candidates():
 async def handle_admin_restaurants(request):
     admin, err = await get_admin_user(request)
     if err: return denied(err)
-    restaurants = await _run(_sync_restaurants)
+    
+    if _is_tu(admin):
+        restaurants = await _run(_sync_restaurants_by_tu, admin["user_id"])
+    else:
+        restaurants = await _run(_sync_restaurants)
+        
     tu = await _run(_sync_tu_candidates)
     return web.json_response({"restaurants": restaurants, "tu_candidates": tu})
 
@@ -1404,11 +1483,14 @@ async def handle_admin_restaurant_status(request):
     return web.json_response({"ok": True})
 
 # ============= MEDBOOKS =============
-def _sync_medbooks_full():
+def _sync_medbooks_full(user_id, is_tu):
     doctors, tests, vaccines = _sync_get_medbook_refs()
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT u.user_id, u.full_name, u.position, u.medbook, r.name AS restaurant_name FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key WHERE COALESCE(u.is_admin, FALSE) = FALSE AND COALESCE(u.is_fired, FALSE) = FALSE AND u.login IS NOT NULL ORDER BY u.full_name")
+            if is_tu:
+                cur.execute("SELECT u.user_id, u.full_name, u.position, u.medbook, r.name AS restaurant_name FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key WHERE COALESCE(u.is_admin, FALSE) = FALSE AND COALESCE(u.is_fired, FALSE) = FALSE AND u.login IS NOT NULL AND r.territory_manager_id = %s ORDER BY u.full_name", (user_id,))
+            else:
+                cur.execute("SELECT u.user_id, u.full_name, u.position, u.medbook, r.name AS restaurant_name FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key WHERE COALESCE(u.is_admin, FALSE) = FALSE AND COALESCE(u.is_fired, FALSE) = FALSE AND u.login IS NOT NULL ORDER BY u.full_name")
             users = [dict(r) for r in cur.fetchall()]
     for u in users:
         mb = u.get("medbook") or {}
@@ -1425,7 +1507,9 @@ def _sync_medbooks_full():
 async def handle_admin_medbooks(request):
     admin, err = await get_admin_user(request)
     if err: return denied(err)
-    doctors, tests, vaccines, users = await _run(_sync_medbooks_full)
+    
+    is_tu_flag = _is_tu(admin)
+    doctors, tests, vaccines, users = await _run(_sync_medbooks_full, admin["user_id"], is_tu_flag)
     return web.json_response({"doctors": doctors, "tests": tests, "vaccines": vaccines, "users": users})
 
 async def handle_admin_medbook_get(request):
@@ -1437,6 +1521,12 @@ async def handle_admin_medbook_get(request):
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     user = await _run(_sync_get_user_by_id, uid)
     if not user: return web.json_response({"error": "not_found"}, status=404)
+    
+    if _is_tu(admin):
+        allowed = await _run(_sync_get_tu_rests, admin["user_id"])
+        if user.get("restaurant_key") not in allowed:
+            return web.json_response({"error": "forbidden"}, status=403)
+            
     doctors, tests, vaccines = await _run(_sync_get_medbook_refs)
     return web.json_response({
         "user": {"user_id": user["user_id"], "full_name": user.get("full_name"), "position": user.get("position"), "restaurant_name": user.get("restaurant_name") or ""},
@@ -1452,6 +1542,15 @@ async def handle_admin_medbook_save(request):
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     uid = _safe_int(body.get("user_id"))
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    
+    target = await _run(_sync_get_user_by_id, uid)
+    if not target: return web.json_response({"error": "not_found"}, status=404)
+    
+    if _is_tu(admin):
+        allowed = await _run(_sync_get_tu_rests, admin["user_id"])
+        if target.get("restaurant_key") not in allowed:
+            return web.json_response({"error": "forbidden"}, status=403)
+            
     mb = body.get("medbook") or {"doctors": {}, "tests": {}, "vaccines": {}}
     with get_conn() as conn:
         with conn.cursor() as cur: cur.execute("UPDATE users SET medbook = %s WHERE user_id = %s", (Json(mb), uid))
@@ -2061,7 +2160,6 @@ async def handle_timesheet_matrix(request):
     date_to = body.get("date_to")
     
     if not date_from or not date_to:
-        # Фоллбэк на месяц
         month = _safe_int(body.get("month", datetime.now().month))
         year = _safe_int(body.get("year", datetime.now().year))
         import calendar
@@ -2548,7 +2646,11 @@ def _sync_bootstrap(user_id):
 
             cur.execute("SELECT * FROM faq ORDER BY id")
             faq_rows = [dict(r) for r in cur.fetchall()]
-            cur.execute("SELECT * FROM restaurants WHERE key != 'office' ORDER BY sort, name")
+            
+            if _is_tu(user):
+                cur.execute("SELECT * FROM restaurants WHERE key != 'office' AND territory_manager_id = %s ORDER BY sort, name", (user_id,))
+            else:
+                cur.execute("SELECT * FROM restaurants WHERE key != 'office' ORDER BY sort, name")
             rest_rows = [dict(r) for r in cur.fetchall()]
 
             cur.execute("SELECT * FROM medbook_doctors ORDER BY sort, id")

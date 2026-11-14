@@ -4,176 +4,89 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Wokker · Академия</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23131324'/%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%23FF007F' stroke-width='8'/%3E%3Cpath d='M25 50 A 25 25 0 0 0 75 50' fill='none' stroke='%23FF007F' stroke-width='12' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23F8F5F2'/%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%231C1C1E' stroke-width='6'/%3E%3Cpath d='M25 50 A 25 25 0 0 0 75 50' fill='none' stroke='%231C1C1E' stroke-width='10' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#131324">
-<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<meta name="theme-color" content="#F8F5F2">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #131324;
-    --card: rgba(255,255,255,0.05);
-    --text: #ffffff;
-    --muted: #9E9EA7;
-    --border: rgba(255,255,255,0.1);
-    
-    --grad-pink: linear-gradient(135deg, #FF007F 0%, #FF7A00 100%);
-    --grad-blue: linear-gradient(135deg, #00B0FF 0%, #00E676 100%);
-    --grad-purple: linear-gradient(135deg, #B538FF 0%, #FF007F 100%);
-    --grad-yellow: linear-gradient(135deg, #FFD700 0%, #FF8C00 100%);
+    --bg: #F8F5F2; --card-bg: #FFFFFF; --text-main: #1C1C1E; --text-muted: #8E8E93;
+    --accent: #1C1C1E; --accent-soft: #F0EAE1; --pink: #FF007F; --orange: #FF7A00;
+    --green: #E8F5E9; --green-text: #2E7D32;
+    --red: #FFEBEE; --red-text: #C62828;
+    --shadow: 0 12px 36px rgba(0, 0, 0, 0.04);
+    --radius: 32px; --radius-sm: 20px;
   }
-  
   * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
-  
-  body {
-    font-family: 'Rubik', -apple-system, sans-serif;
-    background: var(--bg); 
-    background-image: 
-      radial-gradient(circle at 15% 50%, rgba(255, 0, 127, 0.15) 0%, transparent 50%),
-      radial-gradient(circle at 85% 30%, rgba(0, 176, 255, 0.15) 0%, transparent 50%);
-    background-attachment: fixed;
-    color: var(--text); font-size: 14px; line-height: 1.5;
-    -webkit-font-smoothing: antialiased; overflow-x: hidden; min-height: 100vh;
-    padding-bottom: 40px;
-  }
-  button { cursor: pointer; border: none; background: none; color: inherit; font-family: inherit; }
+  body { font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text-main); min-height: 100vh; padding-bottom: 40px; -webkit-font-smoothing: antialiased; }
+  button { font-family: inherit; border: none; background: none; cursor: pointer; outline: none; }
 
-  /* HEADER */
-  .header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 24px 24px 0; max-width: 1200px; margin: 0 auto;
-  }
-  .logo { font-size: 24px; font-weight: 800; display: flex; align-items: center; gap: 12px; }
-  .logo span { background: var(--grad-pink); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-  .header-right { display: flex; align-items: center; gap: 16px; }
-  .btn-close { background: rgba(255,255,255,0.05); border: 1px solid var(--border); padding: 10px 20px; border-radius: 100px; font-weight: 600; color: var(--text); text-decoration: none; font-size: 13px; transition: all 0.2s; }
-  .btn-close:hover { background: rgba(255,255,255,0.1); }
-  
-  /* CONTENT */
-  .container { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
-  
-  .greeting { font-size: 32px; font-weight: 800; letter-spacing: -1px; margin-bottom: 8px; }
-  .greeting span { background: var(--grad-blue); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-  .sub-greeting { color: var(--muted); font-size: 16px; margin-bottom: 40px; font-weight: 500; }
+  .header { background: #fff; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.06); position: sticky; top: 0; z-index: 20; box-shadow: 0 2px 10px rgba(0,0,0,0.02); }
+  .logo { font-size: 20px; font-weight: 800; display: flex; align-items: center; gap: 10px; }
+  .btn-close { background: #F2F2F7; padding: 10px 20px; border-radius: 100px; font-weight: 600; color: var(--text-main); text-decoration: none; font-size: 13px; }
 
-  /* COURSES GRID */
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; }
-  
-  .course-card {
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 24px; padding: 24px; position: relative; overflow: hidden;
-    cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    display: flex; flex-direction: column;
-  }
-  .course-card:hover { transform: translateY(-8px); box-shadow: 0 20px 40px rgba(0,0,0,0.4); border-color: rgba(255,255,255,0.2); }
-  
-  .course-icon {
-    width: 64px; height: 64px; border-radius: 20px; display: flex; align-items: center; justify-content: center;
-    font-size: 32px; margin-bottom: 20px; position: relative; z-index: 1;
-  }
-  .course-card.pink .course-icon { background: var(--grad-pink); }
-  .course-card.blue .course-icon { background: var(--grad-blue); }
-  .course-card.purple .course-icon { background: var(--grad-purple); }
-  .course-card.yellow .course-icon { background: var(--grad-yellow); }
-  
-  .course-title { font-size: 20px; font-weight: 800; margin-bottom: 8px; position: relative; z-index: 1; }
-  .course-desc { color: var(--muted); font-size: 14px; margin-bottom: 24px; flex: 1; position: relative; z-index: 1; }
-  
-  .course-progress-bar { height: 8px; background: rgba(255,255,255,0.1); border-radius: 100px; overflow: hidden; margin-bottom: 12px; }
-  .course-progress-fill { height: 100%; border-radius: 100px; transition: width 0.5s; }
-  .course-card.pink .course-progress-fill { background: var(--grad-pink); }
-  .course-card.blue .course-progress-fill { background: var(--grad-blue); }
-  
-  .course-status { font-size: 12px; font-weight: 700; display: flex; justify-content: space-between; }
-  .course-status.completed { color: #00E676; }
-  .course-status.new { color: var(--muted); }
-  
-  /* MODAL */
-  .modal-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(10px);
-    z-index: 1000; display: none; align-items: flex-end; justify-content: center;
-  }
-  .modal-overlay.show { display: flex; }
-  .modal {
-    background: #1E1E2E; width: 100%; max-width: 800px; max-height: 90vh;
-    border-radius: 32px 32px 0 0; overflow-y: auto; padding: 32px;
-    animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    position: relative;
-  }
-  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-  .modal-close { position: absolute; top: 24px; right: 24px; background: rgba(255,255,255,0.05); width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; color: var(--muted); }
-  .modal-close:hover { background: rgba(255,255,255,0.1); color: #fff; }
-  
-  /* LESSONS */
-  .lesson-item {
-    background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 16px;
-    padding: 20px; margin-bottom: 16px; cursor: pointer; transition: all 0.2s;
-  }
-  .lesson-item:hover { background: rgba(255,255,255,0.05); }
-  .lesson-title { font-size: 16px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
-  .lesson-content { display: none; margin-top: 16px; color: var(--muted); line-height: 1.6; font-size: 15px; border-top: 1px solid var(--border); padding-top: 16px; }
-  .lesson-item.open .lesson-content { display: block; animation: fadeIn 0.3s; }
-  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-  
-  /* TEST */
-  .test-section { margin-top: 32px; border-top: 1px solid var(--border); padding-top: 32px; }
-  .question-block { margin-bottom: 24px; }
-  .question-text { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
-  .option-btn {
-    display: block; width: 100%; text-align: left; padding: 16px 20px; background: rgba(255,255,255,0.03);
-    border: 1px solid var(--border); border-radius: 12px; margin-bottom: 12px; font-size: 15px; transition: all 0.2s;
-  }
-  .option-btn:hover { background: rgba(255,255,255,0.08); }
-  .option-btn.selected { background: rgba(0, 176, 255, 0.15); border-color: #00B0FF; color: #00B0FF; }
-  
-  .btn-submit {
-    width: 100%; padding: 18px; border-radius: 100px; background: var(--grad-blue);
-    color: #fff; font-size: 16px; font-weight: 700; margin-top: 24px;
-    box-shadow: 0 8px 24px rgba(0, 176, 255, 0.3); transition: all 0.2s;
-  }
-  .btn-submit:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(0, 176, 255, 0.4); }
-  
-  /* RESULT */
-  .result-screen { text-align: center; padding: 40px 0; display: none; }
-  .result-icon { font-size: 80px; margin-bottom: 24px; animation: bounce 0.6s; }
-  @keyframes bounce { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
-  .result-title { font-size: 28px; font-weight: 800; margin-bottom: 12px; }
-  .result-score { font-size: 48px; font-weight: 800; background: var(--grad-pink); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 24px; }
-  .btn-back { display: inline-block; padding: 14px 32px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 100px; font-weight: 600; font-size: 15px; }
-  .btn-back:hover { background: rgba(255,255,255,0.1); }
+  .content { padding: 24px 20px; max-width: 800px; margin: 0 auto; }
+  .page-header { text-align: center; margin-bottom: 32px; }
+  .page-title { font-size: 36px; font-weight: 800; letter-spacing: -1.5px; color: var(--text-main); margin-bottom: 8px; }
+  .page-sub { font-size: 16px; color: var(--text-muted); font-weight: 500; }
 
-  /* LOADER */
-  .loader { text-align: center; padding: 80px; color: var(--muted); font-weight: 600; letter-spacing: 2px; animation: pulse 1.5s infinite; text-transform: uppercase; font-size: 14px; }
-  @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+  .course-card { background: #fff; border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); margin-bottom: 16px; cursor: pointer; display: flex; align-items: center; gap: 20px; transition: transform 0.2s; }
+  .course-card:active { transform: scale(0.98); }
+  .course-icon { width: 70px; height: 70px; border-radius: 24px; display: flex; align-items: center; justify-content: center; font-size: 32px; flex-shrink: 0; background: linear-gradient(135deg, var(--pink), var(--orange)); color: #fff; box-shadow: 0 8px 20px rgba(255, 0, 127, 0.2); }
+  .course-info { flex: 1; min-width: 0; }
+  .course-title { font-size: 20px; font-weight: 800; color: var(--text-main); margin-bottom: 6px; }
+  .course-desc { font-size: 14px; color: var(--text-muted); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .course-status { font-size: 12px; font-weight: 800; padding: 6px 12px; border-radius: 100px; display: inline-block; margin-top: 12px; }
+  .course-status.new { background: #F2F2F7; color: var(--text-muted); }
+  .course-status.in_progress { background: var(--accent-soft); color: var(--text-main); }
+  .course-status.completed { background: var(--green); color: var(--green-text); }
 
-  /* TOAST */
-  .toast { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(100px); background: #fff; color: #000; padding: 16px 32px; border-radius: 100px; font-weight: 700; font-size: 15px; z-index: 2000; opacity: 0; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-  .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+  /* Экран курса */
+  .lesson-card { background: #fff; border-radius: var(--radius-sm); padding: 24px; box-shadow: var(--shadow); margin-bottom: 20px; }
+  .lesson-title { font-size: 22px; font-weight: 800; margin-bottom: 16px; }
+  .lesson-content { font-size: 16px; color: #333; line-height: 1.7; font-weight: 500; white-space: pre-wrap; }
 
-  @media (max-width: 600px) {
-    .header { padding: 20px 16px 0; }
-    .container { padding: 24px 16px; }
-    .greeting { font-size: 26px; }
-    .modal { padding: 24px; border-radius: 24px 24px 0 0; }
-  }
+  /* Тест */
+  .test-question { background: #fff; border-radius: var(--radius-sm); padding: 24px; box-shadow: var(--shadow); margin-bottom: 20px; }
+  .test-q-text { font-size: 18px; font-weight: 800; margin-bottom: 20px; }
+  .test-option { display: flex; align-items: center; gap: 12px; padding: 16px; border: 1px solid #E5E5EA; border-radius: 16px; margin-bottom: 12px; cursor: pointer; transition: all 0.2s; font-weight: 600; font-size: 15px; }
+  .test-option:hover { background: #FAFAFA; }
+  .test-option input[type="radio"] { width: 20px; height: 20px; accent-color: var(--text-main); cursor: pointer; }
+  .test-option.selected { border-color: var(--text-main); background: var(--accent-soft); }
+
+  .btn-submit { width: 100%; background: var(--text-main); color: #fff; border-radius: var(--radius-sm); padding: 18px; font-size: 16px; font-weight: 700; margin-top: 12px; transition: transform 0.2s; }
+  .btn-submit:active { transform: scale(0.98); }
+
+  .result-screen { text-align: center; padding: 40px 20px; background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); }
+  .result-icon { font-size: 64px; margin-bottom: 20px; }
+  .result-score { font-size: 48px; font-weight: 800; margin-bottom: 12px; color: var(--green-text); }
+  .result-text { font-size: 18px; color: var(--text-muted); font-weight: 500; margin-bottom: 32px; }
+
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--text-main); color: #fff; padding: 16px 28px; border-radius: 100px; font-size: 14px; font-weight: 700; z-index: 2000; opacity: 0; pointer-events: none; transition: all 0.3s; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.error { background: var(--red-text); }
 </style>
 </head>
 <body>
 
 <div class="header">
-  <div class="logo">🎓 <span>Wokker Academy</span></div>
-  <div class="header-right">
-    <a href="/" class="btn-close">← На портал</a>
+  <div class="logo">🎓 Академия</div>
+  <a href="/" class="btn-close">← На портал</a>
+</div>
+
+<div class="content" id="app-content">
+  <div id="courses-view">
+    <div class="page-header">
+      <div class="page-title">Обучение</div>
+      <div class="page-sub">Прокачай свои навыки</div>
+    </div>
+    <div id="courses-list">
+      <div style="text-align:center; padding: 40px; color: var(--text-muted);">Загрузка курсов...</div>
+    </div>
   </div>
-</div>
 
-<div class="container" id="main-container">
-  <div class="loader">Загрузка курсов...</div>
-</div>
-
-<div class="modal-overlay" id="modal-overlay">
-  <div class="modal" id="modal-box">
-    <button class="modal-close" onclick="closeModal()">✕</button>
-    <div id="modal-content"></div>
+  <div id="course-view" style="display: none;">
+    <!-- Сюда рендерится конкретный курс -->
   </div>
 </div>
 
@@ -181,20 +94,20 @@
 
 <script>
 const TOKEN_KEY = 'wokker_staff_token';
-let COURSES = [];
-let CURRENT_COURSE = null;
-let TEST_ANSWERS = {};
-
 const $ = id => document.getElementById(id);
 const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
 
-function showToast(text) {
+let _toastTimer = null;
+function showToast(text, type) {
   const el = $('toast');
   el.textContent = text;
+  el.classList.remove('error');
+  if (type === 'error') el.classList.add('error');
   el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 3000);
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
 }
 
 async function api(path, body) {
@@ -214,187 +127,172 @@ async function api(path, body) {
   return res.json();
 }
 
+let CURRENT_COURSE = null;
+
 async function loadCourses() {
   try {
     const res = await api('/api/academy/courses', {});
-    COURSES = res.courses || [];
-    renderCourses();
-  } catch (e) {
-    $('main-container').innerHTML = '<div class="loader">Ошибка загрузки</div>';
-  }
-}
+    const courses = res.courses || [];
+    
+    if (!courses.length) {
+      $('courses-list').innerHTML = '<div style="text-align:center; padding: 40px; color: var(--text-muted);">Курсов пока нет</div>';
+      return;
+    }
 
-function renderCourses() {
-  const box = $('main-container');
-  const colors = ['pink', 'blue', 'purple', 'yellow'];
-  
-  let html = `
-    <div class="greeting">Привет, <span>${esc(localStorage.getItem('wokker_staff_name') || 'Сотрудник')}</span>! 👋</div>
-    <div class="sub-greeting">Прокачай свои навыки и стань лучшим в команде</div>
-    <div class="grid">
-  `;
+    $('courses-list').innerHTML = courses.map(c => {
+      let statusHtml = '<div class="course-status new">Не начат</div>';
+      if (c.status === 'in_progress') statusHtml = '<div class="course-status in_progress">В процессе</div>';
+      if (c.status === 'completed') statusHtml = `<div class="course-status completed">Пройден (${c.score}%)</div>`;
 
-  if (COURSES.length === 0) {
-    html += '<div style="grid-column: 1/-1; text-align: center; color: var(--muted); padding: 40px;">Курсов пока нет</div>';
-  } else {
-    COURSES.forEach((c, i) => {
-      const colorClass = c.color || colors[i % colors.length];
-      const isCompleted = c.status === 'completed';
-      const progress = isCompleted ? 100 : 0;
-      
-      html += `
-        <div class="course-card ${colorClass}" onclick="openCourse(${c.id})">
-          <div class="course-icon">${c.icon || '🚀'}</div>
-          <div class="course-title">${esc(c.title)}</div>
-          <div class="course-desc">${esc(c.description)}</div>
-          
-          <div class="course-progress-bar">
-            <div class="course-progress-fill" style="width: ${progress}%;"></div>
-          </div>
-          <div class="course-status ${isCompleted ? 'completed' : 'new'}">
-            <span>${isCompleted ? '✅ Пройден' : '⏳ В процессе'}</span>
-            ${isCompleted ? `<span>${c.score}%</span>` : ''}
+      return `
+        <div class="course-card" onclick="openCourse(${c.id})">
+          <div class="course-icon">${esc(c.icon || '📚')}</div>
+          <div class="course-info">
+            <div class="course-title">${esc(c.title)}</div>
+            <div class="course-desc">${esc(c.description || '')}</div>
+            ${statusHtml}
           </div>
         </div>
       `;
-    });
-  }
-
-  html += `</div>`;
-  box.innerHTML = html;
-}
-
-async function openCourse(id) {
-  try {
-    $('modal-content').innerHTML = '<div class="loader">Загрузка...</div>';
-    $('modal-overlay').classList.add('show');
-    
-    const res = await api('/api/academy/course', { course_id: id });
-    CURRENT_COURSE = res.course;
-    const lessons = res.lessons || [];
-    const tests = res.tests || [];
-    
-    let html = `
-      <div style="font-size: 14px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Курс</div>
-      <div style="font-size: 28px; font-weight: 800; margin-bottom: 32px;">${esc(CURRENT_COURSE.title)}</div>
-    `;
-
-    // Render lessons
-    if (lessons.length) {
-      html += `<h3 style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">📖 Уроки</h3>`;
-      lessons.forEach(l => {
-        html += `
-          <div class="lesson-item" onclick="this.classList.toggle('open')">
-            <div class="lesson-title">${esc(l.title)} <span style="font-size: 20px; color: var(--muted);">+</span></div>
-            <div class="lesson-content">${esc(l.content)}</div>
-          </div>
-        `;
-      });
-    }
-
-    // Render test
-    if (tests.length) {
-      html += `<div class="test-section" id="test-section">`;
-      html += `<h3 style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">📝 Финальный тест</h3>`;
-      
-      html += `<div id="test-questions">`;
-      tests.forEach((t, idx) => {
-        html += `
-          <div class="question-block" data-qid="${t.id}">
-            <div class="question-text">${idx+1}. ${esc(t.question)}</div>
-        `;
-        t.options.forEach((opt, optIdx) => {
-          html += `<button class="option-btn" onclick="selectOption(${t.id}, ${optIdx}, this)">${esc(opt)}</button>`;
-        });
-        html += `</div>`;
-      });
-      html += `</div>`;
-      
-      html += `<button class="btn-submit" id="btn-submit-test" onclick="submitTest()" style="display: none;">Завершить тест</button>`;
-      html += `</div>`;
-    }
-
-    // Result screen (hidden by default)
-    html += `
-      <div class="result-screen" id="result-screen">
-        <div class="result-icon" id="result-icon">🎉</div>
-        <div class="result-title" id="result-title">Отлично!</div>
-        <div class="result-score" id="result-score">100%</div>
-        <button class="btn-back" onclick="closeModal()">Вернуться к курсам</button>
-      </div>
-    `;
-
-    $('modal-content').innerHTML = html;
-
-    // Show submit button if there are tests
-    if (tests.length > 0) {
-      $('btn-submit-test').style.display = 'block';
-    }
-
+    }).join('');
   } catch (e) {
-    $('modal-content').innerHTML = `<div class="loader">Ошибка загрузки курса</div>`;
+    $('courses-list').innerHTML = `<div style="text-align:center; padding: 40px; color: var(--red-text);">Ошибка загрузки</div>`;
   }
 }
 
-function selectOption(qid, optIdx, btn) {
-  TEST_ANSWERS[qid] = optIdx;
-  const parent = btn.closest('.question-block');
-  parent.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
-  btn.classList.add('selected');
+async function openCourse(courseId) {
+  $('courses-view').style.display = 'none';
+  $('course-view').style.display = 'block';
+  $('course-view').innerHTML = '<div style="text-align:center; padding: 40px; color: var(--text-muted);">Загрузка курса...</div>';
+  window.scrollTo(0, 0);
+
+  try {
+    const res = await api('/api/academy/course', { course_id: courseId });
+    CURRENT_COURSE = res.course;
+    
+    const lessonsHtml = res.lessons.map(l => `
+      <div class="lesson-card">
+        <div class="lesson-title">${esc(l.title)}</div>
+        <div class="lesson-content">${esc(l.content)}</div>
+      </div>
+    `).join('');
+
+    const hasTests = res.tests && res.tests.length > 0;
+    let testHtml = '';
+    
+    if (hasTests) {
+      testHtml = `
+        <div style="margin-top: 40px; margin-bottom: 20px;">
+          <h2 style="font-size: 24px; font-weight: 800;">Проверка знаний</h2>
+          <p style="color: var(--text-muted); margin-top: 8px;">Ответьте на вопросы, чтобы завершить курс.</p>
+        </div>
+        <div id="test-container">
+          ${res.tests.map((t, idx) => `
+            <div class="test-question">
+              <div class="test-q-text">${idx + 1}. ${esc(t.question)}</div>
+              <div class="test-options" data-qid="${t.id}">
+                ${t.options.map((opt, oIdx) => `
+                  <label class="test-option">
+                    <input type="radio" name="q_${t.id}" value="${oIdx}" onchange="selectOption(this)">
+                    <span>${esc(opt)}</span>
+                  </label>
+                `).join('')}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+        <button class="btn-submit" onclick="submitTest(${courseId})">Завершить и проверить</button>
+      `;
+    } else {
+      testHtml = `
+        <div class="result-screen" style="margin-top: 40px;">
+          <div class="result-icon">🎉</div>
+          <div class="result-score" style="color: var(--green-text);">Курс изучен</div>
+          <div class="result-text">В этом курсе нет теста.</div>
+          <button class="btn-submit" onclick="backToCourses()">Вернуться к курсам</button>
+        </div>
+      `;
+    }
+
+    $('course-view').innerHTML = `
+      <button class="btn-close" onclick="backToCourses()" style="margin-bottom: 24px;">← К списку курсов</button>
+      <div class="page-header" style="text-align: left; margin-bottom: 24px;">
+        <div class="page-title" style="font-size: 32px;">${esc(res.course.title)}</div>
+      </div>
+      ${lessonsHtml}
+      ${testHtml}
+    `;
+  } catch (e) {
+    $('course-view').innerHTML = `<div style="text-align:center; padding: 40px; color: var(--red-text);">Ошибка загрузки курса: ${esc(e.message)}</div>`;
+  }
 }
 
-async function submitTest() {
-  if (!CURRENT_COURSE) return;
-  
-  const questions = document.querySelectorAll('.question-block');
-  const answers = { ...TEST_ANSWERS };
-  
-  if (Object.keys(answers).length < questions.length) {
-    showToast('Ответьте на все вопросы!');
+function backToCourses() {
+  $('course-view').style.display = 'none';
+  $('courses-view').style.display = 'block';
+  window.scrollTo(0, 0);
+  loadCourses();
+}
+
+function selectOption(input) {
+  const parent = input.closest('.test-options');
+  parent.querySelectorAll('.test-option').forEach(el => el.classList.remove('selected'));
+  input.closest('.test-option').classList.add('selected');
+}
+
+async function submitTest(courseId) {
+  const answers = {};
+  const questions = document.querySelectorAll('.test-options');
+  let allAnswered = true;
+
+  questions.forEach(q => {
+    const qid = q.dataset.qid;
+    const selected = q.querySelector('input[type="radio"]:checked');
+    if (selected) {
+      answers[qid] = parseInt(selected.value);
+    } else {
+      allAnswered = false;
+    }
+  });
+
+  if (!allAnswered) {
+    showToast('Ответьте на все вопросы', 'error');
     return;
   }
 
-  const btn = $('btn-submit-test');
-  btn.textContent = 'Проверяем...';
+  const btn = document.querySelector('.btn-submit');
   btn.disabled = true;
+  btn.textContent = 'Проверяем...';
 
   try {
-    const res = await api('/api/academy/submit-test', { course_id: CURRENT_COURSE.id, answers });
-    
-    $('test-section').style.display = 'none';
-    $('result-screen').style.display = 'block';
+    const res = await api('/api/academy/submit-test', { course_id: courseId, answers });
     
     if (res.passed) {
-      $('result-icon').textContent = '🏆';
-      $('result-title').textContent = 'Курс пройден!';
-      $('result-score').textContent = res.score + '%';
-      $('result-score').style.color = '#00E676';
-      // Reload courses in background
-      setTimeout(loadCourses, 1000);
+      $('course-view').innerHTML = `
+        <div class="result-screen" style="margin-top: 40px;">
+          <div class="result-icon">🏆</div>
+          <div class="result-score">${res.score}%</div>
+          <div class="result-text">Поздравляем! Вы успешно прошли курс.</div>
+          <button class="btn-submit" onclick="backToCourses()">Вернуться к курсам</button>
+        </div>
+      `;
     } else {
-      $('result-icon').textContent = '😢';
-      $('result-title').textContent = 'Нужно повторить';
-      $('result-score').textContent = res.score + '%';
-      $('result-score').style.color = '#FF007F';
+      $('course-view').innerHTML = `
+        <div class="result-screen" style="margin-top: 40px;">
+          <div class="result-icon">😔</div>
+          <div class="result-score" style="color: var(--red-text);">${res.score}%</div>
+          <div class="result-text">К сожалению, вы не набрали проходной балл (нужно 80%).</div>
+          <button class="btn-submit" onclick="openCourse(${courseId})">Попробовать снова</button>
+        </div>
+      `;
     }
-
   } catch (e) {
-    showToast('Ошибка отправки');
-    btn.textContent = 'Завершить тест';
+    showToast('Ошибка отправки: ' + e.message, 'error');
     btn.disabled = false;
+    btn.textContent = 'Завершить и проверить';
   }
 }
 
-function closeModal() {
-  $('modal-overlay').classList.remove('show');
-  setTimeout(() => {
-    $('modal-content').innerHTML = '';
-    CURRENT_COURSE = null;
-    TEST_ANSWERS = {};
-  }, 300);
-}
-
-// Инициализация
 (async function init() {
   if (!getToken()) { window.location.href = '/'; return; }
   await loadCourses();

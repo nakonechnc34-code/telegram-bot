@@ -16,19 +16,66 @@ import time
 import bleach
 from datetime import datetime, date, timezone as _tz
 from contextlib import contextmanager
+from typing import Optional, List, Dict, Any
 
 from aiohttp import web
 from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.extras import RealDictCursor, Json
 from psycopg2 import sql
 from pywebpush import webpush, WebPushException
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-# ============= PUSH SETTINGS =============
-VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "BMwTeMsr3z1qBO1igGp9Fh2I3ZtAG7ZiuwZiKpCbu3na77MFJJwN2fvk2agYtR0MgjxX_CDjhpfamLV0oBR0TC4")
-VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "gy-5yLP8ymvrjDzf43zsSjWkLbuknlw11wQyI6Ef1kI")
+# ============= SECURITY & ENV SETTINGS =============
+DB_URL = os.getenv("DATABASE_URL")
+if not DB_URL:
+    raise ValueError("DATABASE_URL is not set")
+
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY")
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY")
+if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:
+    raise ValueError("VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be set in environment variables")
+
 VAPID_CLAIMS = {"sub": "mailto:admin@wokker.ru"}
+
+ADMIN_LOGIN = os.getenv("ADMIN_LOGIN", "adm01").strip().lower()
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
+if not ADMIN_PASSWORD:
+    raise ValueError("ADMIN_PASSWORD must be set in environment variables")
+
+APP_ENV = os.getenv("ENV", "development").lower()
+LOGIN_RE = re.compile(r"^[a-z]{3}\d{2}$")
+SESSION_TTL_DAYS = 30
+
+ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.csv'}
+IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+
+# ============= PYDANTIC MODELS (Валидация) =============
+class LoginModel(BaseModel):
+    login: str
+    password: str
+
+class UserCreateModel(BaseModel):
+    full_name: str = Field(..., max_length=100)
+    password: str = Field(..., min_length=6)
+    phone: Optional[str] = ""
+    birth_date: Optional[str] = ""
+    position: Optional[str] = ""
+    restaurant_key: Optional[str] = ""
+    is_certified: bool = False
+    hire_date: Optional[str] = ""
+    citizenship_id: Optional[int] = None
+    payment_type: str = "hourly"
+
+    @field_validator('payment_type')
+    def check_payment_type(cls, v):
+        if v not in ('hourly', 'fixed'):
+            raise ValueError('must be hourly or fixed')
+        return v
+
+class TimesheetBulkSaveModel(BaseModel):
+    cells: List[Dict[str, Any]]
 
 # ============= JSON SERIALIZER =============
 def _json_default(obj):
@@ -44,30 +91,6 @@ def _safe_json_response(data=None, *args, **kwargs):
     kwargs.setdefault("dumps", _json_dumps)
     return _orig_json_response(data, *args, **kwargs)
 web.json_response = _safe_json_response
-# =========================================================
-
-DB_URL = os.getenv("DATABASE_URL")
-if not DB_URL:
-    raise ValueError("DATABASE_URL is not set")
-
-ADMIN_LOGIN = os.getenv("ADMIN_LOGIN", "adm01").strip().lower()
-ADMIN_PASSWORD_ENV = os.getenv("ADMIN_PASSWORD")
-APP_ENV = os.getenv("ENV", "development").lower()
-
-if not ADMIN_PASSWORD_ENV:
-    if APP_ENV == "production":
-        raise ValueError("ADMIN_PASSWORD must be set when ENV=production")
-    ADMIN_PASSWORD = "Wokker2026"
-    logging.warning("⚠️ ADMIN_PASSWORD не задан — дефолт только для dev.")
-else:
-    ADMIN_PASSWORD = ADMIN_PASSWORD_ENV
-
-LOGIN_RE = re.compile(r"^[a-z]{3}\d{2}$")
-SESSION_TTL_DAYS = 30
-
-# Разрешенные расширения для загрузки
-ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.csv'}
-IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
 
 def _safe_int(val, default=0):
     try:
@@ -101,7 +124,7 @@ ALLOWED_ATTRS = {
     'td': ['colspan', 'rowspan'],
     'th': ['colspan', 'rowspan'],
     'img': ['src', 'alt', 'width', 'height'],
-    '*': ['class'] # Убрали 'style' для предотвращения CSS-инъекций
+    '*': ['class']
 }
 
 def sanitize_html(html_str):
@@ -626,7 +649,6 @@ def _sync_get_session_user(token):
                     cur.execute("DELETE FROM web_sessions WHERE token = %s", (token,))
                     return None
             
-            # ОПТИМИЗАЦИЯ: Обновляем last_used_at не чаще раза в час
             cur.execute("UPDATE web_sessions SET last_used_at = NOW() WHERE token = %s AND (last_used_at IS NULL OR last_used_at < NOW() - INTERVAL '1 hour')", (token,))
             return uid
 
@@ -715,12 +737,17 @@ async def _enrich_user_with_medbook_status(user):
 
 # ============= API: AUTH =============
 async def handle_auth_login(request):
-    try: data = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    login = (data.get("login") or "").strip().lower()
-    password = data.get("password") or ""
+    try: 
+        body = await request.json()
+        data = LoginModel(**body)
+    except ValidationError as e:
+        return web.json_response({"error": "invalid_data", "detail": e.errors()}, status=400)
+    except Exception: 
+        return web.json_response({"error": "invalid_json"}, status=400)
+    
+    login = data.login.strip().lower()
+    password = data.password
     if not LOGIN_RE.match(login): return web.json_response({"error": "invalid_login_format"}, status=400)
-    if not password: return web.json_response({"error": "password_required"}, status=400)
     
     ip = request.remote or "unknown"
     if not _check_rate_limit(ip):
@@ -738,12 +765,17 @@ async def handle_auth_login(request):
     return web.json_response({"ok": True, "token": token, "is_admin": True})
 
 async def handle_auth_login_staff(request):
-    try: data = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    login = (data.get("login") or "").strip().lower()
-    password = data.get("password") or ""
+    try: 
+        body = await request.json()
+        data = LoginModel(**body)
+    except ValidationError as e:
+        return web.json_response({"error": "invalid_data", "detail": e.errors()}, status=400)
+    except Exception: 
+        return web.json_response({"error": "invalid_json"}, status=400)
+        
+    login = data.login.strip().lower()
+    password = data.password
     if not LOGIN_RE.match(login): return web.json_response({"error": "invalid_login_format"}, status=400)
-    if not password: return web.json_response({"error": "password_required"}, status=400)
 
     ip = request.remote or "unknown"
     if not _check_rate_limit(ip):
@@ -939,24 +971,12 @@ async def handle_admin_users(request):
             except Exception: u["medbook"] = {}
     return web.json_response({"users": users})
 
-def _sync_create_user(body, existing_logins, admin_id=None):
-    login = (body.get("login") or "").strip().lower()
-    full_name = body.get("full_name") or ""
-    password = body.get("password") or ""
-    if not full_name or not password or len(password) < 6: return None, "invalid"
-    if len(full_name) > 100: return None, "full_name_too_long"
-    if not login or not LOGIN_RE.match(login) or login in existing_logins: login = _generate_login_for(full_name, existing_logins)
-    restaurant_key = body.get("restaurant_key") or body.get("restaurant") or ""
-    hire_date = body.get("hire_date") or ""
-    citizenship_id = body.get("citizenship_id")
-    if citizenship_id == "": citizenship_id = None
-    if citizenship_id is not None: citizenship_id = int(citizenship_id)
+def _sync_create_user(data: UserCreateModel, existing_logins, admin_id=None):
+    full_name = data.full_name
+    login = _generate_login_for(full_name, existing_logins)
     
-    payment_type = body.get("payment_type") or "hourly"
-    if payment_type not in ('hourly', 'fixed'):
-        return None, "invalid_payment_type"
-
-    # Валидация ресторана
+    # Проверка ресторана
+    restaurant_key = data.restaurant_key or ""
     if restaurant_key:
         with get_conn() as conn:
             with conn.cursor() as cur:
@@ -964,11 +984,11 @@ def _sync_create_user(body, existing_logins, admin_id=None):
                 if not cur.fetchone():
                     return None, "invalid_restaurant"
 
-    pw_hash = hash_password(password)
+    pw_hash = hash_password(data.password)
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("INSERT INTO users (login, password_hash, full_name, phone, birth_date, position, restaurant_key, is_certified, hire_date, citizenship_id, payment_type) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *", 
-                        (login, pw_hash, full_name, body.get("phone") or "", body.get("birth_date") or "", body.get("position") or "", restaurant_key, bool(body.get("is_certified")), hire_date, citizenship_id, payment_type))
+                        (login, pw_hash, full_name, data.phone, data.birth_date, data.position, restaurant_key, data.is_certified, data.hire_date, data.citizenship_id, data.payment_type))
             new_user = dict(cur.fetchone())
             cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin_id, "user_create", "user", str(new_user["user_id"]), f"login={login}"))
     return new_user, None
@@ -978,10 +998,17 @@ async def handle_admin_user_create(request):
     if err: return denied(err)
     perm_err = require_perm(admin, "users_create")
     if perm_err: return perm_err
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    try:
+        body = await request.json()
+        data = UserCreateModel(**body)
+    except ValidationError as e:
+        return web.json_response({"error": "validation_error", "detail": e.errors()}, status=400)
+    except Exception: 
+        return web.json_response({"error": "invalid_json"}, status=400)
+        
     existing_logins = await _run(_sync_get_all_logins)
-    new_user, err_code = await _run(_sync_create_user, body, existing_logins, admin["user_id"])
+    new_user, err_code = await _run(_sync_create_user, data, existing_logins, admin["user_id"])
     if err_code: return web.json_response({"error": err_code}, status=400)
     new_user.pop("password_hash", None)
     return web.json_response({"ok": True, "user": new_user})
@@ -1273,7 +1300,6 @@ async def handle_admin_restaurant_tu(request):
     if tu is not None and tu <= 0: tu = None
     
     if tu is not None:
-        # Проверяем, что это действительно ТУ
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT user_id FROM users WHERE user_id = %s AND LOWER(COALESCE(position,'')) LIKE '%%территориальный%%' AND COALESCE(is_fired, FALSE) = FALSE", (tu,))
@@ -1599,7 +1625,6 @@ async def handle_admin_standard_update(request):
     if "body" in updates and not updates["body"]: return web.json_response({"error": "text_required"}, status=400)
     if "body" in updates and len(updates["body"]) > 200000: return web.json_response({"error": "text_too_long"}, status=400)
 
-    # Всегда санитизируем, если передан body (для защиты от XSS)
     if "body" in updates:
         updates["body"] = sanitize_html(updates["body"])
 
@@ -2039,16 +2064,25 @@ def _sync_bulk_save_cells(user_id, cells):
 async def handle_timesheet_bulk_save(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    try: 
+        body = await request.json()
+        data = TimesheetBulkSaveModel(**body)
+    except ValidationError as e:
+        return web.json_response({"error": "validation_error", "detail": e.errors()}, status=400)
+    except Exception: 
+        return web.json_response({"error": "invalid_json"}, status=400)
     
-    cells = body.get("cells", [])
+    cells = data.cells
     if not cells: return web.json_response({"ok": True})
     
-    # ИСПРАВЛЕНО: Проверяем права для КАЖДОГО уникального пользователя в запросе
-    unique_uids = set(c.get("user_id") for c in cells if c.get("user_id"))
+    unique_uids = set()
+    for cell in cells:
+        uid = _safe_int(cell.get("user_id"))
+        if uid > 0:
+            unique_uids.add(uid)
+            
     for uid in unique_uids:
-        allowed = await _run(_check_can_edit_user, user, int(uid))
+        allowed = await _run(_check_can_edit_user, user, uid)
         if not allowed:
             return web.json_response({"error": "forbidden_edit_other"}, status=403)
         
@@ -2527,6 +2561,19 @@ async def handle_admin_upload(request):
 
 async def handle_uploaded_file(request):
     filename = request.match_info['filename']
+    
+    token = request.query.get("token") or request.query.get("webToken")
+    if not token:
+        return web.Response(status=401, text="Unauthorized")
+        
+    user_id = await _run(_sync_get_session_user, token)
+    if not user_id:
+        return web.Response(status=401, text="Unauthorized")
+        
+    user = await _run(_sync_get_user, user_id)
+    if not user or user.get("is_fired"):
+        return web.Response(status=403, text="Forbidden")
+
     data_dir = os.getenv("DATA_DIR", "/data")
     upload_dir = os.path.abspath(os.path.join(data_dir, "uploads"))
     safe_path = os.path.abspath(os.path.join(upload_dir, os.path.basename(filename)))
@@ -2539,12 +2586,10 @@ async def handle_uploaded_file(request):
     ext = os.path.splitext(safe_path)[1].lower()
     headers = {}
     
-    # ИСПРАВЛЕНО: Запрещаем браузеру рендерить потенциально опасные файлы (HTML, SVG)
     if ext not in IMAGE_EXTENSIONS:
         orig_name = request.query.get("name") or os.path.basename(filename)
         headers["Content-Disposition"] = f'attachment; filename="{orig_name}"'
     else:
-        # Явно указываем MIME-тип для изображений
         if ext in ('.jpg', '.jpeg'): headers["Content-Type"] = "image/jpeg"
         elif ext == '.png': headers["Content-Type"] = "image/png"
         elif ext == '.gif': headers["Content-Type"] = "image/gif"
@@ -2634,18 +2679,30 @@ async def gzip_middleware(request, handler):
 
 @web.middleware
 async def security_headers_middleware(request, handler):
+    nonce = secrets.token_urlsafe(16)
+    request['csp_nonce'] = nonce
+    
     response = await handler(request)
+    
+    # Внедряем nonce в HTML
+    if response.content_type == 'text/html' and response.body:
+        html = response.body.decode('utf-8')
+        html = re.sub(r'<script(?![^>]*nonce)', f'<script nonce="{nonce}"', html)
+        response.body = html.encode('utf-8')
+
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    
     csp = (
-        "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "font-src 'self' https://fonts.gstatic.com; "
-        "img-src 'self' data: https://images.unsplash.com; "
-        "connect-src 'self' https://fonts.googleapis.com; "
-        "frame-ancestors 'none';"
+        f"default-src 'self'; "
+        f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net; "
+        f"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        f"font-src 'self' https://fonts.gstatic.com; "
+        f"img-src 'self' data: https://images.unsplash.com; "
+        f"connect-src 'self' https://fonts.googleapis.com; "
+        f"frame-ancestors 'none';"
     )
     response.headers["Content-Security-Policy"] = csp
     return response

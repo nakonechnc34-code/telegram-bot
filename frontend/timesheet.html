@@ -58,25 +58,26 @@
   /* TABLE WRAPPER */
   .table-scroll { flex: 1; overflow: auto; background: #fff; border-radius: var(--radius); box-shadow: 0 2px 12px rgba(0,0,0,0.06); position: relative; max-height: calc(100vh - 160px); width: 100%; }
   
-  /* ГЛАВНОЕ ИЗМЕНЕНИЕ: table-layout: fixed позволяет таблице уместиться на экране */
+  /* Таблица умещается по ширине */
   table { border-collapse: separate; border-spacing: 0; width: 100%; table-layout: fixed; }
   
-  th, td { padding: 2px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); font-size: 12px; text-align: center; white-space: nowrap; overflow: hidden; }
+  /* МАКСИМАЛЬНО КОМПАКТНЫЕ ЯЧЕЙКИ */
+  th, td { padding: 2px 1px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); font-size: 11px; text-align: center; white-space: nowrap; overflow: hidden; }
   
   /* Sticky Headers & Columns */
-  thead th { position: sticky; top: 0; background: #F9F9FB; z-index: 10; font-weight: 700; color: var(--text-muted); font-size: 10px; text-transform: uppercase; padding: 6px 2px; }
-  th.sticky-col, td.sticky-col { position: sticky; left: 0; background: #fff; z-index: 5; text-align: left; border-right: 2px solid var(--border); width: 160px; min-width: 160px; padding-left: 8px; }
-  thead th.sticky-col { z-index: 15; background: #F9F9FB; font-size: 10px; }
+  thead th { position: sticky; top: 0; background: #F9F9FB; z-index: 10; font-weight: 700; color: var(--text-muted); font-size: 9px; text-transform: uppercase; padding: 4px 1px; }
+  th.sticky-col, td.sticky-col { position: sticky; left: 0; background: #fff; z-index: 5; text-align: left; border-right: 1px solid var(--border); width: 140px; min-width: 140px; padding-left: 6px; }
+  thead th.sticky-col { z-index: 15; background: #F9F9FB; font-size: 9px; }
   
   /* Выделение выходных */
   th.weekend { color: var(--red); }
 
   /* Заголовки ресторанов */
-  .rest-header td { background: #F5F5F7 !important; font-weight: 800; padding: 6px 8px; border-bottom: 2px solid var(--border); text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+  .rest-header td { background: #F5F5F7 !important; font-weight: 800; padding: 4px 8px; border-bottom: 1px solid var(--border); text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; }
   .rest-header td.sticky-col { background: #F5F5F7 !important; color: var(--accent); }
 
   /* Прямой ввод в ячейку */
-  .cell-input { width: 100%; box-sizing: border-box; border: 1px solid transparent; border-radius: 4px; text-align: center; font-weight: 600; font-size: 12px; background: transparent; transition: all 0.2s; outline: none; }
+  .cell-input { width: 100%; border: 1px solid transparent; border-radius: 4px; text-align: center; font-weight: 600; font-size: 11px; background: transparent; transition: all 0.2s; outline: none; }
   .cell-input:hover { background: #F2F2F7; }
   .cell-input:focus { background: #fff; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
   .cell-input.error { background: #FFEBEA; border-color: var(--red); color: var(--red); }
@@ -84,24 +85,23 @@
   .cell-input.direct-input {
     width: 100%;
     height: 100%;
-    min-height: 28px;
+    min-height: 24px; /* Уменьшили высоту */
     border: none;
     text-align: center;
     font-weight: 700;
+    font-size: 11px;
     background: transparent;
     border-radius: 0;
     padding: 0;
   }
   .cell-input.direct-input:focus {
     background: #fff;
-    box-shadow: inset 0 0 0 2px var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
   }
 
-  /* Специальные колонки (фиксированная ширина) */
-  .col-rate { background: #F9F9FB; width: 70px; }
-  .col-rate input { background: #fff; border: 1px solid var(--border); padding: 2px 4px; font-size: 11px; border-radius: 4px; }
-  .col-total { font-weight: 800; background: #FAFCFF; width: 50px; font-size: 12px; }
-  .col-salary { font-weight: 800; color: var(--green); background: #F0FDF4; width: 85px; font-size: 12px; }
+  /* Итоговые колонки */
+  .col-total { font-weight: 800; background: #FAFCFF; width: 40px; font-size: 11px; }
+  .col-salary { font-weight: 800; color: var(--green); background: #F0FDF4; width: 70px; font-size: 11px; }
 
   /* Индикатор сохранения */
   .save-indicator { position: fixed; bottom: 16px; right: 16px; background: var(--text-main); color: #fff; padding: 8px 16px; border-radius: 100px; font-weight: 600; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,0.2); opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 100; }
@@ -120,12 +120,12 @@
   .btn-save-settings { width: 100%; background: var(--accent); color: #fff; border-radius: 8px; padding: 12px; font-size: 14px; font-weight: 700; margin-top: 16px; border: none; cursor: pointer; }
 
   @media (max-width: 900px) {
-    /* На мобилках возвращаем возможность горизонтального скролла, так как все 31 день не влезут */
+    /* На мобилках включаем скролл, если не влезает */
     table { width: max-content; min-width: 100%; table-layout: auto; }
-    th.sticky-col, td.sticky-col { min-width: 130px; max-width: 130px; font-size: 11px; }
-    .col-rate { min-width: 60px; }
-    .col-total { min-width: 40px; }
-    .col-salary { min-width: 70px; }
+    th, td { font-size: 12px; padding: 4px 2px; }
+    th.sticky-col, td.sticky-col { min-width: 120px; max-width: 120px; font-size: 11px; }
+    .cell-input.direct-input { min-height: 32px; font-size: 12px; }
+    .col-total, .col-salary { font-size: 12px; }
     .hint-text { display: none; }
   }
 </style>
@@ -396,14 +396,14 @@ function renderMatrix() {
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const dayOfWeek = d.getDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    thead += `<th class="${isWeekend ? 'weekend' : ''}">${d.getDate()}<br><span style="font-size:9px;">${['Вс','Пн','Вт','Ср','Чт','Пт','Сб'][dayOfWeek]}</span></th>`;
+    thead += `<th class="${isWeekend ? 'weekend' : ''}">${d.getDate()}<br><span style="font-size:8px;">${['Вс','Пн','Вт','Ср','Чт','Пт','Сб'][dayOfWeek]}</span></th>`;
   }
   
   let dayCount = 0;
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) dayCount++;
 
-  thead += `<th class="col-rate">Ставка (₽)</th>
-            <th class="col-total">Часов</th>
+  // Убрали колонку Ставка. Осталось 2 колонки: Часов и К оплате.
+  thead += `<th class="col-total">Часов</th>
             <th class="col-salary">К оплате (₽)</th>
             </tr></thead>`;
 
@@ -412,12 +412,12 @@ function renderMatrix() {
   for (const [restName, employees] of Object.entries(grouped)) {
     tbody += `<tr class="rest-header">
       <td class="sticky-col">📍 ${esc(restName)}</td>
-      <td colspan="${dayCount + 3}"></td>
+      <td colspan="${dayCount + 2}"></td>
     </tr>`;
 
     employees.forEach(emp => {
       tbody += `<tr data-uid="${emp.user_id}">
-        <td class="sticky-col" title="${esc(emp.full_name)}"><b>${esc(emp.full_name)}</b><br><span style="font-size:10px; color:var(--text-muted);">${esc(emp.position || '')}</span></td>`;
+        <td class="sticky-col" title="${esc(emp.full_name)}"><b>${esc(emp.full_name)}</b><br><span style="font-size:9px; color:var(--text-muted);">${esc(emp.position || '')}</span></td>`;
       
       let totalHours = 0;
 
@@ -440,14 +440,11 @@ function renderMatrix() {
         </td>`;
       }
       
+      // Считаем зарплату на основе ставки из бэкенда (она уже подтянута из настроек)
       const rate = emp.rate || 0;
       const salary = emp.payment_type === 'fixed' ? rate : (totalHours * rate);
 
-      tbody += `<td class="col-rate">
-          <input type="number" class="cell-input rate-input" data-uid="${emp.user_id}" value="${rate || ''}" min="0" step="10" placeholder="0" onclick="event.stopPropagation()" onchange="handleRateChange(event)">
-          ${emp.payment_type === 'fixed' ? '<div style="font-size:8px; font-weight:800; color:var(--amber); margin-top:2px; text-transform:uppercase;">Оклад</div>' : ''}
-        </td>
-        <td class="col-total total-hours">${totalHours}</td>
+      tbody += `<td class="col-total total-hours">${totalHours}</td>
         <td class="col-salary total-salary">${salary.toLocaleString('ru-RU')}</td>
         </tr>`;
     });
@@ -497,33 +494,11 @@ async function saveCellDirect(inp) {
       emp.data[day] = { h: hours, s: status };
     }
     
-    renderMatrix();
+    renderMatrix(); // Перерисовываем для обновления итогов
     showSaveIndicator();
   } catch (err) {
     alert('Ошибка сохранения: ' + err.message);
     renderMatrix();
-  }
-}
-
-// ================== СТАВКА ==================
-async function handleRateChange(e) {
-  const inp = e.target;
-  const uid = parseInt(inp.dataset.uid);
-  const rate = inp.value ? parseFloat(inp.value) : 0;
-
-  if (rate < 0) { inp.classList.add('error'); return; }
-  inp.classList.remove('error');
-
-  try {
-    await api('/api/timesheet/update_rate', { user_id: uid, rate });
-    const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
-    if (emp) {
-      emp.rate = rate;
-      renderMatrix();
-    }
-    showSaveIndicator();
-  } catch (err) {
-    alert('Ошибка сохранения ставки: ' + err.message);
   }
 }
 

@@ -14,6 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js"></script>
 
 <style>
   :root {
@@ -581,7 +582,7 @@
   </div>
 </div>
 
-<script>
+<script nonce="__CSP_NONCE__">
 /* ================== CONSTANTS ================== */
 const TOKEN_KEY = 'wokker_admin_token';
 const LOGIN_RE = /^[a-z]{3}\d{2}$/;
@@ -626,6 +627,16 @@ let ME = null;
 const $ = id => document.getElementById(id);
 const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
+function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
+function clearToken() { localStorage.removeItem(TOKEN_KEY); }
+
+// Вспомогательная функция для добавления токена к ссылкам на файлы
+function getFileUrl(url) {
+    if (!url) return '';
+    return url + '?token=' + getToken();
+}
+
 function cleanHTML(html) {
     let clean = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
     clean = clean.replace(/<meta[^>]*>/gi, '');
@@ -637,10 +648,6 @@ function cleanHTML(html) {
     clean = clean.replace(/<p>&nbsp;<\/p>/gi, '');
     return clean.trim();
 }
-
-function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
-function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
-function clearToken() { localStorage.removeItem(TOKEN_KEY); }
 
 function toast(text, type) {
   const el = document.createElement('div');
@@ -2045,7 +2052,7 @@ async function loadNews() {
               <div class="pc-author">${esc(n.proposed_by || '—')} · ${fmtDate(n.created_at, true)}</div>
               <span class="tag amber">Предложено</span>
             </div>
-            ${n.image_url ? `<img src="${esc(n.image_url)}" style="max-height: 160px; border-radius: 16px; margin-bottom: 16px; display: block;">` : ''}
+            ${n.image_url ? `<img src="${getFileUrl(n.image_url)}" style="max-height: 160px; border-radius: 16px; margin-bottom: 16px; display: block;">` : ''}
             <div class="pc-title">${esc(n.title)}</div>
             <div class="pc-body">${esc(n.body)}</div>
             <div class="pc-actions">
@@ -2063,7 +2070,7 @@ async function loadNews() {
       : n.status === 'scheduled' ? `<span class="tag blue">Отложено</span>` : '<span class="tag amber">Модерация</span>';
     return `
       <tr>
-        <td data-label="Фото">${n.image_url ? `<img src="${esc(n.image_url)}" style="width: 48px; height: 48px; object-fit: cover; border-radius: 12px;">` : '<div style="width:48px; height:48px; background:#F2F2F7; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--text-muted);">Нет</div>'}</td>
+        <td data-label="Фото">${n.image_url ? `<img src="${getFileUrl(n.image_url)}" style="width: 48px; height: 48px; object-fit: cover; border-radius: 12px;">` : '<div style="width:48px; height:48px; background:#F2F2F7; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--text-muted);">Нет</div>'}</td>
         <td data-label="Заголовок"><b>${esc(n.title)}</b><br><span style="font-size:12px; color:var(--text-muted);">${lvl}</span></td>
         <td data-label="Статус">${status}</td>
         <td class="actions-cell" data-label="">
@@ -2151,7 +2158,7 @@ function openNewsAdd() {
     try {
         const res = await uploadFile(file);
         _uploadedNewsImageUrl = res.url;
-        $('n-image-preview').src = res.url;
+        $('n-image-preview').src = getFileUrl(res.url);
         $('n-image-preview-box').style.display = 'block';
         btn.textContent = 'Фото загружено';
         btn.style.borderColor = 'var(--green)';
@@ -2208,7 +2215,7 @@ function openNewsEdit(id, news) {
       <input type="file" id="n-image-file" accept="image/*" style="display: none;">
       <button type="button" class="btn ghost" id="n-image-btn" style="width: 100%; padding: 20px; border-style:dashed; border-radius:24px;">Заменить фото</button>
       <div id="n-image-preview-box" style="display: ${n.image_url ? 'block' : 'none'}; margin-top: 16px; text-align: center;">
-        <img id="n-image-preview" src="${esc(n.image_url || '')}" style="max-width: 100%; max-height: 200px; border-radius: 16px; object-fit: contain;">
+        <img id="n-image-preview" src="${getFileUrl(n.image_url)}" style="max-width: 100%; max-height: 200px; border-radius: 16px; object-fit: contain;">
       </div>
     </div>
     <div class="form-group"><label>Заголовок</label><input class="form-input" id="edit-n-title" value="${esc(n.title)}"></div>
@@ -2235,7 +2242,7 @@ function openNewsEdit(id, news) {
     try {
         const res = await uploadFile(file);
         _uploadedNewsImageUrl = res.url;
-        $('n-image-preview').src = res.url;
+        $('n-image-preview').src = getFileUrl(res.url);
         $('n-image-preview-box').style.display = 'block';
         btn.textContent = 'Фото загружено';
     } catch (err) {
@@ -2292,9 +2299,9 @@ async function loadStandards() {
               <div class="pc-author">${esc(n.proposed_by || '—')} · ${fmtDate(n.created_at, true)}</div>
               <span class="tag amber">Предложено</span>
             </div>
-            ${n.image_url ? `<img src="${esc(n.image_url)}" style="max-height: 160px; border-radius: 16px; margin-bottom: 16px; display: block;">` : ''}
+            ${n.image_url ? `<img src="${getFileUrl(n.image_url)}" style="max-height: 160px; border-radius: 16px; margin-bottom: 16px; display: block;">` : ''}
             <div class="pc-title"><span class="tag gray">${esc(n.number || '—')}</span> <span class="tag purple" style="margin-right:8px;">${esc(n.group_name || 'Общее')}</span> ${esc(n.title)}</div>
-            <div class="pc-body">${esc(n.body.replace(/<[^>]*>?/gm, ''))}</div>
+            <div class="pc-body">${DOMPurify.sanitize(n.body.replace(/<[^>]*>?/gm, ''))}</div>
             <div class="pc-actions">
               <button class="btn green small" data-approve="${n.id}">Согласовать</button>
               <button class="btn danger small" data-reject="${n.id}">Отклонить</button>
@@ -2307,7 +2314,7 @@ async function loadStandards() {
     const status = n.status === 'published' ? '<span class="tag green">Опубл.</span>' : '<span class="tag amber">Модерация</span>';
     return `
       <tr>
-        <td data-label="Фото">${n.image_url ? `<img src="${esc(n.image_url)}" style="width: 48px; height: 48px; object-fit: cover; border-radius: 12px;">` : '<div style="width:48px; height:48px; background:#F2F2F7; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--text-muted);">Нет</div>'}</td>
+        <td data-label="Фото">${n.image_url ? `<img src="${getFileUrl(n.image_url)}" style="width: 48px; height: 48px; object-fit: cover; border-radius: 12px;">` : '<div style="width:48px; height:48px; background:#F2F2F7; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--text-muted);">Нет</div>'}</td>
         <td data-label="Номер"><span class="tag gray">${esc(n.number || '—')}</span></td>
         <td data-label="Группа"><span class="tag purple">${esc(n.group_name || 'Общее')}</span></td>
         <td data-label="Заголовок"><b>${esc(n.title)}</b></td>
@@ -2549,7 +2556,7 @@ function openStdAdd() {
     try {
         const res = await uploadFile(file);
         _uploadedStandardImageUrl = res.url;
-        $('std-image-preview').src = res.url;
+        $('std-image-preview').src = getFileUrl(res.url);
         $('std-image-preview-box').style.display = 'block';
         btn.textContent = 'Фото загружено';
         btn.style.borderColor = 'var(--green)';
@@ -2657,7 +2664,7 @@ function openStdEdit(id, news) {
         <input type="file" id="std-image-file" accept="image/*" style="display: none;">
         <button type="button" class="btn ghost" id="std-image-btn" style="width: 100%; padding: 16px; border-style:dashed; border-radius:24px;">Заменить фото</button>
         <div id="std-image-preview-box" style="display: ${n.image_url ? 'block' : 'none'}; margin-top: 12px; text-align: center;">
-          <img id="std-image-preview" src="${esc(n.image_url || '')}" style="max-width: 100%; max-height: 100px; border-radius: 16px; object-fit: contain;">
+          <img id="std-image-preview" src="${getFileUrl(n.image_url)}" style="max-width: 100%; max-height: 100px; border-radius: 16px; object-fit: contain;">
         </div>
       </div>
       <div class="form-group">
@@ -2691,7 +2698,7 @@ function openStdEdit(id, news) {
     <div id="std-text-area" style="display: ${isTable ? 'none' : 'block'};">
       <div class="form-group">
         <label>Текст стандарта (Можно вставлять прямо из Word / PDF)</label>
-        <div contenteditable="true" id="edit-std-body" class="rich-editor">${!isTable ? (n.body || '') : ''}</div>
+        <div contenteditable="true" id="edit-std-body" class="rich-editor">${!isTable ? DOMPurify.sanitize(n.body || '') : ''}</div>
       </div>
     </div>
 
@@ -2734,7 +2741,7 @@ function openStdEdit(id, news) {
     try {
         const res = await uploadFile(file);
         _uploadedStandardImageUrl = res.url;
-        $('std-image-preview').src = res.url;
+        $('std-image-preview').src = getFileUrl(res.url);
         $('std-image-preview-box').style.display = 'block';
         btn.textContent = 'Фото загружено';
     } catch (err) {

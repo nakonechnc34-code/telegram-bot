@@ -14,7 +14,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js"></script>
 
 <style>
   :root {
@@ -2336,7 +2335,7 @@ async function loadStandards() {
             </div>
             ${n.image_url ? `<img src="${getFileUrl(n.image_url)}" style="max-height: 160px; border-radius: 16px; margin-bottom: 16px; display: block;">` : ''}
             <div class="pc-title"><span class="tag gray">${esc(n.number || '—')}</span> <span class="tag purple" style="margin-right:8px;">${esc(n.group_name || 'Общее')}</span> ${esc(n.title)}</div>
-            <div class="pc-body">${DOMPurify.sanitize(n.body.replace(/<[^>]*>?/gm, ''))}</div>
+            <div class="pc-body">${esc(n.body.replace(/<[^>]*>?/gm, ''))}</div>
             <div class="pc-actions">
               <button class="btn green small" data-approve="${n.id}">Согласовать</button>
               <button class="btn danger small" data-reject="${n.id}">Отклонить</button>
@@ -2737,7 +2736,7 @@ function openStdEdit(id, news) {
     <div id="std-text-area" style="display: ${isTable ? 'none' : 'block'};">
       <div class="form-group">
         <label>Текст стандарта (Можно вставлять прямо из Word / PDF)</label>
-        <div contenteditable="true" id="edit-std-body" class="rich-editor">${!isTable ? DOMPurify.sanitize(n.body || '') : ''}</div>
+        <div contenteditable="true" id="edit-std-body" class="rich-editor">${!isTable ? (n.body || '') : ''}</div>
       </div>
     </div>
 

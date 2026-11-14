@@ -47,9 +47,14 @@ if not ADMIN_PASSWORD:
 APP_ENV = os.getenv("ENV", "development").lower()
 LOGIN_RE = re.compile(r"^[a-z]{3}\d{2}$")
 SESSION_TTL_DAYS = 30
+SESSION_CACHE_TTL = 30  # секунд
 
 ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.csv'}
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+
+# ============= SESSION CACHE =============
+_session_cache = {}
+_session_cache_lock = threading.Lock()
 
 # ============= PYDANTIC MODELS (Валидация) =============
 class LoginModel(BaseModel):
@@ -636,20 +641,34 @@ def _sync_get_user(user_id):
             return cur.fetchone()
 
 def _sync_get_session_user(token):
+    now = time.time()
+    with _session_cache_lock:
+        cached = _session_cache.get(token)
+        if cached and now - cached[1] < SESSION_CACHE_TTL:
+            return cached[0]
+    
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT user_id, last_used_at FROM web_sessions WHERE token = %s", (token,))
             row = cur.fetchone()
-            if not row: return None
+            if not row:
+                with _session_cache_lock:
+                    _session_cache.pop(token, None)
+                return None
             uid, last_used = row
             if last_used is not None:
-                now = datetime.now(_tz.utc)
+                now_dt = datetime.now(_tz.utc)
                 lu = last_used if last_used.tzinfo else last_used.replace(tzinfo=_tz.utc)
-                if (now - lu).days > SESSION_TTL_DAYS:
+                if (now_dt - lu).days > SESSION_TTL_DAYS:
                     cur.execute("DELETE FROM web_sessions WHERE token = %s", (token,))
+                    with _session_cache_lock:
+                        _session_cache.pop(token, None)
                     return None
             
             cur.execute("UPDATE web_sessions SET last_used_at = NOW() WHERE token = %s AND (last_used_at IS NULL OR last_used_at < NOW() - INTERVAL '1 hour')", (token,))
+            
+            with _session_cache_lock:
+                _session_cache[token] = (uid, now)
             return uid
 
 def _sync_create_session(user_id):
@@ -663,6 +682,8 @@ def _sync_delete_session(token):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM web_sessions WHERE token = %s", (token,))
+            with _session_cache_lock:
+                _session_cache.pop(token, None)
             return cur.rowcount > 0
 
 def _sync_get_medbook_refs():
@@ -975,7 +996,6 @@ def _sync_create_user(data: UserCreateModel, existing_logins, admin_id=None):
     full_name = data.full_name
     login = _generate_login_for(full_name, existing_logins)
     
-    # Проверка ресторана
     restaurant_key = data.restaurant_key or ""
     if restaurant_key:
         with get_conn() as conn:
@@ -1122,6 +1142,7 @@ async def handle_admin_user_fire(request):
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET is_fired = TRUE, fired_at = NOW(), fired_by = %s, is_admin = FALSE, is_super_admin = FALSE, permissions = '{}'::jsonb WHERE user_id = %s", (admin["login"], uid))
             cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin["user_id"], "user_fire", "user", str(uid), f"by={admin['login']}"))
+    _session_cache.clear()
     return web.json_response({"ok": True})
 
 async def handle_admin_user_restore(request):
@@ -1137,6 +1158,7 @@ async def handle_admin_user_restore(request):
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET is_fired = FALSE, fired_at = NULL, fired_by = NULL WHERE user_id = %s", (uid,))
             cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin["user_id"], "user_restore", "user", str(uid), f"by={admin['login']}"))
+    _session_cache.clear()
     return web.json_response({"ok": True})
 
 async def handle_admin_user_delete(request):
@@ -2684,10 +2706,9 @@ async def security_headers_middleware(request, handler):
     
     response = await handler(request)
     
-    # Внедряем nonce в HTML
     if response.content_type == 'text/html' and response.body:
         html = response.body.decode('utf-8')
-        html = re.sub(r'<script(?![^>]*nonce)', f'<script nonce="{nonce}"', html)
+        html = html.replace('__CSP_NONCE__', nonce)
         response.body = html.encode('utf-8')
 
     response.headers["X-Content-Type-Options"] = "nosniff"

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wokker-cache-v1';
+const CACHE_NAME = 'wokker-cache-v2'; // ОБНОВЛЕНО: изменили версию кэша
 const ASSETS_TO_CACHE = [
   '/',
   '/admin',

@@ -1230,10 +1230,11 @@ function renderUsersTbody(users) {
     else if (mbStatus === 'expiring') mbTag = '<span class="tag amber">⚠️</span>';
     else mbTag = '<span class="tag red">❌</span>';
     const showFireBtn = canFire && !u.is_super_admin && u.user_id !== ME.user_id;
+    const ptTag = u.payment_type === 'fixed' ? '<span class="tag amber" style="font-size:10px; padding: 2px 6px;">Оклад</span>' : '<span class="tag gray" style="font-size:10px; padding: 2px 6px;">Почасовка</span>';
     return `
       <tr class="row-clickable" data-uid="${u.user_id}">
         <td data-label="Логин">${u.login ? `<span class="login-cell">${esc(u.login)}</span>` : '<span class="tag gray">нет</span>'}</td>
-        <td data-label="ФИО"><b>${esc(u.full_name || '—')}</b></td>
+        <td data-label="ФИО"><b>${esc(u.full_name || '—')}</b><br>${ptTag}</td>
         <td data-label="Должность">${esc(u.position || '—')}</td>
         <td data-label="Медкнижка">${mbTag}</td>
         <td class="actions-cell" data-label="">
@@ -1313,6 +1314,14 @@ async function openUserCreate() {
         <div class="form-group"><label>Ресторан</label><select class="form-select" id="nc-restaurant"><option value="">—</option>${restOpts}</select></div>
       </div>
       
+      <div class="form-group">
+        <label>Тип оплаты</label>
+        <select class="form-select" id="nc-payment-type">
+            <option value="hourly">⏱ Почасовая</option>
+            <option value="fixed">💰 Фиксированный оклад</option>
+        </select>
+      </div>
+
       <div class="form-group"><div class="checkbox-row"><input type="checkbox" id="nc-cert"><label for="nc-cert">Сертификация пройдена</label></div></div>
       <div class="form-hint error" id="nc-error"></div>
     `, `<button class="btn ghost" onclick="closeModal()">Отмена</button><button class="btn primary" id="nc-save">Создать</button>`);
@@ -1349,7 +1358,8 @@ async function openUserCreate() {
           phone: $('nc-phone').value.trim(), birth_date: $('nc-birth').value.trim(),
           position: $('nc-position').value, restaurant: $('nc-restaurant').value,
           is_certified: $('nc-cert').checked,
-          hire_date: $('nc-hire-date').value, citizenship_id: $('nc-citizenship').value
+          hire_date: $('nc-hire-date').value, citizenship_id: $('nc-citizenship').value,
+          payment_type: $('nc-payment-type').value
         });
         closeModal();
         openModal('✅ Сотрудник создан', `
@@ -1425,6 +1435,15 @@ async function openUserEditor(uid) {
         <div class="form-group"><label>Должность</label><select class="form-select" id="eu-position" ${canEdit?'':'disabled'}>${posOpts}</select></div>
         <div class="form-group"><label>Ресторан</label><select class="form-select" id="eu-restaurant" ${canEdit?'':'disabled'}><option value="">—</option>${restOpts}</select></div>
       </div>
+      
+      <div class="form-group">
+        <label>Тип оплаты</label>
+        <select class="form-select" id="eu-payment-type" ${canEdit?'':'disabled'}>
+            <option value="hourly" ${u.payment_type === 'hourly' ? 'selected' : ''}>⏱ Почасовая</option>
+            <option value="fixed" ${u.payment_type === 'fixed' ? 'selected' : ''}>💰 Фиксированный оклад</option>
+        </select>
+      </div>
+
       <div class="form-group">
         <div class="checkbox-row"><input type="checkbox" id="eu-cert" ${u.is_certified ? 'checked' : ''} ${canEdit?'':'disabled'}><label for="eu-cert">Сертификация</label></div>
         ${!u.is_admin ? `<div style="margin-top:16px;"><label style="font-size:12px;color:var(--text-muted);font-weight:700;text-transform:uppercase; margin-left:8px;">МЕД. КНИЖКА</label><div style="margin-top:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">${mbBadge} <button class="btn ghost small" id="eu-open-mb" ${hasPerm('medbook_edit')?'':'disabled'}>🩺 Открыть</button></div></div>` : ''}
@@ -1450,7 +1469,8 @@ async function openUserEditor(uid) {
         full_name: $('eu-name').value.trim(), phone: $('eu-phone').value.trim(),
         birth_date: $('eu-birth').value.trim(), position: $('eu-position').value,
         restaurant: $('eu-restaurant').value, is_certified: $('eu-cert').checked,
-        hire_date: $('eu-hire-date').value, citizenship_id: $('eu-citizenship').value
+        hire_date: $('eu-hire-date').value, citizenship_id: $('eu-citizenship').value,
+        payment_type: $('eu-payment-type').value
       };
       if (isSuperAdmin() && !u.is_super_admin && $('eu-admin')) updates.is_admin = $('eu-admin').checked;
       const np = $('eu-password') ? $('eu-password').value : '';

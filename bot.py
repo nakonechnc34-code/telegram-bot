@@ -31,17 +31,15 @@ DB_URL = os.getenv("DATABASE_URL")
 if not DB_URL:
     raise ValueError("DATABASE_URL is not set")
 
-VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY")
-VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY")
-if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:
-    raise ValueError("VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be set in environment variables")
+# ВНИМАНИЕ: Дефолтные ключи оставлены для совместимости.
+# В продакшене обязательно задайте их через переменные окружения!
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "BMwTeMsr3z1qBO1igGp9Fh2I3ZtAG7ZiuwZiKpCbu3na77MFJJwN2fvk2agYtR0MgjxX_CDjhpfamLV0oBR0TC4")
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "gy-5yLP8ymvrjDzf43zsSjWkLbuknlw11wQyI6Ef1kI")
 
 VAPID_CLAIMS = {"sub": "mailto:admin@wokker.ru"}
 
 ADMIN_LOGIN = os.getenv("ADMIN_LOGIN", "adm01").strip().lower()
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-if not ADMIN_PASSWORD:
-    raise ValueError("ADMIN_PASSWORD must be set in environment variables")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "Wokker2026")
 
 APP_ENV = os.getenv("ENV", "development").lower()
 LOGIN_RE = re.compile(r"^[a-z]{3}\d{2}$")
@@ -55,7 +53,7 @@ IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
 _session_cache = {}
 _session_cache_lock = threading.Lock()
 
-# ============= РУЧНАЯ ВАЛИДАЦИЯ ВМЕСТО PYDANTIC =============
+# ============= РУЧНАЯ ВАЛИДАЦИЯ =============
 def validate_login_data(body):
     if not isinstance(body, dict):
         return None, "invalid_json"

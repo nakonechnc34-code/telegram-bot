@@ -872,10 +872,34 @@ async def handle_push_subscribe(request):
     subscription = body.get("subscription")
     if not subscription: return web.json_response({"error": "invalid_sub"}, status=400)
     
+    endpoint = subscription.get("endpoint")
+    if not endpoint: return web.json_response({"error": "no_endpoint"}, status=400)
+
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("INSERT INTO push_subscriptions (user_id, subscription) VALUES (%s, %s)", (user["user_id"], Json(subscription)))
+            # Проверяем, есть ли уже такая подписка для этого пользователя
+            cur.execute("SELECT id FROM push_subscriptions WHERE user_id = %s AND subscription->>'endpoint' = %s", (user["user_id"], endpoint))
+            row = cur.fetchone()
+            if row:
+                # Если есть, просто обновляем её (на случай изменения ключей)
+                cur.execute("UPDATE push_subscriptions SET subscription = %s WHERE id = %s", (Json(subscription), row[0]))
+            else:
+                # Если нет, вставляем новую
+                cur.execute("INSERT INTO push_subscriptions (user_id, subscription) VALUES (%s, %s)", (user["user_id"], Json(subscription)))
     return web.json_response({"ok": True})
+
+# Временный эндпоинт для очистки старых подписок
+async def handle_clear_pushes(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    if not admin["is_super_admin"]: 
+        return web.json_response({"error": "Только для супер-админа"}, status=403)
+    
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM push_subscriptions")
+            count = cur.rowcount
+    return web.json_response({"ok": True, "message": f"Удалено подписок: {count}. Теперь подпишитесь заново на телефоне."})
 
 # ============= USERS =============
 def _sync_list_users(search="", fired=False):
@@ -2580,6 +2604,9 @@ app.router.add_post("/api/admin/me", handle_admin_me)
 app.router.add_post("/api/admin/dashboard", handle_admin_dashboard)
 app.router.add_post("/api/admin/medbook-alerts", handle_admin_medbook_alerts)
 app.router.add_post("/api/admin/upload", handle_admin_upload)
+
+# Временный маршрут для очистки подписок (удалите его после использования)
+app.router.add_post("/api/admin/clear-pushes", handle_clear_pushes)
 
 app.router.add_post("/api/admin/citizenships", handle_admin_citizenships)
 app.router.add_post("/api/admin/citizenship/add", handle_admin_citizenship_add)

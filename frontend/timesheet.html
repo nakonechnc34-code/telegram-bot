@@ -11,8 +11,12 @@
 <style>
   :root {
     --bg: #F5F5F7; --card-bg: #FFFFFF; --text-main: #1C1C1E; --text-muted: #8E8E93;
-    --accent: #007AFF; --accent-soft: #E5F0FF; --green: #34C759; --green-soft: #E8F8EB;
-    --red: #FF3B30; --border: rgba(0,0,0,0.08); --font: 'Inter', sans-serif;
+    --accent: #007AFF; --accent-soft: #E5F0FF; 
+    --green: #34C759; --green-soft: #E8F8EB; 
+    --red: #FF3B30; --red-soft: #FFEBEA;
+    --amber: #FF9500; --amber-soft: #FFF8E1;
+    --purple: #AF52DE; --purple-soft: #F4E5FB;
+    --border: rgba(0,0,0,0.08); --font: 'Inter', sans-serif;
   }
   * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
   body { font-family: var(--font); background: var(--bg); color: var(--text-main); min-height: 100vh; display: flex; flex-direction: column; }
@@ -33,32 +37,52 @@
   .section.active { display: flex; flex-direction: column; animation: fadeIn 0.3s; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
   
-  /* MONTH SELECTOR */
-  .month-selector { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; background: #fff; padding: 12px 16px; border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); flex-shrink: 0; }
+  /* TOOLBAR */
+  .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; background: #fff; padding: 12px 20px; border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); flex-shrink: 0; flex-wrap: wrap; gap: 12px; }
+  .month-selector { display: flex; align-items: center; gap: 16px; }
   .month-selector button { background: #F2F2F7; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s; }
   .month-selector button:hover { background: #E5E5EA; }
-  .month-title { font-size: 18px; font-weight: 700; }
+  .month-title { font-size: 18px; font-weight: 700; min-width: 150px; text-align: center; }
   
+  .toolbar-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .btn-tool { background: #F2F2F7; border: 1px solid var(--border); padding: 8px 16px; border-radius: 100px; font-weight: 600; font-size: 13px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
+  .btn-tool:hover { background: #E5E5EA; }
+  .btn-tool.primary { background: var(--accent); color: #fff; border-color: transparent; }
+  .btn-tool.primary:hover { background: #0062CC; }
+  .norm-badge { background: var(--amber-soft); color: #C77700; padding: 8px 16px; border-radius: 100px; font-weight: 700; font-size: 13px; }
+
   /* TABLE WRAPPER */
-  .table-scroll { flex: 1; overflow: auto; background: #fff; border-radius: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.06); position: relative; max-height: calc(100vh - 200px); }
+  .table-scroll { flex: 1; overflow: auto; background: #fff; border-radius: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.06); position: relative; max-height: calc(100vh - 220px); }
   table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; }
-  th, td { padding: 10px 12px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); font-size: 13px; text-align: center; white-space: nowrap; }
+  th, td { padding: 8px 6px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); font-size: 13px; text-align: center; white-space: nowrap; }
   
   /* Sticky Headers & Columns */
-  thead th { position: sticky; top: 0; background: #F9F9FB; z-index: 10; font-weight: 700; color: var(--text-muted); font-size: 11px; text-transform: uppercase; }
-  th.sticky-col, td.sticky-col { position: sticky; left: 0; background: #fff; z-index: 5; text-align: left; border-right: 2px solid var(--border); min-width: 220px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+  thead th { position: sticky; top: 0; background: #F9F9FB; z-index: 10; font-weight: 700; color: var(--text-muted); font-size: 11px; text-transform: uppercase; padding: 12px 6px; }
+  th.sticky-col, td.sticky-col { position: sticky; left: 0; background: #fff; z-index: 5; text-align: left; border-right: 2px solid var(--border); min-width: 200px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; padding-left: 16px; }
   thead th.sticky-col { z-index: 15; background: #F9F9FB; }
   
-  /* Инпуты */
-  .cell-input { width: 100%; min-width: 40px; border: 1px solid transparent; border-radius: 6px; padding: 6px; text-align: center; font-weight: 600; font-size: 13px; background: transparent; transition: all 0.2s; outline: none; }
+  /* Выделение выходных */
+  th.weekend { color: var(--red); }
+
+  /* Инпуты в ячейках */
+  .cell-input { width: 100%; min-width: 36px; border: 1px solid transparent; border-radius: 6px; padding: 6px; text-align: center; font-weight: 600; font-size: 13px; background: transparent; transition: all 0.2s; outline: none; }
   .cell-input:hover { background: #F2F2F7; }
   .cell-input:focus { background: #fff; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
   .cell-input.error { background: #FFEBEA; border-color: var(--red); color: var(--red); }
   
+  /* Статусы в ячейках */
+  .cell-status { font-size: 9px; font-weight: 800; text-transform: uppercase; padding: 2px 4px; border-radius: 4px; display: inline-block; margin-top: 4px; }
+  .cell-status.vacation { background: var(--accent-soft); color: var(--accent); }
+  .cell-status.sick { background: var(--red-soft); color: var(--red); }
+  .cell-status.absent { background: #333; color: #fff; }
+
   /* Специальные колонки */
   .col-rate { background: #F9F9FB; }
   .col-rate input { background: #fff; border: 1px solid var(--border); }
   .col-total { font-weight: 800; background: #FAFCFF; }
+  .col-overtime { font-weight: 800; }
+  .col-overtime.positive { color: var(--green); }
+  .col-overtime.negative { color: var(--red); }
   .col-salary { font-weight: 800; color: var(--green); background: #F0FDF4; }
 
   /* Индикатор сохранения */
@@ -67,34 +91,66 @@
 
   .loader { text-align: center; padding: 40px; color: var(--text-muted); font-weight: 600; }
 
+  /* MODAL */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); z-index: 1000; display: none; align-items: center; justify-content: center; padding: 20px; }
+  .modal-overlay.show { display: flex; }
+  .modal { background: #fff; border-radius: 24px; width: 100%; max-width: 400px; padding: 24px; box-shadow: 0 24px 64px rgba(0,0,0,0.15); animation: slideUp 0.3s; }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  .modal h3 { font-size: 20px; font-weight: 800; margin-bottom: 8px; }
+  .modal-sub { font-size: 14px; color: var(--text-muted); margin-bottom: 24px; }
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; }
+  .form-input, .form-select { width: 100%; border: 1px solid #E5E5EA; border-radius: 12px; padding: 12px 16px; font-size: 16px; outline: none; background: #FAFAFA; transition: all 0.2s; }
+  .form-input:focus, .form-select:focus { border-color: var(--accent); background: #fff; }
+  
+  .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+  .status-btn { padding: 12px; border-radius: 12px; border: 1px solid var(--border); background: #fff; font-size: 14px; font-weight: 600; cursor: pointer; text-align: center; transition: all 0.2s; }
+  .status-btn:hover { background: #FAFAFA; }
+  .status-btn.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .status-btn.active[data-val="vacation"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .status-btn.active[data-val="sick"] { border-color: var(--red); background: var(--red-soft); color: var(--red); }
+  .status-btn.active[data-val="absent"] { border-color: #333; background: #333; color: #fff; }
+
+  .btn-save { width: 100%; background: var(--accent); color: #fff; border-radius: 12px; padding: 16px; font-size: 16px; font-weight: 700; margin-top: 8px; border: none; cursor: pointer; }
+  .btn-save:active { transform: scale(0.98); }
+  .btn-cancel { width: 100%; background: #F2F2F7; color: var(--text-main); border-radius: 12px; padding: 16px; font-size: 16px; font-weight: 700; margin-top: 8px; border: none; cursor: pointer; }
+
   @media (max-width: 600px) {
     .content { padding: 10px; }
-    th, td { padding: 8px 6px; }
+    .toolbar { padding: 12px; }
+    .month-title { font-size: 16px; min-width: 120px; }
+    th, td { padding: 8px 4px; }
     .cell-input { min-width: 30px; padding: 4px; font-size: 12px; }
-    th.sticky-col, td.sticky-col { min-width: 140px; max-width: 140px; font-size: 12px; }
+    th.sticky-col, td.sticky-col { min-width: 140px; max-width: 140px; font-size: 12px; padding-left: 8px; }
   }
 </style>
 </head>
 <body>
 
 <div class="header">
-  <div class="logo">⏱ Табель</div>
+  <div class="logo">⏱ Табель учёта</div>
   <a href="/" class="btn-close">← На портал</a>
 </div>
 
 <div class="tabs">
   <button class="tab active" data-sec="tab-sheet">Табель</button>
-  <button class="tab" data-sec="tab-employees">Сотрудники</button>
   <button class="tab" data-sec="tab-reports">Отчёты</button>
 </div>
 
 <div class="content">
   <!-- ВКЛАДКА: ТАБЕЛЬ (МАТРИЦА) -->
   <div class="section active" id="tab-sheet">
-    <div class="month-selector">
-      <button onclick="changeMonth(-1)">←</button>
-      <div class="month-title" id="current-month-title">Месяц</div>
-      <button onclick="changeMonth(1)">→</button>
+    
+    <div class="toolbar">
+      <div class="month-selector">
+        <button onclick="changeMonth(-1)">←</button>
+        <div class="month-title" id="current-month-title">Месяц</div>
+        <button onclick="changeMonth(1)">→</button>
+      </div>
+      <div class="toolbar-actions">
+        <div class="norm-badge" id="norm-label">Норма: - ч</div>
+        <button class="btn-tool" onclick="fillWeekdays()">⚡ Заполнить будни</button>
+      </div>
     </div>
     
     <div class="table-scroll" id="matrix-container">
@@ -102,30 +158,20 @@
     </div>
   </div>
 
-  <!-- ВКЛАДКА: СОТРУДНИКИ -->
-  <div class="section" id="tab-employees">
-    <div class="table-scroll">
-      <table>
-        <thead><tr><th class="sticky-col">Сотрудник</th><th>Должность</th><th>Ресторан</th><th>Ставка</th></tr></thead>
-        <tbody id="employees-list">
-          <tr><td colspan="4" class="loader">Загрузка...</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
   <!-- ВКЛАДКА: ОТЧЁТЫ -->
   <div class="section" id="tab-reports">
-    <div class="month-selector">
-      <button onclick="changeMonth(-1)">←</button>
-      <div class="month-title" id="report-month-title">Месяц</div>
-      <button onclick="changeMonth(1)">→</button>
+    <div class="toolbar">
+      <div class="month-selector">
+        <button onclick="changeMonth(-1)">←</button>
+        <div class="month-title" id="report-month-title">Месяц</div>
+        <button onclick="changeMonth(1)">→</button>
+      </div>
     </div>
     <div class="table-scroll">
       <table>
-        <thead><tr><th class="sticky-col">Сотрудник</th><th>Должность</th><th>Часов</th><th>К оплате (₽)</th></tr></thead>
+        <thead><tr><th class="sticky-col">Сотрудник</th><th>Должность</th><th>Часов</th><th>Ставка</th><th>К оплате (₽)</th></tr></thead>
         <tbody id="report-list">
-          <tr><td colspan="4" class="loader">Загрузка...</td></tr>
+          <tr><td colspan="5" class="loader">Загрузка...</td></tr>
         </tbody>
       </table>
     </div>
@@ -134,12 +180,40 @@
 
 <div class="save-indicator" id="save-indicator">✓ Сохранено</div>
 
+<!-- МОДАЛКА РЕДАКТИРОВАНИЯ ЯЧЕЙКИ -->
+<div class="modal-overlay" id="cell-modal">
+  <div class="modal">
+    <h3 id="modal-title">Редактировать день</h3>
+    <div class="modal-sub" id="modal-sub">Сотрудник</div>
+    
+    <div class="form-group">
+      <label>Статус</label>
+      <div class="status-grid">
+        <button class="status-btn active" data-val="work">🟢 Работа</button>
+        <button class="status-btn" data-val="vacation">🏖 Отпуск</button>
+        <button class="status-btn" data-val="sick">🤒 Больничный</button>
+        <button class="status-btn" data-val="absent">⚫ Прогул</button>
+      </div>
+    </div>
+
+    <div class="form-group" id="hours-group">
+      <label>Количество часов</label>
+      <input class="form-input" type="number" id="modal-hours" step="0.5" min="0" max="24" value="8">
+    </div>
+    
+    <button class="btn-save" id="modal-save">Сохранить</button>
+    <button class="btn-cancel" onclick="closeCellModal()">Отмена</button>
+  </div>
+</div>
+
 <script>
 const TOKEN_KEY = 'wokker_staff_token';
 let CURRENT_DATE = new Date();
 let CURRENT_MONTH = CURRENT_DATE.getMonth() + 1;
 let CURRENT_YEAR = CURRENT_DATE.getFullYear();
 let EMPLOYEES_DATA = [];
+
+let EDITING_CELL = { uid: null, day: null, dateStr: null };
 
 const $ = id => document.getElementById(id);
 const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -177,16 +251,31 @@ document.querySelectorAll('.tab').forEach(t => {
     $(t.dataset.sec).classList.add('active');
     
     if (t.dataset.sec === 'tab-sheet') loadMatrix();
-    if (t.dataset.sec === 'tab-employees') loadEmployees();
     if (t.dataset.sec === 'tab-reports') loadReports();
   });
 });
+
+function calculateNorm(month, year) {
+  let workDays = 0;
+  const daysInMonth = new Date(year, month, 0).getDate();
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month - 1, d);
+    const dayOfWeek = date.getDay();
+    if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+      workDays++;
+    }
+  }
+  return workDays * 8;
+}
 
 function updateMonthTitles() {
   const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
   const title = `${months[CURRENT_MONTH - 1]} ${CURRENT_YEAR}`;
   $('current-month-title').textContent = title;
   $('report-month-title').textContent = title;
+  
+  const norm = calculateNorm(CURRENT_MONTH, CURRENT_YEAR);
+  $('norm-label').textContent = `Норма: ${norm} ч`;
 }
 
 function changeMonth(delta) {
@@ -222,13 +311,19 @@ function renderMatrix() {
   }
 
   const daysInMonth = new Date(CURRENT_YEAR, CURRENT_MONTH, 0).getDate();
+  const norm = calculateNorm(CURRENT_MONTH, CURRENT_YEAR);
   
-  let thead = `<thead><tr><th class="sticky-col">Сотрудник</th>`;
+  let thead = `<thead><tr>
+    <th class="sticky-col">Сотрудник</th>`;
   for (let d = 1; d <= daysInMonth; d++) {
-    thead += `<th>${d}</th>`;
+    const date = new Date(CURRENT_YEAR, CURRENT_MONTH - 1, d);
+    const dayOfWeek = date.getDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    thead += `<th class="${isWeekend ? 'weekend' : ''}">${d}<br><span style="font-size:9px;">${['Вс','Пн','Вт','Ср','Чт','Пт','Сб'][dayOfWeek]}</span></th>`;
   }
   thead += `<th class="col-rate">Ставка (₽)</th>
             <th class="col-total">Часов</th>
+            <th class="col-overtime">Перераб.</th>
             <th class="col-salary">К оплате (₽)</th>
             </tr></thead>`;
 
@@ -238,52 +333,123 @@ function renderMatrix() {
       <td class="sticky-col" title="${esc(emp.full_name)}"><b>${esc(emp.full_name)}</b><br><span style="font-size:11px; color:var(--text-muted);">${esc(emp.position || '')}</span></td>`;
     
     for (let d = 1; d <= daysInMonth; d++) {
-      const val = emp.hours[d] || '';
-      tbody += `<td><input type="number" class="cell-input day-input" data-day="${d}" data-uid="${emp.user_id}" value="${val}" min="0" max="24" step="0.5" placeholder="-"></td>`;
+      const cellData = emp.data[d] || { h: '', s: 'work' };
+      let extraClass = '';
+      let statusLabel = '';
+      
+      if (cellData.s === 'vacation') { extraClass = 'vacation'; statusLabel = 'Отпуск'; }
+      else if (cellData.s === 'sick') { extraClass = 'sick'; statusLabel = 'Больн.'; }
+      else if (cellData.s === 'absent') { extraClass = 'absent'; statusLabel = 'Прогул'; }
+
+      tbody += `<td onclick="openCellModal(${emp.user_id}, ${d})" style="cursor:pointer; background: ${cellData.s !== 'work' ? 'var(--bg)' : 'transparent'};">
+        <div style="font-weight:700; color: ${cellData.s !== 'work' ? 'var(--text-muted)' : 'var(--text-main)'};">${cellData.h || '-'}</div>
+        ${statusLabel ? `<div class="cell-status ${extraClass}">${statusLabel}</div>` : ''}
+      </td>`;
     }
 
-    const totalHours = Object.values(emp.hours).reduce((a, b) => a + parseFloat(b || 0), 0);
+    let totalHours = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const val = emp.data[d];
+      if (val && val.s === 'work') totalHours += parseFloat(val.h || 0);
+      else if (val && (val.s === 'vacation' || val.s === 'sick')) totalHours += 8;
+    }
+    
     const rate = emp.rate || 0;
-    const salary = totalHours * rate;
+    const salary = emp.payment_type === 'fixed' ? rate : (totalHours * rate);
+    const overtime = emp.payment_type === 'fixed' ? 0 : (totalHours - norm);
+    
+    let otClass = '';
+    let otText = '0';
+    if (overtime > 0) { otClass = 'positive'; otText = `+${overtime}`; }
+    else if (overtime < 0) { otClass = 'negative'; otText = `${overtime}`; }
 
-    tbody += `<td class="col-rate"><input type="number" class="cell-input rate-input" data-uid="${emp.user_id}" value="${rate || ''}" min="0" step="10" placeholder="0"></td>
-              <td class="col-total total-hours">${totalHours}</td>
-              <td class="col-salary total-salary">${salary.toLocaleString('ru-RU')}</td>
-              </tr>`;
+    tbody += `<td class="col-rate">
+        <input type="number" class="cell-input rate-input" data-uid="${emp.user_id}" value="${rate || ''}" min="0" step="10" placeholder="0" onclick="event.stopPropagation()" onchange="handleRateChange(event)">
+        ${emp.payment_type === 'fixed' ? '<div style="font-size:9px; font-weight:800; color:var(--amber); margin-top:4px; text-transform:uppercase;">Оклад</div>' : ''}
+      </td>
+      <td class="col-total total-hours">${totalHours}</td>
+      <td class="col-overtime ${otClass}">${otText}</td>
+      <td class="col-salary total-salary">${salary.toLocaleString('ru-RU')}</td>
+      </tr>`;
   });
   tbody += '</tbody>';
 
   $('matrix-container').innerHTML = `<table>${thead}${tbody}</table>`;
-
-  document.querySelectorAll('.day-input').forEach(inp => inp.addEventListener('change', handleDayChange));
-  document.querySelectorAll('.rate-input').forEach(inp => inp.addEventListener('change', handleRateChange));
 }
 
-async function handleDayChange(e) {
-  const inp = e.target;
-  const uid = parseInt(inp.dataset.uid);
-  const day = parseInt(inp.dataset.day);
-  const val = inp.value ? parseFloat(inp.value) : 0;
+// ================== МОДАЛКА РЕДАКТИРОВАНИЯ ЯЧЕЙКИ ==================
+function openCellModal(uid, day) {
+  const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
+  if (!emp) return;
+  
+  EDITING_CELL.uid = uid;
+  EDITING_CELL.day = day;
+  EDITING_CELL.dateStr = `${CURRENT_YEAR}-${String(CURRENT_MONTH).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  
+  const cellData = emp.data[day] || { h: 8, s: 'work' };
+  
+  $('modal-title').textContent = `День: ${day} ${['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'][CURRENT_MONTH-1]}`;
+  $('modal-sub').textContent = emp.full_name;
+  
+  document.querySelectorAll('.status-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.val === cellData.s);
+  });
+  
+  $('modal-hours').value = cellData.h;
+  updateHoursVisibility(cellData.s);
+  
+  $('cell-modal').classList.add('show');
+}
 
-  if (val < 0 || val > 24) { inp.classList.add('error'); return; }
-  inp.classList.remove('error');
-
-  const dateStr = `${CURRENT_YEAR}-${String(CURRENT_MONTH).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-
-  try {
-    await api('/api/timesheet/save_cell', { user_id: uid, work_date: dateStr, hours: val });
-    const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
-    if (emp) {
-      if (val === 0) delete emp.hours[day];
-      else emp.hours[day] = val;
-      recalcRow(uid);
-    }
-    showSaveIndicator();
-  } catch (err) {
-    alert('Ошибка сохранения: ' + err.message);
+function updateHoursVisibility(status) {
+  if (status === 'work') {
+    $('hours-group').style.display = 'block';
+  } else {
+    $('hours-group').style.display = 'none';
   }
 }
 
+document.querySelectorAll('.status-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.status-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    updateHoursVisibility(btn.dataset.val);
+  });
+});
+
+function closeCellModal() {
+  $('cell-modal').classList.remove('show');
+}
+
+$('modal-save').addEventListener('click', async () => {
+  const activeStatusBtn = document.querySelector('.status-btn.active');
+  const status = activeStatusBtn ? activeStatusBtn.dataset.val : 'work';
+  let hours = parseFloat($('modal-hours').value) || 0;
+  
+  if (status === 'vacation' || status === 'sick') hours = 8;
+  if (status === 'absent') hours = 0;
+
+  try {
+    await api('/api/timesheet/save_cell', { 
+      user_id: EDITING_CELL.uid, 
+      work_date: EDITING_CELL.dateStr, 
+      hours: hours, 
+      status: status 
+    });
+    
+    const emp = EMPLOYEES_DATA.find(x => x.user_id === EDITING_CELL.uid);
+    if (emp) {
+      emp.data[EDITING_CELL.day] = { h: hours, s: status };
+      renderMatrix();
+    }
+    showSaveIndicator();
+    closeCellModal();
+  } catch (err) {
+    alert('Ошибка сохранения: ' + err.message);
+  }
+});
+
+// ================== СТАВКА ==================
 async function handleRateChange(e) {
   const inp = e.target;
   const uid = parseInt(inp.dataset.uid);
@@ -297,7 +463,7 @@ async function handleRateChange(e) {
     const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
     if (emp) {
       emp.rate = rate;
-      recalcRow(uid);
+      renderMatrix();
     }
     showSaveIndicator();
   } catch (err) {
@@ -305,52 +471,61 @@ async function handleRateChange(e) {
   }
 }
 
-function recalcRow(uid) {
-  const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
-  if (!emp) return;
-  const tr = document.querySelector(`tr[data-uid="${uid}"]`);
-  if (!tr) return;
-
-  const totalHours = Object.values(emp.hours).reduce((a, b) => a + parseFloat(b || 0), 0);
-  const salary = totalHours * (emp.rate || 0);
-
-  tr.querySelector('.total-hours').textContent = totalHours;
-  tr.querySelector('.total-salary').textContent = salary.toLocaleString('ru-RU');
-}
-
-// ================== СОТРУДНИКИ ==================
-async function loadEmployees() {
-  try {
-    const res = await api('/api/timesheet/employees', {});
-    const employees = res.employees || [];
-    
-    if (!employees.length) {
-      $('employees-list').innerHTML = '<tr><td colspan="4" class="loader">Нет доступных сотрудников</td></tr>';
-      return;
+// ================== МАССОВОЕ ЗАПОЛНЕНИЕ ==================
+async function fillWeekdays() {
+  if (!confirm('Заполнить все будние дни (Пн-Пт) по 8 часов для всех сотрудников?')) return;
+  
+  const daysInMonth = new Date(CURRENT_YEAR, CURRENT_MONTH, 0).getDate();
+  const cellsToSave = [];
+  
+  EMPLOYEES_DATA.forEach(emp => {
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = new Date(CURRENT_YEAR, CURRENT_MONTH - 1, d);
+      const dayOfWeek = date.getDay();
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      const cellData = emp.data[d];
+      
+      if (!isWeekend && !cellData) {
+        cellsToSave.push({
+          user_id: emp.user_id,
+          work_date: `${CURRENT_YEAR}-${String(CURRENT_MONTH).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+          hours: 8,
+          status: 'work'
+        });
+      }
     }
-    
-    $('employees-list').innerHTML = employees.map(e => `
-      <tr>
-        <td class="sticky-col"><b>${esc(e.full_name)}</b></td>
-        <td>${esc(e.position || '—')}</td>
-        <td>${esc(e.restaurant_name || '—')}</td>
-        <td>—</td>
-      </tr>
-    `).join('');
+  });
+
+  if (!cellsToSave.length) {
+    alert('Все будние дни уже заполнены.');
+    return;
+  }
+
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = 'Заполняем...';
+
+  try {
+    await api('/api/timesheet/bulk_save', { cells: cellsToSave });
+    await loadMatrix();
+    showSaveIndicator();
   } catch (e) {
-    $('employees-list').innerHTML = '<tr><td colspan="4" class="loader" style="color:var(--red);">Ошибка загрузки</td></tr>';
+    alert('Ошибка массового заполнения: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⚡ Заполнить будни';
   }
 }
 
 // ================== ОТЧЕТЫ ==================
 async function loadReports() {
-  $('report-list').innerHTML = '<tr><td colspan="4" class="loader">Загрузка...</td></tr>';
+  $('report-list').innerHTML = '<tr><td colspan="5" class="loader">Загрузка...</td></tr>';
   try {
     const res = await api('/api/timesheet/reports', { month: CURRENT_MONTH, year: CURRENT_YEAR });
     const report = res.report || [];
     
     if (!report.length) {
-      $('report-list').innerHTML = '<tr><td colspan="4" class="loader">Нет данных за этот месяц</td></tr>';
+      $('report-list').innerHTML = '<tr><td colspan="5" class="loader">Нет данных за этот месяц</td></tr>';
       return;
     }
     
@@ -359,13 +534,18 @@ async function loadReports() {
         <td class="sticky-col"><b>${esc(r.full_name)}</b></td>
         <td>${esc(r.position || '—')}</td>
         <td style="font-weight:700; color:var(--accent);">${r.total_hours} ч</td>
+        <td>${r.payment_type === 'fixed' ? 'Оклад' : r.rate + ' ₽'}</td>
         <td style="font-weight:700; color:var(--green);">${(r.total_salary || 0).toLocaleString('ru-RU')} ₽</td>
       </tr>
     `).join('');
   } catch (e) {
-    $('report-list').innerHTML = '<tr><td colspan="4" class="loader" style="color:var(--red);">Ошибка загрузки</td></tr>';
+    $('report-list').innerHTML = '<tr><td colspan="5" class="loader" style="color:var(--red);">Ошибка загрузки</td></tr>';
   }
 }
+
+$('cell-modal').addEventListener('click', e => {
+  if (e.target === $('cell-modal')) closeCellModal();
+});
 
 (async function init() {
   if (!getToken()) { window.location.href = '/'; return; }

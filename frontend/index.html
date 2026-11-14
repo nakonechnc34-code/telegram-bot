@@ -12,6 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Wokker">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js"></script>
 <style>
   :root {
     --bg: #F8F5F2; --card-bg: #FFFFFF; --text-main: #1C1C1E; --text-muted: #8E8E93;
@@ -27,7 +28,6 @@
   body { font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text-main); padding-bottom: 110px; -webkit-font-smoothing: antialiased; }
   button, input { font-family: inherit; border: none; background: none; cursor: pointer; outline: none; }
 
-  /* Анимация для лоадера */
   @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.95); opacity: 0.7; } 100% { transform: scale(1); opacity: 1; } }
 
   #login-screen { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 1000; }
@@ -340,7 +340,7 @@
 
 <div class="toast" id="toast"></div>
 
-<script>
+<script nonce="__CSP_NONCE__">
 /* ================== CONFIG ================== */
 const TOKEN_KEY = 'wokker_staff_token';
 const SEEN_NEWS_KEY = 'wokker_seen_news';
@@ -446,7 +446,6 @@ async function doLogin() {
     
     setToken(data.token);
     
-    // Показываем загрузку после успешного ввода пароля
     $('login-screen').style.display = 'none';
     $('global-loader').style.display = 'flex';
     
@@ -471,7 +470,7 @@ async function loadAndRender() {
     
     localStorage.setItem('wokker_staff_name', BOOT.profile.first_name || 'Сотрудник');
     
-    $('global-loader').style.display = 'none'; // Скрываем загрузку
+    $('global-loader').style.display = 'none';
     showMainApp();
     
     checkTeamTabVisibility();
@@ -483,7 +482,7 @@ async function loadAndRender() {
     renderStandardsFromBoot();
     renderFaqFromBoot();
   } catch (e) {
-    $('global-loader').style.display = 'none'; // Скрываем загрузку при ошибке
+    $('global-loader').style.display = 'none';
     if (e.message !== 'unauthorized' && e.message !== 'fired') {
       showToast('Ошибка загрузки. Проверьте интернет.', 'error');
       $('login-screen').style.display = 'flex';
@@ -932,7 +931,7 @@ function renderNewsFromBoot() {
     else if (lvl === 'important') badgeHtml = '<span class="news-badge important">Важно</span>';
     
     const imageHtml = n.image_url 
-      ? `<img src="${esc(n.image_url)}" class="news-item-img">` 
+      ? `<img src="${esc(n.image_url)}?token=${getToken()}" class="news-item-img">` 
       : `<div class="news-item-img" style="display:flex;align-items:center;justify-content:center;font-size:32px;background:var(--bg);">📰</div>`;
 
     return `
@@ -959,7 +958,7 @@ function showNewsDetail(id) {
   if (lvl === 'urgent') badgeHtml = '<span class="news-badge urgent">Срочно</span>';
   else if (lvl === 'important') badgeHtml = '<span class="news-badge important">Важно</span>';
   
-  const imageHtml = n.image_url ? `<img src="${esc(n.image_url)}" class="news-detail-img">` : '';
+  const imageHtml = n.image_url ? `<img src="${esc(n.image_url)}?token=${getToken()}" class="news-detail-img">` : '';
 
   $('news-detail-box').innerHTML = `
     <div class="news-detail-header">
@@ -1039,7 +1038,7 @@ function drawStandardsList() {
 
   box.innerHTML = filtered.map(s => {
     const imageHtml = s.image_url 
-      ? `<img src="${esc(s.image_url)}" class="std-img">` 
+      ? `<img src="${esc(s.image_url)}?token=${getToken()}" class="std-img">` 
       : '';
 
     return `
@@ -1079,7 +1078,7 @@ function showStandardDetail(id) {
   const s = (BOOT && BOOT.standards || []).find(x => x.id === id);
   if (!s) return;
 
-  const imageHtml = s.image_url ? `<img src="${esc(s.image_url)}" class="std-detail-img">` : '';
+  const imageHtml = s.image_url ? `<img src="${esc(s.image_url)}?token=${getToken()}" class="std-detail-img">` : '';
 
   let contentHtml = '';
   if (s.content_type === 'table' && s.content_data) {
@@ -1101,13 +1100,13 @@ function showStandardDetail(id) {
     `;
     contentHtml = `<div class="std-content-card">${tableHtml}</div>`;
   } else {
-    contentHtml = `<div class="std-content-card"><div class="std-detail-text">${s.body}</div></div>`;
+    contentHtml = `<div class="std-content-card"><div class="std-detail-text">${DOMPurify.sanitize(s.body)}</div></div>`;
   }
 
   let fileHtml = '';
   if (s.file_url) {
     fileHtml = `
-      <div class="std-file-card" onclick="downloadFile('${esc(s.file_url)}?download=1&name=${encodeURIComponent(s.file_name || 'file')}', '${esc(s.file_name || 'Документ')}')">
+      <div class="std-file-card" onclick="downloadFile('${esc(s.file_url)}?download=1&name=${encodeURIComponent(s.file_name || 'file')}&token=${getToken()}', '${esc(s.file_name || 'Документ')}')">
         <div class="std-file-icon">📥</div>
         <div class="std-file-info">
           <div class="std-file-title">Скачать документ</div>
@@ -1196,7 +1195,6 @@ if ('serviceWorker' in navigator) {
     return; 
   }
   
-  // Если токен есть, скрываем логин и показываем загрузку
   $('login-screen').style.display = 'none';
   $('global-loader').style.display = 'flex';
   

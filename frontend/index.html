@@ -27,6 +27,9 @@
   body { font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text-main); padding-bottom: 110px; -webkit-font-smoothing: antialiased; }
   button, input { font-family: inherit; border: none; background: none; cursor: pointer; outline: none; }
 
+  /* Анимация для лоадера */
+  @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.95); opacity: 0.7; } 100% { transform: scale(1); opacity: 1; } }
+
   #login-screen { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 1000; }
   .login-card { background: #fff; border-radius: var(--radius); padding: 40px 32px; box-shadow: var(--shadow); width: 100%; max-width: 400px; text-align: center; }
   .login-logo { width: 90px; height: 90px; border-radius: 50%; background: var(--accent-soft); margin: 0 auto 24px; display: flex; align-items: center; justify-content: center; font-size: 44px; }
@@ -180,66 +183,19 @@
   .std-title { font-size: 17px; font-weight: 800; line-height: 1.3; color: var(--text-main); margin-bottom: 8px; }
   .std-snippet { font-size: 13px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  /* ====== НОВЫЙ ДИЗАЙН ДЕТАЛЬНОГО ЭКРАНА СТАНДАРТА ====== */
   .std-detail-page { padding: 24px 20px; }
   .std-detail-meta { margin-bottom: 24px; }
   .std-detail-number { display: inline-block; background: var(--accent-soft); color: var(--accent); padding: 6px 12px; border-radius: 100px; font-size: 13px; font-weight: 800; margin-bottom: 12px; }
   .std-detail-title { font-size: 32px; font-weight: 800; line-height: 1.2; letter-spacing: -1px; color: var(--text-main); }
   .std-detail-img { width: 100%; height: auto; border-radius: var(--radius); margin-bottom: 24px; box-shadow: var(--shadow); display: block; object-fit: contain; }
-
-  /* Карточка для текста или таблицы */
   .std-content-card { background: #fff; border-radius: var(--radius-sm); padding: 24px; box-shadow: var(--shadow); margin-bottom: 24px; }
   
-  /* ====== ЖЕСТКИЕ СТИЛИ ДЛЯ ТЕКСТА СТАНДАРТА ====== */
-  .std-detail-text {
-    font-size: 15px !important;
-    line-height: 1.6 !important;
-    color: #333;
-    font-weight: 500;
-    word-break: break-word;
-  }
-  
-  /* Заставляем все внутренние теги (p, span, div) быть нормального размера */
-  .std-detail-text *, 
-  .std-detail-text p, 
-  .std-detail-text span, 
-  .std-detail-text div {
-    font-size: 15px !important;
-    font-family: inherit !important;
-    line-height: 1.6 !important;
-  }
-
-  /* Заголовки делаем чуть больше, но не огромными */
-  .std-detail-text h1, 
-  .std-detail-text h2, 
-  .std-detail-text h3, 
-  .std-detail-text h4 {
-    font-size: 18px !important;
-    font-weight: 800;
-    margin-top: 20px;
-    margin-bottom: 12px;
-    color: var(--text-main);
-  }
-
-  /* Жирный текст оставляем жирным */
-  .std-detail-text b, 
-  .std-detail-text strong {
-    font-weight: 800;
-    color: var(--text-main);
-  }
-
-  /* Красиво оформляем списки */
-  .std-detail-text ul, 
-  .std-detail-text ol {
-    margin-left: 20px;
-    margin-bottom: 16px;
-    padding-left: 0;
-  }
-  .std-detail-text li {
-    font-size: 15px !important;
-    margin-bottom: 8px;
-    list-style-position: outside;
-  }
+  .std-detail-text { font-size: 15px !important; line-height: 1.6 !important; color: #333; font-weight: 500; word-break: break-word; }
+  .std-detail-text *, .std-detail-text p, .std-detail-text span, .std-detail-text div { font-size: 15px !important; font-family: inherit !important; line-height: 1.6 !important; }
+  .std-detail-text h1, .std-detail-text h2, .std-detail-text h3, .std-detail-text h4 { font-size: 18px !important; font-weight: 800; margin-top: 20px; margin-bottom: 12px; color: var(--text-main); }
+  .std-detail-text b, .std-detail-text strong { font-weight: 800; color: var(--text-main); }
+  .std-detail-text ul, .std-detail-text ol { margin-left: 20px; margin-bottom: 16px; padding-left: 0; }
+  .std-detail-text li { font-size: 15px !important; margin-bottom: 8px; list-style-position: outside; }
 
   .std-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .std-table { width: 100%; border-collapse: collapse; text-align: left; }
@@ -248,7 +204,6 @@
   .std-table tr:last-child td { border-bottom: none; }
   .std-table tr:nth-child(even) { background: #FAFAFA; }
 
-  /* Карточка скачивания файла */
   .std-file-card { background: #fff; border-radius: var(--radius-sm); padding: 20px; box-shadow: var(--shadow); border: 1px solid var(--border); display: flex; align-items: center; gap: 16px; transition: transform 0.2s; cursor: pointer; }
   .std-file-card:active { transform: scale(0.98); }
   .std-file-icon { width: 48px; height: 48px; border-radius: 14px; background: #E5F0FF; color: #007AFF; display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
@@ -275,7 +230,7 @@
 </head>
 <body>
 
-<div id="login-screen">
+<div id="login-screen" style="display: none;">
   <div class="login-card">
     <div class="login-logo">🍜</div>
     <div class="login-title">Wokker</div>
@@ -286,6 +241,11 @@
     <button class="login-btn" id="login-btn">Войти</button>
     <div class="login-error" id="login-error"></div>
   </div>
+</div>
+
+<div id="global-loader" style="display: none; position: fixed; inset: 0; background: var(--bg); z-index: 3000; align-items: center; justify-content: center; flex-direction: column; gap: 20px;">
+  <div class="login-logo" style="animation: pulse 1.5s infinite; margin: 0;">🍜</div>
+  <div style="font-weight: 700; color: var(--text-muted); font-size: 16px;">Загрузка...</div>
 </div>
 
 <div id="main-app" style="display:none;">
@@ -445,6 +405,7 @@ function fmtDate(iso) {
 /* ================== AUTH ================== */
 function showLogin() {
   $('main-app').style.display = 'none';
+  $('global-loader').style.display = 'none';
   $('login-screen').style.display = 'flex';
   $('login-error').textContent = '';
   $('login-login').value = '';
@@ -452,6 +413,7 @@ function showLogin() {
 }
 function showMainApp() {
   $('login-screen').style.display = 'none';
+  $('global-loader').style.display = 'none';
   $('main-app').style.display = 'block';
 }
 
@@ -468,6 +430,7 @@ async function doLogin() {
   if (!password) { errEl.textContent = 'Введите пароль'; return; }
   const btn = $('login-btn');
   btn.disabled = true; btn.textContent = 'Проверяем…';
+  
   try {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
@@ -477,9 +440,16 @@ async function doLogin() {
     if (res.status === 401) { errEl.textContent = '❌ Неверный логин или пароль'; return; }
     if (res.status === 403) { errEl.textContent = '❌ Аккаунт уволен'; return; }
     if (!res.ok) { errEl.textContent = 'Ошибка сервера'; return; }
+    
     const data = await res.json();
     if (!data.token) { errEl.textContent = 'Ошибка'; return; }
+    
     setToken(data.token);
+    
+    // Показываем загрузку после успешного ввода пароля
+    $('login-screen').style.display = 'none';
+    $('global-loader').style.display = 'flex';
+    
     await loadAndRender();
   } catch (e) {
     errEl.textContent = 'Сеть недоступна';
@@ -501,7 +471,9 @@ async function loadAndRender() {
     
     localStorage.setItem('wokker_staff_name', BOOT.profile.first_name || 'Сотрудник');
     
+    $('global-loader').style.display = 'none'; // Скрываем загрузку
     showMainApp();
+    
     checkTeamTabVisibility();
     updateNewsBadge();
     renderProfileFromBoot();
@@ -511,7 +483,11 @@ async function loadAndRender() {
     renderStandardsFromBoot();
     renderFaqFromBoot();
   } catch (e) {
-    if (e.message !== 'unauthorized' && e.message !== 'fired') showToast('Ошибка загрузки', 'error');
+    $('global-loader').style.display = 'none'; // Скрываем загрузку при ошибке
+    if (e.message !== 'unauthorized' && e.message !== 'fired') {
+      showToast('Ошибка загрузки. Проверьте интернет.', 'error');
+      $('login-screen').style.display = 'flex';
+    }
   }
 }
 
@@ -1215,7 +1191,15 @@ if ('serviceWorker' in navigator) {
 }
 
 (async function init() {
-  if (!getToken()) { showLogin(); return; }
+  if (!getToken()) { 
+    showLogin(); 
+    return; 
+  }
+  
+  // Если токен есть, скрываем логин и показываем загрузку
+  $('login-screen').style.display = 'none';
+  $('global-loader').style.display = 'flex';
+  
   await loadAndRender();
 })();
 </script>

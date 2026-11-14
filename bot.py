@@ -2030,8 +2030,8 @@ def _sync_timesheet_matrix(user_id, month, year):
             for r in records:
                 day = r["work_date"].day
                 data_map[r["user_id"]][str(day)] = {
-                    "h": float(r["hours"]),
-                    "s": r["status"]
+                    "h": float(r["hours"] or 0),
+                    "s": r["status"] or "work"
                 }
                 
             for e in employees:
@@ -2876,7 +2876,8 @@ app.router.add_post("/api/admin/change-password", handle_admin_change_password)
 # ============= MAIN =============
 async def main():
     port = int(os.getenv("PORT", 8080))
-    if os.getenv("RUN_MIGRATIONS", "false").lower() == "true":
+    # Меняем дефолт на "true", чтобы база всегда обновлялась при старте
+    if os.getenv("RUN_MIGRATIONS", "true").lower() == "true":
         init_pool()
         await _run(init_db_and_seed)
     else:

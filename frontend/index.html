@@ -12,7 +12,6 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Wokker">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js"></script>
 <style>
   :root {
     --bg: #F8F5F2; --card-bg: #FFFFFF; --text-main: #1C1C1E; --text-muted: #8E8E93;
@@ -340,7 +339,7 @@
 
 <div class="toast" id="toast"></div>
 
-<script nonce="__CSP_NONCE__">
+<script>
 /* ================== CONFIG ================== */
 const TOKEN_KEY = 'wokker_staff_token';
 const SEEN_NEWS_KEY = 'wokker_seen_news';
@@ -1100,7 +1099,7 @@ function showStandardDetail(id) {
     `;
     contentHtml = `<div class="std-content-card">${tableHtml}</div>`;
   } else {
-    contentHtml = `<div class="std-content-card"><div class="std-detail-text">${DOMPurify.sanitize(s.body)}</div></div>`;
+    contentHtml = `<div class="std-content-card"><div class="std-detail-text">${s.body}</div></div>`;
   }
 
   let fileHtml = '';

@@ -17,7 +17,7 @@ import bleach
 from datetime import datetime, date, timezone as _tz
 from contextlib import contextmanager
 from typing import Optional, List, Dict, Any
-from decimal import Decimal  # <--- ДОБАВЛЕНО
+from decimal import Decimal
 
 from aiohttp import web
 from psycopg2.pool import ThreadedConnectionPool
@@ -133,7 +133,7 @@ def validate_bulk_save_data(body):
 def _json_default(obj):
     if isinstance(obj, (datetime, date)):
         return obj.isoformat()
-    if isinstance(obj, Decimal):  # <--- ДОБАВЛЕНО
+    if isinstance(obj, Decimal):
         return float(obj)
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
@@ -479,6 +479,13 @@ def init_db_and_seed():
         "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS territory_manager_id BIGINT",
     ]:
         _run_migration(_sql, "restaurants alter")
+
+    _run_migration("""
+        CREATE TABLE IF NOT EXISTS position_rates (
+            position_name TEXT PRIMARY KEY,
+            rate NUMERIC(10,2) DEFAULT 0
+        )
+    """, "CREATE position_rates")
 
     _run_migration("""
         CREATE TABLE IF NOT EXISTS medbook_doctors (id SERIAL PRIMARY KEY, name TEXT NOT NULL, required BOOLEAN DEFAULT FALSE, validity_months INT DEFAULT 12, sort INT DEFAULT 100)
@@ -1993,10 +2000,14 @@ def _sync_timesheet_matrix(user_id, month, year):
             is_tu = "территориальный" in pos_lower
             is_us = "управляющий сменой" in pos_lower
             
+            # Добавляем LEFT JOIN с position_rates
             query = """
-                SELECT u.user_id, u.full_name, u.position, COALESCE(u.rate, 0) AS rate, u.payment_type, r.name AS restaurant_name
+                SELECT u.user_id, u.full_name, u.position, 
+                       COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, 
+                       u.payment_type, r.name AS restaurant_name
                 FROM users u
                 LEFT JOIN restaurants r ON u.restaurant_key = r.key
+                LEFT JOIN position_rates pr ON u.position = pr.position_name
                 WHERE COALESCE(u.is_fired, FALSE) = FALSE AND COALESCE(u.is_admin, FALSE) = FALSE AND u.login IS NOT NULL
             """
             params = []
@@ -2011,7 +2022,7 @@ def _sync_timesheet_matrix(user_id, month, year):
                 query += " AND u.user_id = %s"
                 params.append(user_id)
                 
-            query += " ORDER BY u.full_name"
+            query += " ORDER BY r.name, u.full_name"
             cur.execute(query, params)
             employees = [dict(r) for r in cur.fetchall()]
             
@@ -2221,6 +2232,64 @@ async def handle_timesheet_employees(request):
     employees = await _run(_sync_timesheet_employees, user["user_id"])
     return web.json_response({"employees": employees})
 
+# ============= НАСТРОЙКИ СТАВОК =============
+def _sync_settings_get(user_id):
+    # Доступ только для HR или админов
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+            u = cur.fetchone()
+            if not u: return []
+            
+            pos_lower = (u.get("position") or "").lower()
+            is_hr = pos_lower.strip() == "hr"
+            if not (is_hr or u.get("is_super_admin") or u.get("is_admin")):
+                return []
+
+            cur.execute("""
+                SELECT p.name AS position_name, COALESCE(pr.rate, 0) AS rate
+                FROM positions p
+                LEFT JOIN position_rates pr ON p.name = pr.position_name
+                WHERE p.is_archived = FALSE
+                ORDER BY p.sort, p.name
+            """)
+            return [dict(r) for r in cur.fetchall()]
+
+async def handle_timesheet_settings_get(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    settings = await _run(_sync_settings_get, user["user_id"])
+    return web.json_response({"settings": settings})
+
+async def handle_timesheet_settings_save(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    
+    # Проверка прав на сохранение
+    pos_lower = (user.get("position") or "").lower()
+    if not (pos_lower.strip() == "hr" or user.get("is_super_admin") or user.get("is_admin")):
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    position_name = (body.get("position_name") or "").strip()
+    rate = float(body.get("rate", 0))
+    
+    if not position_name:
+        return web.json_response({"error": "invalid_position"}, status=400)
+        
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO position_rates (position_name, rate)
+                VALUES (%s, %s)
+                ON CONFLICT (position_name) DO UPDATE SET rate = EXCLUDED.rate
+            """, (position_name, rate))
+            
+    return web.json_response({"ok": True})
+
+
 def _sync_timesheet_reports(user_id, month, year):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -2235,14 +2304,17 @@ def _sync_timesheet_reports(user_id, month, year):
             
             base = """
                 SELECT u.full_name, u.position, r.name AS restaurant_name, 
-                       SUM(t.hours) as total_hours, COALESCE(u.rate, 0) as rate, u.payment_type,
+                       SUM(t.hours) as total_hours, 
+                       COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, 
+                       u.payment_type,
                        CASE 
-                           WHEN u.payment_type = 'fixed' THEN COALESCE(u.rate, 0)
-                           ELSE (SUM(t.hours) * COALESCE(u.rate, 0))
+                           WHEN u.payment_type = 'fixed' THEN COALESCE(NULLIF(u.rate, 0), pr.rate, 0)
+                           ELSE (SUM(t.hours) * COALESCE(NULLIF(u.rate, 0), pr.rate, 0))
                        END as total_salary
                 FROM users u
                 JOIN timesheet_records t ON u.user_id = t.user_id
                 LEFT JOIN restaurants r ON u.restaurant_key = r.key
+                LEFT JOIN position_rates pr ON u.position = pr.position_name
                 WHERE COALESCE(u.is_fired, FALSE) = FALSE AND u.login IS NOT NULL
                   AND EXTRACT(MONTH FROM t.work_date) = %s AND EXTRACT(YEAR FROM t.work_date) = %s
             """
@@ -2258,7 +2330,7 @@ def _sync_timesheet_reports(user_id, month, year):
                 base += " AND u.user_id = %s"
                 params.append(user_id)
                 
-            base += " GROUP BY u.user_id, u.full_name, u.position, r.name, u.rate, u.payment_type ORDER BY total_hours DESC"
+            base += " GROUP BY u.user_id, u.full_name, u.position, r.name, u.rate, pr.rate, u.payment_type ORDER BY total_hours DESC"
             cur.execute(base, params)
             return [dict(r) for r in cur.fetchall()]
 
@@ -2809,6 +2881,8 @@ app.router.add_post("/api/timesheet/bulk_save", handle_timesheet_bulk_save)
 app.router.add_post("/api/timesheet/update_rate", handle_timesheet_update_rate)
 app.router.add_post("/api/timesheet/employees", handle_timesheet_employees)
 app.router.add_post("/api/timesheet/reports", handle_timesheet_reports)
+app.router.add_post("/api/timesheet/settings", handle_timesheet_settings_get)
+app.router.add_post("/api/timesheet/settings/save", handle_timesheet_settings_save)
 
 app.router.add_post("/api/admin/login", handle_auth_login)
 app.router.add_post("/api/admin/me", handle_admin_me)

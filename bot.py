@@ -14,7 +14,7 @@ import base64
 import uuid
 import time
 import bleach
-from datetime import datetime, date, timezone as _tz
+from datetime import datetime, date, timezone as _tz, timedelta
 from contextlib import contextmanager
 from typing import Optional, List, Dict, Any
 from decimal import Decimal
@@ -1988,7 +1988,7 @@ async def handle_timesheet_save(request):
             """, (user["user_id"], work_date, hours, status))
     return web.json_response({"ok": True})
 
-def _sync_timesheet_matrix(user_id, month, year):
+def _sync_timesheet_matrix(user_id, date_from, date_to):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
@@ -2000,7 +2000,6 @@ def _sync_timesheet_matrix(user_id, month, year):
             is_tu = "территориальный" in pos_lower
             is_us = "управляющий сменой" in pos_lower
             
-            # Добавляем LEFT JOIN с position_rates
             query = """
                 SELECT u.user_id, u.full_name, u.position, 
                        COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, 
@@ -2034,9 +2033,8 @@ def _sync_timesheet_matrix(user_id, month, year):
                 SELECT user_id, work_date, hours, status 
                 FROM timesheet_records 
                 WHERE user_id = ANY(%s) 
-                  AND EXTRACT(MONTH FROM work_date) = %s 
-                  AND EXTRACT(YEAR FROM work_date) = %s
-            """, (emp_ids, month, year))
+                  AND work_date >= %s::date AND work_date <= %s::date
+            """, (emp_ids, date_from, date_to))
             
             records = cur.fetchall()
             
@@ -2059,10 +2057,19 @@ async def handle_timesheet_matrix(request):
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
-    month = _safe_int(body.get("month", datetime.now().month))
-    year = _safe_int(body.get("year", datetime.now().year))
+    date_from = body.get("date_from")
+    date_to = body.get("date_to")
     
-    employees = await _run(_sync_timesheet_matrix, user["user_id"], month, year)
+    if not date_from or not date_to:
+        # Фоллбэк на месяц
+        month = _safe_int(body.get("month", datetime.now().month))
+        year = _safe_int(body.get("year", datetime.now().year))
+        import calendar
+        last_day = calendar.monthrange(year, month)[1]
+        date_from = f"{year}-{month:02d}-01"
+        date_to = f"{year}-{month:02d}-{last_day:02d}"
+    
+    employees = await _run(_sync_timesheet_matrix, user["user_id"], date_from, date_to)
     return web.json_response({"employees": employees})
 
 def _sync_save_cell(user_id, target_uid, work_date, hours, status):
@@ -2234,7 +2241,6 @@ async def handle_timesheet_employees(request):
 
 # ============= НАСТРОЙКИ СТАВОК =============
 def _sync_settings_get(user_id):
-    # Доступ только для HR или админов
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
@@ -2265,7 +2271,6 @@ async def handle_timesheet_settings_save(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
     
-    # Проверка прав на сохранение
     pos_lower = (user.get("position") or "").lower()
     if not (pos_lower.strip() == "hr" or user.get("is_super_admin") or user.get("is_admin")):
         return web.json_response({"error": "forbidden"}, status=403)
@@ -2290,7 +2295,7 @@ async def handle_timesheet_settings_save(request):
     return web.json_response({"ok": True})
 
 
-def _sync_timesheet_reports(user_id, month, year):
+def _sync_timesheet_reports(user_id, date_from, date_to):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
@@ -2316,9 +2321,9 @@ def _sync_timesheet_reports(user_id, month, year):
                 LEFT JOIN restaurants r ON u.restaurant_key = r.key
                 LEFT JOIN position_rates pr ON u.position = pr.position_name
                 WHERE COALESCE(u.is_fired, FALSE) = FALSE AND u.login IS NOT NULL
-                  AND EXTRACT(MONTH FROM t.work_date) = %s AND EXTRACT(YEAR FROM t.work_date) = %s
+                  AND t.work_date >= %s::date AND t.work_date <= %s::date
             """
-            params = [month, year]
+            params = [date_from, date_to]
             
             if is_us:
                 base += " AND u.restaurant_key = %s"
@@ -2340,10 +2345,18 @@ async def handle_timesheet_reports(request):
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
-    month = _safe_int(body.get("month", datetime.now().month))
-    year = _safe_int(body.get("year", datetime.now().year))
+    date_from = body.get("date_from")
+    date_to = body.get("date_to")
     
-    report = await _run(_sync_timesheet_reports, user["user_id"], month, year)
+    if not date_from or not date_to:
+        month = _safe_int(body.get("month", datetime.now().month))
+        year = _safe_int(body.get("year", datetime.now().year))
+        import calendar
+        last_day = calendar.monthrange(year, month)[1]
+        date_from = f"{year}-{month:02d}-01"
+        date_to = f"{year}-{month:02d}-{last_day:02d}"
+    
+    report = await _run(_sync_timesheet_reports, user["user_id"], date_from, date_to)
     return web.json_response({"report": report})
 
 # ============= FAQ / POSITIONS / QUESTIONS =============

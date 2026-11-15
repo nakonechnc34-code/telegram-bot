@@ -39,7 +39,7 @@
   * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
   body { font-family: var(--font); background: var(--bg); color: var(--text-main); height: 100vh; display: flex; overflow: hidden; font-size: 14px; }
 
-  /* ================== ЭКРАН ВХОДА ================== */
+  /* ЭКРАН ВХОДА */
   #login-screen { position: fixed; inset: 0; background: var(--bg); display: none; align-items: center; justify-content: center; padding: 24px; z-index: 1000; }
   .login-card { background: #fff; border-radius: var(--radius); padding: 40px 32px; box-shadow: 0 10px 40px rgba(0,0,0,0.08); width: 100%; max-width: 400px; text-align: center; animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
   .login-logo { width: 72px; height: 72px; border-radius: 20px; background: var(--accent-soft); margin: 0 auto 24px; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 800; color: var(--accent); }
@@ -52,10 +52,9 @@
   .login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .login-error { color: var(--red); font-size: 14px; font-weight: 500; min-height: 20px; margin-top: 16px; }
 
-  /* ================== ОСНОВНОЙ ИНТЕРФЕЙС ================== */
+  /* ИНТЕРФЕЙС */
   .layout { display: none; width: 100%; height: 100vh; }
   
-  /* САЙДБАР */
   .sidebar { width: 260px; background: var(--sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; padding: 24px 20px; z-index: 10; }
   .sidebar-logo { font-size: 20px; font-weight: 800; display: flex; align-items: center; gap: 10px; padding: 0 8px 32px; color: var(--text-main); letter-spacing: -0.5px; }
   .nav-menu { display: flex; flex-direction: column; gap: 8px; flex: 1; }
@@ -66,7 +65,6 @@
   .logout-btn { background: transparent; border: 1px solid var(--border); color: var(--text-muted); padding: 12px; border-radius: 12px; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.2s; margin-top: auto; }
   .logout-btn:hover { background: #F3F4F6; color: var(--red); border-color: #FECACA; }
 
-  /* ОСНОВНАЯ ЧАСТЬ */
   .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
   
   .topbar { background: var(--card-bg); padding: 20px 32px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px; flex-shrink: 0; }
@@ -86,13 +84,13 @@
   .legend-color { width: 10px; height: 10px; border-radius: 50%; }
 
   .content { padding: 24px 32px; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-  .section { display: none; height: 100%; width: 100%; }
+  .section { display: none; height: 100%; width: 100%; overflow-y: auto; }
   .section.active { display: flex; flex-direction: column; }
   
   /* ТАБЛИЦА */
-  .table-scroll { flex: 1; overflow: auto; background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.03); position: relative; width: 100%; border: 1px solid var(--border); }
-  table { border-collapse: separate; border-spacing: 0; width: 100%; table-layout: fixed; }
+  .table-scroll { background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.03); position: relative; width: 100%; border: 1px solid var(--border); overflow: auto; }
   
+  table { border-collapse: separate; border-spacing: 0; width: 100%; table-layout: fixed; }
   th { position: sticky; top: 0; background: #F9FAFB; z-index: 10; font-weight: 600; color: var(--text-muted); font-size: 12px; padding: 16px 4px; border-bottom: 1px solid var(--border); text-align: center; }
   th.weekend { color: var(--red); background: #FEF2F2; }
   
@@ -105,7 +103,6 @@
   .rest-header td { background: #F9FAFB !important; font-weight: 700; padding: 12px 20px; border-bottom: 1px solid var(--border); border-top: 1px solid var(--border); text-transform: uppercase; font-size: 12px; color: var(--text-muted); }
   .rest-header td.sticky-col { background: #F9FAFB !important; color: var(--text-main); }
 
-  /* ЯЧЕЙКИ ТАБЕЛЯ */
   td { border-bottom: 1px solid var(--border); border-right: 1px solid #F3F4F6; vertical-align: middle; text-align: center; padding: 0; height: 52px; }
   td.weekend { background: #FAFAFA; }
   td:last-child { border-right: none; }
@@ -119,46 +116,55 @@
 
   .col-total { font-weight: 700; background: #F9FAFB; width: 100px; font-size: 15px; color: var(--text-main); border-left: 1px solid var(--border); position: sticky; right: 0; z-index: 5; }
 
-  /* РАЗДЕЛ ВЫПЛАТЫ */
-  .payout-summary { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px 32px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 20px rgba(0,0,0,0.03); flex-shrink: 0; }
-  .payout-summary-title { font-size: 15px; color: var(--text-muted); font-weight: 600; margin-bottom: 8px; }
-  .payout-summary-value { font-size: 32px; font-weight: 800; color: var(--text-main); letter-spacing: -1px; }
-  .payout-summary-count { font-size: 14px; color: var(--text-muted); font-weight: 500; background: #F3F4F6; padding: 8px 16px; border-radius: 12px; }
+  /* ВЫПЛАТЫ */
+  .payout-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-shrink: 0; }
+  .payout-summary { display: flex; gap: 16px; }
+  .summary-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 20px 24px; min-width: 200px; box-shadow: 0 4px 20px rgba(0,0,0,0.02); }
+  .summary-title { font-size: 13px; color: var(--text-muted); font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .summary-value { font-size: 28px; font-weight: 800; color: var(--text-main); letter-spacing: -1px; }
+  .summary-value.green { color: var(--green-text); }
+  .summary-value.amber { color: var(--amber-text); }
   
-  .payout-table th { padding: 16px 20px; text-align: left; }
-  .payout-table td { padding: 16px 20px; text-align: left; height: auto; font-size: 15px; border-bottom: 1px solid var(--border); }
+  .btn-add-payout { background: var(--text-main); color: #fff; border: none; padding: 14px 24px; border-radius: 12px; font-weight: 600; font-size: 15px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: opacity 0.2s; }
+  .btn-add-payout:hover { opacity: 0.9; }
+
+  .payout-layout { display: flex; flex-direction: column; gap: 24px; padding-bottom: 24px; }
+  
+  .payout-table th, .payout-table td { text-align: left; padding: 16px 24px; height: auto; border-right: none; }
+  .payout-table th { background: #F9FAFB; }
   .payout-table tr:last-child td { border-bottom: none; }
-  .payout-table .col-right { text-align: right; }
-  .payout-table .total-cell { font-weight: 700; color: var(--green-text); font-size: 16px; }
+  .payout-table .right { text-align: right; }
+  
+  .history-table th, .history-table td { text-align: left; padding: 14px 24px; height: auto; font-size: 14px; border-right: none; }
+  .history-table th { background: #F9FAFB; font-size: 12px; }
+  .history-table tr:last-child td { border-bottom: none; }
 
-  /* ЗАГЛУШКА */
-  .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; min-height: 400px; color: var(--text-muted); text-align: center; }
-  .empty-icon-svg { width: 64px; height: 64px; margin-bottom: 24px; color: #D1D5DB; }
-  .empty-title { font-size: 20px; font-weight: 700; color: var(--text-main); margin-bottom: 8px; }
-  .empty-desc { font-size: 15px; max-width: 400px; line-height: 1.5; }
-
-  /* НАСТРОЙКИ */
-  .settings-container { padding: 32px; background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.03); max-width: 600px; margin: 0 auto; width: 100%; border: 1px solid var(--border); }
-  .settings-title { font-size: 22px; font-weight: 700; margin-bottom: 24px; letter-spacing: -0.5px; }
-  .setting-row { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--border); }
-  .setting-row:last-child { border-bottom: none; }
-  .setting-row span { font-weight: 500; font-size: 15px; }
-  .setting-row input { width: 140px; text-align: right; padding: 12px 16px; border: 1px solid var(--border); border-radius: 12px; font-size: 15px; font-weight: 600; outline: none; transition: all 0.2s; background: #F9FAFB; }
-  .setting-row input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
-  .btn-save-settings { width: 100%; background: var(--text-main); color: #fff; border-radius: 12px; padding: 18px; font-size: 16px; font-weight: 600; margin-top: 32px; border: none; cursor: pointer; transition: opacity 0.2s; }
-  .btn-save-settings:hover { opacity: 0.9; }
-
-  /* МОДАЛЬНОЕ ОКНО */
+  /* МОДАЛЬНЫЕ ОКНА */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
   .modal-overlay.show { display: flex; animation: fadeIn 0.2s; }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-  .emp-card { background: var(--card-bg); border-radius: var(--radius); width: 100%; max-width: 440px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
   @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+  .modal-card { background: var(--card-bg); border-radius: var(--radius); width: 100%; max-width: 440px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+  .modal-header { padding: 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: #F9FAFB; }
+  .modal-title { font-size: 20px; font-weight: 700; }
+  .modal-close { background: #E5E7EB; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-main); transition: background 0.2s; }
+  .modal-close:hover { background: #D1D5DB; }
+  .modal-body { padding: 24px; }
+  
+  .form-group { margin-bottom: 20px; }
+  .form-label { display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
+  .form-input, .form-select, .form-textarea { width: 100%; border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; font-size: 15px; font-family: var(--font); background: #F9FAFB; color: var(--text-main); outline: none; transition: all 0.2s; }
+  .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
+  .form-textarea { resize: vertical; min-height: 100px; }
+  .btn-submit { width: 100%; background: var(--text-main); color: #fff; border-radius: 12px; padding: 16px; font-size: 16px; font-weight: 600; border: none; cursor: pointer; transition: opacity 0.2s; margin-top: 8px; }
+  .btn-submit:hover { opacity: 0.9; }
+
+  /* КАРТОЧКА СОТРУДНИКА */
+  .emp-card { background: var(--card-bg); border-radius: var(--radius); width: 100%; max-width: 440px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
   .emp-card-header { padding: 24px 24px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: flex-start; background: #F9FAFB; }
   .emp-card-name { font-size: 22px; font-weight: 700; margin-bottom: 4px; letter-spacing: -0.5px; }
   .emp-card-pos { font-size: 14px; color: var(--text-muted); font-weight: 500; }
-  .emp-card-close { background: #E5E7EB; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-main); transition: background 0.2s; }
-  .emp-card-close:hover { background: #D1D5DB; }
   .emp-card-body { padding: 24px; }
   .emp-stat-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px dashed var(--border); }
   .emp-stat-row:last-child { border-bottom: none; padding-bottom: 0; }
@@ -166,8 +172,8 @@
   .emp-stat-value { font-weight: 600; text-align: right; }
   .emp-stat-value.highlight { color: var(--green-text); font-size: 20px; font-weight: 700; }
 
-  .save-indicator { position: fixed; bottom: 32px; right: 32px; background: var(--text-main); color: #fff; padding: 14px 28px; border-radius: 100px; font-weight: 500; font-size: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); opacity: 0; transform: translateY(10px); transition: all 0.3s; pointer-events: none; z-index: 100; }
-  .save-indicator.show { opacity: 1; transform: translateY(0); }
+  .toast { position: fixed; bottom: 32px; right: 32px; background: var(--text-main); color: #fff; padding: 14px 28px; border-radius: 100px; font-weight: 500; font-size: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); opacity: 0; transform: translateY(10px); transition: all 0.3s; pointer-events: none; z-index: 100; }
+  .toast.show { opacity: 1; transform: translateY(0); }
   .loader { text-align: center; padding: 60px; color: var(--text-muted); font-weight: 500; font-size: 15px; }
 
   /* Адаптивность */
@@ -178,6 +184,9 @@
     .tab { text-align: center; padding: 14px 0; font-size: 12px; }
     .logout-btn { padding: 10px; font-size: 12px; }
     .legend { display: none; }
+    .payout-summary { flex-direction: column; width: 100%; }
+    .summary-card { width: 100%; }
+    .payout-header { flex-direction: column; align-items: stretch; gap: 16px; }
   }
 
   @media (max-width: 768px) {
@@ -185,8 +194,8 @@
     .layout { flex-direction: column; height: auto; }
     .sidebar { width: 100%; flex-direction: row; padding: 12px; height: auto; border-right: none; border-bottom: 1px solid var(--border); justify-content: space-between; align-items: center; }
     .sidebar-logo { padding: 0; font-size: 18px; }
-    .nav-menu { flex-direction: row; gap: 8px; flex: none; }
-    .tab { padding: 8px 16px; font-size: 14px; }
+    .nav-menu { flex-direction: row; gap: 8px; flex: none; overflow-x: auto; }
+    .tab { padding: 8px 16px; font-size: 14px; white-space: nowrap; }
     .logout-btn { margin-top: 0; padding: 8px 12px; }
     .main { height: auto; flex: 1; overflow: visible; }
     .topbar { padding: 16px; flex-direction: column; align-items: stretch; }
@@ -197,7 +206,8 @@
     table { width: max-content; min-width: 100%; }
     th.sticky-col, td.sticky-col { width: 180px; min-width: 180px; max-width: 180px; padding: 12px; }
     .col-total { position: static; }
-    .payout-summary { flex-direction: column; align-items: flex-start; gap: 16px; padding: 20px; }
+    .payout-table th, .payout-table td { padding: 12px 16px; }
+    .history-table th, .history-table td { padding: 12px 16px; }
   }
 </style>
 </head>
@@ -256,66 +266,99 @@
     <div class="content">
       <!-- ВКЛАДКА: ТАБЕЛЬ -->
       <div class="section active" id="tab-sheet">
-        <div class="table-scroll" id="matrix-container">
+        <div class="table-scroll" id="matrix-container" style="height: 100%;">
           <div class="loader">Загрузка данных...</div>
         </div>
       </div>
 
       <!-- ВКЛАДКА: ВЫПЛАТЫ -->
       <div class="section" id="tab-payouts">
-        <div class="payout-summary">
-          <div>
-            <div class="payout-summary-title">Общая сумма к выплате за период</div>
-            <div class="payout-summary-value" id="total-payout-sum">0 ₽</div>
+        <div class="payout-header">
+          <div class="payout-summary">
+            <div class="summary-card">
+              <div class="summary-title">Начислено за месяц</div>
+              <div class="summary-value" id="sum-accrued">0 ₽</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-title">Выплачено</div>
+              <div class="summary-value green" id="sum-paid">0 ₽</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-title">Остаток к выплате</div>
+              <div class="summary-value amber" id="sum-remaining">0 ₽</div>
+            </div>
           </div>
-          <div class="payout-summary-count" id="payout-emp-count">0 сотрудников</div>
+          <button class="btn-add-payout" onclick="openPayoutModal()">+ Добавить выплату</button>
         </div>
-        <div class="table-scroll">
-          <table class="payout-table">
-            <thead>
-              <tr>
-                <th style="padding-left: 24px;">Сотрудник</th>
-                <th>Должность</th>
-                <th class="col-right">Отработано</th>
-                <th class="col-right">Ставка</th>
-                <th class="col-right" style="padding-right: 24px;">К выплате</th>
-              </tr>
-            </thead>
-            <tbody id="payouts-list">
-              <tr><td colspan="5" class="loader">Загрузка...</td></tr>
-            </tbody>
-          </table>
+
+        <div class="payout-layout">
+          <!-- Таблица сотрудников -->
+          <div class="table-scroll">
+            <table class="payout-table">
+              <thead>
+                <tr>
+                  <th>Сотрудник</th>
+                  <th>Должность</th>
+                  <th class="right">Начислено</th>
+                  <th class="right">Выплачено</th>
+                  <th class="right">Остаток</th>
+                </tr>
+              </thead>
+              <tbody id="payouts-list">
+                <tr><td colspan="5" class="loader">Загрузка...</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- История выплат -->
+          <h3 style="font-size: 18px; font-weight: 700; margin-top: 16px; margin-bottom: -8px;">История операций</h3>
+          <div class="table-scroll">
+            <table class="history-table">
+              <thead>
+                <tr>
+                  <th>Дата</th>
+                  <th>Сотрудник</th>
+                  <th>Сумма</th>
+                  <th>Комментарий</th>
+                  <th>Добавил</th>
+                </tr>
+              </thead>
+              <tbody id="history-list">
+                <tr><td colspan="5" class="loader">Загрузка...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
       <!-- ВКЛАДКА: ОТЧЕТЫ -->
       <div class="section" id="tab-reports">
-        <div class="empty-state">
-          <svg class="empty-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; min-height: 400px; color: var(--text-muted); text-align: center;">
+          <svg style="width: 64px; height: 64px; margin-bottom: 24px; color: #D1D5DB;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
             <line x1="3" y1="9" x2="21" y2="9"></line>
             <line x1="9" y1="21" x2="9" y2="9"></line>
           </svg>
-          <div class="empty-title">Раздел в разработке</div>
-          <div class="empty-desc">Здесь скоро появятся новые дашборды и отчёты для бухгалтерии и HR.</div>
+          <div style="font-size: 20px; font-weight: 700; color: var(--text-main); margin-bottom: 8px;">Раздел в разработке</div>
+          <div style="font-size: 15px; max-width: 400px; line-height: 1.5;">Здесь скоро появятся новые дашборды и отчёты для бухгалтерии и HR.</div>
         </div>
       </div>
 
       <!-- ВКЛАДКА: НАСТРОЙКИ -->
       <div class="section" id="tab-settings">
-        <div class="settings-container">
-          <div class="settings-title">Ставки по должностям</div>
+        <div style="padding: 32px; background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.03); max-width: 600px; margin: 0 auto; width: 100%; border: 1px solid var(--border);">
+          <div style="font-size: 22px; font-weight: 700; margin-bottom: 24px; letter-spacing: -0.5px;">Ставки по должностям</div>
           <div id="settings-list">
             <div class="loader">Загрузка...</div>
           </div>
-          <button class="btn-save-settings" onclick="saveSettings()">Сохранить настройки</button>
+          <button class="btn-submit" onclick="saveSettings()" style="margin-top: 32px;">Сохранить настройки</button>
         </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- МОДАЛЬНОЕ ОКНО -->
+<!-- МОДАЛКА: КАРТОЧКА СОТРУДНИКА -->
 <div class="modal-overlay" id="emp-modal" onclick="if(event.target===this) closeEmpModal()">
   <div class="emp-card">
     <div class="emp-card-header">
@@ -323,7 +366,7 @@
         <div class="emp-card-name" id="modal-emp-name">—</div>
         <div class="emp-card-pos" id="modal-emp-pos">—</div>
       </div>
-      <button class="emp-card-close" onclick="closeEmpModal()">✕</button>
+      <button class="modal-close" onclick="closeEmpModal()">✕</button>
     </div>
     <div class="emp-card-body">
       <div class="emp-stat-row">
@@ -339,14 +382,42 @@
         <span class="emp-stat-value" id="modal-emp-hours">—</span>
       </div>
       <div class="emp-stat-row" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
-        <span class="emp-stat-label" style="font-weight: 600; color: var(--text-main);">К выплате за период</span>
+        <span class="emp-stat-label" style="font-weight: 600; color: var(--text-main);">Начислено за период</span>
         <span class="emp-stat-value highlight" id="modal-emp-salary">— ₽</span>
       </div>
     </div>
   </div>
 </div>
 
-<div class="save-indicator" id="save-indicator">Сохранено</div>
+<!-- МОДАЛКА: ДОБАВИТЬ ВЫПЛАТУ -->
+<div class="modal-overlay" id="payout-modal" onclick="if(event.target===this) closePayoutModal()">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="modal-title">Новая выплата</div>
+      <button class="modal-close" onclick="closePayoutModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Сотрудник</label>
+        <select class="form-select" id="pay-user">
+          <option value="">Выберите сотрудника...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Сумма (₽)</label>
+        <input type="number" class="form-input" id="pay-amount" placeholder="Например: 15000" min="1" step="100">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Комментарий (обязательно)</label>
+        <textarea class="form-textarea" id="pay-comment" placeholder="Например: Аванс за первую половину месяца"></textarea>
+      </div>
+      <div class="form-error" id="pay-error" style="color: var(--red); font-size: 13px; font-weight: 500; margin-bottom: 12px; display: none;"></div>
+      <button class="btn-submit" id="btn-save-payout" onclick="savePayout()">Сохранить выплату</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">Сохранено</div>
 
 <script>
 const TOKEN_KEY = 'wokker_staff_token';
@@ -360,6 +431,7 @@ let CURRENT_WEEK_START = getMonday(new Date());
 let VIEW_MODE = 'month';
 let EMPLOYEES_DATA = [];
 let SETTINGS_DATA = [];
+let PAYOUTS_DATA = []; // Данные для вкладки выплат
 
 const $ = id => document.getElementById(id);
 const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -434,7 +506,7 @@ $('login-btn').addEventListener('click', doLogin);
 $('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 $('login-login').addEventListener('keydown', e => { if (e.key === 'Enter') $('login-password').focus(); });
 
-// ================== API ЗАПРОСЫ ==================
+// ================== API ==================
 async function api(path, body) {
   const payload = { webToken: getToken() };
   if (body && typeof body === 'object') Object.assign(payload, body);
@@ -454,10 +526,11 @@ async function api(path, body) {
   return res.json();
 }
 
-function showSaveIndicator() {
-  const ind = $('save-indicator');
-  ind.classList.add('show');
-  setTimeout(() => ind.classList.remove('show'), 2000);
+function toast(text) {
+  const el = $('toast');
+  el.textContent = text;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2500);
 }
 
 // ================== НАВИГАЦИЯ ==================
@@ -468,8 +541,7 @@ document.querySelectorAll('.tab').forEach(t => {
     t.classList.add('active');
     $(t.dataset.sec).classList.add('active');
     
-    // Скрываем панель управления для финансовых и служебных вкладок
-    if (t.dataset.sec === 'tab-settings' || t.dataset.sec === 'tab-reports' || t.dataset.sec === 'tab-payouts') {
+    if (t.dataset.sec === 'tab-settings' || t.dataset.sec === 'tab-reports') {
       $('left-controls-wrapper').style.display = 'none';
       $('right-controls-wrapper').style.display = 'none';
     } else {
@@ -667,7 +739,7 @@ async function saveCellDirect(inp) {
         if (totalCell) totalCell.textContent = totalHours;
       }
     }
-    showSaveIndicator();
+    toast('Сохранено');
   } catch (err) {
     if (err.message !== 'unauthorized') alert('Ошибка сохранения: ' + err.message);
     const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
@@ -678,56 +750,129 @@ async function saveCellDirect(inp) {
 // ================== ВЫПЛАТЫ ==================
 async function loadPayouts() {
   $('payouts-list').innerHTML = '<tr><td colspan="5" class="loader">Загрузка...</td></tr>';
-  $('total-payout-sum').textContent = '0 ₽';
-  $('payout-emp-count').textContent = '0 сотрудников';
-
-  // Для выплат мы запрашиваем данные за весь текущий месяц
-  const month = CURRENT_DATE.getMonth() + 1;
-  const year = CURRENT_DATE.getFullYear();
-  const lastDay = new Date(year, month, 0).getDate();
-  const dateFrom = `${year}-${String(month).padStart(2, '0')}-01`;
-  const dateTo = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  $('history-list').innerHTML = '<tr><td colspan="5" class="loader">Загрузка...</td></tr>';
+  
+  const { start, end } = getPeriodDates();
+  const dateFrom = formatDate(start);
+  const dateTo = formatDate(end);
 
   try {
-    const res = await api('/api/timesheet/reports', { date_from: dateFrom, date_to: dateTo });
-    const report = res.report || [];
+    const res = await api('/api/payments/list', { date_from: dateFrom, date_to: dateTo });
+    const employees = res.employees || [];
+    const history = res.history || [];
     
-    if (!report.length) {
-      $('payouts-list').innerHTML = '<tr><td colspan="5" class="loader">Нет данных за текущий месяц</td></tr>';
-      return;
+    // Наполняем селект для модалки
+    const select = $('pay-user');
+    select.innerHTML = '<option value="">Выберите сотрудника...</option>';
+    employees.forEach(e => {
+      select.innerHTML += `<option value="${e.user_id}">${esc(e.full_name)} (Остаток: ${(e.accrued - e.paid).toLocaleString('ru-RU')} ₽)</option>`;
+    });
+
+    // Считаем итоги
+    let totalAccrued = 0;
+    let totalPaid = 0;
+
+    if (!employees.length) {
+      $('payouts-list').innerHTML = '<tr><td colspan="5" class="loader">Нет данных</td></tr>';
+    } else {
+      $('payouts-list').innerHTML = employees.map(e => {
+        const accrued = parseFloat(e.accrued) || 0;
+        const paid = parseFloat(e.paid) || 0;
+        const remaining = accrued - paid;
+        
+        totalAccrued += accrued;
+        totalPaid += paid;
+
+        return `
+          <tr>
+            <td><b>${esc(e.full_name)}</b></td>
+            <td style="color:var(--text-muted);">${esc(e.position || '—')}</td>
+            <td class="right">${accrued.toLocaleString('ru-RU')} ₽</td>
+            <td class="right" style="color:var(--green-text); font-weight:600;">${paid.toLocaleString('ru-RU')} ₽</td>
+            <td class="right" style="font-weight:700; color:${remaining > 0 ? 'var(--amber-text)' : 'var(--text-main)'};">${remaining.toLocaleString('ru-RU')} ₽</td>
+          </tr>
+        `;
+      }).join('');
     }
 
-    let totalSum = 0;
-    let validEmployeesCount = 0;
+    $('sum-accrued').textContent = `${totalAccrued.toLocaleString('ru-RU')} ₽`;
+    $('sum-paid').textContent = `${totalPaid.toLocaleString('ru-RU')} ₽`;
+    $('sum-remaining').textContent = `${(totalAccrued - totalPaid).toLocaleString('ru-RU')} ₽`;
 
-    $('payouts-list').innerHTML = report.map(r => {
-      const salary = parseFloat(r.total_salary) || 0;
-      if (salary > 0) validEmployeesCount++;
-      totalSum += salary;
-
-      const rateStr = r.payment_type === 'fixed' 
-        ? `${(parseFloat(r.rate) || 0).toLocaleString('ru-RU')} ₽ (оклад)` 
-        : `${(parseFloat(r.rate) || 0).toLocaleString('ru-RU')} ₽/ч`;
-
-      return `
+    // История
+    if (!history.length) {
+      $('history-list').innerHTML = '<tr><td colspan="5" class="loader">Выплат за этот период еще не было</td></tr>';
+    } else {
+      $('history-list').innerHTML = history.map(h => `
         <tr>
-          <td><b>${esc(r.full_name)}</b></td>
-          <td style="color:var(--text-muted);">${esc(r.position || '—')}</td>
-          <td class="col-right">${r.total_hours} ч</td>
-          <td class="col-right" style="color:var(--text-muted);">${rateStr}</td>
-          <td class="col-right total-cell">${salary.toLocaleString('ru-RU')} ₽</td>
+          <td style="color:var(--text-muted); font-size:13px;">${fmtDate(h.payment_date)}</td>
+          <td><b>${esc(h.full_name || 'Неизвестный')}</b></td>
+          <td style="font-weight:700; color:var(--text-main);">${(parseFloat(h.amount) || 0).toLocaleString('ru-RU')} ₽</td>
+          <td style="color:var(--text-muted);">${esc(h.comment)}</td>
+          <td style="color:var(--text-muted); font-size:13px;">${esc(h.created_by_name || 'Система')}</td>
         </tr>
-      `;
-    }).join('');
-
-    // Обновляем верхнюю карточку
-    $('total-payout-sum').textContent = `${totalSum.toLocaleString('ru-RU')} ₽`;
-    $('payout-emp-count').textContent = `${validEmployeesCount} сотр.`;
+      `).join('');
+    }
 
   } catch (e) {
     if (e.message !== 'unauthorized') {
       $('payouts-list').innerHTML = `<tr><td colspan="5" class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</td></tr>`;
+      $('history-list').innerHTML = '';
     }
+  }
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`;
+  } catch (e) { return iso; }
+}
+
+function openPayoutModal() {
+  $('pay-user').value = '';
+  $('pay-amount').value = '';
+  $('pay-comment').value = '';
+  $('pay-error').style.display = 'none';
+  $('payout-modal').classList.add('show');
+}
+
+function closePayoutModal() {
+  $('payout-modal').classList.remove('show');
+}
+
+async function savePayout() {
+  const userId = $('pay-user').value;
+  const amount = parseFloat($('pay-amount').value);
+  const comment = $('pay-comment').value.trim();
+  const errEl = $('pay-error');
+
+  if (!userId) { errEl.textContent = 'Выберите сотрудника'; errEl.style.display = 'block'; return; }
+  if (!amount || amount <= 0) { errEl.textContent = 'Укажите корректную сумму'; errEl.style.display = 'block'; return; }
+  if (!comment) { errEl.textContent = 'Комментарий обязателен'; errEl.style.display = 'block'; return; }
+
+  errEl.style.display = 'none';
+  const btn = $('btn-save-payout');
+  btn.disabled = true; btn.textContent = 'Сохранение...';
+
+  const { start, end } = getPeriodDates();
+  const dateFrom = formatDate(start);
+  const dateTo = formatDate(end);
+
+  try {
+    await api('/api/payments/add', { user_id: parseInt(userId), amount: amount, comment: comment });
+    closePayoutModal();
+    toast('Выплата добавлена');
+    await loadPayouts(); // Обновляем данные
+  } catch (e) {
+    if (e.message !== 'unauthorized') {
+      errEl.textContent = 'Ошибка: ' + e.message;
+      errEl.style.display = 'block';
+    }
+  } finally {
+    btn.disabled = false; btn.textContent = 'Сохранить выплату';
   }
 }
 
@@ -772,9 +917,9 @@ async function loadSettings() {
       return;
     }
     $('settings-list').innerHTML = SETTINGS_DATA.map(s => `
-      <div class="setting-row">
-        <span>${esc(s.position_name)}</span>
-        <input type="number" class="setting-input" data-pos="${esc(s.position_name)}" value="${s.rate}" min="0" step="10" placeholder="0 ₽">
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--border);">
+        <span style="font-weight: 500; font-size: 15px;">${esc(s.position_name)}</span>
+        <input type="number" class="setting-input" data-pos="${esc(s.position_name)}" value="${s.rate}" min="0" step="10" placeholder="0 ₽" style="width: 140px; text-align: right; padding: 12px 16px; border: 1px solid var(--border); border-radius: 12px; font-size: 15px; font-weight: 600; outline: none; background: #F9FAFB;">
       </div>
     `).join('');
   } catch (e) {
@@ -787,7 +932,7 @@ async function loadSettings() {
 async function saveSettings() {
   const inputs = document.querySelectorAll('.setting-input');
   if (!inputs.length) return;
-  const btn = document.querySelector('.btn-save-settings');
+  const btn = document.querySelector('.btn-submit');
   btn.disabled = true;
   btn.textContent = 'Сохранение...';
   try {
@@ -796,7 +941,7 @@ async function saveSettings() {
       const rate = parseFloat(inp.value) || 0;
       await api('/api/timesheet/settings/save', { position_name: posName, rate });
     }
-    showSaveIndicator();
+    toast('Настройки сохранены');
   } catch (e) {
     if (e.message !== 'unauthorized') alert('Ошибка сохранения: ' + e.message);
   } finally {

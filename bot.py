@@ -5,14 +5,14 @@ import gzip
 import traceback
 from aiohttp import web
 
-# Импортируем наши новые модули и роуты
+# Импорт конфигурации и БД
 import config
-from db import init_pool, close_pool, _run
+from db import init_pool, close_pool
+
+# Импорт роутов
 from routes.auth import routes as auth_routes
 from routes.users import routes as users_routes
-
-# Если ты еще не перенес init_db_and_seed в db.py, оставь его здесь (или импортируй)
-# from migrations import init_db_and_seed 
+from routes.medbooks import routes as medbooks_routes
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -134,11 +134,12 @@ app = web.Application(
     client_max_size=20 * 1024 * 1024
 )
 
-# Регистрация роутов из наших модулей
+# Регистрация роутов из модулей
 app.add_routes(auth_routes)
 app.add_routes(users_routes)
+app.add_routes(medbooks_routes)
 
-# Регистрация статики и страниц (пока оставляем в app.py)
+# Регистрация статики и страниц
 app.router.add_get("/", handle_index)
 app.router.add_get("/admin", handle_admin_page)
 app.router.add_get("/admin/", handle_admin_page)
@@ -160,14 +161,10 @@ async def main():
     # Инициализируем пул БД
     init_pool()
     
-    # Запускаем миграции (функцию init_db_and_seed нужно будет импортировать)
+    # Запуск миграций (если нужно)
     if os.getenv("RUN_MIGRATIONS", "true").lower() == "true":
-        # ВАЖНО: Если ты еще не перенес init_db_and_seed в отдельный файл, 
-        # сервер может упасть. Пока закомментируй этот вызов, если он выдает ошибку.
+        logging.info("⏳ Миграции пропущены (вынесите init_db_and_seed в отдельный файл для продакшена)")
         # await _run(init_db_and_seed) 
-        pass
-    else:
-        logging.info("⏩ Миграции пропущены (RUN_MIGRATIONS != true)")
 
     runner = web.AppRunner(app)
     await runner.setup()

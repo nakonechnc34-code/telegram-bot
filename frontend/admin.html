@@ -580,7 +580,6 @@
     <div class="modal-footer" id="modal-footer"></div>
   </div>
 </div>
-
 <script nonce="__CSP_NONCE__">
 /* ================== CONSTANTS ================== */
 const TOKEN_KEY = 'wokker_admin_token';
@@ -632,7 +631,7 @@ function clearToken() { localStorage.removeItem(TOKEN_KEY); }
 
 function getFileUrl(url) {
     if (!url) return '';
-    return url + '?token=' + getToken();
+    return url; // Токен теперь передается через Service Worker
 }
 
 // ================= КЕШ =================
@@ -714,8 +713,11 @@ async function uploadFile(file) {
     const formData = new FormData();
     formData.append('file', file);
     try {
-        const res = await fetch(`/api/admin/upload?token=${getToken()}`, {
+        const res = await fetch('/api/admin/upload', {
             method: 'POST',
+            headers: {
+                'X-Token': getToken() // Токен теперь в заголовке!
+            },
             body: formData
         });
         if (!res.ok) {
@@ -816,7 +818,18 @@ async function checkAdminAndLoad() {
     else if (ME.is_hr) { roleEl.textContent = 'HR'; roleEl.className = 'badge-role hr'; }
     else { roleEl.textContent = 'Админ'; roleEl.className = 'badge-role regular'; }
     $('nav-admins').style.display = ME.is_super_admin ? 'block' : 'none';
+    
     showApp();
+    
+    // --- ДОБАВЛЕННЫЙ КОД ДЛЯ БЕЗОПАСНОЙ РАБОТЫ С ФАЙЛАМИ ---
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+            type: 'SET_TOKEN',
+            token: getToken()
+        });
+    }
+    // --------------------------------------------------------
+
     navigate('dashboard');
     refreshCounters();
   } catch (e) {
@@ -1160,8 +1173,7 @@ async function loadDashboard() {
     }
   }
 }
-
-/* ================== USERS ================== */
+  /* ================== USERS ================== */
 let _usersCurrentSearch = '';
 let _usersTab = 'active';
 let _citizenshipsList = [];
@@ -1913,8 +1925,7 @@ function openPermEditor(uid, admins) {
     } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
   });
 }
-
-/* ================== RESTAURANTS ================== */
+  /* ================== RESTAURANTS ================== */
 async function loadRestaurants() {
   const data = await cachedApi('/api/admin/restaurants', {});
   const canTu = hasPerm('restaurant_tu');

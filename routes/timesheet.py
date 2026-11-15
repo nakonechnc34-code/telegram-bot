@@ -359,7 +359,6 @@ def _ensure_payments_table():
                     record_type TEXT DEFAULT 'payout'
                 )
             """)
-            # Миграция на случай, если таблица уже существует
             cur.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS record_type TEXT DEFAULT 'payout'")
 
 @routes.post('/api/payments/add')
@@ -433,7 +432,6 @@ async def handle_payments_list(request):
                 is_tu = _is_tu(u)
                 is_us = "управляющий сменой" in (u.get("position") or "").lower()
                 
-                # 1. Получаем сотрудников и отработанные часы
                 base = """
                     SELECT u.user_id, u.full_name, u.position, 
                            COALESCE(SUM(t.hours), 0) as total_hours, 
@@ -455,28 +453,21 @@ async def handle_payments_list(request):
                 cur.execute(base, params)
                 employees = [dict(r) for r in cur.fetchall()]
                 
-                # 2. Получаем историю (начисления и выплаты)
                 cur.execute("""
-                    SELECT p.id, p.user_id, p.amount, p.comment, p.payment_date, p.created_at, p.record_type, 
-                           u.full_name, creator.full_name as created_by_name
-                    FROM payments p
-                    JOIN users u ON p.user_id = u.user_id
-                    LEFT JOIN users creator ON p.created_by = creator.user_id
-                    WHERE p.payment_date >= %s::date AND p.payment_date <= %s::date
-                    ORDER BY p.created_at DESC
+                    SELECT user_id, record_type, SUM(amount) as total_amount
+                    FROM payments
+                    WHERE payment_date >= %s::date AND payment_date <= %s::date
+                    GROUP BY user_id, record_type
                 """, (date_from, date_to))
-                history = [dict(r) for r in cur.fetchall()]
                 
-                # 3. Считаем суммы по каждому сотруднику
+                sums = cur.fetchall()
                 extra_map = {}
                 paid_map = {}
-                for h in history:
-                    uid = h["user_id"]
-                    amt = float(h["amount"])
-                    if h["record_type"] == 'accrual':
-                        extra_map[uid] = extra_map.get(uid, 0.0) + amt
+                for s in sums:
+                    if s["record_type"] == 'accrual':
+                        extra_map[s["user_id"]] = float(s["total_amount"])
                     else:
-                        paid_map[uid] = paid_map.get(uid, 0.0) + amt
+                        paid_map[s["user_id"]] = float(s["total_amount"])
                 
                 for emp in employees:
                     hours = float(emp["total_hours"] or 0)
@@ -487,11 +478,87 @@ async def handle_payments_list(request):
                     emp["paid"] = paid_map.get(emp["user_id"], 0.0)
                     emp["remaining"] = emp["total_accrued"] - emp["paid"]
                     
-        return employees, history
+        return employees
 
     try:
-        employees, history = await _run(_sync)
-        return web.json_response({"employees": employees, "history": history})
+        employees = await _run(_sync)
+        return web.json_response({"employees": employees})
     except Exception as e:
         logging.error(f"Error in payments list: {traceback.format_exc()}")
+        return web.json_response({"error": f"Ошибка БД: {str(e)}"}, status=500)
+
+@routes.post('/api/payments/employee')
+async def handle_employee_finance(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+
+    target_uid = _safe_int(body.get("user_id"))
+    date_from = body.get("date_from")
+    date_to = body.get("date_to")
+    
+    if target_uid <= 0 or not date_from or not date_to:
+        return web.json_response({"error": "invalid_data"}, status=400)
+
+    def _sync():
+        _ensure_payments_table()
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Данные о сотруднике и ставке
+                cur.execute("""
+                    SELECT u.position, u.payment_type, COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate 
+                    FROM users u 
+                    LEFT JOIN position_rates pr ON u.position = pr.position_name 
+                    WHERE u.user_id = %s
+                """, (target_uid,))
+                emp = cur.fetchone()
+                if not emp: return None
+
+                # Часы по табелю
+                cur.execute("""
+                    SELECT COALESCE(SUM(hours), 0) as total_hours 
+                    FROM timesheet_records 
+                    WHERE user_id = %s AND work_date >= %s::date AND work_date <= %s::date
+                """, (target_uid, date_from, date_to))
+                total_hours = float(cur.fetchone()["total_hours"] or 0)
+
+                # История операций
+                cur.execute("""
+                    SELECT p.id, p.amount, p.comment, p.payment_date, p.record_type, p.created_at, creator.full_name as created_by_name
+                    FROM payments p
+                    LEFT JOIN users creator ON p.created_by = creator.user_id
+                    WHERE p.user_id = %s AND p.payment_date >= %s::date AND p.payment_date <= %s::date
+                    ORDER BY p.created_at DESC
+                """, (target_uid, date_from, date_to))
+                history = [dict(r) for r in cur.fetchall()]
+
+                extra_accrued = sum(float(h["amount"]) for h in history if h["record_type"] == 'accrual')
+                paid = sum(float(h["amount"]) for h in history if h["record_type"] == 'payout')
+                
+                rate = float(emp["rate"] or 0)
+                is_fixed = emp["payment_type"] == 'fixed'
+                timesheet_accrued = rate if is_fixed else (total_hours * rate)
+                total_accrued = timesheet_accrued + extra_accrued
+                remaining = total_accrued - paid
+
+                return {
+                    "total_hours": total_hours,
+                    "timesheet_accrued": timesheet_accrued,
+                    "extra_accrued": extra_accrued,
+                    "total_accrued": total_accrued,
+                    "paid": paid,
+                    "remaining": remaining,
+                    "rate": rate,
+                    "payment_type": emp["payment_type"],
+                    "history": history
+                }
+
+    try:
+        data = await _run(_sync)
+        if not data: return web.json_response({"error": "not_found"}, status=404)
+        return web.json_response(data)
+    except Exception as e:
+        logging.error(f"Error in employee finance: {traceback.format_exc()}")
         return web.json_response({"error": f"Ошибка БД: {str(e)}"}, status=500)

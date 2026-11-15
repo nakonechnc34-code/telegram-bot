@@ -30,15 +30,24 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 # ============= SECURITY & ENV SETTINGS =============
 DB_URL = os.getenv("DATABASE_URL")
 if not DB_URL:
-    raise ValueError("DATABASE_URL is not set")
+    raise ValueError("КРИТИЧЕСКАЯ ОШИБКА: DATABASE_URL не задан")
 
-VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "BMwTeMsr3z1qBO1igGp9Fh2I3ZtAG7ZiuwZiKpCbu3na77MFJJwN2fvk2agYtR0MgjxX_CDjhpfamLV0oBR0TC4")
-VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "gy-5yLP8ymvrjDzf43zsSjWkLbuknlw11wQyI6Ef1kI")
+# --- VAPID (Push) ---
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY")
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY")
+VAPID_CLAIMS = {"sub": os.getenv("VAPID_SUBJECT", "mailto:admin@wokker.ru")}
 
-VAPID_CLAIMS = {"sub": "mailto:admin@wokker.ru"}
+ENABLE_PUSH = False
+if VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY:
+    ENABLE_PUSH = True
+else:
+    logging.warning("⚠️ VAPID ключи не заданы. Push-уведомления работать не будут.")
 
+# --- ADMIN ---
 ADMIN_LOGIN = os.getenv("ADMIN_LOGIN", "adm01").strip().lower()
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "Wokker2026")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
+if not ADMIN_PASSWORD:
+    raise ValueError("КРИТИЧЕСКАЯ ОШИБКА: Переменная окружения ADMIN_PASSWORD не задана!")
 
 APP_ENV = os.getenv("ENV", "development").lower()
 LOGIN_RE = re.compile(r"^[a-z]{3}\d{2}$")
@@ -976,6 +985,9 @@ def _sync_delete_subscription(sub_id):
             cur.execute("DELETE FROM push_subscriptions WHERE id = %s", (sub_id,))
 
 async def send_push_to_all(title, body_text, url="/"):
+    if not ENABLE_PUSH:
+        return
+        
     subs = await _run(_sync_get_all_subscriptions)
     if not subs: return
     
@@ -1481,8 +1493,7 @@ async def handle_admin_restaurant_status(request):
     with get_conn() as conn:
         with conn.cursor() as cur: cur.execute("UPDATE restaurants SET force_status = %s WHERE key = %s", (st, key))
     return web.json_response({"ok": True})
-
-# ============= MEDBOOKS =============
+    # ============= MEDBOOKS =============
 def _sync_medbooks_full(user_id, is_tu):
     doctors, tests, vaccines = _sync_get_medbook_refs()
     with get_conn() as conn:
@@ -2115,7 +2126,7 @@ def _sync_timesheet_matrix(user_id, date_from, date_to):
             elif is_tu:
                 query += " AND u.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id = %s)"
                 params.append(user_id)
-            elif not is_hr_or_super: # <- ИСПРАВЛЕНО
+            elif not is_hr_or_super:
                 query += " AND u.user_id = %s"
                 params.append(user_id)
                 
@@ -2308,7 +2319,7 @@ def _sync_timesheet_employees(user_id):
             is_tu = _is_tu(u)
             is_us = "управляющий сменой" in (u.get("position") or "").lower()
 
-            if not (is_hr_or_super or is_tu or is_us): # <- ИСПРАВЛЕНО
+            if not (is_hr_or_super or is_tu or is_us):
                 return []
 
             query = """
@@ -2343,7 +2354,7 @@ def _sync_settings_get(user_id):
             u = cur.fetchone()
             if not u: return []
             
-            if not _is_hr_or_super(u): # <- ИСПРАВЛЕНО (вместо ручной проверки)
+            if not _is_hr_or_super(u):
                 return []
 
             cur.execute("""
@@ -2365,7 +2376,7 @@ async def handle_timesheet_settings_save(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
     
-    if not _is_hr_or_super(user): # <- ИСПРАВЛЕНО
+    if not _is_hr_or_super(user):
         return web.json_response({"error": "forbidden"}, status=403)
 
     try: body = await request.json()
@@ -2423,7 +2434,7 @@ def _sync_timesheet_reports(user_id, date_from, date_to):
             elif is_tu:
                 base += " AND u.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id = %s)"
                 params.append(user_id)
-            elif not is_hr_or_super: # <- ИСПРАВЛЕНО
+            elif not is_hr_or_super:
                 base += " AND u.user_id = %s"
                 params.append(user_id)
                 
@@ -2764,7 +2775,8 @@ async def handle_questions_staff(request):
 
 # ============= UPLOAD =============
 async def handle_admin_upload(request):
-    token = request.query.get("token") or request.query.get("webToken")
+    # Берем токен из заголовка (новый способ) или из URL (для совместимости)
+    token = request.headers.get("X-Token") or request.query.get("token") or request.query.get("webToken")
     if not token:
         return web.json_response({"error": "unauthorized"}, status=401)
     
@@ -2816,7 +2828,8 @@ async def handle_admin_upload(request):
 async def handle_uploaded_file(request):
     filename = request.match_info['filename']
     
-    token = request.query.get("token") or request.query.get("webToken")
+    # Берем токен из заголовка (новый безопасный способ) или из URL (для совместимости)
+    token = request.headers.get("X-Token") or request.query.get("token") or request.query.get("webToken")
     if not token:
         return web.Response(status=401, text="Unauthorized")
         

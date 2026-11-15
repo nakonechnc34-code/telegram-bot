@@ -70,7 +70,7 @@
   .section.active { display: flex; flex-direction: column; }
   
   /* ТАБЛИЦА */
-  .table-scroll { background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.03); position: relative; width: 100%; border: 1px solid var(--border); overflow: auto; margin-bottom: 24px; }
+  .table-scroll { background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.03); position: relative; width: 100%; border: 1px solid var(--border); overflow: auto; }
   table { border-collapse: separate; border-spacing: 0; width: 100%; table-layout: fixed; }
   th { position: sticky; top: 0; background: #F9FAFB; z-index: 10; font-weight: 600; color: var(--text-muted); font-size: 12px; padding: 16px 4px; border-bottom: 1px solid var(--border); text-align: center; }
   th.weekend { color: var(--red); background: #FEF2F2; }
@@ -119,10 +119,6 @@
   .payout-table th { background: #F9FAFB; }
   .payout-table tr:last-child td { border-bottom: none; }
   .payout-table .right { text-align: right; }
-  
-  .history-table th, .history-table td { text-align: left; padding: 14px 24px; height: auto; font-size: 14px; border-right: none; }
-  .history-table th { background: #F9FAFB; font-size: 12px; }
-  .history-table tr:last-child td { border-bottom: none; }
 
   /* МОДАЛЬНЫЕ ОКНА */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
@@ -130,12 +126,12 @@
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
-  .modal-card { background: var(--card-bg); border-radius: var(--radius); width: 100%; max-width: 440px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+  .modal-card { background: var(--card-bg); border-radius: var(--radius); width: 100%; max-width: 480px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
   .modal-header { padding: 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: #F9FAFB; }
   .modal-title { font-size: 20px; font-weight: 700; }
   .modal-close { background: #E5E7EB; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-main); transition: background 0.2s; }
   .modal-close:hover { background: #D1D5DB; }
-  .modal-body { padding: 24px; }
+  .modal-body { padding: 24px; max-height: calc(100vh - 150px); overflow-y: auto; }
   
   .form-group { margin-bottom: 20px; }
   .form-label { display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
@@ -146,16 +142,28 @@
   .btn-submit:hover { opacity: 0.9; }
 
   /* КАРТОЧКА СОТРУДНИКА */
-  .emp-card { background: var(--card-bg); border-radius: var(--radius); width: 100%; max-width: 440px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+  .emp-card { background: var(--card-bg); border-radius: var(--radius); width: 100%; max-width: 600px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
   .emp-card-header { padding: 24px 24px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: flex-start; background: #F9FAFB; }
   .emp-card-name { font-size: 22px; font-weight: 700; margin-bottom: 4px; letter-spacing: -0.5px; }
   .emp-card-pos { font-size: 14px; color: var(--text-muted); font-weight: 500; }
   .emp-card-body { padding: 24px; }
-  .emp-stat-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px dashed var(--border); }
-  .emp-stat-row:last-child { border-bottom: none; padding-bottom: 0; }
-  .emp-stat-label { color: var(--text-muted); font-weight: 500; }
-  .emp-stat-value { font-weight: 600; text-align: right; }
-  .emp-stat-value.highlight { color: var(--green-text); font-size: 20px; font-weight: 700; }
+  
+  .emp-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+  .emp-stat-box { background: #F9FAFB; border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .emp-stat-lbl { font-size: 12px; color: var(--text-muted); font-weight: 600; margin-bottom: 4px; }
+  .emp-stat-val { font-size: 18px; font-weight: 700; }
+  .emp-stat-val.highlight { color: var(--green-text); }
+  .emp-stat-val.amber { color: var(--amber-text); }
+  
+  .history-list { display: flex; flex-direction: column; gap: 12px; }
+  .history-item { border-left: 3px solid var(--border); padding-left: 12px; }
+  .history-item.accrual { border-left-color: var(--accent); }
+  .history-item.payout { border-left-color: var(--green); }
+  .history-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+  .history-amount { font-weight: 700; font-size: 15px; }
+  .history-amount.accrual { color: var(--accent); }
+  .history-amount.payout { color: var(--green-text); }
+  .history-comment { font-size: 14px; color: var(--text-main); }
 
   .toast { position: fixed; bottom: 32px; right: 32px; background: var(--text-main); color: #fff; padding: 14px 28px; border-radius: 100px; font-weight: 500; font-size: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); opacity: 0; transform: translateY(10px); transition: all 0.3s; pointer-events: none; z-index: 100; }
   .toast.show { opacity: 1; transform: translateY(0); }
@@ -193,7 +201,7 @@
     th.sticky-col, td.sticky-col { width: 180px; min-width: 180px; max-width: 180px; padding: 12px; }
     .col-total { position: static; }
     .payout-table th, .payout-table td { padding: 12px 16px; }
-    .history-table th, .history-table td { padding: 12px 16px; }
+    .emp-stats-grid { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -281,7 +289,6 @@
         </div>
 
         <div class="payout-layout">
-          <!-- Основная таблица сотрудников -->
           <div class="table-scroll">
             <table class="payout-table">
               <thead>
@@ -295,26 +302,6 @@
                 </tr>
               </thead>
               <tbody id="payouts-list">
-                <tr><td colspan="6" class="loader">Загрузка...</td></tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- История операций -->
-          <h3 style="font-size: 18px; font-weight: 700; margin-top: 16px; margin-bottom: -8px;">История операций</h3>
-          <div class="table-scroll">
-            <table class="history-table">
-              <thead>
-                <tr>
-                  <th>Дата</th>
-                  <th>Тип</th>
-                  <th>Сотрудник</th>
-                  <th>Сумма</th>
-                  <th>Комментарий</th>
-                  <th>Автор</th>
-                </tr>
-              </thead>
-              <tbody id="history-list">
                 <tr><td colspan="6" class="loader">Загрузка...</td></tr>
               </tbody>
             </table>
@@ -357,28 +344,13 @@
       </div>
       <button class="modal-close" onclick="closeEmpModal()">✕</button>
     </div>
-    <div class="emp-card-body">
-      <div class="emp-stat-row">
-        <span class="emp-stat-label">Тип оплаты</span>
-        <span class="emp-stat-value" id="modal-emp-type">—</span>
-      </div>
-      <div class="emp-stat-row">
-        <span class="emp-stat-label">Ставка</span>
-        <span class="emp-stat-value" id="modal-emp-rate">—</span>
-      </div>
-      <div class="emp-stat-row">
-        <span class="emp-stat-label">Отработано часов</span>
-        <span class="emp-stat-value" id="modal-emp-hours">—</span>
-      </div>
-      <div class="emp-stat-row" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
-        <span class="emp-stat-label" style="font-weight: 600; color: var(--text-main);">По табелю</span>
-        <span class="emp-stat-value highlight" id="modal-emp-salary">— ₽</span>
-      </div>
+    <div class="emp-card-body" id="modal-emp-body-content">
+      <div class="loader">Загрузка...</div>
     </div>
   </div>
 </div>
 
-<!-- МОДАЛКА: ДОБАВИТЬ ВЫПЛАТУ -->
+<!-- МОДАЛКА: ВЫПЛАТА -->
 <div class="modal-overlay" id="payout-modal" onclick="if(event.target===this) closePayoutModal()">
   <div class="modal-card">
     <div class="modal-header">
@@ -398,19 +370,19 @@
       </div>
       <div class="form-group">
         <label class="form-label">Комментарий (обязательно)</label>
-        <textarea class="form-textarea" id="pay-comment" placeholder="Например: Аванс за первую половину месяца"></textarea>
+        <textarea class="form-textarea" id="pay-comment" placeholder="Например: Аванс"></textarea>
       </div>
       <div class="form-error" id="pay-error" style="color: var(--red); font-size: 13px; font-weight: 500; margin-bottom: 12px; display: none;"></div>
-      <button class="btn-submit" id="btn-save-payout" style="background: var(--green);" onclick="savePayout()">Сохранить выплату</button>
+      <button class="btn-submit" id="btn-save-payout" style="background: var(--green);" onclick="savePayout()">Сохранить</button>
     </div>
   </div>
 </div>
 
-<!-- МОДАЛКА: ДОБАВИТЬ НАЧИСЛЕНИЕ -->
+<!-- МОДАЛКА: НАЧИСЛЕНИЕ -->
 <div class="modal-overlay" id="accrual-modal" onclick="if(event.target===this) closeAccrualModal()">
   <div class="modal-card">
     <div class="modal-header">
-      <div class="modal-title">Доп. начисление</div>
+      <div class="modal-title">Начисление</div>
       <button class="modal-close" onclick="closeAccrualModal()">✕</button>
     </div>
     <div class="modal-body">
@@ -426,10 +398,10 @@
       </div>
       <div class="form-group">
         <label class="form-label">Комментарий (обязательно)</label>
-        <textarea class="form-textarea" id="acc-comment" placeholder="Например: Премия за переработки"></textarea>
+        <textarea class="form-textarea" id="acc-comment" placeholder="Например: Премия"></textarea>
       </div>
       <div class="form-error" id="acc-error" style="color: var(--red); font-size: 13px; font-weight: 500; margin-bottom: 12px; display: none;"></div>
-      <button class="btn-submit" id="btn-save-accrual" style="background: var(--accent);" onclick="saveAccrual()">Сохранить начисление</button>
+      <button class="btn-submit" id="btn-save-accrual" style="background: var(--accent);" onclick="saveAccrual()">Сохранить</button>
     </div>
   </div>
 </div>
@@ -768,10 +740,9 @@ async function saveCellDirect(inp) {
   }
 }
 
-// ================== ВЫПЛАТЫ И НАЧИСЛЕНИЯ ==================
+// ================== ВЫПЛАТЫ ==================
 async function loadPayouts() {
   $('payouts-list').innerHTML = '<tr><td colspan="6" class="loader">Загрузка...</td></tr>';
-  $('history-list').innerHTML = '<tr><td colspan="6" class="loader">Загрузка...</td></tr>';
   
   const { start, end } = getPeriodDates();
   const dateFrom = formatDate(start);
@@ -780,7 +751,6 @@ async function loadPayouts() {
   try {
     const res = await api('/api/payments/list', { date_from: dateFrom, date_to: dateTo });
     const employees = res.employees || [];
-    const history = res.history || [];
     
     // Наполняем селекты для модалок
     const paySelect = $('pay-user');
@@ -827,162 +797,135 @@ async function loadPayouts() {
     $('sum-paid').textContent = `${totalPaid.toLocaleString('ru-RU')} ₽`;
     $('sum-remaining').textContent = `${totalRemaining.toLocaleString('ru-RU')} ₽`;
 
-    // История операций
-    if (!history.length) {
-      $('history-list').innerHTML = '<tr><td colspan="6" class="loader">Операций за этот период еще не было</td></tr>';
-    } else {
-      $('history-list').innerHTML = history.map(h => {
-        const isAccrual = h.record_type === 'accrual';
-        const typeTag = isAccrual 
-            ? '<span class="tag blue">Начисление</span>' 
-            : '<span class="tag green">Выплата</span>';
-        
-        // В зависимости от типа, цвет суммы
-        const amtColor = isAccrual ? 'var(--accent)' : 'var(--green-text)';
-        const amtPrefix = isAccrual ? '+' : '';
-        
-        return `
-        <tr>
-          <td style="color:var(--text-muted); font-size:13px; white-space:nowrap;">${fmtDate(h.payment_date)}</td>
-          <td>${typeTag}</td>
-          <td><b>${esc(h.full_name || 'Неизвестный')}</b></td>
-          <td style="font-weight:700; color:${amtColor};">${amtPrefix}${(parseFloat(h.amount) || 0).toLocaleString('ru-RU')} ₽</td>
-          <td style="color:var(--text-muted);">${esc(h.comment)}</td>
-          <td style="color:var(--text-muted); font-size:13px;">${esc(h.created_by_name || 'Система')}</td>
-        </tr>
-      `}).join('');
-    }
-
   } catch (e) {
     if (e.message !== 'unauthorized') {
       $('payouts-list').innerHTML = `<tr><td colspan="6" class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</td></tr>`;
-      $('history-list').innerHTML = '';
     }
   }
 }
 
-function fmtDate(iso) {
-  if (!iso) return '—';
-  try {
-    const d = new Date(iso);
-    const pad = n => String(n).padStart(2, '0');
-    return `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`;
-  } catch (e) { return iso; }
-}
-
-// --- Модалка ВЫПЛАТЫ ---
+// Модалки выплат и начислений (без изменений)
 function openPayoutModal() {
-  $('pay-user').value = '';
-  $('pay-amount').value = '';
-  $('pay-comment').value = '';
-  $('pay-error').style.display = 'none';
-  $('payout-modal').classList.add('show');
+  $('pay-user').value = ''; $('pay-amount').value = ''; $('pay-comment').value = '';
+  $('pay-error').style.display = 'none'; $('payout-modal').classList.add('show');
 }
-
-function closePayoutModal() {
-  $('payout-modal').classList.remove('show');
-}
-
+function closePayoutModal() { $('payout-modal').classList.remove('show'); }
 async function savePayout() {
   const userId = $('pay-user').value;
   const amount = parseFloat($('pay-amount').value);
   const comment = $('pay-comment').value.trim();
   const errEl = $('pay-error');
-
   if (!userId) { errEl.textContent = 'Выберите сотрудника'; errEl.style.display = 'block'; return; }
-  if (!amount || amount <= 0) { errEl.textContent = 'Укажите корректную сумму'; errEl.style.display = 'block'; return; }
+  if (!amount || amount <= 0) { errEl.textContent = 'Укажите сумму'; errEl.style.display = 'block'; return; }
   if (!comment) { errEl.textContent = 'Комментарий обязателен'; errEl.style.display = 'block'; return; }
-
   errEl.style.display = 'none';
-  const btn = $('btn-save-payout');
-  btn.disabled = true; btn.textContent = 'Сохранение...';
-
+  const btn = $('btn-save-payout'); btn.disabled = true; btn.textContent = '...';
   try {
-    await api('/api/payments/add', { user_id: parseInt(userId), amount: amount, comment: comment });
-    closePayoutModal();
-    toast('Выплата добавлена');
-    await loadPayouts();
+    await api('/api/payments/add', { user_id: parseInt(userId), amount, comment });
+    closePayoutModal(); toast('Выплата добавлена'); await loadPayouts();
   } catch (e) {
-    if (e.message !== 'unauthorized') {
-      errEl.textContent = 'Ошибка: ' + e.message;
-      errEl.style.display = 'block';
-    }
-  } finally {
-    btn.disabled = false; btn.textContent = 'Сохранить выплату';
-  }
+    if (e.message !== 'unauthorized') { errEl.textContent = 'Ошибка: ' + e.message; errEl.style.display = 'block'; }
+  } finally { btn.disabled = false; btn.textContent = 'Сохранить'; }
 }
 
-// --- Модалка НАЧИСЛЕНИЯ ---
 function openAccrualModal() {
-  $('acc-user').value = '';
-  $('acc-amount').value = '';
-  $('acc-comment').value = '';
-  $('acc-error').style.display = 'none';
-  $('accrual-modal').classList.add('show');
+  $('acc-user').value = ''; $('acc-amount').value = ''; $('acc-comment').value = '';
+  $('acc-error').style.display = 'none'; $('accrual-modal').classList.add('show');
 }
-
-function closeAccrualModal() {
-  $('accrual-modal').classList.remove('show');
-}
-
+function closeAccrualModal() { $('accrual-modal').classList.remove('show'); }
 async function saveAccrual() {
   const userId = $('acc-user').value;
   const amount = parseFloat($('acc-amount').value);
   const comment = $('acc-comment').value.trim();
   const errEl = $('acc-error');
-
   if (!userId) { errEl.textContent = 'Выберите сотрудника'; errEl.style.display = 'block'; return; }
-  if (!amount || amount <= 0) { errEl.textContent = 'Укажите корректную сумму'; errEl.style.display = 'block'; return; }
+  if (!amount || amount <= 0) { errEl.textContent = 'Укажите сумму'; errEl.style.display = 'block'; return; }
   if (!comment) { errEl.textContent = 'Комментарий обязателен'; errEl.style.display = 'block'; return; }
-
   errEl.style.display = 'none';
-  const btn = $('btn-save-accrual');
-  btn.disabled = true; btn.textContent = 'Сохранение...';
+  const btn = $('btn-save-accrual'); btn.disabled = true; btn.textContent = '...';
+  try {
+    await api('/api/accruals/add', { user_id: parseInt(userId), amount, comment });
+    closeAccrualModal(); toast('Начисление добавлено'); await loadPayouts();
+  } catch (e) {
+    if (e.message !== 'unauthorized') { errEl.textContent = 'Ошибка: ' + e.message; errEl.style.display = 'block'; }
+  } finally { btn.disabled = false; btn.textContent = 'Сохранить'; }
+}
+
+// ================== КАРТОЧКА СОТРУДНИКА (НОВАЯ) ==================
+async function openEmpModal(uid) {
+  $('emp-modal').classList.add('show');
+  $('modal-emp-name').textContent = 'Загрузка...';
+  $('modal-emp-pos').textContent = '';
+  $('modal-emp-body-content').innerHTML = '<div class="loader">Загрузка данных...</div>';
+
+  const { start, end } = getPeriodDates();
+  const dateFrom = formatDate(start);
+  const dateTo = formatDate(end);
 
   try {
-    await api('/api/accruals/add', { user_id: parseInt(userId), amount: amount, comment: comment });
-    closeAccrualModal();
-    toast('Начисление добавлено');
-    await loadPayouts();
-  } catch (e) {
-    if (e.message !== 'unauthorized') {
-      errEl.textContent = 'Ошибка: ' + e.message;
-      errEl.style.display = 'block';
+    const res = await api('/api/payments/employee', { user_id: uid, date_from: dateFrom, date_to: dateTo });
+    
+    // Находим ФИО и должность из уже загруженного списка
+    const emp = EMPLOYEES_DATA.find(x => x.user_id === uid) || {};
+    
+    $('modal-emp-name').textContent = emp.full_name || 'Сотрудник';
+    $('modal-emp-pos').textContent = emp.position || '—';
+
+    const formatMoney = (v) => (v || 0).toLocaleString('ru-RU') + ' ₽';
+
+    let historyHtml = '';
+    if (!res.history || !res.history.length) {
+        historyHtml = '<div style="text-align:center; color:var(--text-muted); font-size:14px; padding: 20px 0;">Операций за этот период нет</div>';
+    } else {
+        historyHtml = res.history.map(h => {
+            const isAccrual = h.record_type === 'accrual';
+            const typeLbl = isAccrual ? 'Начисление' : 'Выплата';
+            const prefix = isAccrual ? '+' : '';
+            const cls = isAccrual ? 'accrual' : 'payout';
+            
+            return `
+                <div class="history-item ${cls}">
+                    <div class="history-meta">
+                        <span>${typeLbl} · ${fmtDate(h.payment_date)}</span>
+                        <span>${esc(h.created_by_name || 'Система')}</span>
+                    </div>
+                    <div class="history-amount ${cls}">${prefix}${formatMoney(h.amount)}</div>
+                    <div class="history-comment">${esc(h.comment)}</div>
+                </div>
+            `;
+        }).join('');
     }
-  } finally {
-    btn.disabled = false; btn.textContent = 'Сохранить начисление';
+
+    $('modal-emp-body-content').innerHTML = `
+        <div class="emp-stats-grid">
+            <div class="emp-stat-box">
+                <div class="emp-stat-lbl">По табелю (${res.total_hours} ч)</div>
+                <div class="emp-stat-val">${formatMoney(res.timesheet_accrued)}</div>
+            </div>
+            <div class="emp-stat-box">
+                <div class="emp-stat-lbl">Доп. начисления</div>
+                <div class="emp-stat-val" style="color:var(--accent);">${formatMoney(res.extra_accrued)}</div>
+            </div>
+            <div class="emp-stat-box">
+                <div class="emp-stat-lbl">Выплачено</div>
+                <div class="emp-stat-val highlight">${formatMoney(res.paid)}</div>
+            </div>
+            <div class="emp-stat-box">
+                <div class="emp-stat-lbl">Остаток к выплате</div>
+                <div class="emp-stat-val amber">${formatMoney(res.remaining)}</div>
+            </div>
+        </div>
+
+        <h4 style="font-size: 15px; font-weight: 700; margin-bottom: 12px; color: var(--text-main);">История операций</h4>
+        <div class="history-list">${historyHtml}</div>
+    `;
+
+  } catch (e) {
+    $('modal-emp-body-content').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
   }
 }
 
-// ================== КАРТОЧКА СОТРУДНИКА ==================
-function openEmpModal(uid) {
-  const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
-  if (!emp) return;
-
-  let totalHours = 0;
-  for (const key in emp.data) {
-    const c = emp.data[key];
-    if (c.s === 'work') totalHours += parseFloat(c.h || 0);
-    else if (c.s === 'vacation' || c.s === 'sick') totalHours += 8;
-  }
-
-  const rate = parseFloat(emp.rate) || 0;
-  const isFixed = emp.payment_type === 'fixed';
-  let salary = isFixed ? rate : (totalHours * rate);
-
-  $('modal-emp-name').textContent = emp.full_name;
-  $('modal-emp-pos').textContent = emp.position || 'Должность не указана';
-  $('modal-emp-type').textContent = isFixed ? 'Фиксированный оклад' : 'Почасовая';
-  $('modal-emp-rate').textContent = isFixed ? `${rate.toLocaleString('ru-RU')} ₽ / мес` : `${rate.toLocaleString('ru-RU')} ₽ / час`;
-  $('modal-emp-hours').textContent = `${totalHours} ч`;
-  $('modal-emp-salary').textContent = `${salary.toLocaleString('ru-RU')} ₽`;
-
-  $('emp-modal').classList.add('show');
-}
-
-function closeEmpModal() {
-  $('emp-modal').classList.remove('show');
-}
+function closeEmpModal() { $('emp-modal').classList.remove('show'); }
 
 // ================== НАСТРОЙКИ ==================
 async function loadSettings() {

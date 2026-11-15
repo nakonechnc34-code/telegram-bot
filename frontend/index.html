@@ -472,7 +472,6 @@ async function loadAndRender() {
     $('global-loader').style.display = 'none';
     showMainApp();
 
-    // Передаем токен в Service Worker для безопасной загрузки файлов
     if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
         navigator.serviceWorker.controller.postMessage({
             type: 'SET_TOKEN',
@@ -881,12 +880,11 @@ function renderRestaurants() {
     `;
   }).join('');
 
-  // Безопасно вешаем обработчики
   box.querySelectorAll('.rest-card').forEach(card => {
     card.addEventListener('click', () => showRestaurantDetail(card.dataset.key));
   });
 }
-  
+
 function showRestaurantDetail(key) {
   const section = $('sec-detail');
   const box = $('detail-box');
@@ -943,7 +941,7 @@ function renderNewsFromBoot() {
     else if (lvl === 'important') badgeHtml = '<span class="news-badge important">Важно</span>';
     
     const imageHtml = n.image_url 
-      ? `<img src="${esc(n.image_url)}" class="news-item-img">` 
+      ? `<img src="${esc(n.image_url)}?token=${getToken()}" class="news-item-img">` 
       : `<div class="news-item-img" style="display:flex;align-items:center;justify-content:center;font-size:32px;background:var(--bg);">📰</div>`;
 
     return `
@@ -970,7 +968,7 @@ function showNewsDetail(id) {
   if (lvl === 'urgent') badgeHtml = '<span class="news-badge urgent">Срочно</span>';
   else if (lvl === 'important') badgeHtml = '<span class="news-badge important">Важно</span>';
   
-  const imageHtml = n.image_url ? `<img src="${esc(n.image_url)}" class="news-detail-img">` : '';
+  const imageHtml = n.image_url ? `<img src="${esc(n.image_url)}?token=${getToken()}" class="news-detail-img">` : '';
 
   $('news-detail-box').innerHTML = `
     <div class="news-detail-header">
@@ -1050,7 +1048,7 @@ function drawStandardsList() {
 
   box.innerHTML = filtered.map(s => {
     const imageHtml = s.image_url 
-      ? `<img src="${esc(s.image_url)}" class="std-img">` 
+      ? `<img src="${esc(s.image_url)}?token=${getToken()}" class="std-img">` 
       : '';
 
     return `
@@ -1070,7 +1068,7 @@ function drawStandardsList() {
 async function downloadFile(url, filename) {
   try {
     showToast('Скачивание началось...');
-    const cleanUrl = url.split('?')[0]; // Убираем старые параметры
+    const cleanUrl = url.split('?')[0];
     const response = await fetch(cleanUrl, {
         headers: { 'X-Token': getToken() }
     });
@@ -1096,38 +1094,7 @@ function showStandardDetail(id) {
   const s = (BOOT && BOOT.standards || []).find(x => x.id === id);
   if (!s) return;
 
-  const imageHtml = s.image_url ? `<img src="${esc(s.image_url)}" class="std-detail-img">` : '';
-
-  let contentHtml = '';
-  if (s.content_type === 'table' && s.content_data) {
-    const headers = s.content_data.headers || [];
-    const rows = s.content_data.rows || [];
-    let tableHtml = `
-      <div class="std-table-wrap">
-        <table class="std-table">
-          <thead>
-            <tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr>
-          </thead>
-          <tbody>
-            ${rows.map(row => `
-              <tr>${headers.map((_, i) => `<td>${esc(row[i] || '')}</td>`).join('')}</tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-    `;
-    contentHtml = `<div class="std-content-card">${tableHtml}</div>`;
-  } else {
-    contentHtml = `<div class="std-content-card"><div class="std-detail-text">${s.body}</div></div>`;
-  }
-
-  let fileHtml = '';
-  if (s.file_url) {
-    function showStandardDetail(id) {
-  const s = (BOOT && BOOT.standards || []).find(x => x.id === id);
-  if (!s) return;
-
-  const imageHtml = s.image_url ? `<img src="${esc(s.image_url)}" class="std-detail-img">` : '';
+  const imageHtml = s.image_url ? `<img src="${esc(s.image_url)}?token=${getToken()}" class="std-detail-img">` : '';
 
   let contentHtml = '';
   if (s.content_type === 'table' && s.content_data) {
@@ -1177,29 +1144,10 @@ function showStandardDetail(id) {
     </div>
   `;
 
-  // Безопасно вешаем обработчик на скачивание
   if (s.file_url) {
     const btn = $('std-download-btn');
     if (btn) btn.addEventListener('click', () => downloadFile(s.file_url, s.file_name || 'Документ'));
   }
-
-  document.querySelector('.tabs').style.display = 'none';
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  $('sec-standard-detail').classList.add('active');
-  window.scrollTo(0, 0);
-}
-
-  $('standard-detail-box').innerHTML = `
-    <div class="std-detail-page">
-      <div class="std-detail-meta">
-        ${s.number ? `<div class="std-detail-number">${esc(s.number)}</div>` : ''}
-        <div class="std-detail-title">${esc(s.title)}</div>
-      </div>
-      ${imageHtml}
-      ${contentHtml}
-      ${fileHtml}
-    </div>
-  `;
 
   document.querySelector('.tabs').style.display = 'none';
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));

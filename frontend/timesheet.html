@@ -10,30 +10,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #F7F8FA; 
-    --card-bg: #FFFFFF; 
-    --text-main: #111827; 
-    --text-muted: #6B7280;
-    
-    --accent: #007AFF; 
-    --accent-soft: #EFF6FF; 
-    
-    --green: #10B981; 
-    --green-soft: #ECFDF5;
-    --green-text: #047857;
-    
-    --amber: #F59E0B; 
-    --amber-soft: #FFFBEB;
-    --amber-text: #B45309;
-    
-    --red: #EF4444; 
-    --red-soft: #FEF2F2;
-    --red-text: #B91C1C;
-
-    --border: #E5E7EB; 
-    --font: 'Inter', sans-serif;
-    --radius: 20px;
-    --sidebar: #FFFFFF; 
+    --bg: #F7F8FA; --card-bg: #FFFFFF; --text-main: #111827; --text-muted: #6B7280;
+    --accent: #007AFF; --accent-soft: #EFF6FF; 
+    --green: #10B981; --green-soft: #ECFDF5; --green-text: #047857;
+    --amber: #F59E0B; --amber-soft: #FFFBEB; --amber-text: #B45309;
+    --red: #EF4444; --red-soft: #FEF2F2; --red-text: #B91C1C;
+    --border: #E5E7EB; --font: 'Inter', sans-serif; --radius: 20px; --sidebar: #FFFFFF; 
   }
   
   * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
@@ -89,7 +71,6 @@
   
   /* ТАБЛИЦА */
   .table-scroll { background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.03); position: relative; width: 100%; border: 1px solid var(--border); overflow: auto; }
-  
   table { border-collapse: separate; border-spacing: 0; width: 100%; table-layout: fixed; }
   th { position: sticky; top: 0; background: #F9FAFB; z-index: 10; font-weight: 600; color: var(--text-muted); font-size: 12px; padding: 16px 4px; border-bottom: 1px solid var(--border); text-align: center; }
   th.weekend { color: var(--red); background: #FEF2F2; }
@@ -134,10 +115,6 @@
   .payout-table th { background: #F9FAFB; }
   .payout-table tr:last-child td { border-bottom: none; }
   .payout-table .right { text-align: right; }
-  
-  .history-table th, .history-table td { text-align: left; padding: 14px 24px; height: auto; font-size: 14px; border-right: none; }
-  .history-table th { background: #F9FAFB; font-size: 12px; }
-  .history-table tr:last-child td { border-bottom: none; }
 
   /* МОДАЛЬНЫЕ ОКНА */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
@@ -176,7 +153,6 @@
   .toast.show { opacity: 1; transform: translateY(0); }
   .loader { text-align: center; padding: 60px; color: var(--text-muted); font-weight: 500; font-size: 15px; }
 
-  /* Адаптивность */
   @media (max-width: 1024px) {
     .sidebar { width: 80px; padding: 24px 12px; }
     .sidebar-logo { justify-content: center; padding: 0 0 24px; font-size: 16px; }
@@ -207,7 +183,6 @@
     th.sticky-col, td.sticky-col { width: 180px; min-width: 180px; max-width: 180px; padding: 12px; }
     .col-total { position: static; }
     .payout-table th, .payout-table td { padding: 12px 16px; }
-    .history-table th, .history-table td { padding: 12px 16px; }
   }
 </style>
 </head>
@@ -292,7 +267,6 @@
         </div>
 
         <div class="payout-layout">
-          <!-- Таблица сотрудников -->
           <div class="table-scroll">
             <table class="payout-table">
               <thead>
@@ -305,25 +279,6 @@
                 </tr>
               </thead>
               <tbody id="payouts-list">
-                <tr><td colspan="5" class="loader">Загрузка...</td></tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- История выплат -->
-          <h3 style="font-size: 18px; font-weight: 700; margin-top: 16px; margin-bottom: -8px;">История операций</h3>
-          <div class="table-scroll">
-            <table class="history-table">
-              <thead>
-                <tr>
-                  <th>Дата</th>
-                  <th>Сотрудник</th>
-                  <th>Сумма</th>
-                  <th>Комментарий</th>
-                  <th>Добавил</th>
-                </tr>
-              </thead>
-              <tbody id="history-list">
                 <tr><td colspan="5" class="loader">Загрузка...</td></tr>
               </tbody>
             </table>
@@ -431,7 +386,6 @@ let CURRENT_WEEK_START = getMonday(new Date());
 let VIEW_MODE = 'month';
 let EMPLOYEES_DATA = [];
 let SETTINGS_DATA = [];
-let PAYOUTS_DATA = []; // Данные для вкладки выплат
 
 const $ = id => document.getElementById(id);
 const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -519,8 +473,8 @@ async function api(path, body) {
   
   if (res.status === 401) { clearToken(); showLogin(); throw new Error('unauthorized'); }
   if (!res.ok) {
-    let msg = 'error';
-    try { const j = await res.json(); msg = j.error || msg; } catch (e) {}
+    let msg = 'Ошибка на сервере';
+    try { const j = await res.json(); msg = j.detail || j.error || msg; } catch (e) {}
     throw new Error(msg);
   }
   return res.json();
@@ -750,7 +704,6 @@ async function saveCellDirect(inp) {
 // ================== ВЫПЛАТЫ ==================
 async function loadPayouts() {
   $('payouts-list').innerHTML = '<tr><td colspan="5" class="loader">Загрузка...</td></tr>';
-  $('history-list').innerHTML = '<tr><td colspan="5" class="loader">Загрузка...</td></tr>';
   
   const { start, end } = getPeriodDates();
   const dateFrom = formatDate(start);
@@ -759,7 +712,6 @@ async function loadPayouts() {
   try {
     const res = await api('/api/payments/list', { date_from: dateFrom, date_to: dateTo });
     const employees = res.employees || [];
-    const history = res.history || [];
     
     // Наполняем селект для модалки
     const select = $('pay-user');
@@ -799,36 +751,11 @@ async function loadPayouts() {
     $('sum-paid').textContent = `${totalPaid.toLocaleString('ru-RU')} ₽`;
     $('sum-remaining').textContent = `${(totalAccrued - totalPaid).toLocaleString('ru-RU')} ₽`;
 
-    // История
-    if (!history.length) {
-      $('history-list').innerHTML = '<tr><td colspan="5" class="loader">Выплат за этот период еще не было</td></tr>';
-    } else {
-      $('history-list').innerHTML = history.map(h => `
-        <tr>
-          <td style="color:var(--text-muted); font-size:13px;">${fmtDate(h.payment_date)}</td>
-          <td><b>${esc(h.full_name || 'Неизвестный')}</b></td>
-          <td style="font-weight:700; color:var(--text-main);">${(parseFloat(h.amount) || 0).toLocaleString('ru-RU')} ₽</td>
-          <td style="color:var(--text-muted);">${esc(h.comment)}</td>
-          <td style="color:var(--text-muted); font-size:13px;">${esc(h.created_by_name || 'Система')}</td>
-        </tr>
-      `).join('');
-    }
-
   } catch (e) {
     if (e.message !== 'unauthorized') {
-      $('payouts-list').innerHTML = `<tr><td colspan="5" class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</td></tr>`;
-      $('history-list').innerHTML = '';
+      $('payouts-list').innerHTML = `<tr><td colspan="5" class="loader" style="color:var(--red);">Ошибка загрузки данных</td></tr>`;
     }
   }
-}
-
-function fmtDate(iso) {
-  if (!iso) return '—';
-  try {
-    const d = new Date(iso);
-    const pad = n => String(n).padStart(2, '0');
-    return `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`;
-  } catch (e) { return iso; }
 }
 
 function openPayoutModal() {
@@ -856,10 +783,6 @@ async function savePayout() {
   errEl.style.display = 'none';
   const btn = $('btn-save-payout');
   btn.disabled = true; btn.textContent = 'Сохранение...';
-
-  const { start, end } = getPeriodDates();
-  const dateFrom = formatDate(start);
-  const dateTo = formatDate(end);
 
   try {
     await api('/api/payments/add', { user_id: parseInt(userId), amount: amount, comment: comment });

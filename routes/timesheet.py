@@ -1,0 +1,214 @@
+from aiohttp import web
+from psycopg2.extras import RealDictCursor
+from db import get_conn, _run
+from utils.auth_helpers import get_auth_user, denied, _is_hr_or_super, _is_tu
+import calendar
+from datetime import datetime
+
+routes = web.RouteTableDef()
+
+def _safe_int(val, default=0):
+    try: return int(val)
+    except: return default
+
+def _check_can_edit_user(editor_user, target_uid):
+    if editor_user["is_super_admin"] or (editor_user.get("position") or "").strip().upper() == "HR":
+        return True
+    if editor_user["user_id"] == target_uid:
+        return True
+    pos_lower = (editor_user.get("position") or "").lower()
+    is_tu = "территориальный" in pos_lower
+    is_us = "управляющий сменой" in pos_lower
+    if not (is_tu or is_us): return False
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT restaurant_key FROM users WHERE user_id = %s", (target_uid,))
+            target = cur.fetchone()
+            if not target: return False
+            if is_us: return target["restaurant_key"] == editor_user.get("restaurant_key")
+            elif is_tu:
+                cur.execute("SELECT key FROM restaurants WHERE territory_manager_id = %s AND key = %s", (editor_user["user_id"], target["restaurant_key"]))
+                return cur.fetchone() is not None
+    return False
+
+def _sync_timesheet_matrix(user_id, date_from, date_to):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+            u = cur.fetchone()
+            if not u: return []
+            
+            is_hr_or_super = _is_hr_or_super(u)
+            is_tu = _is_tu(u)
+            is_us = "управляющий сменой" in (u.get("position") or "").lower()
+            
+            query = """
+                SELECT u.user_id, u.full_name, u.position, COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, u.payment_type, r.name AS restaurant_name
+                FROM users u
+                LEFT JOIN restaurants r ON u.restaurant_key = r.key
+                LEFT JOIN position_rates pr ON u.position = pr.position_name
+                WHERE COALESCE(u.is_fired, FALSE) = FALSE AND COALESCE(u.is_admin, FALSE) = FALSE AND u.login IS NOT NULL
+            """
+            params = []
+            if is_us:
+                query += " AND u.restaurant_key = %s"
+                params.append(u.get("restaurant_key"))
+            elif is_tu:
+                query += " AND u.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id = %s)"
+                params.append(user_id)
+            elif not is_hr_or_super:
+                query += " AND u.user_id = %s"
+                params.append(user_id)
+            query += " ORDER BY r.name, u.full_name"
+            cur.execute(query, params)
+            employees = [dict(r) for r in cur.fetchall()]
+            if not employees: return []
+            
+            emp_ids = [e["user_id"] for e in employees]
+            cur.execute("""
+                SELECT user_id, work_date, hours, status 
+                FROM timesheet_records 
+                WHERE user_id = ANY(%s) AND work_date >= %s::date AND work_date <= %s::date
+            """, (emp_ids, date_from, date_to))
+            records = cur.fetchall()
+            
+            data_map = {eid: {} for eid in emp_ids}
+            for r in records:
+                data_map[r["user_id"]][str(r["work_date"].day)] = {"h": float(r["hours"] or 0), "s": r["status"] or "work"}
+            for e in employees:
+                e["data"] = data_map[e["user_id"]]
+            return employees
+
+@routes.post('/api/timesheet/matrix')
+async def handle_timesheet_matrix(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    date_from = body.get("date_from")
+    date_to = body.get("date_to")
+    if not date_from or not date_to:
+        month = _safe_int(body.get("month", datetime.now().month))
+        year = _safe_int(body.get("year", datetime.now().year))
+        last_day = calendar.monthrange(year, month)[1]
+        date_from = f"{year}-{month:02d}-01"
+        date_to = f"{year}-{month:02d}-{last_day:02d}"
+    
+    employees = await _run(_sync_timesheet_matrix, user["user_id"], date_from, date_to)
+    return web.json_response({"employees": employees})
+
+def _sync_save_cell(user_id, target_uid, work_date, hours, status):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if hours <= 0 and status == 'work':
+                cur.execute("DELETE FROM timesheet_records WHERE user_id = %s AND work_date = %s", (target_uid, work_date))
+            else:
+                cur.execute("""
+                    INSERT INTO timesheet_records (user_id, work_date, hours, status, updated_at)
+                    VALUES (%s, %s, %s, %s, NOW())
+                    ON CONFLICT (user_id, work_date) DO UPDATE SET hours = EXCLUDED.hours, status = EXCLUDED.status, updated_at = NOW()
+                """, (target_uid, work_date, hours, status))
+
+@routes.post('/api/timesheet/save_cell')
+async def handle_timesheet_save_cell(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    target_uid = _safe_int(body.get("user_id"))
+    work_date = body.get("work_date")
+    hours = float(body.get("hours", 0))
+    status = body.get("status", "work")
+    
+    if not work_date or target_uid <= 0: return web.json_response({"error": "invalid_data"}, status=400)
+    allowed = await _run(_check_can_edit_user, user, target_uid)
+    if not allowed: return web.json_response({"error": "forbidden_edit_other"}, status=403)
+    
+    await _run(_sync_save_cell, user["user_id"], target_uid, work_date, hours, status)
+    return web.json_response({"ok": True})
+
+def _sync_bulk_save_cells(user_id, cells):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            for cell in cells:
+                target_uid = cell.get("user_id")
+                work_date = cell.get("work_date")
+                hours = cell.get("hours", 0)
+                status = cell.get("status", "work")
+                if not work_date or not target_uid: continue
+                if hours <= 0 and status == 'work':
+                    cur.execute("DELETE FROM timesheet_records WHERE user_id = %s AND work_date = %s", (target_uid, work_date))
+                else:
+                    cur.execute("""
+                        INSERT INTO timesheet_records (user_id, work_date, hours, status, updated_at)
+                        VALUES (%s, %s, %s, %s, NOW())
+                        ON CONFLICT (user_id, work_date) DO UPDATE SET hours = EXCLUDED.hours, status = EXCLUDED.status, updated_at = NOW()
+                    """, (target_uid, work_date, hours, status))
+
+@routes.post('/api/timesheet/bulk_save')
+async def handle_timesheet_bulk_save(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    cells = body.get("cells") or []
+    if not cells: return web.json_response({"ok": True})
+    for cell in cells:
+        allowed = await _run(_check_can_edit_user, user, cell.get("user_id"))
+        if not allowed: return web.json_response({"error": "forbidden_edit_other"}, status=403)
+    await _run(_sync_bulk_save_cells, user["user_id"], cells)
+    return web.json_response({"ok": True})
+
+@routes.post('/api/timesheet/reports')
+async def handle_timesheet_reports(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    date_from = body.get("date_from")
+    date_to = body.get("date_to")
+    if not date_from or not date_to:
+        month = _safe_int(body.get("month", datetime.now().month))
+        year = _safe_int(body.get("year", datetime.now().year))
+        last_day = calendar.monthrange(year, month)[1]
+        date_from = f"{year}-{month:02d}-01"
+        date_to = f"{year}-{month:02d}-{last_day:02d}"
+    
+    def _sync_reports():
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM users WHERE user_id = %s", (user["user_id"],))
+                u = cur.fetchone()
+                is_hr_or_super = _is_hr_or_super(u)
+                is_tu = _is_tu(u)
+                is_us = "управляющий сменой" in (u.get("position") or "").lower()
+                
+                base = """
+                    SELECT u.full_name, u.position, r.name AS restaurant_name, SUM(t.hours) as total_hours, 
+                           COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, u.payment_type,
+                           CASE WHEN u.payment_type = 'fixed' THEN COALESCE(NULLIF(u.rate, 0), pr.rate, 0)
+                                ELSE (SUM(t.hours) * COALESCE(NULLIF(u.rate, 0), pr.rate, 0)) END as total_salary
+                    FROM users u
+                    JOIN timesheet_records t ON u.user_id = t.user_id
+                    LEFT JOIN restaurants r ON u.restaurant_key = r.key
+                    LEFT JOIN position_rates pr ON u.position = pr.position_name
+                    WHERE COALESCE(u.is_fired, FALSE) = FALSE AND u.login IS NOT NULL
+                      AND t.work_date >= %s::date AND t.work_date <= %s::date
+                """
+                params = [date_from, date_to]
+                if is_us:
+                    base += " AND u.restaurant_key = %s"; params.append(u.get("restaurant_key"))
+                elif is_tu:
+                    base += " AND u.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id = %s)"; params.append(u["user_id"])
+                elif not is_hr_or_super:
+                    base += " AND u.user_id = %s"; params.append(u["user_id"])
+                base += " GROUP BY u.user_id, u.full_name, u.position, r.name, u.rate, pr.rate, u.payment_type ORDER BY total_hours DESC"
+                cur.execute(base, params)
+                return [dict(r) for r in cur.fetchall()]
+    
+    report = await _run(_sync_reports)
+    return web.json_response({"report": report})

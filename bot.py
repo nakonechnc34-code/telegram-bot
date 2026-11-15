@@ -5,7 +5,6 @@ import gzip
 import traceback
 from aiohttp import web
 
-# Импорт конфигурации и БД
 import config
 from db import init_pool, close_pool
 
@@ -15,6 +14,7 @@ from routes.users import routes as users_routes
 from routes.medbooks import routes as medbooks_routes
 from routes.timesheet import routes as timesheet_routes
 from routes.content import routes as content_routes
+from routes.core import routes as core_routes
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -42,8 +42,7 @@ async def gzip_middleware(request, handler):
         if len(compressed) < len(body):
             response.body = compressed
             response.headers["Content-Encoding"] = "gzip"
-            if "Content-Length" in response.headers: 
-                del response.headers["Content-Length"]
+            if "Content-Length" in response.headers: del response.headers["Content-Length"]
             response.headers["Vary"] = "Accept-Encoding"
     return response
 
@@ -54,7 +53,6 @@ async def security_headers_middleware(request, handler):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-
     csp = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline'; "
@@ -80,12 +78,10 @@ def _serve_file(name, cache):
     try:
         mtime = os.stat(p).st_mtime
         if cache["data"] is None or cache["mtime"] != mtime:
-            with open(p, "rb") as f: 
-                cache["data"] = f.read()
+            with open(p, "rb") as f: cache["data"] = f.read()
             cache["mtime"] = mtime
         return cache["data"]
-    except OSError: 
-        return None
+    except OSError: return None
 
 async def handle_index(request):
     data = _serve_file("index.html", _INDEX_CACHE)
@@ -108,8 +104,7 @@ async def handle_timesheet_page(request):
     return web.Response(body=data, content_type="text/html", charset="utf-8")
 
 async def _send_static_file(name, content_type):
-    if name not in _STATIC_FILES_CACHE: 
-        _STATIC_FILES_CACHE[name] = {"data": None, "mtime": 0.0}
+    if name not in _STATIC_FILES_CACHE: _STATIC_FILES_CACHE[name] = {"data": None, "mtime": 0.0}
     data = _serve_file(name, _STATIC_FILES_CACHE[name])
     if not data: return web.Response(status=404)
     kwargs = {"body": data, "content_type": content_type}
@@ -117,18 +112,12 @@ async def _send_static_file(name, content_type):
         kwargs["charset"] = "utf-8"
     return web.Response(**kwargs)
 
-async def handle_manifest(request): 
-    return await _send_static_file("manifest.json", "application/manifest+json")
-async def handle_sw(request): 
-    return await _send_static_file("sw.js", "application/javascript")
-async def handle_icon192(request): 
-    return await _send_static_file("icon-192.svg", "image/svg+xml")
-async def handle_icon512(request): 
-    return await _send_static_file("icon-512.svg", "image/svg+xml")
-async def handle_favicon(request): 
-    return web.Response(status=204)
-async def handle_health(request): 
-    return web.Response(text="OK")
+async def handle_manifest(request): return await _send_static_file("manifest.json", "application/manifest+json")
+async def handle_sw(request): return await _send_static_file("sw.js", "application/javascript")
+async def handle_icon192(request): return await _send_static_file("icon-192.svg", "image/svg+xml")
+async def handle_icon512(request): return await _send_static_file("icon-512.svg", "image/svg+xml")
+async def handle_favicon(request): return web.Response(status=204)
+async def handle_health(request): return web.Response(text="OK")
 
 # ============= APP SETUP =============
 app = web.Application(
@@ -136,14 +125,13 @@ app = web.Application(
     client_max_size=20 * 1024 * 1024
 )
 
-# Регистрация роутов из модулей
 app.add_routes(auth_routes)
 app.add_routes(users_routes)
 app.add_routes(medbooks_routes)
 app.add_routes(timesheet_routes)
 app.add_routes(content_routes)
+app.add_routes(core_routes)
 
-# Регистрация статики и страниц
 app.router.add_get("/", handle_index)
 app.router.add_get("/admin", handle_admin_page)
 app.router.add_get("/admin/", handle_admin_page)
@@ -161,14 +149,10 @@ app.router.add_get("/static/icon-512.svg", handle_icon512)
 # ============= MAIN =============
 async def main():
     port = int(os.getenv("PORT", 8080))
-    
-    # Инициализируем пул БД
     init_pool()
-    
-    # Запуск миграций (если нужно)
     if os.getenv("RUN_MIGRATIONS", "true").lower() == "true":
-        logging.info("⏳ Миграции пропущены (вынесите init_db_and_seed в отдельный файл для продакшена)")
-        # await _run(init_db_and_seed) 
+        logging.info("⏳ Миграции пропущены")
+        # await _run(init_db_and_seed)
 
     runner = web.AppRunner(app)
     await runner.setup()

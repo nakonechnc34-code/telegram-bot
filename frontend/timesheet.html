@@ -50,7 +50,6 @@
   
   .right-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
   .hint-text { font-size: 11px; color: var(--text-muted); font-weight: 500; }
-  .norm-badge { background:var(--amber-soft); color:#C77700; padding:6px 12px; border-radius:100px; font-weight:700; font-size:12px; }
   .btn-tool { background: #F2F2F7; border: 1px solid transparent; padding: 8px 16px; border-radius: 100px; font-weight: 600; font-size: 12px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 6px; color: var(--text-main); }
   .btn-tool:hover { background: #E5E5EA; }
   .btn-tool.excel-btn { background: var(--green); color: #fff; border: none; }
@@ -149,8 +148,6 @@
       
       <div class="right-controls" id="right-controls-wrapper">
         <div class="hint-text">В — отпуск, Б — больничный, Н — прогул</div>
-        <div class="norm-badge" id="norm-label">Норма: - ч</div>
-        <button class="btn-tool" id="fill-btn" onclick="fillWeekdays()">⚡ Заполнить будни</button>
       </div>
     </div>
 
@@ -282,15 +279,6 @@ function getPeriodDates() {
   }
 }
 
-function calculateNorm(start, end) {
-  let workDays = 0;
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const dayOfWeek = d.getDay();
-    if (dayOfWeek >= 1 && dayOfWeek <= 5) workDays++;
-  }
-  return workDays * 8;
-}
-
 function updatePeriodTitle() {
   const { start, end } = getPeriodDates();
   const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
@@ -301,8 +289,6 @@ function updatePeriodTitle() {
     title = `${formatDateShort(start)} — ${formatDateShort(end)}`;
   }
   $('current-period-title').textContent = title;
-  const norm = calculateNorm(start, end);
-  $('norm-label').textContent = `Норма: ${norm} ч`;
 }
 
 function setViewMode(mode) {
@@ -453,38 +439,6 @@ async function saveCellDirect(inp) {
     alert('Ошибка сохранения: ' + err.message);
     const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
     if (emp && emp.data[day]) inp.value = getCellDisplayValue(emp.data[day]);
-  }
-}
-
-async function fillWeekdays() {
-  if (!confirm('Заполнить все будние дни в выбранном периоде по 8 часов?')) return;
-  const { start, end } = getPeriodDates();
-  const cellsToSave = [];
-  EMPLOYEES_DATA.forEach(emp => {
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const dayOfWeek = d.getDay();
-      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-      const dayNum = d.getDate();
-      const cellData = emp.data[dayNum];
-      if (!isWeekend && (!cellData || !cellData.h)) {
-        cellsToSave.push({ user_id: emp.user_id, work_date: formatDate(d), hours: 8, status: 'work' });
-      }
-    }
-  });
-  if (!cellsToSave.length) { alert('Все будние дни уже заполнены.'); return; }
-  
-  const btn = event.target;
-  btn.disabled = true;
-  btn.textContent = 'Заполняем...';
-  try {
-    await api('/api/timesheet/bulk_save', { cells: cellsToSave });
-    await loadMatrix();
-    showSaveIndicator();
-  } catch (e) {
-    alert('Ошибка массового заполнения: ' + e.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '⚡ Заполнить будни';
   }
 }
 

@@ -264,3 +264,283 @@ async def handle_questions_staff(request):
                 cur.execute("INSERT INTO questions (user_id, text) VALUES (%s,%s)", (user["user_id"], text))
     await _run(_sync)
     return web.json_response({"ok": True})
+    # ================== NEWS (UPDATE/DELETE/APPROVE) ==================
+@routes.post('/api/admin/news/update')
+async def handle_admin_news_update(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "news_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    nid = _safe_int(body.get("id"))
+    if nid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    allowed = {"title", "body", "level", "status", "publish_at", "image_url"}
+    updates = {k: body[k] for k in allowed if k in body}
+    if not updates: return web.json_response({"ok": True})
+    
+    if "title" in updates and len(updates["title"]) > 200: return web.json_response({"error": "title_too_long"}, status=400)
+    if "body" in updates and len(updates["body"]) > 5000: return web.json_response({"error": "body_too_long"}, status=400)
+
+    set_clause = sql.SQL(", ").join(sql.SQL("{} = %s").format(sql.Identifier(k)) for k in updates)
+    query = sql.SQL("UPDATE news SET {} WHERE id = %s").format(set_clause)
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur: 
+                cur.execute(query, (*updates.values(), nid))
+    await _run(_sync)
+    return web.json_response({"ok": True})
+
+@routes.post('/api/admin/news/delete')
+async def handle_admin_news_delete(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "news_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    nid = _safe_int(body.get("id"))
+    if nid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur: 
+                cur.execute("DELETE FROM news WHERE id = %s", (nid,))
+    await _run(_sync)
+    return web.json_response({"ok": True})
+
+@routes.post('/api/admin/news/approve')
+async def handle_admin_news_approve(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    if not _check_can_publish(admin): return web.json_response({"error": "forbidden"}, status=403)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    nid = _safe_int(body.get("id"))
+    if nid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur: 
+                cur.execute("UPDATE news SET status = 'published', approved_by = %s WHERE id = %s", (admin.get("full_name"), nid))
+    await _run(_sync)
+    return web.json_response({"ok": True})
+
+@routes.post('/api/admin/news/reject')
+async def handle_admin_news_reject(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    if not _check_can_publish(admin): return web.json_response({"error": "forbidden"}, status=403)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    nid = _safe_int(body.get("id"))
+    if nid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur: 
+                cur.execute("DELETE FROM news WHERE id = %s AND status = 'pending'", (nid,))
+    await _run(_sync)
+    return web.json_response({"ok": True})
+
+# ================== STANDARDS (UPDATE/DELETE/APPROVE) ==================
+@routes.post('/api/admin/standard/update')
+async def handle_admin_standard_update(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "standards_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    sid = _safe_int(body.get("id"))
+    if sid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    allowed = {"number", "title", "body", "image_url", "group_name", "content_type", "content_data", "file_url", "file_name"}
+    updates = {k: body[k] for k in allowed if k in body}
+    if not updates: return web.json_response({"ok": True})
+
+    if "title" in updates and not updates["title"]: return web.json_response({"error": "title_required"}, status=400)
+    if "body" in updates and not updates["body"]: return web.json_response({"error": "text_required"}, status=400)
+    if "body" in updates: updates["body"] = sanitize_html(updates["body"])
+
+    set_clause = sql.SQL(", ").join(sql.SQL("{} = %s").format(sql.Identifier(k)) for k in updates)
+    query = sql.SQL("UPDATE standards SET {} WHERE id = %s").format(set_clause)
+    
+    vals = []
+    for k in updates.keys():
+        if k == "content_data": vals.append(Json(updates[k]) if updates[k] else None)
+        else: vals.append(updates[k])
+    
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur: 
+                cur.execute(query, (*vals, sid))
+    await _run(_sync)
+    return web.json_response({"ok": True})
+
+@routes.post('/api/admin/standard/delete')
+async def handle_admin_standard_delete(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "standards_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    sid = _safe_int(body.get("id"))
+    if sid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur: 
+                cur.execute("DELETE FROM standards WHERE id = %s", (sid,))
+    await _run(_sync)
+    return web.json_response({"ok": True})
+
+@routes.post('/api/admin/standard/approve')
+async def handle_admin_standard_approve(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    if not _check_can_publish(admin): return web.json_response({"error": "forbidden"}, status=403)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    sid = _safe_int(body.get("id"))
+    if sid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur: 
+                cur.execute("UPDATE standards SET status = 'published', approved_by = %s WHERE id = %s", (admin.get("full_name"), sid))
+    await _run(_sync)
+    return web.json_response({"ok": True})
+
+@routes.post('/api/admin/standard/reject')
+async def handle_admin_standard_reject(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    if not _check_can_publish(admin): return web.json_response({"error": "forbidden"}, status=403)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    sid = _safe_int(body.get("id"))
+    if sid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur: 
+                cur.execute("DELETE FROM standards WHERE id = %s AND status = 'pending'", (sid,))
+    await _run(_sync)
+    return web.json_response({"ok": True})
+
+# ================== FAQ (UPDATE/DELETE) ==================
+@routes.post('/api/admin/faq/update')
+async def handle_admin_faq_update(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "faq_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    field = body.get("field")
+    if field not in ("question", "answer"): return web.json_response({"error": "invalid"}, status=400)
+    fid = _safe_int(body.get("id"))
+    if fid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    val = body.get("value") or ""
+    if (field == "question" and len(val) > 500) or (field == "answer" and len(val) > 2000):
+        return web.json_response({"error": "value_too_long"}, status=400)
+    query = sql.SQL("UPDATE faq SET {} = %s WHERE id = %s").format(sql.Identifier(field))
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur: 
+                cur.execute(query, (val, fid))
+    await _run(_sync)
+    return web.json_response({"ok": True})
+
+@routes.post('/api/admin/faq/delete')
+async def handle_admin_faq_delete(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "faq_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    fid = _safe_int(body.get("id"))
+    if fid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur: 
+                cur.execute("DELETE FROM faq WHERE id = %s", (fid,))
+    await _run(_sync)
+    return web.json_response({"ok": True})
+
+# ================== POSITIONS (ARCHIVE) ==================
+@routes.post('/api/admin/position/archive')
+async def handle_admin_position_archive(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "positions_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    pid = _safe_int(body.get("id"))
+    if pid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur: 
+                cur.execute("UPDATE positions SET is_archived = TRUE WHERE id = %s", (pid,))
+    await _run(_sync)
+    return web.json_response({"ok": True})
+
+# ================== CERTIFICATION (DELETE + STAFF) ==================
+@routes.post('/api/admin/certification/delete')
+async def handle_admin_certification_delete(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "certification_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    qid = _safe_int(body.get("id"))
+    if qid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur: 
+                cur.execute("DELETE FROM certification_questions WHERE id = %s", (qid,))
+    await _run(_sync)
+    return web.json_response({"ok": True})
+
+@routes.post('/api/certification/get')
+async def handle_staff_certification_get(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT id, question, option_a, option_b, option_c, option_d FROM certification_questions ORDER BY random()")
+                return [dict(r) for r in cur.fetchall()]
+    return web.json_response({"questions": await _run(_sync)})
+
+@routes.post('/api/certification/submit')
+async def handle_staff_certification_submit(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    answers = body.get("answers") or {}
+    if not answers: return web.json_response({"error": "no_answers"}, status=400)
+        
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT id, correct_option FROM certification_questions")
+                correct_db = {str(r["id"]): r["correct_option"] for r in cur.fetchall()}
+                
+                total = len(correct_db)
+                if total == 0: return {"ok": True, "passed": True, "score": 100}
+                    
+                correct_count = 0
+                for qid, ans in answers.items():
+                    if correct_db.get(qid) == ans:
+                        correct_count += 1
+                        
+                score = int((correct_count / total) * 100)
+                passed = score >= 80
+                
+                if passed:
+                    cur.execute("UPDATE users SET is_certified = TRUE WHERE user_id = %s", (user["user_id"],))
+                    cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (user["user_id"], "certification_pass", "user", str(user["user_id"]), f"score={score}"))
+        return {"ok": True, "passed": passed, "score": score}
+    result = await _run(_sync)
+    return web.json_response(result)

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wokker-cache-v2'; // ОБНОВЛЕНО: изменили версию кэша
+const CACHE_NAME = 'wokker-cache-v3'; // Обновили версию кэша, чтобы Service Worker обновился
 const ASSETS_TO_CACHE = [
   '/',
   '/admin',
@@ -8,6 +8,16 @@ const ASSETS_TO_CACHE = [
   '/static/icon-192.svg',
   '/static/icon-512.svg'
 ];
+
+// --- БЕЗОПАСНАЯ РАБОТА С ФАЙЛАМИ ---
+let authToken = null;
+
+// Слушаем сообщения от страницы (получаем токен)
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SET_TOKEN') {
+    authToken = event.data.token;
+  }
+});
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -31,6 +41,20 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
+  // Перехватываем запросы к файлам и подставляем заголовок X-Token
+  if (url.pathname.startsWith('/uploads/') && authToken) {
+    const newHeaders = new Headers(event.request.headers);
+    newHeaders.set('X-Token', authToken);
+    
+    const newRequest = new Request(event.request, {
+      headers: newHeaders
+    });
+    
+    event.respondWith(fetch(newRequest));
+    return;
+  }
+
+  // Стандартное кэширование для остальных запросов
   if (event.request.method === 'POST' || event.request.headers.get('accept')?.includes('text/html')) {
     event.respondWith(
       fetch(event.request)

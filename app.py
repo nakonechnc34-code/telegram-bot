@@ -136,10 +136,14 @@ async def handle_manifest(request): return await _send_static_file("manifest.jso
 async def handle_sw(request): return await _send_static_file("sw.js", "application/javascript")
 async def handle_icon192(request): return await _send_static_file("icon-192.svg", "image/svg+xml")
 async def handle_icon512(request): return await _send_static_file("icon-512.svg", "image/svg+xml")
+
+# --- НОВЫЕ ОБРАБОТЧИКИ ---
 async def handle_icon192_png(request): return await _send_static_file("icon-192.png", "image/png")
 async def handle_icon512_png(request): return await _send_static_file("icon-512.png", "image/png")
 async def handle_screenshot(request): return await _send_static_file("screenshot1.png", "image/png")
 async def handle_assetlinks(request): return await _send_static_file(".well-known/assetlinks.json", "application/json")
+# -------------------------
+
 async def handle_favicon(request): return web.Response(status=204)
 async def handle_health(request): return web.Response(text="OK")
 
@@ -170,18 +174,20 @@ app.router.add_get("/manifest.json", handle_manifest)
 app.router.add_get("/sw.js", handle_sw)
 app.router.add_get("/static/icon-192.svg", handle_icon192)
 app.router.add_get("/static/icon-512.svg", handle_icon512)
+
+# --- НОВЫЕ МАРШРУТЫ ---
 app.router.add_get("/static/icon-192.png", handle_icon192_png)
 app.router.add_get("/static/icon-512.png", handle_icon512_png)
 app.router.add_get("/static/screenshot1.png", handle_screenshot)
 app.router.add_get("/.well-known/assetlinks.json", handle_assetlinks)
+# ----------------------
 
 # ============= MAIN =============
 async def main():
     port = int(os.getenv("PORT", 8080))
     init_pool()
-    
     if os.getenv("RUN_MIGRATIONS", "true").lower() == "true":
-        logging.info("⏳ Миграции пропущены")
+        logging.info("⏳ Миграции пропущены (запускайте init_db_and_seed отдельным скриптом)")
 
     runner = web.AppRunner(app)
     await runner.setup()

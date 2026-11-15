@@ -69,7 +69,7 @@
   .status-pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--green); color: var(--green-text); border-radius: 100px; font-size: 13px; font-weight: 700; }
   .status-pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green-text); }
 
-  /* НОВЫЙ БЛОК: ЗАРПЛАТА */
+  /* ВИДЖЕТ ЗАРПЛАТЫ */
   .salary-card { background: #fff; border-radius: var(--radius-sm); padding: 24px; margin-top: 20px; box-shadow: var(--shadow); }
   .salary-title { font-size: 18px; font-weight: 800; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; }
   .salary-date { font-size: 12px; color: var(--text-muted); font-weight: 600; background: var(--bg); padding: 4px 10px; border-radius: 8px; text-transform: uppercase; }
@@ -708,7 +708,6 @@ function renderProfileFromBoot() {
   initPushNotifications();
 }
 
-// Загрузка виджета зарплаты для сотрудника
 async function loadSalaryWidget() {
   const widget = $('salary-widget');
   if (!widget) return;
@@ -722,19 +721,18 @@ async function loadSalaryWidget() {
   const monthsArr = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 
   try {
-    // 1. Получаем начисленные часы и сумму
-    const rep = await api('/api/timesheet/reports', { date_from: dateFrom, date_to: dateTo });
-    const myReport = (rep.report || [])[0]; 
-    if (!myReport) return;
-
-    // 2. Получаем выплаченную сумму
-    const payRes = await api('/api/payments/list', { date_from: dateFrom, date_to: dateTo });
-    const myPayData = (payRes.employees || [])[0];
-    const paid = myPayData ? parseFloat(myPayData.paid) : 0;
+    const res = await api('/api/payments/employee', { 
+        user_id: BOOT.profile.user_id, 
+        date_from: dateFrom, 
+        date_to: dateTo 
+    });
     
-    const accrued = parseFloat(myReport.total_salary) || 0;
-    const remaining = accrued - paid;
-    const hours = parseFloat(myReport.total_hours) || 0;
+    const formatMoney = (v) => (v || 0).toLocaleString('ru-RU') + ' ₽';
+    const hours = res.total_hours || 0;
+    const accrued = res.timesheet_accrued || 0;
+    const extra = res.extra_accrued || 0;
+    const paid = res.paid || 0;
+    const remaining = res.remaining || 0;
 
     widget.style.display = 'block';
     widget.innerHTML = `
@@ -743,20 +741,25 @@ async function loadSalaryWidget() {
         <span class="salary-date">${monthsArr[month-1]}</span>
       </div>
       <div class="salary-row">
-        <span class="salary-lbl">Отработано</span>
+        <span class="salary-lbl">Отработано часов</span>
         <span class="salary-val">${hours} ч</span>
       </div>
       <div class="salary-row">
-        <span class="salary-lbl">Начислено</span>
-        <span class="salary-val">${accrued.toLocaleString('ru-RU')} ₽</span>
+        <span class="salary-lbl">Начислено по табелю</span>
+        <span class="salary-val">${formatMoney(accrued)}</span>
       </div>
+      ${extra > 0 ? `
+      <div class="salary-row">
+        <span class="salary-lbl">Доп. начисления</span>
+        <span class="salary-val" style="color:var(--accent);">+${formatMoney(extra)}</span>
+      </div>` : ''}
       <div class="salary-row">
         <span class="salary-lbl">Выплачено</span>
-        <span class="salary-val green">${paid.toLocaleString('ru-RU')} ₽</span>
+        <span class="salary-val green">${formatMoney(paid)}</span>
       </div>
       <div class="salary-row" style="margin-top: 8px; padding-top: 12px; border-top: 1px solid #F2F2F7;">
         <span class="salary-lbl" style="font-weight: 700; color: var(--text-main);">К выплате</span>
-        <span class="salary-val amber">${remaining.toLocaleString('ru-RU')} ₽</span>
+        <span class="salary-val amber">${formatMoney(remaining)}</span>
       </div>
     `;
   } catch (e) {

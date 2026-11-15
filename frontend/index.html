@@ -867,7 +867,7 @@ function renderRestaurants() {
     const isMy = r.key === myKey;
     
     return `
-      <div class="rest-card" onclick="showRestaurantDetail('${esc(r.key)}')">
+      <div class="rest-card" data-key="${esc(r.key)}">
         ${isMy ? '<div class="my-rest-tag">Мой</div>' : ''}
         <div class="rest-card-header">
           <div class="rest-logo">🍜</div>
@@ -880,8 +880,13 @@ function renderRestaurants() {
       </div>
     `;
   }).join('');
-}
 
+  // Безопасно вешаем обработчики
+  box.querySelectorAll('.rest-card').forEach(card => {
+    card.addEventListener('click', () => showRestaurantDetail(card.dataset.key));
+  });
+}
+  
 function showRestaurantDetail(key) {
   const section = $('sec-detail');
   const box = $('detail-box');
@@ -1118,8 +1123,39 @@ function showStandardDetail(id) {
 
   let fileHtml = '';
   if (s.file_url) {
+    function showStandardDetail(id) {
+  const s = (BOOT && BOOT.standards || []).find(x => x.id === id);
+  if (!s) return;
+
+  const imageHtml = s.image_url ? `<img src="${esc(s.image_url)}" class="std-detail-img">` : '';
+
+  let contentHtml = '';
+  if (s.content_type === 'table' && s.content_data) {
+    const headers = s.content_data.headers || [];
+    const rows = s.content_data.rows || [];
+    let tableHtml = `
+      <div class="std-table-wrap">
+        <table class="std-table">
+          <thead>
+            <tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr>
+          </thead>
+          <tbody>
+            ${rows.map(row => `
+              <tr>${headers.map((_, i) => `<td>${esc(row[i] || '')}</td>`).join('')}</tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+    contentHtml = `<div class="std-content-card">${tableHtml}</div>`;
+  } else {
+    contentHtml = `<div class="std-content-card"><div class="std-detail-text">${s.body}</div></div>`;
+  }
+
+  let fileHtml = '';
+  if (s.file_url) {
     fileHtml = `
-      <div class="std-file-card" onclick="downloadFile('${esc(s.file_url)}', '${esc(s.file_name || 'Документ')}')">
+      <div class="std-file-card" id="std-download-btn">
         <div class="std-file-icon">📥</div>
         <div class="std-file-info">
           <div class="std-file-title">Скачать документ</div>
@@ -1128,6 +1164,30 @@ function showStandardDetail(id) {
       </div>
     `;
   }
+
+  $('standard-detail-box').innerHTML = `
+    <div class="std-detail-page">
+      <div class="std-detail-meta">
+        ${s.number ? `<div class="std-detail-number">${esc(s.number)}</div>` : ''}
+        <div class="std-detail-title">${esc(s.title)}</div>
+      </div>
+      ${imageHtml}
+      ${contentHtml}
+      ${fileHtml}
+    </div>
+  `;
+
+  // Безопасно вешаем обработчик на скачивание
+  if (s.file_url) {
+    const btn = $('std-download-btn');
+    if (btn) btn.addEventListener('click', () => downloadFile(s.file_url, s.file_name || 'Документ'));
+  }
+
+  document.querySelector('.tabs').style.display = 'none';
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  $('sec-standard-detail').classList.add('active');
+  window.scrollTo(0, 0);
+}
 
   $('standard-detail-box').innerHTML = `
     <div class="std-detail-page">

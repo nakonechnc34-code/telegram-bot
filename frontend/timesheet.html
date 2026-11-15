@@ -120,6 +120,14 @@
   .payout-table tr:last-child td { border-bottom: none; }
   .payout-table .right { text-align: right; }
 
+  /* КАРТОЧКИ МОДЕРАЦИИ */
+  .pending-card { background: #FFF9E6; border-radius: 16px; padding: 20px; margin-bottom: 16px; border: 1px solid rgba(255,149,0,0.25); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+  .pending-info { flex: 1; min-width: 250px; }
+  .pending-title { font-size: 16px; font-weight: 800; margin-bottom: 4px; color: var(--text-main); }
+  .pending-meta { font-size: 12px; color: #C77700; font-weight: 600; margin-bottom: 8px; }
+  .pending-body { font-size: 14px; color: #6B5A2E; }
+  .pending-actions { display: flex; gap: 8px; }
+
   /* МОДАЛЬНЫЕ ОКНА */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
   .modal-overlay.show { display: flex; animation: fadeIn 0.2s; }
@@ -263,6 +271,14 @@
       </div>
 
       <div class="section" id="tab-payouts">
+        <!-- Контейнер для модерации (скрыт, если нет прав) -->
+        <div id="pending-accruals-container" style="display: none; margin-bottom: 24px;">
+          <h3 style="font-size: 16px; font-weight: 700; color: var(--amber-text); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--amber);"></span> На модерации
+          </h3>
+          <div id="pending-accruals-list"></div>
+        </div>
+
         <div class="payout-header">
           <div class="payout-summary">
             <div class="summary-card">
@@ -586,7 +602,6 @@ function updatePeriodTitle() {
   }
 }
 
-// ИСПРАВЛЕННАЯ ФУНКЦИЯ: теперь она обновляет ту вкладку, где мы находимся
 function changeMonthFromPicker(val) {
   if (!val) return;
   const parts = val.split('-');
@@ -752,6 +767,8 @@ async function saveCellDirect(inp) {
 // ================== ВЫПЛАТЫ ==================
 async function loadPayouts() {
   $('payouts-list').innerHTML = '<tr><td colspan="6" class="loader">Загрузка...</td></tr>';
+  const pendingBox = $('pending-accruals-container');
+  const pendingList = $('pending-accruals-list');
   
   const { start, end } = getPeriodDates();
   const dateFrom = formatDate(start);
@@ -760,8 +777,30 @@ async function loadPayouts() {
   try {
     const res = await api('/api/payments/list', { date_from: dateFrom, date_to: dateTo });
     const employees = res.employees || [];
+    const pending = res.pending || [];
+    const isHr = res.is_hr_or_super || false;
     
-    // Наполняем селекты для модалок
+    // Отрисовка модерации
+    if (isHr && pending.length > 0) {
+      pendingBox.style.display = 'block';
+      pendingList.innerHTML = pending.map(p => `
+        <div class="pending-card">
+          <div class="pending-info">
+            <div class="pending-title">${esc(p.full_name)} — ${(parseFloat(p.amount) || 0).toLocaleString('ru-RU')} ₽</div>
+            <div class="pending-meta">Предложил: ${esc(p.proposed_by_name || '—')} · ${fmtDate(p.payment_date)}</div>
+            <div class="pending-body">${esc(p.comment)}</div>
+          </div>
+          <div class="pending-actions">
+            <button class="btn-action green small" style="padding: 8px 16px; font-size: 13px;" onclick="approveAccrual(${p.id})">Согласовать</button>
+            <button class="btn-action" style="padding: 8px 16px; font-size: 13px; background: var(--red);" onclick="rejectAccrual(${p.id})">Отклонить</button>
+          </div>
+        </div>
+      `).join('');
+    } else {
+      pendingBox.style.display = 'none';
+    }
+
+    // Наполняем селекты
     const paySelect = $('pay-user');
     const accSelect = $('acc-user');
     paySelect.innerHTML = '<option value="">Выберите сотрудника...</option>';
@@ -813,6 +852,25 @@ async function loadPayouts() {
   }
 }
 
+// Модерация начислений
+async function approveAccrual(id) {
+  if (!confirm('Согласовать это начисление?')) return;
+  try {
+    await api('/api/accruals/approve', { id });
+    toast('Начисление одобрено');
+    await loadPayouts();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function rejectAccrual(id) {
+  if (!confirm('Отклонить начисление? Оно будет удалено.')) return;
+  try {
+    await api('/api/accruals/reject', { id });
+    toast('Начисление отклонено');
+    await loadPayouts();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
 // Модалки выплат и начислений
 function openPayoutModal() {
   $('pay-user').value = ''; $('pay-amount').value = ''; $('pay-comment').value = '';
@@ -853,8 +911,14 @@ async function saveAccrual() {
   errEl.style.display = 'none';
   const btn = $('btn-save-accrual'); btn.disabled = true; btn.textContent = '...';
   try {
-    await api('/api/accruals/add', { user_id: parseInt(userId), amount, comment });
-    closeAccrualModal(); toast('Начисление добавлено'); await loadPayouts();
+    const res = await api('/api/accruals/add', { user_id: parseInt(userId), amount, comment });
+    closeAccrualModal();
+    if (res.status === 'pending') {
+        toast('Отправлено на модерацию HR');
+    } else {
+        toast('Начисление добавлено');
+    }
+    await loadPayouts();
   } catch (e) {
     if (e.message !== 'unauthorized') { errEl.textContent = 'Ошибка: ' + e.message; errEl.style.display = 'block'; }
   } finally { btn.disabled = false; btn.textContent = 'Сохранить'; }
@@ -874,11 +938,8 @@ async function openEmpModal(uid) {
   try {
     const res = await api('/api/payments/employee', { user_id: uid, date_from: dateFrom, date_to: dateTo });
     
-    // Ищем сотрудника в уже загруженных данных
     let emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
     if (!emp) {
-        // Если карточка открывается со вкладки "Выплаты", EMPLOYEES_DATA может быть пустым
-        // Тогда мы попробуем найти ФИО хотя бы в селекте
         const selectOption = document.querySelector(`#pay-user option[value="${uid}"]`);
         if (selectOption) {
             $('modal-emp-name').textContent = selectOption.textContent.split(' (')[0];
@@ -898,15 +959,30 @@ async function openEmpModal(uid) {
     } else {
         historyHtml = res.history.map(h => {
             const isAccrual = h.record_type === 'accrual';
-            const typeLbl = isAccrual ? 'Начисление' : 'Выплата';
             const prefix = isAccrual ? '+' : '';
             const cls = isAccrual ? 'accrual' : 'payout';
             
+            // Обработка статусов
+            let statusTag = '';
+            if (h.status === 'pending') {
+                statusTag = ' <span class="tag amber" style="font-size:10px; padding:2px 6px;">На модерации</span>';
+            } else if (h.status === 'rejected') {
+                statusTag = ' <span class="tag red" style="font-size:10px; padding:2px 6px;">Отклонено</span>';
+            }
+            
+            // Перечеркиваем, если отклонено
+            const styleText = h.status === 'rejected' ? 'text-decoration: line-through; opacity: 0.6;' : '';
+            const typeLbl = isAccrual ? 'Начисление' : 'Выплата';
+            
+            let authorLbl = h.created_by_name || 'Система';
+            if (h.status === 'pending') authorLbl = 'Предложил: ' + (h.proposed_by_name || authorLbl);
+            if (h.status === 'approved' && h.approved_by_name) authorLbl = 'Одобрил: ' + h.approved_by_name;
+
             return `
-                <div class="history-item ${cls}">
+                <div class="history-item ${cls}" style="${styleText}">
                     <div class="history-meta">
-                        <span>${typeLbl} · ${fmtDate(h.payment_date)}</span>
-                        <span>${esc(h.created_by_name || 'Система')}</span>
+                        <span>${typeLbl} · ${fmtDate(h.payment_date)}${statusTag}</span>
+                        <span>${esc(authorLbl)}</span>
                     </div>
                     <div class="history-amount ${cls}">${prefix}${formatMoney(h.amount)}</div>
                     <div class="history-comment">${esc(h.comment)}</div>

@@ -471,6 +471,14 @@ async function loadAndRender() {
     
     $('global-loader').style.display = 'none';
     showMainApp();
+
+    // Передаем токен в Service Worker для безопасной загрузки файлов
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+            type: 'SET_TOKEN',
+            token: getToken()
+        });
+    }
     
     checkTeamTabVisibility();
     updateNewsBadge();
@@ -930,7 +938,7 @@ function renderNewsFromBoot() {
     else if (lvl === 'important') badgeHtml = '<span class="news-badge important">Важно</span>';
     
     const imageHtml = n.image_url 
-      ? `<img src="${esc(n.image_url)}?token=${getToken()}" class="news-item-img">` 
+      ? `<img src="${esc(n.image_url)}" class="news-item-img">` 
       : `<div class="news-item-img" style="display:flex;align-items:center;justify-content:center;font-size:32px;background:var(--bg);">📰</div>`;
 
     return `
@@ -957,7 +965,7 @@ function showNewsDetail(id) {
   if (lvl === 'urgent') badgeHtml = '<span class="news-badge urgent">Срочно</span>';
   else if (lvl === 'important') badgeHtml = '<span class="news-badge important">Важно</span>';
   
-  const imageHtml = n.image_url ? `<img src="${esc(n.image_url)}?token=${getToken()}" class="news-detail-img">` : '';
+  const imageHtml = n.image_url ? `<img src="${esc(n.image_url)}" class="news-detail-img">` : '';
 
   $('news-detail-box').innerHTML = `
     <div class="news-detail-header">
@@ -1037,7 +1045,7 @@ function drawStandardsList() {
 
   box.innerHTML = filtered.map(s => {
     const imageHtml = s.image_url 
-      ? `<img src="${esc(s.image_url)}?token=${getToken()}" class="std-img">` 
+      ? `<img src="${esc(s.image_url)}" class="std-img">` 
       : '';
 
     return `
@@ -1057,9 +1065,15 @@ function drawStandardsList() {
 async function downloadFile(url, filename) {
   try {
     showToast('Скачивание началось...');
-    const response = await fetch(url);
+    const cleanUrl = url.split('?')[0]; // Убираем старые параметры
+    const response = await fetch(cleanUrl, {
+        headers: { 'X-Token': getToken() }
+    });
+    
+    if (!response.ok) throw new Error('Network response was not ok');
     const blob = await response.blob();
     const blobUrl = window.URL.createObjectURL(blob);
+    
     const a = document.createElement('a');
     a.style.display = 'none';
     a.href = blobUrl;
@@ -1077,7 +1091,7 @@ function showStandardDetail(id) {
   const s = (BOOT && BOOT.standards || []).find(x => x.id === id);
   if (!s) return;
 
-  const imageHtml = s.image_url ? `<img src="${esc(s.image_url)}?token=${getToken()}" class="std-detail-img">` : '';
+  const imageHtml = s.image_url ? `<img src="${esc(s.image_url)}" class="std-detail-img">` : '';
 
   let contentHtml = '';
   if (s.content_type === 'table' && s.content_data) {
@@ -1105,7 +1119,7 @@ function showStandardDetail(id) {
   let fileHtml = '';
   if (s.file_url) {
     fileHtml = `
-      <div class="std-file-card" onclick="downloadFile('${esc(s.file_url)}?download=1&name=${encodeURIComponent(s.file_name || 'file')}&token=${getToken()}', '${esc(s.file_name || 'Документ')}')">
+      <div class="std-file-card" onclick="downloadFile('${esc(s.file_url)}', '${esc(s.file_name || 'Документ')}')">
         <div class="std-file-icon">📥</div>
         <div class="std-file-info">
           <div class="std-file-title">Скачать документ</div>

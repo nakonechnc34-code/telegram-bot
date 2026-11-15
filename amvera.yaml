@@ -5,5 +5,5 @@ meta:
     version: "3.10"
 
 run:
-  scriptName: bot.py
+  scriptName: app.py
   containerPort: 8080

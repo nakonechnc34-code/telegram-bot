@@ -1,8 +1,0 @@
-[{
-      "relation": ["delegate_permission/common.handle_all_urls"],
-      "target": {
-        "namespace": "android_app",
-        "package_name": "ru.wokkeruser.twa",
-        "sha256_cert_fingerprints": ["19:B5:7C:03:31:B8:57:66:32:88:88:AC:CF:A8:A7:E3:4B:2C:F4:CD:50:16:2B:D1:86:02:C7:7E:C3:CA:56:05"]
-      }
-    }]

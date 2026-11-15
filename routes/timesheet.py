@@ -362,7 +362,6 @@ def _ensure_payments_table():
                     approved_by_name TEXT
                 )
             """)
-            # Миграции для существующих БД
             cur.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'approved'")
             cur.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS proposed_by_name TEXT")
             cur.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS approved_by_name TEXT")
@@ -507,7 +506,6 @@ async def handle_payments_list(request):
                 cur.execute(base, params)
                 employees = [dict(r) for r in cur.fetchall()]
                 
-                # Считаем ТОЛЬКО одобренные (approved) операции
                 cur.execute("""
                     SELECT user_id, record_type, SUM(amount) as total_amount
                     FROM payments
@@ -533,7 +531,6 @@ async def handle_payments_list(request):
                     emp["paid"] = paid_map.get(emp["user_id"], 0.0)
                     emp["remaining"] = emp["total_accrued"] - emp["paid"]
                     
-                # Получаем список на модерации (только для HR/Super)
                 pending = []
                 if is_hr_or_super:
                     cur.execute("""
@@ -569,6 +566,16 @@ async def handle_employee_finance(request):
     if target_uid <= 0 or not date_from or not date_to:
         return web.json_response({"error": "invalid_data"}, status=400)
 
+    # --- ПРОВЕРКА ПРАВ (добавлено) ---
+    is_hr = _is_hr_or_super(user)
+    is_tu = _is_tu(user)
+    is_us = "управляющий сменой" in (user.get("position") or "").lower()
+    
+    if not (is_hr or is_tu or is_us):
+        if target_uid != user["user_id"]:
+            return web.json_response({"error": "forbidden"}, status=403)
+    # ---------------------------------
+
     def _sync():
         _ensure_payments_table()
         with get_conn() as conn:
@@ -589,7 +596,6 @@ async def handle_employee_finance(request):
                 """, (target_uid, date_from, date_to))
                 total_hours = float(cur.fetchone()["total_hours"] or 0)
 
-                # Получаем всю историю (включая pending и rejected, чтобы сотрудник видел статус)
                 cur.execute("""
                     SELECT p.id, p.amount, p.comment, p.payment_date, p.record_type, p.status, p.created_at, 
                            creator.full_name as created_by_name, p.proposed_by_name, p.approved_by_name
@@ -600,7 +606,6 @@ async def handle_employee_finance(request):
                 """, (target_uid, date_from, date_to))
                 history = [dict(r) for r in cur.fetchall()]
 
-                # Считаем баланс ТОЛЬКО по approved
                 extra_accrued = sum(float(h["amount"]) for h in history if h["record_type"] == 'accrual' and h["status"] == 'approved')
                 paid = sum(float(h["amount"]) for h in history if h["record_type"] == 'payout' and h["status"] == 'approved')
                 

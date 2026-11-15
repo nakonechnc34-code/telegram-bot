@@ -70,7 +70,7 @@
   .section.active { display: flex; flex-direction: column; }
   
   /* ТАБЛИЦА */
-  .table-scroll { background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.03); position: relative; width: 100%; border: 1px solid var(--border); overflow: auto; }
+  .table-scroll { background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.03); position: relative; width: 100%; border: 1px solid var(--border); overflow: auto; margin-bottom: 24px; }
   table { border-collapse: separate; border-spacing: 0; width: 100%; table-layout: fixed; }
   th { position: sticky; top: 0; background: #F9FAFB; z-index: 10; font-weight: 600; color: var(--text-muted); font-size: 12px; padding: 16px 4px; border-bottom: 1px solid var(--border); text-align: center; }
   th.weekend { color: var(--red); background: #FEF2F2; }
@@ -98,16 +98,20 @@
   .col-total { font-weight: 700; background: #F9FAFB; width: 100px; font-size: 15px; color: var(--text-main); border-left: 1px solid var(--border); position: sticky; right: 0; z-index: 5; }
 
   /* ВЫПЛАТЫ */
-  .payout-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-shrink: 0; }
-  .payout-summary { display: flex; gap: 16px; }
-  .summary-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 20px 24px; min-width: 200px; box-shadow: 0 4px 20px rgba(0,0,0,0.02); }
-  .summary-title { font-size: 13px; color: var(--text-muted); font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
-  .summary-value { font-size: 28px; font-weight: 800; color: var(--text-main); letter-spacing: -1px; }
+  .payout-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-shrink: 0; gap: 16px; flex-wrap: wrap; }
+  .payout-summary { display: flex; gap: 16px; flex-wrap: wrap; }
+  .summary-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 20px 24px; min-width: 160px; box-shadow: 0 4px 20px rgba(0,0,0,0.02); }
+  .summary-title { font-size: 12px; color: var(--text-muted); font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .summary-value { font-size: 24px; font-weight: 800; color: var(--text-main); letter-spacing: -1px; }
   .summary-value.green { color: var(--green-text); }
   .summary-value.amber { color: var(--amber-text); }
+  .summary-value.blue { color: var(--accent); }
   
-  .btn-add-payout { background: var(--text-main); color: #fff; border: none; padding: 14px 24px; border-radius: 12px; font-weight: 600; font-size: 15px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: opacity 0.2s; }
-  .btn-add-payout:hover { opacity: 0.9; }
+  .header-actions { display: flex; gap: 12px; }
+  .btn-action { background: var(--text-main); color: #fff; border: none; padding: 14px 20px; border-radius: 12px; font-weight: 600; font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: opacity 0.2s; }
+  .btn-action:hover { opacity: 0.9; }
+  .btn-action.green { background: var(--green); }
+  .btn-action.blue { background: var(--accent); }
 
   .payout-layout { display: flex; flex-direction: column; gap: 24px; padding-bottom: 24px; }
   
@@ -115,6 +119,10 @@
   .payout-table th { background: #F9FAFB; }
   .payout-table tr:last-child td { border-bottom: none; }
   .payout-table .right { text-align: right; }
+  
+  .history-table th, .history-table td { text-align: left; padding: 14px 24px; height: auto; font-size: 14px; border-right: none; }
+  .history-table th { background: #F9FAFB; font-size: 12px; }
+  .history-table tr:last-child td { border-bottom: none; }
 
   /* МОДАЛЬНЫЕ ОКНА */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
@@ -163,6 +171,8 @@
     .payout-summary { flex-direction: column; width: 100%; }
     .summary-card { width: 100%; }
     .payout-header { flex-direction: column; align-items: stretch; gap: 16px; }
+    .header-actions { flex-direction: column; width: 100%; }
+    .btn-action { width: 100%; justify-content: center; }
   }
 
   @media (max-width: 768px) {
@@ -183,6 +193,7 @@
     th.sticky-col, td.sticky-col { width: 180px; min-width: 180px; max-width: 180px; padding: 12px; }
     .col-total { position: static; }
     .payout-table th, .payout-table td { padding: 12px 16px; }
+    .history-table th, .history-table td { padding: 12px 16px; }
   }
 </style>
 </head>
@@ -247,8 +258,12 @@
         <div class="payout-header">
           <div class="payout-summary">
             <div class="summary-card">
-              <div class="summary-title">Начислено за месяц</div>
-              <div class="summary-value" id="sum-accrued">0 ₽</div>
+              <div class="summary-title">Начислено по табелю</div>
+              <div class="summary-value" id="sum-timesheet-accrued">0 ₽</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-title">Начислено доп.</div>
+              <div class="summary-value blue" id="sum-extra-accrued">0 ₽</div>
             </div>
             <div class="summary-card">
               <div class="summary-title">Выплачено</div>
@@ -259,23 +274,48 @@
               <div class="summary-value amber" id="sum-remaining">0 ₽</div>
             </div>
           </div>
-          <button class="btn-add-payout" onclick="openPayoutModal()">+ Добавить выплату</button>
+          <div class="header-actions">
+            <button class="btn-action blue" onclick="openAccrualModal()">+ Начислить</button>
+            <button class="btn-action green" onclick="openPayoutModal()">+ Выплатить</button>
+          </div>
         </div>
 
         <div class="payout-layout">
+          <!-- Основная таблица сотрудников -->
           <div class="table-scroll">
             <table class="payout-table">
               <thead>
                 <tr>
                   <th>Сотрудник</th>
                   <th>Должность</th>
-                  <th class="right">Начислено</th>
+                  <th class="right">По табелю</th>
+                  <th class="right" style="color:var(--accent);">Начислено доп.</th>
                   <th class="right">Выплачено</th>
                   <th class="right">Остаток</th>
                 </tr>
               </thead>
               <tbody id="payouts-list">
-                <tr><td colspan="5" class="loader">Загрузка...</td></tr>
+                <tr><td colspan="6" class="loader">Загрузка...</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- История операций -->
+          <h3 style="font-size: 18px; font-weight: 700; margin-top: 16px; margin-bottom: -8px;">История операций</h3>
+          <div class="table-scroll">
+            <table class="history-table">
+              <thead>
+                <tr>
+                  <th>Дата</th>
+                  <th>Тип</th>
+                  <th>Сотрудник</th>
+                  <th>Сумма</th>
+                  <th>Комментарий</th>
+                  <th>Автор</th>
+                </tr>
+              </thead>
+              <tbody id="history-list">
+                <tr><td colspan="6" class="loader">Загрузка...</td></tr>
               </tbody>
             </table>
           </div>
@@ -307,6 +347,7 @@
   </div>
 </div>
 
+<!-- МОДАЛКА: КАРТОЧКА СОТРУДНИКА -->
 <div class="modal-overlay" id="emp-modal" onclick="if(event.target===this) closeEmpModal()">
   <div class="emp-card">
     <div class="emp-card-header">
@@ -330,17 +371,18 @@
         <span class="emp-stat-value" id="modal-emp-hours">—</span>
       </div>
       <div class="emp-stat-row" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
-        <span class="emp-stat-label" style="font-weight: 600; color: var(--text-main);">Начислено за период</span>
+        <span class="emp-stat-label" style="font-weight: 600; color: var(--text-main);">По табелю</span>
         <span class="emp-stat-value highlight" id="modal-emp-salary">— ₽</span>
       </div>
     </div>
   </div>
 </div>
 
+<!-- МОДАЛКА: ДОБАВИТЬ ВЫПЛАТУ -->
 <div class="modal-overlay" id="payout-modal" onclick="if(event.target===this) closePayoutModal()">
   <div class="modal-card">
     <div class="modal-header">
-      <div class="modal-title">Новая выплата</div>
+      <div class="modal-title">Выплата</div>
       <button class="modal-close" onclick="closePayoutModal()">✕</button>
     </div>
     <div class="modal-body">
@@ -359,7 +401,35 @@
         <textarea class="form-textarea" id="pay-comment" placeholder="Например: Аванс за первую половину месяца"></textarea>
       </div>
       <div class="form-error" id="pay-error" style="color: var(--red); font-size: 13px; font-weight: 500; margin-bottom: 12px; display: none;"></div>
-      <button class="btn-submit" id="btn-save-payout" onclick="savePayout()">Сохранить выплату</button>
+      <button class="btn-submit" id="btn-save-payout" style="background: var(--green);" onclick="savePayout()">Сохранить выплату</button>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА: ДОБАВИТЬ НАЧИСЛЕНИЕ -->
+<div class="modal-overlay" id="accrual-modal" onclick="if(event.target===this) closeAccrualModal()">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="modal-title">Доп. начисление</div>
+      <button class="modal-close" onclick="closeAccrualModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Сотрудник</label>
+        <select class="form-select" id="acc-user">
+          <option value="">Выберите сотрудника...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Сумма (₽)</label>
+        <input type="number" class="form-input" id="acc-amount" placeholder="Например: 5000" min="1" step="100">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Комментарий (обязательно)</label>
+        <textarea class="form-textarea" id="acc-comment" placeholder="Например: Премия за переработки"></textarea>
+      </div>
+      <div class="form-error" id="acc-error" style="color: var(--red); font-size: 13px; font-weight: 500; margin-bottom: 12px; display: none;"></div>
+      <button class="btn-submit" id="btn-save-accrual" style="background: var(--accent);" onclick="saveAccrual()">Сохранить начисление</button>
     </div>
   </div>
 </div>
@@ -698,9 +768,10 @@ async function saveCellDirect(inp) {
   }
 }
 
-// ================== ВЫПЛАТЫ ==================
+// ================== ВЫПЛАТЫ И НАЧИСЛЕНИЯ ==================
 async function loadPayouts() {
-  $('payouts-list').innerHTML = '<tr><td colspan="5" class="loader">Загрузка...</td></tr>';
+  $('payouts-list').innerHTML = '<tr><td colspan="6" class="loader">Загрузка...</td></tr>';
+  $('history-list').innerHTML = '<tr><td colspan="6" class="loader">Загрузка...</td></tr>';
   
   const { start, end } = getPeriodDates();
   const dateFrom = formatDate(start);
@@ -709,52 +780,97 @@ async function loadPayouts() {
   try {
     const res = await api('/api/payments/list', { date_from: dateFrom, date_to: dateTo });
     const employees = res.employees || [];
+    const history = res.history || [];
     
-    // Наполняем селект для модалки
-    const select = $('pay-user');
-    select.innerHTML = '<option value="">Выберите сотрудника...</option>';
+    // Наполняем селекты для модалок
+    const paySelect = $('pay-user');
+    const accSelect = $('acc-user');
+    paySelect.innerHTML = '<option value="">Выберите сотрудника...</option>';
+    accSelect.innerHTML = '<option value="">Выберите сотрудника...</option>';
+    
     employees.forEach(e => {
-      select.innerHTML += `<option value="${e.user_id}">${esc(e.full_name)} (Остаток: ${(e.accrued - e.paid).toLocaleString('ru-RU')} ₽)</option>`;
+      const opt = `<option value="${e.user_id}">${esc(e.full_name)} (Остаток: ${e.remaining.toLocaleString('ru-RU')} ₽)</option>`;
+      paySelect.innerHTML += opt;
+      accSelect.innerHTML += opt;
     });
 
     // Считаем итоги
-    let totalAccrued = 0;
+    let totalTimesheet = 0;
+    let totalExtra = 0;
     let totalPaid = 0;
+    let totalRemaining = 0;
 
     if (!employees.length) {
-      $('payouts-list').innerHTML = '<tr><td colspan="5" class="loader">Нет данных</td></tr>';
+      $('payouts-list').innerHTML = '<tr><td colspan="6" class="loader">Нет данных</td></tr>';
     } else {
       $('payouts-list').innerHTML = employees.map(e => {
-        const accrued = parseFloat(e.accrued) || 0;
-        const paid = parseFloat(e.paid) || 0;
-        const remaining = accrued - paid;
-        
-        totalAccrued += accrued;
-        totalPaid += paid;
+        totalTimesheet += e.timesheet_accrued;
+        totalExtra += e.extra_accrued;
+        totalPaid += e.paid;
+        totalRemaining += e.remaining;
 
         return `
           <tr>
             <td><b>${esc(e.full_name)}</b></td>
             <td style="color:var(--text-muted);">${esc(e.position || '—')}</td>
-            <td class="right">${accrued.toLocaleString('ru-RU')} ₽</td>
-            <td class="right" style="color:var(--green-text); font-weight:600;">${paid.toLocaleString('ru-RU')} ₽</td>
-            <td class="right" style="font-weight:700; color:${remaining > 0 ? 'var(--amber-text)' : 'var(--text-main)'};">${remaining.toLocaleString('ru-RU')} ₽</td>
+            <td class="right">${e.timesheet_accrued.toLocaleString('ru-RU')} ₽</td>
+            <td class="right" style="color:var(--accent); font-weight:600;">${e.extra_accrued > 0 ? '+' : ''}${e.extra_accrued.toLocaleString('ru-RU')} ₽</td>
+            <td class="right" style="color:var(--green-text); font-weight:600;">${e.paid.toLocaleString('ru-RU')} ₽</td>
+            <td class="right" style="font-weight:700; color:${e.remaining > 0 ? 'var(--amber-text)' : 'var(--text-main)'};">${e.remaining.toLocaleString('ru-RU')} ₽</td>
           </tr>
         `;
       }).join('');
     }
 
-    $('sum-accrued').textContent = `${totalAccrued.toLocaleString('ru-RU')} ₽`;
+    $('sum-timesheet-accrued').textContent = `${totalTimesheet.toLocaleString('ru-RU')} ₽`;
+    $('sum-extra-accrued').textContent = `${totalExtra.toLocaleString('ru-RU')} ₽`;
     $('sum-paid').textContent = `${totalPaid.toLocaleString('ru-RU')} ₽`;
-    $('sum-remaining').textContent = `${(totalAccrued - totalPaid).toLocaleString('ru-RU')} ₽`;
+    $('sum-remaining').textContent = `${totalRemaining.toLocaleString('ru-RU')} ₽`;
+
+    // История операций
+    if (!history.length) {
+      $('history-list').innerHTML = '<tr><td colspan="6" class="loader">Операций за этот период еще не было</td></tr>';
+    } else {
+      $('history-list').innerHTML = history.map(h => {
+        const isAccrual = h.record_type === 'accrual';
+        const typeTag = isAccrual 
+            ? '<span class="tag blue">Начисление</span>' 
+            : '<span class="tag green">Выплата</span>';
+        
+        // В зависимости от типа, цвет суммы
+        const amtColor = isAccrual ? 'var(--accent)' : 'var(--green-text)';
+        const amtPrefix = isAccrual ? '+' : '';
+        
+        return `
+        <tr>
+          <td style="color:var(--text-muted); font-size:13px; white-space:nowrap;">${fmtDate(h.payment_date)}</td>
+          <td>${typeTag}</td>
+          <td><b>${esc(h.full_name || 'Неизвестный')}</b></td>
+          <td style="font-weight:700; color:${amtColor};">${amtPrefix}${(parseFloat(h.amount) || 0).toLocaleString('ru-RU')} ₽</td>
+          <td style="color:var(--text-muted);">${esc(h.comment)}</td>
+          <td style="color:var(--text-muted); font-size:13px;">${esc(h.created_by_name || 'Система')}</td>
+        </tr>
+      `}).join('');
+    }
 
   } catch (e) {
     if (e.message !== 'unauthorized') {
-      $('payouts-list').innerHTML = `<tr><td colspan="5" class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</td></tr>`;
+      $('payouts-list').innerHTML = `<tr><td colspan="6" class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</td></tr>`;
+      $('history-list').innerHTML = '';
     }
   }
 }
 
+function fmtDate(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`;
+  } catch (e) { return iso; }
+}
+
+// --- Модалка ВЫПЛАТЫ ---
 function openPayoutModal() {
   $('pay-user').value = '';
   $('pay-amount').value = '';
@@ -785,7 +901,7 @@ async function savePayout() {
     await api('/api/payments/add', { user_id: parseInt(userId), amount: amount, comment: comment });
     closePayoutModal();
     toast('Выплата добавлена');
-    await loadPayouts(); // Обновляем данные
+    await loadPayouts();
   } catch (e) {
     if (e.message !== 'unauthorized') {
       errEl.textContent = 'Ошибка: ' + e.message;
@@ -793,6 +909,48 @@ async function savePayout() {
     }
   } finally {
     btn.disabled = false; btn.textContent = 'Сохранить выплату';
+  }
+}
+
+// --- Модалка НАЧИСЛЕНИЯ ---
+function openAccrualModal() {
+  $('acc-user').value = '';
+  $('acc-amount').value = '';
+  $('acc-comment').value = '';
+  $('acc-error').style.display = 'none';
+  $('accrual-modal').classList.add('show');
+}
+
+function closeAccrualModal() {
+  $('accrual-modal').classList.remove('show');
+}
+
+async function saveAccrual() {
+  const userId = $('acc-user').value;
+  const amount = parseFloat($('acc-amount').value);
+  const comment = $('acc-comment').value.trim();
+  const errEl = $('acc-error');
+
+  if (!userId) { errEl.textContent = 'Выберите сотрудника'; errEl.style.display = 'block'; return; }
+  if (!amount || amount <= 0) { errEl.textContent = 'Укажите корректную сумму'; errEl.style.display = 'block'; return; }
+  if (!comment) { errEl.textContent = 'Комментарий обязателен'; errEl.style.display = 'block'; return; }
+
+  errEl.style.display = 'none';
+  const btn = $('btn-save-accrual');
+  btn.disabled = true; btn.textContent = 'Сохранение...';
+
+  try {
+    await api('/api/accruals/add', { user_id: parseInt(userId), amount: amount, comment: comment });
+    closeAccrualModal();
+    toast('Начисление добавлено');
+    await loadPayouts();
+  } catch (e) {
+    if (e.message !== 'unauthorized') {
+      errEl.textContent = 'Ошибка: ' + e.message;
+      errEl.style.display = 'block';
+    }
+  } finally {
+    btn.disabled = false; btn.textContent = 'Сохранить начисление';
   }
 }
 

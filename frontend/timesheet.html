@@ -100,7 +100,6 @@
     display: flex; align-items: center; gap: 8px; 
   }
   .btn-tool:hover { opacity: 0.8; transform: translateY(-1px); }
-  .btn-tool.excel-btn { background: var(--green); }
 
   .content { padding: 24px 32px; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
   .section { display: none; height: 100%; width: 100%; }
@@ -126,10 +125,17 @@
     position: sticky; left: 0; background: var(--card-bg); z-index: 5; text-align: left; 
     border-right: 1px solid var(--border); padding: 16px 20px;
     white-space: normal; word-break: break-word; line-height: 1.4;
-    width: 260px; min-width: 260px; max-width: 260px;
+    width: 240px; min-width: 240px; max-width: 240px;
   }
   thead th.sticky-col { z-index: 15; background: #F9FAFB; font-size: 11px; }
   
+  /* Кликабельное ФИО */
+  .emp-name { 
+    font-weight: 700; font-size: 15px; color: var(--text-main); cursor: pointer; 
+    transition: color 0.2s; display: inline-block; 
+  }
+  .emp-name:hover { color: var(--accent); text-decoration: underline; }
+
   /* Группировка по ресторанам */
   .rest-header td { 
     background: #F9FAFB !important; font-weight: 800; padding: 12px 20px; 
@@ -168,6 +174,15 @@
     color: var(--text-main); border-left: 1px solid var(--border); position: sticky; right: 0; z-index: 5;
   }
 
+  /* ЗАГЛУШКА ДЛЯ ОТЧЕТОВ */
+  .empty-state { 
+    display: flex; flex-direction: column; align-items: center; justify-content: center; 
+    height: 100%; min-height: 400px; color: var(--text-muted); text-align: center; 
+  }
+  .empty-icon { font-size: 64px; margin-bottom: 20px; opacity: 0.5; }
+  .empty-title { font-size: 20px; font-weight: 800; color: var(--text-main); margin-bottom: 8px; }
+  .empty-desc { font-size: 15px; max-width: 400px; line-height: 1.5; }
+
   /* НАСТРОЙКИ */
   .settings-container { 
     padding: 32px; background: var(--card-bg); border-radius: var(--radius); 
@@ -188,6 +203,37 @@
     font-size: 16px; font-weight: 700; margin-top: 32px; border: none; cursor: pointer; transition: opacity 0.2s; 
   }
   .btn-save-settings:hover { opacity: 0.9; }
+
+  /* МОДАЛЬНОЕ ОКНО (Карточка сотрудника) */
+  .modal-overlay { 
+    position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); 
+    display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; 
+  }
+  .modal-overlay.show { display: flex; animation: fadeIn 0.2s; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  
+  .emp-card { 
+    background: var(--card-bg); border-radius: var(--radius); width: 100%; max-width: 440px; 
+    box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); 
+  }
+  @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  
+  .emp-card-header { 
+    padding: 24px 24px 20px; border-bottom: 1px solid var(--border); 
+    display: flex; justify-content: space-between; align-items: flex-start; background: #F9FAFB;
+  }
+  .emp-card-name { font-size: 22px; font-weight: 800; margin-bottom: 4px; letter-spacing: -0.5px; }
+  .emp-card-pos { font-size: 14px; color: var(--text-muted); font-weight: 500; }
+  .emp-card-close { background: #E5E7EB; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-main); transition: background 0.2s; }
+  .emp-card-close:hover { background: #D1D5DB; }
+  
+  .emp-card-body { padding: 24px; }
+  .emp-stat-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px dashed var(--border); }
+  .emp-stat-row:last-child { border-bottom: none; padding-bottom: 0; }
+  .emp-stat-label { color: var(--text-muted); font-weight: 500; }
+  .emp-stat-value { font-weight: 700; text-align: right; }
+  .emp-stat-value.highlight { color: var(--green-text); font-size: 18px; }
+  .emp-badge { display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 12px; font-weight: 700; background: var(--accent-soft); color: var(--accent); }
 
   .save-indicator { 
     position: fixed; bottom: 32px; right: 32px; background: var(--text-main); color: #fff; 
@@ -277,18 +323,12 @@
         </div>
       </div>
 
+      <!-- ВКЛАДКА ОТЧЕТЫ (ОЧИЩЕНА) -->
       <div class="section" id="tab-reports">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-          <h2 style="font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">Отчёт за период</h2>
-          <button class="btn-tool excel-btn" onclick="downloadExcel()">📥 Скачать в Excel</button>
-        </div>
-        <div class="table-scroll">
-          <table>
-            <thead><tr><th class="sticky-col">Сотрудник</th><th>Должность</th><th>Часов</th><th>Ставка</th><th>К оплате (₽)</th></tr></thead>
-            <tbody id="report-list">
-              <tr><td colspan="5" class="loader">Загрузка...</td></tr>
-            </tbody>
-          </table>
+        <div class="empty-state">
+          <div class="empty-icon">📊</div>
+          <div class="empty-title">Новые отчёты</div>
+          <div class="empty-desc">Здесь мы скоро построим новые дашборды и отчёты для бухгалтерии и HR. А пока данные скрыты.</div>
         </div>
       </div>
 
@@ -300,6 +340,37 @@
           </div>
           <button class="btn-save-settings" onclick="saveSettings()">Сохранить настройки</button>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО: КАРТОЧКА СОТРУДНИКА -->
+<div class="modal-overlay" id="emp-modal" onclick="if(event.target===this) closeEmpModal()">
+  <div class="emp-card">
+    <div class="emp-card-header">
+      <div>
+        <div class="emp-card-name" id="modal-emp-name">—</div>
+        <div class="emp-card-pos" id="modal-emp-pos">—</div>
+      </div>
+      <button class="emp-card-close" onclick="closeEmpModal()">✕</button>
+    </div>
+    <div class="emp-card-body">
+      <div class="emp-stat-row">
+        <span class="emp-stat-label">Тип оплаты</span>
+        <span class="emp-stat-value" id="modal-emp-type">—</span>
+      </div>
+      <div class="emp-stat-row">
+        <span class="emp-stat-label">Ставка</span>
+        <span class="emp-stat-value" id="modal-emp-rate">—</span>
+      </div>
+      <div class="emp-stat-row">
+        <span class="emp-stat-label">Отработано часов</span>
+        <span class="emp-stat-value" id="modal-emp-hours">—</span>
+      </div>
+      <div class="emp-stat-row" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
+        <span class="emp-stat-label" style="font-weight: 700; color: var(--text-main);">К выплате за период</span>
+        <span class="emp-stat-value highlight" id="modal-emp-salary">— ₽</span>
       </div>
     </div>
   </div>
@@ -353,7 +424,7 @@ document.querySelectorAll('.tab').forEach(t => {
     t.classList.add('active');
     $(t.dataset.sec).classList.add('active');
     
-    if (t.dataset.sec === 'tab-settings') {
+    if (t.dataset.sec === 'tab-settings' || t.dataset.sec === 'tab-reports') {
       $('view-toggle-wrapper').style.visibility = 'hidden';
       $('current-period-title').style.visibility = 'hidden';
       $('right-controls-wrapper').style.visibility = 'hidden';
@@ -364,7 +435,6 @@ document.querySelectorAll('.tab').forEach(t => {
     }
     
     if (t.dataset.sec === 'tab-sheet') loadMatrix();
-    if (t.dataset.sec === 'tab-reports') loadReports();
     if (t.dataset.sec === 'tab-settings') loadSettings();
   });
 });
@@ -439,7 +509,6 @@ function changePeriod(delta) {
   updatePeriodTitle();
   const activeSec = document.querySelector('.section.active').id;
   if (activeSec === 'tab-sheet') loadMatrix();
-  if (activeSec === 'tab-reports') loadReports();
 }
 
 async function loadMatrix() {
@@ -491,7 +560,12 @@ function renderMatrix() {
   for (const [restName, employees] of Object.entries(grouped)) {
     tbody += `<tr class="rest-header"><td class="sticky-col">📍 ${esc(restName)}</td><td colspan="${dayCount + 1}"></td></tr>`;
     employees.forEach(emp => {
-      tbody += `<tr data-uid="${emp.user_id}"><td class="sticky-col" title="${esc(emp.full_name)}"><b>${esc(emp.full_name)}</b><br><span style="font-size:12px; color:var(--text-muted); font-weight:500;">${esc(emp.position || '')}</span></td>`;
+      // Сделали имя кликабельным, убрали должность
+      tbody += `<tr data-uid="${emp.user_id}">
+        <td class="sticky-col">
+          <span class="emp-name" onclick="openEmpModal(${emp.user_id})">${esc(emp.full_name)}</span>
+        </td>`;
+        
       let totalHours = 0;
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dayOfWeek = d.getDay();
@@ -537,7 +611,6 @@ async function saveCellDirect(inp) {
   else if (val === '') { status = 'work'; hours = 0; inp.value = ''; }
   else { status = 'work'; hours = parseFloat(val.replace(',', '.')) || 0; inp.value = hours || ''; }
 
-  // Меняем класс для цвета
   inp.classList.remove('status-vacation', 'status-sick', 'status-absent');
   if (status === 'vacation') inp.classList.add('status-vacation');
   else if (status === 'sick') inp.classList.add('status-sick');
@@ -573,57 +646,41 @@ async function saveCellDirect(inp) {
   }
 }
 
-async function loadReports() {
-  $('report-list').innerHTML = '<tr><td colspan="5" class="loader">Загрузка...</td></tr>';
-  const { start, end } = getPeriodDates();
-  const dateFrom = formatDate(start);
-  const dateTo = formatDate(end);
+/* ================== КАРТОЧКА СОТРУДНИКА ================== */
+function openEmpModal(uid) {
+  const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
+  if (!emp) return;
 
-  try {
-    const res = await api('/api/timesheet/reports', { date_from: dateFrom, date_to: dateTo });
-    const report = res.report || [];
-    if (!report.length) {
-      $('report-list').innerHTML = '<tr><td colspan="5" class="loader">Нет данных за этот период</td></tr>';
-      return;
-    }
-    $('report-list').innerHTML = report.map(r => `
-      <tr>
-        <td class="sticky-col"><b>${esc(r.full_name)}</b></td>
-        <td>${esc(r.position || '—')}</td>
-        <td style="font-weight:700; color:var(--accent);">${r.total_hours} ч</td>
-        <td>${r.payment_type === 'fixed' ? 'Оклад' : r.rate + ' ₽'}</td>
-        <td style="font-weight:700; color:var(--green);">${(r.total_salary || 0).toLocaleString('ru-RU')} ₽</td>
-      </tr>
-    `).join('');
-  } catch (e) {
-    $('report-list').innerHTML = '<tr><td colspan="5" class="loader" style="color:var(--red);">Ошибка загрузки</td></tr>';
+  // Считаем общее количество часов
+  let totalHours = 0;
+  for (const key in emp.data) {
+    const c = emp.data[key];
+    if (c.s === 'work') totalHours += parseFloat(c.h || 0);
+    else if (c.s === 'vacation' || c.s === 'sick') totalHours += 8;
   }
+
+  // Считаем зарплату
+  const rate = parseFloat(emp.rate) || 0;
+  const isFixed = emp.payment_type === 'fixed';
+  let salary = isFixed ? rate : (totalHours * rate);
+
+  // Заполняем модалку
+  $('modal-emp-name').textContent = emp.full_name;
+  $('modal-emp-pos').textContent = emp.position || 'Должность не указана';
+  $('modal-emp-type').textContent = isFixed ? 'Фиксированный оклад' : 'Почасовая';
+  $('modal-emp-rate').textContent = isFixed ? `${rate.toLocaleString('ru-RU')} ₽ / мес` : `${rate.toLocaleString('ru-RU')} ₽ / час`;
+  $('modal-emp-hours').textContent = `${totalHours} ч`;
+  $('modal-emp-salary').textContent = `${salary.toLocaleString('ru-RU')} ₽`;
+
+  // Показываем окно
+  $('emp-modal').classList.add('show');
 }
 
-async function downloadExcel() {
-  const { start, end } = getPeriodDates();
-  const dateFrom = formatDate(start);
-  const dateTo = formatDate(end);
-  const token = getToken();
-  try {
-    showSaveIndicator();
-    const res = await fetch(`/api/timesheet/export_excel?date_from=${dateFrom}&date_to=${dateTo}&token=${token}`);
-    if (!res.ok) throw new Error('Ошибка сервера');
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.style.display = 'none';
-    a.href = url;
-    a.download = `Табель_${dateFrom}_${dateTo}.xlsx`;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-  } catch (e) {
-    alert('Не удалось скачать файл: ' + e.message);
-  }
+function closeEmpModal() {
+  $('emp-modal').classList.remove('show');
 }
 
+/* ================== НАСТРОЙКИ ================== */
 async function loadSettings() {
   $('settings-list').innerHTML = '<div class="loader">Загрузка...</div>';
   try {

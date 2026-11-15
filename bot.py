@@ -13,6 +13,8 @@ from db import init_pool, close_pool
 from routes.auth import routes as auth_routes
 from routes.users import routes as users_routes
 from routes.medbooks import routes as medbooks_routes
+from routes.timesheet import routes as timesheet_routes
+from routes.content import routes as content_routes
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -138,6 +140,8 @@ app = web.Application(
 app.add_routes(auth_routes)
 app.add_routes(users_routes)
 app.add_routes(medbooks_routes)
+app.add_routes(timesheet_routes)
+app.add_routes(content_routes)
 
 # Регистрация статики и страниц
 app.router.add_get("/", handle_index)

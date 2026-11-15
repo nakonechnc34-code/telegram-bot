@@ -70,7 +70,7 @@
   .section.active { display: flex; flex-direction: column; }
   
   /* ТАБЛИЦА */
-  .table-scroll { background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.03); position: relative; width: 100%; border: 1px solid var(--border); overflow: auto; }
+  .table-scroll { background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.03); position: relative; width: 100%; border: 1px solid var(--border); overflow: auto; margin-bottom: 24px; }
   table { border-collapse: separate; border-spacing: 0; width: 100%; table-layout: fixed; }
   th { position: sticky; top: 0; background: #F9FAFB; z-index: 10; font-weight: 600; color: var(--text-muted); font-size: 12px; padding: 16px 4px; border-bottom: 1px solid var(--border); text-align: center; }
   th.weekend { color: var(--red); background: #FEF2F2; }
@@ -585,14 +585,20 @@ function updatePeriodTitle() {
     $('current-period-title').textContent = `${formatDateShort(start)} — ${formatDateShort(end)}`;
   }
 }
+
+// ИСПРАВЛЕННАЯ ФУНКЦИЯ: теперь она обновляет ту вкладку, где мы находимся
 function changeMonthFromPicker(val) {
   if (!val) return;
   const parts = val.split('-');
   CURRENT_YEAR = parseInt(parts[0]);
   CURRENT_MONTH = parseInt(parts[1]);
   updatePeriodTitle();
-  loadMatrix();
+  
+  const activeSec = document.querySelector('.section.active').id;
+  if (activeSec === 'tab-sheet') loadMatrix();
+  if (activeSec === 'tab-payouts') loadPayouts();
 }
+
 function setViewMode(mode) {
   VIEW_MODE = mode;
   document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
@@ -600,7 +606,10 @@ function setViewMode(mode) {
   if (mode === 'week') CURRENT_WEEK_START = getMonday(new Date(CURRENT_YEAR, CURRENT_MONTH - 1, 15));
   else { CURRENT_MONTH = CURRENT_WEEK_START.getMonth() + 1; CURRENT_YEAR = CURRENT_WEEK_START.getFullYear(); }
   updatePeriodTitle();
-  loadMatrix();
+  
+  const activeSec = document.querySelector('.section.active').id;
+  if (activeSec === 'tab-sheet') loadMatrix();
+  if (activeSec === 'tab-payouts') loadPayouts();
 }
 
 // ================== ТАБЕЛЬ ==================
@@ -781,7 +790,7 @@ async function loadPayouts() {
 
         return `
           <tr>
-            <td><b>${esc(e.full_name)}</b></td>
+            <td><b class="emp-name" onclick="openEmpModal(${e.user_id})">${esc(e.full_name)}</b></td>
             <td style="color:var(--text-muted);">${esc(e.position || '—')}</td>
             <td class="right">${e.timesheet_accrued.toLocaleString('ru-RU')} ₽</td>
             <td class="right" style="color:var(--accent); font-weight:600;">${e.extra_accrued > 0 ? '+' : ''}${e.extra_accrued.toLocaleString('ru-RU')} ₽</td>
@@ -804,7 +813,7 @@ async function loadPayouts() {
   }
 }
 
-// Модалки выплат и начислений (без изменений)
+// Модалки выплат и начислений
 function openPayoutModal() {
   $('pay-user').value = ''; $('pay-amount').value = ''; $('pay-comment').value = '';
   $('pay-error').style.display = 'none'; $('payout-modal').classList.add('show');
@@ -851,7 +860,7 @@ async function saveAccrual() {
   } finally { btn.disabled = false; btn.textContent = 'Сохранить'; }
 }
 
-// ================== КАРТОЧКА СОТРУДНИКА (НОВАЯ) ==================
+// ================== КАРТОЧКА СОТРУДНИКА ==================
 async function openEmpModal(uid) {
   $('emp-modal').classList.add('show');
   $('modal-emp-name').textContent = 'Загрузка...';
@@ -865,11 +874,21 @@ async function openEmpModal(uid) {
   try {
     const res = await api('/api/payments/employee', { user_id: uid, date_from: dateFrom, date_to: dateTo });
     
-    // Находим ФИО и должность из уже загруженного списка
-    const emp = EMPLOYEES_DATA.find(x => x.user_id === uid) || {};
-    
-    $('modal-emp-name').textContent = emp.full_name || 'Сотрудник';
-    $('modal-emp-pos').textContent = emp.position || '—';
+    // Ищем сотрудника в уже загруженных данных
+    let emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
+    if (!emp) {
+        // Если карточка открывается со вкладки "Выплаты", EMPLOYEES_DATA может быть пустым
+        // Тогда мы попробуем найти ФИО хотя бы в селекте
+        const selectOption = document.querySelector(`#pay-user option[value="${uid}"]`);
+        if (selectOption) {
+            $('modal-emp-name').textContent = selectOption.textContent.split(' (')[0];
+        } else {
+            $('modal-emp-name').textContent = 'Сотрудник';
+        }
+    } else {
+        $('modal-emp-name').textContent = emp.full_name;
+        $('modal-emp-pos').textContent = emp.position || '—';
+    }
 
     const formatMoney = (v) => (v || 0).toLocaleString('ru-RU') + ' ₽';
 
@@ -926,6 +945,15 @@ async function openEmpModal(uid) {
 }
 
 function closeEmpModal() { $('emp-modal').classList.remove('show'); }
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`;
+  } catch (e) { return iso; }
+}
 
 // ================== НАСТРОЙКИ ==================
 async function loadSettings() {

@@ -188,7 +188,6 @@
 </head>
 <body>
 
-<!-- ЭКРАН ВХОДА -->
 <div id="login-screen">
   <div class="login-card">
     <div class="login-logo">W</div>
@@ -201,7 +200,6 @@
   </div>
 </div>
 
-<!-- ОСНОВНОЙ ИНТЕРФЕЙС -->
 <div class="layout" id="main-layout">
   <aside class="sidebar">
     <div class="sidebar-logo">Wokker <span style="color: var(--text-muted); font-weight: 500; margin-left: 4px;">| Табель</span></div>
@@ -239,14 +237,12 @@
     </div>
 
     <div class="content">
-      <!-- ВКЛАДКА: ТАБЕЛЬ -->
       <div class="section active" id="tab-sheet">
         <div class="table-scroll" id="matrix-container" style="height: 100%;">
           <div class="loader">Загрузка данных...</div>
         </div>
       </div>
 
-      <!-- ВКЛАДКА: ВЫПЛАТЫ -->
       <div class="section" id="tab-payouts">
         <div class="payout-header">
           <div class="payout-summary">
@@ -286,7 +282,6 @@
         </div>
       </div>
 
-      <!-- ВКЛАДКА: ОТЧЕТЫ -->
       <div class="section" id="tab-reports">
         <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; min-height: 400px; color: var(--text-muted); text-align: center;">
           <svg style="width: 64px; height: 64px; margin-bottom: 24px; color: #D1D5DB;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -299,7 +294,6 @@
         </div>
       </div>
 
-      <!-- ВКЛАДКА: НАСТРОЙКИ -->
       <div class="section" id="tab-settings">
         <div style="padding: 32px; background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.03); max-width: 600px; margin: 0 auto; width: 100%; border: 1px solid var(--border);">
           <div style="font-size: 22px; font-weight: 700; margin-bottom: 24px; letter-spacing: -0.5px;">Ставки по должностям</div>
@@ -313,7 +307,6 @@
   </div>
 </div>
 
-<!-- МОДАЛКА: КАРТОЧКА СОТРУДНИКА -->
 <div class="modal-overlay" id="emp-modal" onclick="if(event.target===this) closeEmpModal()">
   <div class="emp-card">
     <div class="emp-card-header">
@@ -344,7 +337,6 @@
   </div>
 </div>
 
-<!-- МОДАЛКА: ДОБАВИТЬ ВЫПЛАТУ -->
 <div class="modal-overlay" id="payout-modal" onclick="if(event.target===this) closePayoutModal()">
   <div class="modal-card">
     <div class="modal-header">
@@ -753,7 +745,7 @@ async function loadPayouts() {
 
   } catch (e) {
     if (e.message !== 'unauthorized') {
-      $('payouts-list').innerHTML = `<tr><td colspan="5" class="loader" style="color:var(--red);">Ошибка загрузки данных</td></tr>`;
+      $('payouts-list').innerHTML = `<tr><td colspan="5" class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</td></tr>`;
     }
   }
 }

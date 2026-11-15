@@ -631,7 +631,7 @@ function clearToken() { localStorage.removeItem(TOKEN_KEY); }
 
 function getFileUrl(url) {
     if (!url) return '';
-    return url; // Токен теперь передается через Service Worker
+    return url + '?token=' + getToken();
 }
 
 // ================= КЕШ =================

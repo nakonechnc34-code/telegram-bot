@@ -120,6 +120,7 @@ async def handle_bootstrap(request):
             break
 
     profile = {
+        "user_id": u["user_id"], # <--- ДОБАВЛЕНО ДЛЯ ВИДЖЕТА ЗАРПЛАТЫ
         "full_name": u.get("full_name") or "", "first_name": (u.get("full_name") or "").split()[0] if u.get("full_name") else "",
         "phone": u.get("phone") or "", "birth_date": u.get("birth_date") or "", "position": u.get("position") or "—",
         "restaurant": restaurant_name or "—", "restaurant_key": restaurant_key, "is_certified": bool(u.get("is_certified")), "is_admin": bool(u.get("is_admin")),

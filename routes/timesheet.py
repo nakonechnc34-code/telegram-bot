@@ -342,7 +342,7 @@ async def handle_timesheet_employees(request):
     employees = await _run(_sync)
     return web.json_response({"employees": employees})
 
-# ================== ВЫПЛАТЫ (PAYOUTS) ==================
+# ================== ВЫПЛАТЫ И НАЧИСЛЕНИЯ ==================
 
 def _ensure_payments_table():
     with get_conn() as conn:
@@ -355,9 +355,12 @@ def _ensure_payments_table():
                     comment TEXT NOT NULL,
                     payment_date DATE DEFAULT CURRENT_DATE,
                     created_at TIMESTAMPTZ DEFAULT NOW(),
-                    created_by BIGINT
+                    created_by BIGINT,
+                    record_type TEXT DEFAULT 'payout'
                 )
             """)
+            # Миграция на случай, если таблица уже существует
+            cur.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS record_type TEXT DEFAULT 'payout'")
 
 @routes.post('/api/payments/add')
 async def handle_payment_add(request):
@@ -371,21 +374,39 @@ async def handle_payment_add(request):
     amount = float(body.get("amount", 0))
     comment = (body.get("comment") or "").strip()
     
-    if target_uid <= 0:
-        return web.json_response({"error": "Выберите сотрудника"}, status=400)
-    if amount <= 0:
-        return web.json_response({"error": "Сумма должна быть больше нуля"}, status=400)
-    if not comment:
-        return web.json_response({"error": "Комментарий обязателен"}, status=400)
+    if target_uid <= 0: return web.json_response({"error": "Выберите сотрудника"}, status=400)
+    if amount <= 0: return web.json_response({"error": "Сумма должна быть больше нуля"}, status=400)
+    if not comment: return web.json_response({"error": "Комментарий обязателен"}, status=400)
         
     def _sync():
         _ensure_payments_table()
         with get_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO payments (user_id, amount, comment, created_by)
-                    VALUES (%s, %s, %s, %s)
-                """, (target_uid, amount, comment, user["user_id"]))
+                cur.execute("INSERT INTO payments (user_id, amount, comment, created_by, record_type) VALUES (%s, %s, %s, %s, 'payout')", (target_uid, amount, comment, user["user_id"]))
+    await _run(_sync)
+    return web.json_response({"ok": True})
+
+@routes.post('/api/accruals/add')
+async def handle_accrual_add(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    target_uid = _safe_int(body.get("user_id"))
+    amount = float(body.get("amount", 0))
+    comment = (body.get("comment") or "").strip()
+    
+    if target_uid <= 0: return web.json_response({"error": "Выберите сотрудника"}, status=400)
+    if amount <= 0: return web.json_response({"error": "Сумма должна быть больше нуля"}, status=400)
+    if not comment: return web.json_response({"error": "Комментарий обязателен"}, status=400)
+        
+    def _sync():
+        _ensure_payments_table()
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("INSERT INTO payments (user_id, amount, comment, created_by, record_type) VALUES (%s, %s, %s, %s, 'accrual')", (target_uid, amount, comment, user["user_id"]))
     await _run(_sync)
     return web.json_response({"ok": True})
 
@@ -412,6 +433,7 @@ async def handle_payments_list(request):
                 is_tu = _is_tu(u)
                 is_us = "управляющий сменой" in (u.get("position") or "").lower()
                 
+                # 1. Получаем сотрудников и отработанные часы
                 base = """
                     SELECT u.user_id, u.full_name, u.position, 
                            COALESCE(SUM(t.hours), 0) as total_hours, 
@@ -423,37 +445,53 @@ async def handle_payments_list(request):
                     WHERE COALESCE(u.is_fired, FALSE) = FALSE AND COALESCE(u.is_admin, FALSE) = FALSE AND u.login IS NOT NULL
                 """
                 params = [date_from, date_to]
-                
                 if is_us:
                     base += " AND u.restaurant_key = %s"; params.append(u.get("restaurant_key"))
                 elif is_tu:
                     base += " AND u.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id = %s)"; params.append(user["user_id"])
                 elif not is_hr_or_super:
                     base += " AND u.user_id = %s"; params.append(user["user_id"])
-                    
                 base += " GROUP BY u.user_id, u.full_name, u.position, u.rate, pr.rate, u.payment_type ORDER BY u.full_name"
                 cur.execute(base, params)
                 employees = [dict(r) for r in cur.fetchall()]
                 
+                # 2. Получаем историю (начисления и выплаты)
                 cur.execute("""
-                    SELECT user_id, SUM(amount) as total_paid
-                    FROM payments
-                    WHERE payment_date >= %s::date AND payment_date <= %s::date
-                    GROUP BY user_id
+                    SELECT p.id, p.user_id, p.amount, p.comment, p.payment_date, p.created_at, p.record_type, 
+                           u.full_name, creator.full_name as created_by_name
+                    FROM payments p
+                    JOIN users u ON p.user_id = u.user_id
+                    LEFT JOIN users creator ON p.created_by = creator.user_id
+                    WHERE p.payment_date >= %s::date AND p.payment_date <= %s::date
+                    ORDER BY p.created_at DESC
                 """, (date_from, date_to))
-                paid_map = {r["user_id"]: float(r["total_paid"] or 0) for r in cur.fetchall()}
+                history = [dict(r) for r in cur.fetchall()]
+                
+                # 3. Считаем суммы по каждому сотруднику
+                extra_map = {}
+                paid_map = {}
+                for h in history:
+                    uid = h["user_id"]
+                    amt = float(h["amount"])
+                    if h["record_type"] == 'accrual':
+                        extra_map[uid] = extra_map.get(uid, 0.0) + amt
+                    else:
+                        paid_map[uid] = paid_map.get(uid, 0.0) + amt
                 
                 for emp in employees:
                     hours = float(emp["total_hours"] or 0)
                     rate = float(emp["rate"] or 0)
-                    emp["accrued"] = rate if emp["payment_type"] == 'fixed' else (hours * rate)
+                    emp["timesheet_accrued"] = rate if emp["payment_type"] == 'fixed' else (hours * rate)
+                    emp["extra_accrued"] = extra_map.get(emp["user_id"], 0.0)
+                    emp["total_accrued"] = emp["timesheet_accrued"] + emp["extra_accrued"]
                     emp["paid"] = paid_map.get(emp["user_id"], 0.0)
+                    emp["remaining"] = emp["total_accrued"] - emp["paid"]
                     
-        return employees
+        return employees, history
 
     try:
-        employees = await _run(_sync)
-        return web.json_response({"employees": employees})
+        employees, history = await _run(_sync)
+        return web.json_response({"employees": employees, "history": history})
     except Exception as e:
-        logging.error(f"Error in payments: {traceback.format_exc()}")
+        logging.error(f"Error in payments list: {traceback.format_exc()}")
         return web.json_response({"error": f"Ошибка БД: {str(e)}"}, status=500)

@@ -1,5 +1,5 @@
 from aiohttp import web
-from psycopg2.extras import RealDictCursor
+from psycopg2.extras import RealDictCursor, Json
 from psycopg2 import sql
 from db import get_conn, _run
 from utils.auth_helpers import get_admin_user, denied, require_perm, _sync_user_has_perm, _is_tu, _sync_get_tu_rests
@@ -116,7 +116,6 @@ async def handle_admin_users(request):
         tu_rests = await _run(_sync_get_tu_rests, user["user_id"])
         
     users = await _run(_sync_list_users, search, fired, tu_rests)
-    # Для простоты пока опустим сборку медкнижек здесь, сделаем это позже
     return web.json_response({"users": users})
 
 def _sync_create_user(data, existing_logins, admin_id=None):
@@ -168,4 +167,140 @@ async def handle_admin_user_create(request):
     new_user.pop("password_hash", None)
     return web.json_response({"ok": True, "user": new_user})
 
-# ... (Остальные функции для увольнения, обновления, админов и дашборда идут сюда)
+def _sync_get_user_by_id(user_id):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT u.user_id, u.login, u.full_name, u.phone, u.birth_date, u.position, u.restaurant_key, r.name AS restaurant_name,
+                       COALESCE(u.is_admin, FALSE) AS is_admin, COALESCE(u.is_super_admin, FALSE) AS is_super_admin,
+                       COALESCE(u.is_fired, FALSE) AS is_fired, COALESCE(u.is_certified, FALSE) AS is_certified,
+                       u.medbook, u.created_at, u.last_seen_at, u.fired_at, u.fired_by, u.permissions,
+                       u.hire_date, u.citizenship_id, c.name AS citizenship_name, u.payment_type
+                FROM users u 
+                LEFT JOIN restaurants r ON u.restaurant_key = r.key 
+                LEFT JOIN citizenships c ON u.citizenship_id = c.id
+                WHERE u.user_id = %s
+            """, (user_id,))
+            row = cur.fetchone()
+            if row: return dict(row)
+            return None
+
+@routes.post('/api/admin/user/get')
+async def handle_admin_user_get(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    uid = int(body.get("user_id", 0))
+    if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    user = await _run(_sync_get_user_by_id, uid)
+    if not user: return web.json_response({"error": "not_found"}, status=404)
+    return web.json_response({"user": user})
+
+def _sync_update_user(uid, updates):
+    allowed_simple = {"full_name", "phone", "birth_date", "position", "restaurant_key", "is_certified", "hire_date", "citizenship_id", "payment_type"}
+    if "payment_type" in updates and updates["payment_type"] not in ('hourly', 'fixed'):
+        return "invalid_payment_type"
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            for k, v in updates.items():
+                if k in allowed_simple: 
+                    if k == "citizenship_id" and v == "": v = None
+                    elif k == "citizenship_id" and v is not None: v = int(v)
+                    query = sql.SQL("UPDATE users SET {} = %s WHERE user_id = %s").format(sql.Identifier(k))
+                    cur.execute(query, (v, uid))
+            if "password" in updates and updates["password"]:
+                pw = hash_password(updates["password"])
+                cur.execute("UPDATE users SET password_hash = %s WHERE user_id = %s", (pw, uid))
+            if "is_admin" in updates:
+                cur.execute("UPDATE users SET is_admin = %s WHERE user_id = %s", (bool(updates["is_admin"]), uid))
+                if not updates["is_admin"]: cur.execute("UPDATE users SET permissions = '{}'::jsonb, is_super_admin = FALSE WHERE user_id = %s", (uid,))
+    return None
+
+@routes.post('/api/admin/user/update')
+async def handle_admin_user_update(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "users_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    uid = int(body.get("user_id", 0))
+    if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    updates = body.get("updates") or {}
+    target = await _run(_sync_get_user_by_id, uid)
+    if not target: return web.json_response({"error": "not_found"}, status=404)
+    
+    if "is_admin" in updates and not admin["is_super_admin"]: return web.json_response({"error": "forbidden_is_admin"}, status=403)
+    if target.get("is_super_admin") and not admin["is_super_admin"]: return web.json_response({"error": "cannot_edit_super"}, status=403)
+    if "restaurant" in updates: updates["restaurant_key"] = updates.pop("restaurant")
+    
+    err_code = await _run(_sync_update_user, uid, updates)
+    if err_code: return web.json_response({"error": err_code}, status=400)
+    updated = await _run(_sync_get_user_by_id, uid)
+    return web.json_response({"ok": True, "user": updated})
+
+@routes.post('/api/admin/user/fire')
+async def handle_admin_user_fire(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "users_fire")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    uid = int(body.get("user_id", 0))
+    if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    target = await _run(_sync_get_user_by_id, uid)
+    if not target: return web.json_response({"error": "not_found"}, status=404)
+    
+    if target.get("is_super_admin"): return web.json_response({"error": "cannot_fire_super"}, status=403)
+    if target.get("is_admin") and not admin["is_super_admin"]: return web.json_response({"error": "cannot_fire_admin"}, status=403)
+    if uid == admin["user_id"]: return web.json_response({"error": "cannot_fire_self"}, status=403)
+    
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET is_fired = TRUE, fired_at = NOW(), fired_by = %s, is_admin = FALSE, is_super_admin = FALSE, permissions = '{}'::jsonb WHERE user_id = %s", (admin["login"], uid))
+            cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin["user_id"], "user_fire", "user", str(uid), f"by={admin['login']}"))
+    return web.json_response({"ok": True})
+
+@routes.post('/api/admin/user/restore')
+async def handle_admin_user_restore(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "users_fire")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    uid = int(body.get("user_id", 0))
+    if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET is_fired = FALSE, fired_at = NULL, fired_by = NULL WHERE user_id = %s", (uid,))
+            cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin["user_id"], "user_restore", "user", str(uid), f"by={admin['login']}"))
+    return web.json_response({"ok": True})
+
+def _sync_dashboard_stats():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM users WHERE COALESCE(is_admin, FALSE) = FALSE AND COALESCE(is_fired, FALSE) = FALSE AND login IS NOT NULL")
+            active = cur.fetchone()[0] or 0
+            cur.execute("SELECT COUNT(*) FROM users WHERE login IS NOT NULL")
+            total = cur.fetchone()[0] or 0
+            cur.execute("SELECT COUNT(*) FROM users WHERE COALESCE(is_fired, FALSE) = TRUE")
+            fired = cur.fetchone()[0] or 0
+            cur.execute("SELECT COUNT(*) FROM users WHERE created_at >= NOW() - INTERVAL '7 days' AND COALESCE(is_admin, FALSE) = FALSE AND COALESCE(is_fired, FALSE) = FALSE AND login IS NOT NULL")
+            new7 = cur.fetchone()[0] or 0
+            cur.execute("SELECT COUNT(*) FROM questions WHERE replied = FALSE")
+            questions_open = cur.fetchone()[0] or 0
+            cur.execute("SELECT COUNT(*) FROM news WHERE status = 'pending'")
+            news_pending = cur.fetchone()[0] or 0
+            cur.execute("SELECT COUNT(*) FROM standards WHERE status = 'pending'")
+            standards_pending = cur.fetchone()[0] or 0
+    return {"total": total, "active": active, "fired": fired, "new7": new7, "questions_open": questions_open, "news_pending": news_pending, "standards_pending": standards_pending}
+
+@routes.post('/api/admin/dashboard')
+async def handle_admin_dashboard(request):
+    user, err = await get_admin_user(request)
+    if err: return denied(err)
+    stats = await _run(_sync_dashboard_stats)
+    return web.json_response({"stats": stats})

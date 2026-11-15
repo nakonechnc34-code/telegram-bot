@@ -85,36 +85,23 @@ async def security_headers_middleware(request, handler):
     response.headers["Content-Security-Policy"] = csp
     return response
 
-# ============= STATIC FILE SERVING (HOT-RELOAD) =============
+# ============= STATIC FILE SERVING =============
 _INDEX_CACHE = {"data": None, "mtime": 0.0}
 _ADMIN_CACHE = {"data": None, "mtime": 0.0}
 _ACADEMY_CACHE = {"data": None, "mtime": 0.0}
 _TIMESHEET_CACHE = {"data": None, "mtime": 0.0}
 _STATIC_FILES_CACHE = {}
 
-def _get_frontend_paths(name):
-    """Возвращает список путей для поиска файла: сначала /data/frontend, потом встроенный"""
-    data_dir = os.getenv("DATA_DIR", "/data")
-    external = os.path.join(data_dir, "frontend", name)
-    bundled = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", name)
-    return [external, bundled]
-
 def _serve_file(name, cache):
-    paths = _get_frontend_paths(name)
-    
-    for p in paths:
-        if os.path.exists(p):
-            try:
-                mtime = os.stat(p).st_mtime
-                if cache["data"] is None or cache["mtime"] != mtime:
-                    with open(p, "rb") as f:
-                        cache["data"] = f.read()
-                    cache["mtime"] = mtime
-                    logging.info(f"🔄 Загружен обновленный файл: {p}")
-                return cache["data"]
-            except OSError:
-                continue
-    return None
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", name)
+    if not os.path.exists(p): return None
+    try:
+        mtime = os.stat(p).st_mtime
+        if cache["data"] is None or cache["mtime"] != mtime:
+            with open(p, "rb") as f: cache["data"] = f.read()
+            cache["mtime"] = mtime
+        return cache["data"]
+    except OSError: return None
 
 async def handle_index(request):
     data = _serve_file("index.html", _INDEX_CACHE)
@@ -137,8 +124,7 @@ async def handle_timesheet_page(request):
     return web.Response(body=data, content_type="text/html", charset="utf-8")
 
 async def _send_static_file(name, content_type):
-    if name not in _STATIC_FILES_CACHE:
-        _STATIC_FILES_CACHE[name] = {"data": None, "mtime": 0.0}
+    if name not in _STATIC_FILES_CACHE: _STATIC_FILES_CACHE[name] = {"data": None, "mtime": 0.0}
     data = _serve_file(name, _STATIC_FILES_CACHE[name])
     if not data: return web.Response(status=404)
     kwargs = {"body": data, "content_type": content_type}
@@ -194,16 +180,6 @@ async def main():
     port = int(os.getenv("PORT", 8080))
     init_pool()
     
-    # Создаем папку при старте, если её нет
-    data_dir = os.getenv("DATA_DIR", "/data")
-    ext_frontend = os.path.join(data_dir, "frontend")
-    if not os.path.exists(ext_frontend):
-        try:
-            os.makedirs(ext_frontend, exist_ok=True)
-            logging.info(f"📁 Создана папка для hot-reload: {ext_frontend}")
-        except Exception as e:
-            logging.warning(f"Не удалось создать {ext_frontend}: {e}")
-
     if os.getenv("RUN_MIGRATIONS", "true").lower() == "true":
         logging.info("⏳ Миграции пропущены")
 

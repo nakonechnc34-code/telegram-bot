@@ -1,343 +1,590 @@
-from aiohttp import web
-from psycopg2.extras import RealDictCursor
-from db import get_conn, _run
-from utils.auth_helpers import get_auth_user, denied, _is_hr_or_super, _is_tu
-import calendar
-from datetime import datetime
-import io
-from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wokker · Табель</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23F5F5F7'/%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%23007AFF' stroke-width='8'/%3E%3Cpath d='M25 50 A 25 25 0 0 0 75 50' fill='none' stroke='%23007AFF' stroke-width='12' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#F5F5F7">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #F5F5F7; --card-bg: #FFFFFF; --text-main: #1C1C1E; --text-muted: #8E8E93;
+    --accent: #007AFF; --accent-soft: #E5F0FF; 
+    --green: #34C759; --green-soft: #E8F8EB; 
+    --red: #FF3B30; --red-soft: #FFEBEA;
+    --amber: #FF9500; --amber-soft: #FFF8E1;
+    --border: rgba(0,0,0,0.06); --font: 'Inter', sans-serif;
+    --radius: 16px;
+    --sidebar: #1C1C1E; 
+    --sidebar-hover: #2C2C2E;
+  }
+  * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
+  body { font-family: var(--font); background: var(--bg); color: var(--text-main); height: 100vh; display: flex; overflow: hidden; font-size: 13px; }
+  
+  .layout { display: flex; width: 100%; height: 100vh; }
+  
+  .sidebar { width: 240px; background: var(--sidebar); color: #fff; display: flex; flex-direction: column; flex-shrink: 0; padding: 24px 16px; z-index: 10; }
+  .sidebar-logo { font-size: 18px; font-weight: 800; display: flex; align-items: center; gap: 8px; padding: 0 8px 24px; }
+  .nav-menu { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+  .tab { background: none; border: none; padding: 12px 16px; text-align: left; font-weight: 600; font-size: 14px; color: var(--text-muted); border-radius: 12px; cursor: pointer; transition: all 0.2s; }
+  .tab:hover { background: var(--sidebar-hover); color: #fff; transform: translateX(4px); }
+  .tab.active { background: var(--accent); color: #fff; box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3); }
+  
+  .sidebar-footer { margin-top: auto; padding-top: 16px; }
+  .btn-close { display: flex; align-items: center; justify-content: center; gap: 6px; background: rgba(255,255,255,0.1); color: #fff; padding: 12px; border-radius: 12px; text-decoration: none; font-weight: 600; font-size: 13px; transition: background 0.2s; }
+  .btn-close:hover { background: rgba(255,255,255,0.2); }
 
-routes = web.RouteTableDef()
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+  
+  .topbar { background: #fff; padding: 12px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.02); flex-shrink: 0; }
+  .left-controls { display: flex; align-items: center; gap: 16px; }
+  .view-toggle { display: flex; background: #F2F2F7; border-radius: 100px; padding: 2px; }
+  .view-toggle button { background: none; border: none; padding: 6px 16px; border-radius: 100px; font-weight: 600; font-size: 12px; color: var(--text-muted); cursor: pointer; transition: all 0.2s; }
+  .view-toggle button.active { background: #fff; color: var(--text-main); box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+  .month-selector { display: flex; align-items: center; gap: 8px; }
+  .month-selector button { background: #F2F2F7; border: none; width: 28px; height: 28px; border-radius: 50%; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s; }
+  .month-selector button:hover { background: #E5E5EA; }
+  .month-title { font-size: 14px; font-weight: 700; min-width: 130px; text-align: center; }
+  
+  .right-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .hint-text { font-size: 11px; color: var(--text-muted); font-weight: 500; }
+  .norm-badge { background:var(--amber-soft); color:#C77700; padding:6px 12px; border-radius:100px; font-weight:700; font-size:12px; }
+  .btn-tool { background: #F2F2F7; border: 1px solid transparent; padding: 8px 16px; border-radius: 100px; font-weight: 600; font-size: 12px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 6px; color: var(--text-main); }
+  .btn-tool:hover { background: #E5E5EA; }
+  .btn-tool.excel-btn { background: var(--green); color: #fff; border: none; }
+  .btn-tool.excel-btn:hover { opacity: 0.9; }
 
-def _safe_int(val, default=0):
-    try: return int(val)
-    except: return default
+  .content { padding: 16px; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .section { display: none; height: 100%; width: 100%; }
+  .section.active { display: flex; flex-direction: column; }
+  
+  .table-scroll { flex: 1; overflow: auto; background: #fff; border-radius: var(--radius); box-shadow: 0 4px 24px rgba(0,0,0,0.04); position: relative; width: 100%; border: 1px solid var(--border); }
+  
+  table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+  th, td { border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); font-size: 12px; text-align: center; vertical-align: middle; }
+  th:last-child, td:last-child { border-right: none; }
+  tr:last-child td { border-bottom: none; }
+  
+  thead th { position: sticky; top: 0; background: #F9F9FB; z-index: 10; font-weight: 700; color: var(--text-muted); font-size: 10px; text-transform: uppercase; padding: 10px 2px; letter-spacing: 0.5px; }
+  th.weekend { color: var(--red); }
 
-def _check_can_edit_user(editor_user, target_uid):
-    if editor_user["is_super_admin"] or (editor_user.get("position") or "").strip().upper() == "HR": 
-        return True
-    if editor_user["user_id"] == target_uid: 
-        return True
-    pos_lower = (editor_user.get("position") or "").lower()
-    is_tu = "территориальный" in pos_lower
-    is_us = "управляющий сменой" in pos_lower
-    if not (is_tu or is_us): return False
-    with get_conn() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT restaurant_key FROM users WHERE user_id = %s", (target_uid,))
-            target = cur.fetchone()
-            if not target: return False
-            if is_us: return target["restaurant_key"] == editor_user.get("restaurant_key")
-            elif is_tu:
-                cur.execute("SELECT key FROM restaurants WHERE territory_manager_id = %s AND key = %s", (editor_user["user_id"], target["restaurant_key"]))
-                return cur.fetchone() is not None
-    return False
+  th.sticky-col, td.sticky-col { position: sticky; left: 0; background: #fff; z-index: 5; text-align: left; border-right: 2px solid var(--border); padding: 8px 12px; white-space: normal; word-break: break-word; line-height: 1.3; width: 240px; min-width: 240px; max-width: 240px; }
+  thead th.sticky-col { z-index: 15; background: #F9F9FB; font-size: 10px; white-space: nowrap; }
+  
+  .rest-header td { background: #F5F5F7 !important; font-weight: 800; padding: 8px 12px; border-bottom: 1px solid var(--border); text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; color: var(--text-main); }
+  .rest-header td.sticky-col { background: #F5F5F7 !important; color: var(--accent); }
 
-# ================== МАТРИЦА ==================
-def _sync_timesheet_matrix(user_id, date_from, date_to):
-    with get_conn() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
-            u = cur.fetchone()
-            if not u: return []
-            
-            is_hr_or_super = _is_hr_or_super(u)
-            is_tu = _is_tu(u)
-            is_us = "управляющий сменой" in (u.get("position") or "").lower()
-            
-            query = """SELECT u.user_id, u.full_name, u.position, COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, u.payment_type, r.name AS restaurant_name
-                FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key
-                LEFT JOIN position_rates pr ON u.position = pr.position_name
-                WHERE COALESCE(u.is_fired, FALSE) = FALSE AND COALESCE(u.is_admin, FALSE) = FALSE AND u.login IS NOT NULL"""
-            params = []
-            if is_us:
-                query += " AND u.restaurant_key = %s"; params.append(u.get("restaurant_key"))
-            elif is_tu:
-                query += " AND u.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id = %s)"; params.append(user_id)
-            elif not is_hr_or_super:
-                query += " AND u.user_id = %s"; params.append(user_id)
-            query += " ORDER BY r.name, u.full_name"
-            
-            cur.execute(query, params)
-            employees = [dict(r) for r in cur.fetchall()]
-            if not employees: return []
-            
-            emp_ids = [e["user_id"] for e in employees]
-            cur.execute("SELECT user_id, work_date, hours, status FROM timesheet_records WHERE user_id = ANY(%s) AND work_date >= %s::date AND work_date <= %s::date", (emp_ids, date_from, date_to))
-            records = cur.fetchall()
-            
-            data_map = {eid: {} for eid in emp_ids}
-            for r in records:
-                data_map[r["user_id"]][str(r["work_date"].day)] = {"h": float(r["hours"] or 0), "s": r["status"] or "work"}
-            for e in employees:
-                e["data"] = data_map[e["user_id"]]
-            return employees
+  .cell-input { width: 100%; border: 2px solid transparent; border-radius: 6px; text-align: center; font-weight: 600; font-size: 13px; background: transparent; transition: all 0.2s; outline: none; padding: 4px; }
+  .cell-input:hover { background: #F2F2F7; }
+  .cell-input:focus { background: #fff; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .cell-input.direct-input { width: 100%; height: 100%; min-height: 32px; border: 2px solid transparent; text-align: center; font-weight: 700; font-size: 13px; background: transparent; border-radius: 0; padding: 0; }
+  .cell-input.direct-input:focus { background: #fff; border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 
-@routes.post('/api/timesheet/matrix')
-async def handle_timesheet_matrix(request):
-    user, err = await get_auth_user(request)
-    if err: return denied(err)
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+  .col-total { font-weight: 800; background: #FAFCFF; width: 80px; font-size: 14px; color: var(--text-main); border-left: 1px solid var(--border); }
+
+  .settings-container { padding: 24px; background: #fff; border-radius: var(--radius); box-shadow: 0 4px 24px rgba(0,0,0,0.04); max-width: 600px; margin: 0 auto; width: 100%; border: 1px solid var(--border); }
+  .settings-title { font-size: 18px; font-weight: 800; margin-bottom: 20px; }
+  .setting-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .setting-row:last-child { border-bottom: none; }
+  .setting-row span { font-weight: 600; font-size: 14px; }
+  .setting-row input { width: 120px; text-align: right; padding: 8px 12px; border: 1px solid #E5E5EA; border-radius: 8px; font-size: 14px; outline: none; transition: all 0.2s; }
+  .setting-row input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .btn-save-settings { width: 100%; background: var(--accent); color: #fff; border-radius: 12px; padding: 16px; font-size: 15px; font-weight: 700; margin-top: 24px; border: none; cursor: pointer; transition: background 0.2s; }
+  .btn-save-settings:hover { background: #0062CC; }
+
+  .save-indicator { position: fixed; bottom: 24px; right: 24px; background: var(--text-main); color: #fff; padding: 12px 24px; border-radius: 100px; font-weight: 600; font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); opacity: 0; transform: translateY(10px); transition: all 0.3s; pointer-events: none; z-index: 100; }
+  .save-indicator.show { opacity: 1; transform: translateY(0); }
+  .loader { text-align: center; padding: 40px; color: var(--text-muted); font-weight: 600; font-size: 14px; }
+
+  @media (max-width: 900px) {
+    body { flex-direction: column; overflow: auto; height: auto; min-height: 100vh; }
+    .layout { flex-direction: column; height: auto; }
+    .sidebar { width: 100%; padding: 12px; flex-direction: row; align-items: center; justify-content: space-between; height: auto; }
+    .sidebar-logo { padding: 0; font-size: 16px; }
+    .nav-menu { flex-direction: row; gap: 4px; flex: none; overflow-x: auto; }
+    .tab { padding: 8px 12px; font-size: 13px; white-space: nowrap; }
+    .tab:hover { transform: none; }
+    .sidebar-footer { display: none; }
+    .main { height: auto; flex: 1; overflow: visible; }
+    .topbar { padding: 12px; flex-direction: column; align-items: stretch; }
+    .left-controls, .right-controls { justify-content: center; }
+    .content { padding: 12px; overflow: visible; }
+    .table-scroll { max-height: none; overflow-x: auto; }
+    table { width: max-content; min-width: 100%; }
+    th.sticky-col, td.sticky-col { width: 160px; min-width: 160px; max-width: 160px; padding: 8px; }
+    .hint-text { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">⏱ Табель</div>
+    <nav class="nav-menu">
+      <button class="tab active" data-sec="tab-sheet">Табель</button>
+      <button class="tab" data-sec="tab-reports">Отчёты</button>
+      <button class="tab" data-sec="tab-settings">Настройки</button>
+    </nav>
+    <div class="sidebar-footer">
+      <a href="/" class="btn-close">← На портал</a>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="left-controls">
+        <div class="view-toggle" id="view-toggle-wrapper">
+          <button class="active" onclick="setViewMode('month')">Месяц</button>
+          <button onclick="setViewMode('week')">Неделя</button>
+        </div>
+        <div class="month-selector">
+          <button onclick="changePeriod(-1)">←</button>
+          <div class="month-title" id="current-period-title">Месяц</div>
+          <button onclick="changePeriod(1)">→</button>
+        </div>
+      </div>
+      
+      <div class="right-controls" id="right-controls-wrapper">
+        <div class="hint-text">В — отпуск, Б — больничный, Н — прогул</div>
+        <div class="norm-badge" id="norm-label">Норма: - ч</div>
+        <button class="btn-tool" id="fill-btn" onclick="fillWeekdays()">⚡ Заполнить будни</button>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="section active" id="tab-sheet">
+        <div class="table-scroll" id="matrix-container">
+          <div class="loader">Загрузка данных...</div>
+        </div>
+      </div>
+
+      <div class="section" id="tab-reports">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <h2 style="font-size: 18px; font-weight: 700;">Отчёт за период</h2>
+          <button class="btn-tool excel-btn" onclick="downloadExcel()">📥 Скачать в Excel</button>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th class="sticky-col">Сотрудник</th><th>Должность</th><th>Часов</th><th>Ставка</th><th>К оплате (₽)</th></tr></thead>
+            <tbody id="report-list">
+              <tr><td colspan="5" class="loader">Загрузка...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="section" id="tab-settings">
+        <div class="settings-container">
+          <div class="settings-title">Ставки по должностям</div>
+          <div id="settings-list">
+            <div class="loader">Загрузка...</div>
+          </div>
+          <button class="btn-save-settings" onclick="saveSettings()">Сохранить настройки</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="save-indicator" id="save-indicator">✓ Сохранено</div>
+
+<script>
+const TOKEN_KEY = 'wokker_staff_token';
+let CURRENT_DATE = new Date();
+let CURRENT_MONTH = CURRENT_DATE.getMonth() + 1;
+let CURRENT_YEAR = CURRENT_DATE.getFullYear();
+let CURRENT_WEEK_START = getMonday(new Date());
+
+let VIEW_MODE = 'month';
+let EMPLOYEES_DATA = [];
+let SETTINGS_DATA = [];
+
+const $ = id => document.getElementById(id);
+const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
+
+async function api(path, body) {
+  const payload = { webToken: getToken() };
+  if (body && typeof body === 'object') Object.assign(payload, body);
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (res.status === 401) { window.location.href = '/'; throw new Error('unauthorized'); }
+  if (!res.ok) {
+    let msg = 'error';
+    try { const j = await res.json(); msg = j.error || msg; } catch (e) {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+function showSaveIndicator() {
+  const ind = $('save-indicator');
+  ind.classList.add('show');
+  setTimeout(() => ind.classList.remove('show'), 2000);
+}
+
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    t.classList.add('active');
+    $(t.dataset.sec).classList.add('active');
     
-    date_from = body.get("date_from")
-    date_to = body.get("date_to")
-    if not date_from or not date_to:
-        month = _safe_int(body.get("month", datetime.now().month))
-        year = _safe_int(body.get("year", datetime.now().year))
-        last_day = calendar.monthrange(year, month)[1]
-        date_from = f"{year}-{month:02d}-01"
-        date_to = f"{year}-{month:02d}-{last_day:02d}"
-        
-    employees = await _run(_sync_timesheet_matrix, user["user_id"], date_from, date_to)
-    return web.json_response({"employees": employees})
-
-# ================== СОХРАНЕНИЕ ЯЧЕЕК ==================
-def _sync_save_cell(user_id, target_uid, work_date, hours, status):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            if hours <= 0 and status == 'work':
-                cur.execute("DELETE FROM timesheet_records WHERE user_id = %s AND work_date = %s", (target_uid, work_date))
-            else:
-                cur.execute("""INSERT INTO timesheet_records (user_id, work_date, hours, status, updated_at) VALUES (%s, %s, %s, %s, NOW())
-                    ON CONFLICT (user_id, work_date) DO UPDATE SET hours = EXCLUDED.hours, status = EXCLUDED.status, updated_at = NOW()""", (target_uid, work_date, hours, status))
-
-@routes.post('/api/timesheet/save_cell')
-async def handle_timesheet_save_cell(request):
-    user, err = await get_auth_user(request)
-    if err: return denied(err)
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    if (t.dataset.sec === 'tab-settings') {
+      $('view-toggle-wrapper').style.visibility = 'hidden';
+      $('current-period-title').style.visibility = 'hidden';
+      $('right-controls-wrapper').style.visibility = 'hidden';
+    } else {
+      $('view-toggle-wrapper').style.visibility = 'visible';
+      $('current-period-title').style.visibility = 'visible';
+      $('right-controls-wrapper').style.visibility = 'visible';
+    }
     
-    target_uid = _safe_int(body.get("user_id"))
-    work_date = body.get("work_date")
-    hours = float(body.get("hours", 0))
-    status = body.get("status", "work")
-    
-    if not work_date or target_uid <= 0: return web.json_response({"error": "invalid_data"}, status=400)
-    allowed = await _run(_check_can_edit_user, user, target_uid)
-    if not allowed: return web.json_response({"error": "forbidden_edit_other"}, status=403)
-    
-    await _run(_sync_save_cell, user["user_id"], target_uid, work_date, hours, status)
-    return web.json_response({"ok": True})
+    if (t.dataset.sec === 'tab-sheet') loadMatrix();
+    if (t.dataset.sec === 'tab-reports') loadReports();
+    if (t.dataset.sec === 'tab-settings') loadSettings();
+  });
+});
 
-def _sync_bulk_save_cells(user_id, cells):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            for cell in cells:
-                target_uid = cell.get("user_id")
-                work_date = cell.get("work_date")
-                hours = cell.get("hours", 0)
-                status = cell.get("status", "work")
-                if not work_date or not target_uid: continue
-                if hours <= 0 and status == 'work':
-                    cur.execute("DELETE FROM timesheet_records WHERE user_id = %s AND work_date = %s", (target_uid, work_date))
-                else:
-                    cur.execute("""INSERT INTO timesheet_records (user_id, work_date, hours, status, updated_at) VALUES (%s, %s, %s, %s, NOW())
-                        ON CONFLICT (user_id, work_date) DO UPDATE SET hours = EXCLUDED.hours, status = EXCLUDED.status, updated_at = NOW()""", (target_uid, work_date, hours, status))
+function getMonday(d) {
+  d = new Date(d);
+  var day = d.getDay(),
+      diff = d.getDate() - day + (day == 0 ? -6 : 1);
+  return new Date(d.setDate(diff));
+}
 
-@routes.post('/api/timesheet/bulk_save')
-async def handle_timesheet_bulk_save(request):
-    user, err = await get_auth_user(request)
-    if err: return denied(err)
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    
-    cells = body.get("cells") or []
-    if not cells: return web.json_response({"ok": True})
-    for cell in cells:
-        allowed = await _run(_check_can_edit_user, user, cell.get("user_id"))
-        if not allowed: return web.json_response({"error": "forbidden_edit_other"}, status=403)
-    await _run(_sync_bulk_save_cells, user["user_id"], cells)
-    return web.json_response({"ok": True})
+function formatDate(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
 
-# ================== ОТЧЕТЫ И EXCEL ==================
-def _sync_reports(user_id, date_from, date_to):
-    with get_conn() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
-            u = cur.fetchone()
-            is_hr_or_super = _is_hr_or_super(u)
-            is_tu = _is_tu(u)
-            is_us = "управляющий сменой" in (u.get("position") or "").lower()
-            
-            base = """SELECT u.full_name, u.position, r.name AS restaurant_name, SUM(t.hours) as total_hours, 
-                       COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, u.payment_type,
-                       CASE WHEN u.payment_type = 'fixed' THEN COALESCE(NULLIF(u.rate, 0), pr.rate, 0)
-                            ELSE (SUM(t.hours) * COALESCE(NULLIF(u.rate, 0), pr.rate, 0)) END as total_salary
-                FROM users u JOIN timesheet_records t ON u.user_id = t.user_id
-                LEFT JOIN restaurants r ON u.restaurant_key = r.key
-                LEFT JOIN position_rates pr ON u.position = pr.position_name
-                WHERE COALESCE(u.is_fired, FALSE) = FALSE AND u.login IS NOT NULL
-                  AND t.work_date >= %s::date AND t.work_date <= %s::date"""
-            params = [date_from, date_to]
-            if is_us:
-                base += " AND u.restaurant_key = %s"; params.append(u.get("restaurant_key"))
-            elif is_tu:
-                base += " AND u.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id = %s)"; params.append(user_id)
-            elif not is_hr_or_super:
-                base += " AND u.user_id = %s"; params.append(user_id)
-            base += " GROUP BY u.user_id, u.full_name, u.position, r.name, u.rate, pr.rate, u.payment_type ORDER BY r.name, u.full_name"
-            
-            cur.execute(base, params)
-            return [dict(r) for r in cur.fetchall()]
+function formatDateShort(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}.${pad(d.getMonth()+1)}`;
+}
 
-@routes.post('/api/timesheet/reports')
-async def handle_timesheet_reports(request):
-    user, err = await get_auth_user(request)
-    if err: return denied(err)
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    
-    date_from = body.get("date_from")
-    date_to = body.get("date_to")
-    if not date_from or not date_to:
-        month = _safe_int(body.get("month", datetime.now().month))
-        year = _safe_int(body.get("year", datetime.now().year))
-        last_day = calendar.monthrange(year, month)[1]
-        date_from = f"{year}-{month:02d}-01"
-        date_to = f"{year}-{month:02d}-{last_day:02d}"
-        
-    report = await _run(_sync_reports, user["user_id"], date_from, date_to)
-    return web.json_response({"report": report})
+function getPeriodDates() {
+  if (VIEW_MODE === 'month') {
+    const start = new Date(CURRENT_YEAR, CURRENT_MONTH - 1, 1);
+    const end = new Date(CURRENT_YEAR, CURRENT_MONTH, 0);
+    return { start, end };
+  } else {
+    const start = new Date(CURRENT_WEEK_START);
+    const end = new Date(CURRENT_WEEK_START.getTime() + 6 * 86400000);
+    return { start, end };
+  }
+}
 
-@routes.get('/api/timesheet/export_excel')
-async def handle_timesheet_export_excel(request):
-    # Для GET запроса токен берем из query-параметров (get_auth_user это поддерживает)
-    user, err = await get_auth_user(request)
-    if err: return denied(err)
-    
-    date_from = request.query.get("date_from")
-    date_to = request.query.get("date_to")
-    if not date_from or not date_to:
-        return web.Response(text="Укажите даты", status=400)
+function calculateNorm(start, end) {
+  let workDays = 0;
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const dayOfWeek = d.getDay();
+    if (dayOfWeek >= 1 && dayOfWeek <= 5) workDays++;
+  }
+  return workDays * 8;
+}
 
-    report = await _run(_sync_reports, user["user_id"], date_from, date_to)
+function updatePeriodTitle() {
+  const { start, end } = getPeriodDates();
+  const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+  let title = '';
+  if (VIEW_MODE === 'month') {
+    title = `${months[CURRENT_MONTH - 1]} ${CURRENT_YEAR}`;
+  } else {
+    title = `${formatDateShort(start)} — ${formatDateShort(end)}`;
+  }
+  $('current-period-title').textContent = title;
+  const norm = calculateNorm(start, end);
+  $('norm-label').textContent = `Норма: ${norm} ч`;
+}
 
-    # Генерация Excel
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Табель"
+function setViewMode(mode) {
+  VIEW_MODE = mode;
+  document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.view-toggle button')[mode === 'month' ? 0 : 1].classList.add('active');
+  
+  if (mode === 'week') {
+    CURRENT_WEEK_START = getMonday(new Date(CURRENT_YEAR, CURRENT_MONTH - 1, 15));
+  } else {
+    CURRENT_MONTH = CURRENT_WEEK_START.getMonth() + 1;
+    CURRENT_YEAR = CURRENT_WEEK_START.getFullYear();
+  }
+  updatePeriodTitle();
+  loadMatrix();
+}
 
-    header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="1C1C1E", end_color="1C1C1E", fill_type="solid")
-    border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-    center_align = Alignment(horizontal="center", vertical="center")
+function changePeriod(delta) {
+  if (VIEW_MODE === 'month') {
+    let m = CURRENT_MONTH + delta;
+    let y = CURRENT_YEAR;
+    if (m > 12) { m = 1; y++; }
+    if (m < 1) { m = 12; y--; }
+    CURRENT_MONTH = m;
+    CURRENT_YEAR = y;
+  } else {
+    CURRENT_WEEK_START.setDate(CURRENT_WEEK_START.getDate() + delta * 7);
+  }
+  updatePeriodTitle();
+  const activeSec = document.querySelector('.section.active').id;
+  if (activeSec === 'tab-sheet') loadMatrix();
+  if (activeSec === 'tab-reports') loadReports();
+}
 
-    headers = ["Сотрудник", "Должность", "Ресторан", "Часов", "Ставка (₽)", "К оплате (₽)"]
-    ws.append(headers)
-    
-    for col_num, header in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col_num)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = center_align
-        cell.border = border
+async function loadMatrix() {
+  $('matrix-container').innerHTML = '<div class="loader">Загрузка табеля...</div>';
+  const { start, end } = getPeriodDates();
+  const dateFrom = formatDate(start);
+  const dateTo = formatDate(end);
 
-    for r in report:
-        row_data = [
-            r.get("full_name", ""),
-            r.get("position", ""),
-            r.get("restaurant_name", ""),
-            float(r.get("total_hours", 0)),
-            "Оклад" if r.get("payment_type") == 'fixed' else float(r.get("rate", 0)),
-            float(r.get("total_salary", 0))
-        ]
-        ws.append(row_data)
-        current_row = ws.max_row
-        for col_num in range(1, 7):
-            cell = ws.cell(row=current_row, column=col_num)
-            cell.border = border
-            if col_num >= 4:
-                cell.alignment = Alignment(horizontal="right", vertical="center")
+  try {
+    const res = await api('/api/timesheet/matrix', { date_from: dateFrom, date_to: dateTo });
+    EMPLOYEES_DATA = res.employees || [];
+    renderMatrix();
+  } catch (e) {
+    $('matrix-container').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
+  }
+}
 
-    for col in ws.columns:
-        max_length = 0
-        column = col[0].column_letter
-        for cell in col:
-            try:
-                if len(str(cell.value)) > max_length:
-                    max_length = len(str(cell.value))
-            except: pass
-        ws.column_dimensions[column].width = max_length + 2
+function getCellDisplayValue(c) {
+  if (c.s === 'vacation') return 'В';
+  if (c.s === 'sick') return 'Б';
+  if (c.s === 'absent') return 'Н';
+  return c.h || '';
+}
 
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
+function renderMatrix() {
+  if (!EMPLOYEES_DATA.length) {
+    $('matrix-container').innerHTML = '<div class="loader">Нет сотрудников для отображения</div>';
+    return;
+  }
+  const { start, end } = getPeriodDates();
+  const grouped = {};
+  EMPLOYEES_DATA.forEach(emp => {
+    const rest = emp.restaurant_name || 'Без ресторана';
+    if (!grouped[rest]) grouped[rest] = [];
+    grouped[rest].push(emp);
+  });
 
-    filename = f"Табель_{date_from}_{date_to}.xlsx"
-    return web.Response(
-        body=output.read(),
-        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
-    )
+  let thead = `<thead><tr><th class="sticky-col">Сотрудник</th>`;
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const dayOfWeek = d.getDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    thead += `<th class="${isWeekend ? 'weekend' : ''}">${d.getDate()}<br><span style="font-size:9px;">${['Вс','Пн','Вт','Ср','Чт','Пт','Сб'][dayOfWeek]}</span></th>`;
+  }
+  let dayCount = 0;
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) dayCount++;
+  thead += `<th class="col-total">Часов</th></tr></thead>`;
 
-# ================== НАСТРОЙКИ ==================
-def _sync_settings_get(user_id):
-    with get_conn() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
-            u = cur.fetchone()
-            if not u or not _is_hr_or_super(u): return []
-            cur.execute("""SELECT p.name AS position_name, COALESCE(pr.rate, 0) AS rate
-                FROM positions p LEFT JOIN position_rates pr ON p.name = pr.position_name
-                WHERE p.is_archived = FALSE ORDER BY p.sort, p.name""")
-            return [dict(r) for r in cur.fetchall()]
+  let tbody = '<tbody>';
+  for (const [restName, employees] of Object.entries(grouped)) {
+    tbody += `<tr class="rest-header"><td class="sticky-col">📍 ${esc(restName)}</td><td colspan="${dayCount + 1}"></td></tr>`;
+    employees.forEach(emp => {
+      tbody += `<tr data-uid="${emp.user_id}"><td class="sticky-col" title="${esc(emp.full_name)}"><b>${esc(emp.full_name)}</b><br><span style="font-size:11px; color:var(--text-muted);">${esc(emp.position || '')}</span></td>`;
+      let totalHours = 0;
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dayNum = d.getDate();
+        const cellData = emp.data[dayNum] || { h: '', s: 'work' };
+        if (cellData.s === 'work') totalHours += parseFloat(cellData.h || 0);
+        else if (cellData.s === 'vacation' || cellData.s === 'sick') totalHours += 8;
+        tbody += `<td style="padding:0; background: ${cellData.s !== 'work' ? 'var(--bg)' : 'transparent'};">
+          <input type="text" class="cell-input direct-input" 
+                 data-uid="${emp.user_id}" data-day="${dayNum}"
+                 value="${getCellDisplayValue(cellData)}"
+                 title="В = отпуск, Б = больничный, Н = прогул"
+                 onchange="saveCellDirect(this)"
+                 onfocus="this.select()"
+                 onkeydown="if(event.key==='Enter') this.blur()"
+                 style="color: ${cellData.s !== 'work' ? 'var(--text-muted)' : 'var(--text-main)'};">
+        </td>`;
+      }
+      tbody += `<td class="col-total total-hours">${totalHours}</td></tr>`;
+    });
+  }
+  tbody += '</tbody>';
+  $('matrix-container').innerHTML = `<table>${thead}${tbody}</table>`;
+}
 
-@routes.post('/api/timesheet/settings')
-async def handle_timesheet_settings_get(request):
-    user, err = await get_auth_user(request)
-    if err: return denied(err)
-    settings = await _run(_sync_settings_get, user["user_id"])
-    return web.json_response({"settings": settings})
+async function saveCellDirect(inp) {
+  const uid = parseInt(inp.dataset.uid);
+  const day = parseInt(inp.dataset.day);
+  let val = inp.value.trim().toUpperCase();
+  let hours = 0;
+  let status = 'work';
 
-@routes.post('/api/timesheet/settings/save')
-async def handle_timesheet_settings_save(request):
-    user, err = await get_auth_user(request)
-    if err: return denied(err)
-    if not _is_hr_or_super(user): return web.json_response({"error": "forbidden"}, status=403)
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    
-    position_name = (body.get("position_name") or "").strip()
-    rate = float(body.get("rate", 0))
-    if not position_name: return web.json_response({"error": "invalid_position"}, status=400)
-    
-    def _sync():
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""INSERT INTO position_rates (position_name, rate) VALUES (%s, %s)
-                    ON CONFLICT (position_name) DO UPDATE SET rate = EXCLUDED.rate""", (position_name, rate))
-    await _run(_sync)
-    return web.json_response({"ok": True})
+  if (val === 'В') { status = 'vacation'; hours = 8; inp.value = 'В'; }
+  else if (val === 'Б') { status = 'sick'; hours = 8; inp.value = 'Б'; }
+  else if (val === 'Н') { status = 'absent'; hours = 0; inp.value = 'Н'; }
+  else if (val === '') { status = 'work'; hours = 0; inp.value = ''; }
+  else { status = 'work'; hours = parseFloat(val.replace(',', '.')) || 0; inp.value = hours || ''; }
 
-@routes.post('/api/timesheet/employees')
-async def handle_timesheet_employees(request):
-    user, err = await get_auth_user(request)
-    if err: return denied(err)
-    
-    def _sync():
-        with get_conn() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT * FROM users WHERE user_id = %s", (user["user_id"],))
-                u = cur.fetchone()
-                is_hr_or_super = _is_hr_or_super(u)
-                is_tu = _is_tu(u)
-                is_us = "управляющий сменой" in (u.get("position") or "").lower()
-                if not (is_hr_or_super or is_tu or is_us): return []
-                
-                query = """SELECT u.user_id, u.full_name, u.position, r.name AS restaurant_name
-                    FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key
-                    WHERE COALESCE(u.is_fired, FALSE) = FALSE AND COALESCE(u.is_admin, FALSE) = FALSE AND u.login IS NOT NULL"""
-                params = []
-                if is_us:
-                    query += " AND u.restaurant_key = %s"; params.append(u.get("restaurant_key"))
-                elif is_tu:
-                    query += " AND u.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id = %s)"; params.append(user["user_id"])
-                query += " ORDER BY u.full_name"
-                cur.execute(query, params)
-                return [dict(r) for r in cur.fetchall()]
-                
-    employees = await _run(_sync)
-    return web.json_response({"employees": employees})
+  const { start } = getPeriodDates();
+  const targetDate = new Date(start.getFullYear(), start.getMonth(), day);
+  if (day < start.getDate()) targetDate.setMonth(targetDate.getMonth() + 1);
+  const dateStr = formatDate(targetDate);
+
+  try {
+    await api('/api/timesheet/save_cell', { user_id: uid, work_date: dateStr, hours: hours, status: status });
+    const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
+    if (emp) {
+      emp.data[day] = { h: hours, s: status };
+      inp.style.background = status !== 'work' ? 'var(--bg)' : 'transparent';
+      inp.style.color = status !== 'work' ? 'var(--text-muted)' : 'var(--text-main)';
+      let totalHours = 0;
+      for (const key in emp.data) {
+        const c = emp.data[key];
+        if (c.s === 'work') totalHours += parseFloat(c.h || 0);
+        else if (c.s === 'vacation' || c.s === 'sick') totalHours += 8;
+      }
+      const row = inp.closest('tr');
+      if (row) {
+        const totalCell = row.querySelector('.total-hours');
+        if (totalCell) totalCell.textContent = totalHours;
+      }
+    }
+    showSaveIndicator();
+  } catch (err) {
+    alert('Ошибка сохранения: ' + err.message);
+    const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
+    if (emp && emp.data[day]) inp.value = getCellDisplayValue(emp.data[day]);
+  }
+}
+
+async function fillWeekdays() {
+  if (!confirm('Заполнить все будние дни в выбранном периоде по 8 часов?')) return;
+  const { start, end } = getPeriodDates();
+  const cellsToSave = [];
+  EMPLOYEES_DATA.forEach(emp => {
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dayOfWeek = d.getDay();
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      const dayNum = d.getDate();
+      const cellData = emp.data[dayNum];
+      if (!isWeekend && (!cellData || !cellData.h)) {
+        cellsToSave.push({ user_id: emp.user_id, work_date: formatDate(d), hours: 8, status: 'work' });
+      }
+    }
+  });
+  if (!cellsToSave.length) { alert('Все будние дни уже заполнены.'); return; }
+  
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = 'Заполняем...';
+  try {
+    await api('/api/timesheet/bulk_save', { cells: cellsToSave });
+    await loadMatrix();
+    showSaveIndicator();
+  } catch (e) {
+    alert('Ошибка массового заполнения: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⚡ Заполнить будни';
+  }
+}
+
+async function loadReports() {
+  $('report-list').innerHTML = '<tr><td colspan="5" class="loader">Загрузка...</td></tr>';
+  const { start, end } = getPeriodDates();
+  const dateFrom = formatDate(start);
+  const dateTo = formatDate(end);
+
+  try {
+    const res = await api('/api/timesheet/reports', { date_from: dateFrom, date_to: dateTo });
+    const report = res.report || [];
+    if (!report.length) {
+      $('report-list').innerHTML = '<tr><td colspan="5" class="loader">Нет данных за этот период</td></tr>';
+      return;
+    }
+    $('report-list').innerHTML = report.map(r => `
+      <tr>
+        <td class="sticky-col"><b>${esc(r.full_name)}</b></td>
+        <td>${esc(r.position || '—')}</td>
+        <td style="font-weight:700; color:var(--accent);">${r.total_hours} ч</td>
+        <td>${r.payment_type === 'fixed' ? 'Оклад' : r.rate + ' ₽'}</td>
+        <td style="font-weight:700; color:var(--green);">${(r.total_salary || 0).toLocaleString('ru-RU')} ₽</td>
+      </tr>
+    `).join('');
+  } catch (e) {
+    $('report-list').innerHTML = '<tr><td colspan="5" class="loader" style="color:var(--red);">Ошибка загрузки</td></tr>';
+  }
+}
+
+async function downloadExcel() {
+  const { start, end } = getPeriodDates();
+  const dateFrom = formatDate(start);
+  const dateTo = formatDate(end);
+  const token = getToken();
+  try {
+    showSaveIndicator();
+    const res = await fetch(`/api/timesheet/export_excel?date_from=${dateFrom}&date_to=${dateTo}&token=${token}`);
+    if (!res.ok) throw new Error('Ошибка сервера');
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = `Табель_${dateFrom}_${dateTo}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  } catch (e) {
+    alert('Не удалось скачать файл: ' + e.message);
+  }
+}
+
+async function loadSettings() {
+  $('settings-list').innerHTML = '<div class="loader">Загрузка...</div>';
+  try {
+    const res = await api('/api/timesheet/settings', {});
+    SETTINGS_DATA = res.settings || [];
+    if (!SETTINGS_DATA.length) {
+      $('settings-list').innerHTML = '<div class="loader">У вас нет прав для просмотра настроек, либо нет доступных должностей.</div>';
+      return;
+    }
+    $('settings-list').innerHTML = SETTINGS_DATA.map(s => `
+      <div class="setting-row">
+        <span>${esc(s.position_name)}</span>
+        <input type="number" class="setting-input" data-pos="${esc(s.position_name)}" value="${s.rate}" min="0" step="10" placeholder="0 ₽">
+      </div>
+    `).join('');
+  } catch (e) {
+    $('settings-list').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
+  }
+}
+
+async function saveSettings() {
+  const inputs = document.querySelectorAll('.setting-input');
+  if (!inputs.length) return;
+  const btn = document.querySelector('.btn-save-settings');
+  btn.disabled = true;
+  btn.textContent = 'Сохранение...';
+  try {
+    for (const inp of inputs) {
+      const posName = inp.dataset.pos;
+      const rate = parseFloat(inp.value) || 0;
+      await api('/api/timesheet/settings/save', { position_name: posName, rate });
+    }
+    showSaveIndicator();
+  } catch (e) {
+    alert('Ошибка сохранения: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Сохранить настройки';
+  }
+}
+
+(async function init() {
+  if (!getToken()) { window.location.href = '/'; return; }
+  updatePeriodTitle();
+  await loadMatrix();
+})();
+</script>
+</body>
+</html>

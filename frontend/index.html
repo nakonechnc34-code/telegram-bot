@@ -72,7 +72,13 @@
   /* ВИДЖЕТ ЗАРПЛАТЫ */
   .salary-card { background: #fff; border-radius: var(--radius-sm); padding: 24px; margin-top: 20px; box-shadow: var(--shadow); }
   .salary-title { font-size: 18px; font-weight: 800; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; }
-  .salary-date { font-size: 12px; color: var(--text-muted); font-weight: 600; background: var(--bg); padding: 4px 10px; border-radius: 8px; text-transform: uppercase; }
+  .salary-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; background: #F2F2F7; padding: 6px; border-radius: 14px; }
+  .salary-toggle { display: flex; background: #E5E5EA; border-radius: 10px; padding: 2px; }
+  .salary-toggle button { padding: 6px 12px; font-size: 12px; font-weight: 700; border-radius: 8px; color: var(--text-muted); }
+  .salary-toggle button.active { background: #fff; color: var(--text-main); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+  .salary-nav { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 12px; color: var(--text-main);}
+  .salary-nav button { width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; align-items: center; justify-content: center; font-size: 12px; }
+  
   .salary-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px dashed #F2F2F7; }
   .salary-row:last-child { border-bottom: none; padding-bottom: 0; }
   .salary-lbl { color: var(--text-muted); font-weight: 500; font-size: 15px; }
@@ -386,6 +392,15 @@ function fmtDate(iso) {
   } catch (e) { return iso; }
 }
 
+function formatDate(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+function formatDateShort(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}.${pad(d.getMonth()+1)}`;
+}
+
 /* ================== AUTH ================== */
 function showLogin() {
   $('main-app').style.display = 'none';
@@ -523,6 +538,112 @@ function markNewsSeen() {
   if (badge) badge.classList.remove('show');
 }
 
+/* ================== SALARY WIDGET ================== */
+let SALARY_MODE = 'month';
+let SALARY_OFFSET = 0;
+
+function setSalaryMode(mode) {
+  SALARY_MODE = mode;
+  SALARY_OFFSET = 0;
+  renderSalaryWidgetData();
+}
+
+function changeSalaryOffset(delta) {
+  SALARY_OFFSET += delta;
+  renderSalaryWidgetData();
+}
+
+async function renderSalaryWidgetData() {
+  const widget = $('salary-widget');
+  if (!widget) return;
+
+  const now = new Date();
+  const monthsArr = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+  
+  let dateFrom, dateTo, navText;
+  let title = SALARY_MODE === 'month' ? 'Выплаты за месяц' : 'Выплаты за неделю';
+
+  if (SALARY_MODE === 'month') {
+      const target = new Date(now.getFullYear(), now.getMonth() + SALARY_OFFSET, 1);
+      const y = target.getFullYear();
+      const m = target.getMonth();
+      const lastDay = new Date(y, m + 1, 0).getDate();
+      
+      dateFrom = `${y}-${String(m+1).padStart(2, '0')}-01`;
+      dateTo = `${y}-${String(m+1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      navText = `${monthsArr[m]} ${y}`;
+  } else {
+      const d = new Date();
+      d.setDate(d.getDate() + (SALARY_OFFSET * 7));
+      const day = d.getDay() || 7; 
+      const monday = new Date(d);
+      monday.setDate(d.getDate() - day + 1);
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      
+      dateFrom = formatDate(monday);
+      dateTo = formatDate(sunday);
+      navText = `${formatDateShort(monday)} - ${formatDateShort(sunday)}`;
+  }
+
+  widget.style.display = 'block';
+  widget.innerHTML = `
+    <div class="salary-title">
+      <span>${title}</span>
+    </div>
+    <div class="salary-controls">
+      <div class="salary-toggle">
+        <button class="${SALARY_MODE === 'month' ? 'active' : ''}" onclick="setSalaryMode('month')">Месяц</button>
+        <button class="${SALARY_MODE === 'week' ? 'active' : ''}" onclick="setSalaryMode('week')">Неделя</button>
+      </div>
+      <div class="salary-nav">
+        <button onclick="changeSalaryOffset(-1)">←</button>
+        <span style="min-width: 80px; text-align:center;">${navText}</span>
+        <button onclick="changeSalaryOffset(1)">→</button>
+      </div>
+    </div>
+    <div id="salary-content" class="loader" style="padding: 20px; font-size: 14px; color: var(--text-muted); text-align: center;">Загрузка...</div>
+  `;
+
+  try {
+    const res = await api('/api/payments/employee', { 
+        user_id: BOOT.profile.user_id, 
+        date_from: dateFrom, 
+        date_to: dateTo 
+    });
+    
+    const formatMoney = (v) => (v || 0).toLocaleString('ru-RU') + ' ₽';
+    const hours = res.total_hours || 0;
+    const accrued = res.timesheet_accrued || 0;
+    const extra = res.extra_accrued || 0;
+    const remaining = res.remaining || 0;
+
+    widget.querySelector('#salary-content').outerHTML = `
+        <div id="salary-content">
+            <div class="salary-row">
+                <span class="salary-lbl">Отработано часов</span>
+                <span class="salary-val">${hours} ч</span>
+            </div>
+            <div class="salary-row">
+                <span class="salary-lbl">Начислено по табелю</span>
+                <span class="salary-val">${formatMoney(accrued)}</span>
+            </div>
+            ${extra > 0 ? `
+            <div class="salary-row">
+                <span class="salary-lbl">Доб. начисление</span>
+                <span class="salary-val" style="color:var(--accent);">+${formatMoney(extra)}</span>
+            </div>` : ''}
+            <div class="salary-row" style="margin-top: 8px; padding-top: 12px; border-top: 1px solid #F2F2F7;">
+                <span class="salary-lbl" style="font-weight: 700; color: var(--text-main);">К выплате</span>
+                <span class="salary-val amber">${formatMoney(remaining)}</span>
+            </div>
+        </div>
+    `;
+  } catch (e) {
+    widget.querySelector('#salary-content').innerHTML = `<div style="color:var(--red-text); font-size:14px;">Ошибка загрузки: ${esc(e.message)}</div>`;
+  }
+}
+
 /* ================== PROFILE ================== */
 function renderProfileFromBoot() {
   const box = $('profile-box');
@@ -589,7 +710,7 @@ function renderProfileFromBoot() {
         <div class="status-pill"><span class="dot"></span> Активен</div>
       </div>
 
-      <!-- ВИДЖЕТ ЗАРПЛАТЫ (только для сотрудников) -->
+      <!-- ВИДЖЕТ ЗАРПЛАТЫ -->
       ${!p.is_admin ? `<div class="salary-card" id="salary-widget" style="display:none;"></div>` : ''}
 
       <div class="info-section">
@@ -666,75 +787,9 @@ function renderProfileFromBoot() {
   if (adminBtn) adminBtn.addEventListener('click', () => { window.location.href = '/admin'; });
 
   if (!p.is_admin) {
-    loadSalaryWidget();
+    renderSalaryWidgetData();
   }
   initPushNotifications();
-}
-
-async function loadSalaryWidget() {
-  const widget = $('salary-widget');
-  if (!widget) return;
-
-  const now = new Date();
-  const month = now.getMonth() + 1;
-  const year = now.getFullYear();
-  const lastDay = new Date(year, month, 0).getDate();
-  const dateFrom = `${year}-${String(month).padStart(2, '0')}-01`;
-  const dateTo = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-  const monthsArr = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
-
-  try {
-    const res = await api('/api/payments/employee', { 
-        user_id: BOOT.profile.user_id, 
-        date_from: dateFrom, 
-        date_to: dateTo 
-    });
-    
-    const formatMoney = (v) => (v || 0).toLocaleString('ru-RU') + ' ₽';
-    const hours = res.total_hours || 0;
-    const accrued = res.timesheet_accrued || 0;
-    const extra = res.extra_accrued || 0;
-    const paid = res.paid || 0;
-    const remaining = res.remaining || 0;
-
-    widget.style.display = 'block';
-    widget.innerHTML = `
-      <div class="salary-title">
-        Мои выплаты
-        <span class="salary-date">${monthsArr[month-1]}</span>
-      </div>
-      <div class="salary-row">
-        <span class="salary-lbl">Отработано часов</span>
-        <span class="salary-val">${hours} ч</span>
-      </div>
-      <div class="salary-row">
-        <span class="salary-lbl">Начислено по табелю</span>
-        <span class="salary-val">${formatMoney(accrued)}</span>
-      </div>
-      ${extra > 0 ? `
-      <div class="salary-row">
-        <span class="salary-lbl">Доп. начисления</span>
-        <span class="salary-val" style="color:var(--accent);">+${formatMoney(extra)}</span>
-      </div>` : ''}
-      <div class="salary-row">
-        <span class="salary-lbl">Выплачено</span>
-        <span class="salary-val green">${formatMoney(paid)}</span>
-      </div>
-      <div class="salary-row" style="margin-top: 8px; padding-top: 12px; border-top: 1px solid #F2F2F7;">
-        <span class="salary-lbl" style="font-weight: 700; color: var(--text-main);">К выплате</span>
-        <span class="salary-val amber">${formatMoney(remaining)}</span>
-      </div>
-    `;
-  } catch (e) {
-    console.error('Salary widget error', e);
-    widget.style.display = 'block';
-    widget.innerHTML = `
-      <div style="text-align: center; color: var(--red-text); font-size: 14px; padding: 10px;">
-        Не удалось загрузить данные о выплатах.<br>
-        <span style="font-size:12px;opacity:0.8;">${esc(e.message)}</span>
-      </div>
-    `;
-  }
 }
 
 async function logout() {

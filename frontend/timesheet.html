@@ -81,25 +81,31 @@
   }
   .view-toggle button.active { background: #fff; color: var(--text-main); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
   
-  .month-selector { display: flex; align-items: center; gap: 12px; }
-  .month-selector button { 
-    background: #F3F4F6; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 16px; 
-    cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s; color: var(--text-main);
+  .month-selector { display: flex; align-items: center; }
+  .month-picker-input {
+    background: #F3F4F6;
+    border: 1px solid var(--border);
+    padding: 10px 16px;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-main);
+    font-family: var(--font);
+    outline: none;
+    cursor: pointer;
+    transition: all 0.2s;
   }
-  .month-selector button:hover { background: #E5E7EB; }
-  .month-title { font-size: 18px; font-weight: 800; min-width: 150px; text-align: center; letter-spacing: -0.5px; }
+  .month-picker-input:focus {
+    border-color: var(--accent);
+    background: #fff;
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .month-title { font-size: 18px; font-weight: 800; color: var(--text-main); }
   
   .right-controls { display: flex; align-items: center; gap: 16px; }
   .legend { display: flex; gap: 12px; font-size: 12px; color: var(--text-muted); font-weight: 500; }
   .legend-item { display: flex; align-items: center; gap: 6px; }
   .legend-color { width: 12px; height: 12px; border-radius: 4px; }
-  
-  .btn-tool { 
-    background: var(--text-main); color: #fff; border: none; padding: 12px 24px; 
-    border-radius: 100px; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.2s; 
-    display: flex; align-items: center; gap: 8px; 
-  }
-  .btn-tool:hover { opacity: 0.8; transform: translateY(-1px); }
 
   .content { padding: 24px 32px; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
   .section { display: none; height: 100%; width: 100%; }
@@ -204,7 +210,7 @@
   }
   .btn-save-settings:hover { opacity: 0.9; }
 
-  /* МОДАЛЬНОЕ ОКНО (Карточка сотрудника) */
+  /* МОДАЛЬНОЕ ОКНО */
   .modal-overlay { 
     position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); 
     display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; 
@@ -233,7 +239,6 @@
   .emp-stat-label { color: var(--text-muted); font-weight: 500; }
   .emp-stat-value { font-weight: 700; text-align: right; }
   .emp-stat-value.highlight { color: var(--green-text); font-size: 18px; }
-  .emp-badge { display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 12px; font-weight: 700; background: var(--accent-soft); color: var(--accent); }
 
   .save-indicator { 
     position: fixed; bottom: 32px; right: 32px; background: var(--text-main); color: #fff; 
@@ -294,17 +299,20 @@
   </aside>
 
   <div class="main">
-    <div class="topbar">
-      <div class="left-controls">
+    <div class="topbar" id="topbar-wrapper">
+      <div class="left-controls" id="left-controls-wrapper">
         <div class="view-toggle" id="view-toggle-wrapper">
           <button class="active" onclick="setViewMode('month')">Месяц</button>
           <button onclick="setViewMode('week')">Неделя</button>
         </div>
-        <div class="month-selector">
-          <button onclick="changePeriod(-1)">←</button>
-          <div class="month-title" id="current-period-title">Месяц</div>
-          <button onclick="changePeriod(1)">→</button>
+        
+        <!-- Календарь для месяца -->
+        <div class="month-selector" id="month-selector-wrapper">
+          <input type="month" id="month-picker" class="month-picker-input" onchange="changeMonthFromPicker(this.value)">
         </div>
+
+        <!-- Текст для недели -->
+        <div class="month-title" id="current-period-title" style="display: none;"></div>
       </div>
       
       <div class="right-controls" id="right-controls-wrapper">
@@ -323,7 +331,6 @@
         </div>
       </div>
 
-      <!-- ВКЛАДКА ОТЧЕТЫ (ОЧИЩЕНА) -->
       <div class="section" id="tab-reports">
         <div class="empty-state">
           <div class="empty-icon">📊</div>
@@ -345,7 +352,7 @@
   </div>
 </div>
 
-<!-- МОДАЛЬНОЕ ОКНО: КАРТОЧКА СОТРУДНИКА -->
+<!-- МОДАЛЬНОЕ ОКНО -->
 <div class="modal-overlay" id="emp-modal" onclick="if(event.target===this) closeEmpModal()">
   <div class="emp-card">
     <div class="emp-card-header">
@@ -424,14 +431,13 @@ document.querySelectorAll('.tab').forEach(t => {
     t.classList.add('active');
     $(t.dataset.sec).classList.add('active');
     
+    // Скрываем панель управления, если это вкладка Отчеты или Настройки
     if (t.dataset.sec === 'tab-settings' || t.dataset.sec === 'tab-reports') {
-      $('view-toggle-wrapper').style.visibility = 'hidden';
-      $('current-period-title').style.visibility = 'hidden';
-      $('right-controls-wrapper').style.visibility = 'hidden';
+      $('left-controls-wrapper').style.display = 'none';
+      $('right-controls-wrapper').style.display = 'none';
     } else {
-      $('view-toggle-wrapper').style.visibility = 'visible';
-      $('current-period-title').style.visibility = 'visible';
-      $('right-controls-wrapper').style.visibility = 'visible';
+      $('left-controls-wrapper').style.display = 'flex';
+      $('right-controls-wrapper').style.display = 'flex';
     }
     
     if (t.dataset.sec === 'tab-sheet') loadMatrix();
@@ -470,14 +476,26 @@ function getPeriodDates() {
 
 function updatePeriodTitle() {
   const { start, end } = getPeriodDates();
-  const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
-  let title = '';
+  
   if (VIEW_MODE === 'month') {
-    title = `${months[CURRENT_MONTH - 1]} ${CURRENT_YEAR}`;
+    $('month-selector-wrapper').style.display = 'block';
+    $('current-period-title').style.display = 'none';
+    $('month-picker').value = `${CURRENT_YEAR}-${String(CURRENT_MONTH).padStart(2, '0')}`;
   } else {
-    title = `${formatDateShort(start)} — ${formatDateShort(end)}`;
+    $('month-selector-wrapper').style.display = 'none';
+    $('current-period-title').style.display = 'block';
+    $('current-period-title').textContent = `${formatDateShort(start)} — ${formatDateShort(end)}`;
   }
-  $('current-period-title').textContent = title;
+}
+
+// Новая функция для календаря
+function changeMonthFromPicker(val) {
+  if (!val) return;
+  const parts = val.split('-');
+  CURRENT_YEAR = parseInt(parts[0]);
+  CURRENT_MONTH = parseInt(parts[1]);
+  updatePeriodTitle();
+  loadMatrix();
 }
 
 function setViewMode(mode) {
@@ -493,22 +511,6 @@ function setViewMode(mode) {
   }
   updatePeriodTitle();
   loadMatrix();
-}
-
-function changePeriod(delta) {
-  if (VIEW_MODE === 'month') {
-    let m = CURRENT_MONTH + delta;
-    let y = CURRENT_YEAR;
-    if (m > 12) { m = 1; y++; }
-    if (m < 1) { m = 12; y--; }
-    CURRENT_MONTH = m;
-    CURRENT_YEAR = y;
-  } else {
-    CURRENT_WEEK_START.setDate(CURRENT_WEEK_START.getDate() + delta * 7);
-  }
-  updatePeriodTitle();
-  const activeSec = document.querySelector('.section.active').id;
-  if (activeSec === 'tab-sheet') loadMatrix();
 }
 
 async function loadMatrix() {
@@ -560,7 +562,6 @@ function renderMatrix() {
   for (const [restName, employees] of Object.entries(grouped)) {
     tbody += `<tr class="rest-header"><td class="sticky-col">📍 ${esc(restName)}</td><td colspan="${dayCount + 1}"></td></tr>`;
     employees.forEach(emp => {
-      // Сделали имя кликабельным, убрали должность
       tbody += `<tr data-uid="${emp.user_id}">
         <td class="sticky-col">
           <span class="emp-name" onclick="openEmpModal(${emp.user_id})">${esc(emp.full_name)}</span>
@@ -651,7 +652,6 @@ function openEmpModal(uid) {
   const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
   if (!emp) return;
 
-  // Считаем общее количество часов
   let totalHours = 0;
   for (const key in emp.data) {
     const c = emp.data[key];
@@ -659,12 +659,10 @@ function openEmpModal(uid) {
     else if (c.s === 'vacation' || c.s === 'sick') totalHours += 8;
   }
 
-  // Считаем зарплату
   const rate = parseFloat(emp.rate) || 0;
   const isFixed = emp.payment_type === 'fixed';
   let salary = isFixed ? rate : (totalHours * rate);
 
-  // Заполняем модалку
   $('modal-emp-name').textContent = emp.full_name;
   $('modal-emp-pos').textContent = emp.position || 'Должность не указана';
   $('modal-emp-type').textContent = isFixed ? 'Фиксированный оклад' : 'Почасовая';
@@ -672,7 +670,6 @@ function openEmpModal(uid) {
   $('modal-emp-hours').textContent = `${totalHours} ч`;
   $('modal-emp-salary').textContent = `${salary.toLocaleString('ru-RU')} ₽`;
 
-  // Показываем окно
   $('emp-modal').classList.add('show');
 }
 

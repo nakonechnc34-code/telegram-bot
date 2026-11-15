@@ -466,7 +466,12 @@ async function api(path, body) {
   if (res.status === 401) { clearToken(); showLogin(); throw new Error('unauthorized'); }
   if (!res.ok) {
     let msg = 'Ошибка на сервере';
-    try { const j = await res.json(); msg = j.detail || j.error || msg; } catch (e) {}
+    try { 
+        const j = await res.json(); 
+        msg = j.detail || j.error || msg; 
+    } catch (e) {
+        msg = `Ошибка сервера (код ${res.status})`;
+    }
     throw new Error(msg);
   }
   return res.json();

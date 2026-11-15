@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Wokker · Табель</title>
+<title>Табель · Wokker</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23F5F5F7'/%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%23007AFF' stroke-width='8'/%3E%3Cpath d='M25 50 A 25 25 0 0 0 75 50' fill='none' stroke='%23007AFF' stroke-width='12' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#F5F5F7">
@@ -88,7 +88,7 @@
     padding: 10px 16px;
     border-radius: 12px;
     font-size: 15px;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--text-main);
     font-family: var(--font);
     outline: none;
@@ -103,9 +103,9 @@
   .month-title { font-size: 18px; font-weight: 800; color: var(--text-main); }
   
   .right-controls { display: flex; align-items: center; gap: 16px; }
-  .legend { display: flex; gap: 12px; font-size: 12px; color: var(--text-muted); font-weight: 500; }
+  .legend { display: flex; gap: 16px; font-size: 13px; color: var(--text-muted); font-weight: 500; }
   .legend-item { display: flex; align-items: center; gap: 6px; }
-  .legend-color { width: 12px; height: 12px; border-radius: 4px; }
+  .legend-color { width: 10px; height: 10px; border-radius: 50%; }
 
   .content { padding: 24px 32px; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
   .section { display: none; height: 100%; width: 100%; }
@@ -120,9 +120,9 @@
   table { border-collapse: separate; border-spacing: 0; width: 100%; table-layout: fixed; }
   
   th { 
-    position: sticky; top: 0; background: #F9FAFB; z-index: 10; font-weight: 700; 
-    color: var(--text-muted); font-size: 11px; text-transform: uppercase; padding: 16px 4px; 
-    letter-spacing: 0.5px; border-bottom: 1px solid var(--border); text-align: center;
+    position: sticky; top: 0; background: #F9FAFB; z-index: 10; font-weight: 600; 
+    color: var(--text-muted); font-size: 12px; padding: 16px 4px; 
+    border-bottom: 1px solid var(--border); text-align: center;
   }
   
   th.weekend { color: var(--red); background: #FEF2F2; }
@@ -133,33 +133,33 @@
     white-space: normal; word-break: break-word; line-height: 1.4;
     width: 240px; min-width: 240px; max-width: 240px;
   }
-  thead th.sticky-col { z-index: 15; background: #F9FAFB; font-size: 11px; }
+  thead th.sticky-col { z-index: 15; background: #F9FAFB; font-size: 12px; }
   
   /* Кликабельное ФИО */
   .emp-name { 
-    font-weight: 700; font-size: 15px; color: var(--text-main); cursor: pointer; 
+    font-weight: 600; font-size: 15px; color: var(--text-main); cursor: pointer; 
     transition: color 0.2s; display: inline-block; 
   }
   .emp-name:hover { color: var(--accent); text-decoration: underline; }
 
   /* Группировка по ресторанам */
   .rest-header td { 
-    background: #F9FAFB !important; font-weight: 800; padding: 12px 20px; 
+    background: #F9FAFB !important; font-weight: 700; padding: 12px 20px; 
     border-bottom: 1px solid var(--border); border-top: 1px solid var(--border);
-    text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; color: var(--text-muted); 
+    text-transform: uppercase; font-size: 12px; color: var(--text-muted); 
   }
-  .rest-header td.sticky-col { background: #F9FAFB !important; color: var(--accent); }
+  .rest-header td.sticky-col { background: #F9FAFB !important; color: var(--text-main); }
 
   /* ЯЧЕЙКИ */
   td { 
     border-bottom: 1px solid var(--border); border-right: 1px solid #F3F4F6; 
-    vertical-align: middle; text-align: center; padding: 0; height: 56px;
+    vertical-align: middle; text-align: center; padding: 0; height: 52px;
   }
   td.weekend { background: #FAFAFA; }
   td:last-child { border-right: none; }
 
   .cell-input { 
-    width: 100%; height: 100%; min-height: 56px; border: 2px solid transparent; 
+    width: 100%; height: 100%; min-height: 52px; border: 2px solid transparent; 
     text-align: center; font-weight: 600; font-size: 14px; background: transparent; 
     transition: all 0.2s; outline: none; color: var(--text-main);
   }
@@ -176,7 +176,7 @@
 
   /* Итоговая колонка */
   .col-total { 
-    font-weight: 800; background: #F9FAFB; width: 100px; font-size: 15px; 
+    font-weight: 700; background: #F9FAFB; width: 100px; font-size: 15px; 
     color: var(--text-main); border-left: 1px solid var(--border); position: sticky; right: 0; z-index: 5;
   }
 
@@ -185,8 +185,11 @@
     display: flex; flex-direction: column; align-items: center; justify-content: center; 
     height: 100%; min-height: 400px; color: var(--text-muted); text-align: center; 
   }
-  .empty-icon { font-size: 64px; margin-bottom: 20px; opacity: 0.5; }
-  .empty-title { font-size: 20px; font-weight: 800; color: var(--text-main); margin-bottom: 8px; }
+  /* Современная SVG-иконка вместо смайлика */
+  .empty-icon-svg {
+    width: 64px; height: 64px; margin-bottom: 24px; color: #D1D5DB;
+  }
+  .empty-title { font-size: 20px; font-weight: 700; color: var(--text-main); margin-bottom: 8px; }
   .empty-desc { font-size: 15px; max-width: 400px; line-height: 1.5; }
 
   /* НАСТРОЙКИ */
@@ -195,10 +198,10 @@
     box-shadow: 0 4px 20px rgba(0,0,0,0.03); max-width: 600px; margin: 0 auto; 
     width: 100%; border: 1px solid var(--border); 
   }
-  .settings-title { font-size: 22px; font-weight: 800; margin-bottom: 24px; letter-spacing: -0.5px; }
+  .settings-title { font-size: 22px; font-weight: 700; margin-bottom: 24px; letter-spacing: -0.5px; }
   .setting-row { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--border); }
   .setting-row:last-child { border-bottom: none; }
-  .setting-row span { font-weight: 600; font-size: 15px; }
+  .setting-row span { font-weight: 500; font-size: 15px; }
   .setting-row input { 
     width: 140px; text-align: right; padding: 12px 16px; border: 1px solid var(--border); 
     border-radius: 12px; font-size: 15px; font-weight: 600; outline: none; transition: all 0.2s; background: #F9FAFB;
@@ -206,7 +209,7 @@
   .setting-row input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
   .btn-save-settings { 
     width: 100%; background: var(--text-main); color: #fff; border-radius: 12px; padding: 18px; 
-    font-size: 16px; font-weight: 700; margin-top: 32px; border: none; cursor: pointer; transition: opacity 0.2s; 
+    font-size: 16px; font-weight: 600; margin-top: 32px; border: none; cursor: pointer; transition: opacity 0.2s; 
   }
   .btn-save-settings:hover { opacity: 0.9; }
 
@@ -228,7 +231,7 @@
     padding: 24px 24px 20px; border-bottom: 1px solid var(--border); 
     display: flex; justify-content: space-between; align-items: flex-start; background: #F9FAFB;
   }
-  .emp-card-name { font-size: 22px; font-weight: 800; margin-bottom: 4px; letter-spacing: -0.5px; }
+  .emp-card-name { font-size: 22px; font-weight: 700; margin-bottom: 4px; letter-spacing: -0.5px; }
   .emp-card-pos { font-size: 14px; color: var(--text-muted); font-weight: 500; }
   .emp-card-close { background: #E5E7EB; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-main); transition: background 0.2s; }
   .emp-card-close:hover { background: #D1D5DB; }
@@ -237,25 +240,24 @@
   .emp-stat-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px dashed var(--border); }
   .emp-stat-row:last-child { border-bottom: none; padding-bottom: 0; }
   .emp-stat-label { color: var(--text-muted); font-weight: 500; }
-  .emp-stat-value { font-weight: 700; text-align: right; }
-  .emp-stat-value.highlight { color: var(--green-text); font-size: 18px; }
+  .emp-stat-value { font-weight: 600; text-align: right; }
+  .emp-stat-value.highlight { color: var(--green-text); font-size: 20px; font-weight: 700; }
 
   .save-indicator { 
     position: fixed; bottom: 32px; right: 32px; background: var(--text-main); color: #fff; 
-    padding: 14px 28px; border-radius: 100px; font-weight: 600; font-size: 14px; 
+    padding: 14px 28px; border-radius: 100px; font-weight: 500; font-size: 14px; 
     box-shadow: 0 10px 30px rgba(0,0,0,0.15); opacity: 0; transform: translateY(10px); 
     transition: all 0.3s; pointer-events: none; z-index: 100; 
   }
   .save-indicator.show { opacity: 1; transform: translateY(0); }
-  .loader { text-align: center; padding: 60px; color: var(--text-muted); font-weight: 600; font-size: 15px; }
+  .loader { text-align: center; padding: 60px; color: var(--text-muted); font-weight: 500; font-size: 15px; }
 
   /* Адаптивность */
   @media (max-width: 1024px) {
     .sidebar { width: 80px; padding: 24px 12px; }
-    .sidebar-logo { justify-content: center; padding: 0 0 24px; font-size: 24px; }
+    .sidebar-logo { justify-content: center; padding: 0 0 24px; font-size: 16px; }
     .sidebar-logo span { display: none; }
-    .tab { text-align: center; padding: 14px 0; font-size: 0; }
-    .tab::before { content: '•'; font-size: 24px; }
+    .tab { text-align: center; padding: 14px 0; font-size: 12px; }
     .sidebar-footer { display: none; }
     .legend { display: none; }
   }
@@ -268,7 +270,6 @@
     .sidebar-logo { padding: 0; font-size: 18px; }
     .nav-menu { flex-direction: row; gap: 8px; flex: none; }
     .tab { padding: 8px 16px; font-size: 14px; }
-    .tab::before { display: none; }
     
     .main { height: auto; flex: 1; overflow: visible; }
     .topbar { padding: 16px; flex-direction: column; align-items: stretch; }
@@ -287,7 +288,7 @@
 
 <div class="layout">
   <aside class="sidebar">
-    <div class="sidebar-logo">⏱ <span>Табель</span></div>
+    <div class="sidebar-logo">Wokker <span style="color: var(--text-muted); font-weight: 500; margin-left: 4px;">| Табель</span></div>
     <nav class="nav-menu">
       <button class="tab active" data-sec="tab-sheet">Табель</button>
       <button class="tab" data-sec="tab-reports">Отчёты</button>
@@ -306,20 +307,18 @@
           <button onclick="setViewMode('week')">Неделя</button>
         </div>
         
-        <!-- Календарь для месяца -->
         <div class="month-selector" id="month-selector-wrapper">
           <input type="month" id="month-picker" class="month-picker-input" onchange="changeMonthFromPicker(this.value)">
         </div>
 
-        <!-- Текст для недели -->
         <div class="month-title" id="current-period-title" style="display: none;"></div>
       </div>
       
       <div class="right-controls" id="right-controls-wrapper">
         <div class="legend">
-          <div class="legend-item"><div class="legend-color" style="background:var(--green-soft); border:1px solid var(--green)"></div> Отпуск (В)</div>
-          <div class="legend-item"><div class="legend-color" style="background:var(--amber-soft); border:1px solid var(--amber)"></div> Больничный (Б)</div>
-          <div class="legend-item"><div class="legend-color" style="background:var(--red-soft); border:1px solid var(--red)"></div> Прогул (Н)</div>
+          <div class="legend-item"><div class="legend-color" style="background:var(--green)"></div> Отпуск (В)</div>
+          <div class="legend-item"><div class="legend-color" style="background:var(--amber)"></div> Больничный (Б)</div>
+          <div class="legend-item"><div class="legend-color" style="background:var(--red)"></div> Прогул (Н)</div>
         </div>
       </div>
     </div>
@@ -333,9 +332,14 @@
 
       <div class="section" id="tab-reports">
         <div class="empty-state">
-          <div class="empty-icon">📊</div>
-          <div class="empty-title">Новые отчёты</div>
-          <div class="empty-desc">Здесь мы скоро построим новые дашборды и отчёты для бухгалтерии и HR. А пока данные скрыты.</div>
+          <!-- Аккуратная SVG иконка графика -->
+          <svg class="empty-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="3" y1="9" x2="21" y2="9"></line>
+            <line x1="9" y1="21" x2="9" y2="9"></line>
+          </svg>
+          <div class="empty-title">Раздел в разработке</div>
+          <div class="empty-desc">Здесь скоро появятся новые дашборды и отчёты для бухгалтерии и HR.</div>
         </div>
       </div>
 
@@ -376,14 +380,14 @@
         <span class="emp-stat-value" id="modal-emp-hours">—</span>
       </div>
       <div class="emp-stat-row" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
-        <span class="emp-stat-label" style="font-weight: 700; color: var(--text-main);">К выплате за период</span>
+        <span class="emp-stat-label" style="font-weight: 600; color: var(--text-main);">К выплате за период</span>
         <span class="emp-stat-value highlight" id="modal-emp-salary">— ₽</span>
       </div>
     </div>
   </div>
 </div>
 
-<div class="save-indicator" id="save-indicator">✓ Сохранено</div>
+<div class="save-indicator" id="save-indicator">Сохранено</div>
 
 <script>
 const TOKEN_KEY = 'wokker_staff_token';
@@ -431,7 +435,6 @@ document.querySelectorAll('.tab').forEach(t => {
     t.classList.add('active');
     $(t.dataset.sec).classList.add('active');
     
-    // Скрываем панель управления, если это вкладка Отчеты или Настройки
     if (t.dataset.sec === 'tab-settings' || t.dataset.sec === 'tab-reports') {
       $('left-controls-wrapper').style.display = 'none';
       $('right-controls-wrapper').style.display = 'none';
@@ -488,7 +491,6 @@ function updatePeriodTitle() {
   }
 }
 
-// Новая функция для календаря
 function changeMonthFromPicker(val) {
   if (!val) return;
   const parts = val.split('-');
@@ -560,7 +562,7 @@ function renderMatrix() {
 
   let tbody = '<tbody>';
   for (const [restName, employees] of Object.entries(grouped)) {
-    tbody += `<tr class="rest-header"><td class="sticky-col">📍 ${esc(restName)}</td><td colspan="${dayCount + 1}"></td></tr>`;
+    tbody += `<tr class="rest-header"><td class="sticky-col">${esc(restName)}</td><td colspan="${dayCount + 1}"></td></tr>`;
     employees.forEach(emp => {
       tbody += `<tr data-uid="${emp.user_id}">
         <td class="sticky-col">

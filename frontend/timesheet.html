@@ -522,16 +522,39 @@ async function saveCellDirect(inp) {
       status: status
     });
     
+    // Обновляем данные в локальной памяти
     const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
     if (emp) {
       emp.data[day] = { h: hours, s: status };
+      
+      // Меняем цвет ячейки
+      inp.style.background = status !== 'work' ? 'var(--bg)' : 'transparent';
+      inp.style.color = status !== 'work' ? 'var(--text-muted)' : 'var(--text-main)';
+      
+      // Пересчитываем сумму ТОЛЬКО этой строки
+      let totalHours = 0;
+      for (const key in emp.data) {
+        const c = emp.data[key];
+        if (c.s === 'work') totalHours += parseFloat(c.h || 0);
+        else if (c.s === 'vacation' || c.s === 'sick') totalHours += 8;
+      }
+      
+      // Обновляем итоговую ячейку в этой же строке
+      const row = inp.closest('tr');
+      if (row) {
+        const totalCell = row.querySelector('.total-hours');
+        if (totalCell) totalCell.textContent = totalHours;
+      }
     }
     
-    renderMatrix();
     showSaveIndicator();
   } catch (err) {
     alert('Ошибка сохранения: ' + err.message);
-    renderMatrix();
+    // Откат значения при ошибке
+    const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
+    if (emp && emp.data[day]) {
+       inp.value = getCellDisplayValue(emp.data[day]);
+    }
   }
 }
 

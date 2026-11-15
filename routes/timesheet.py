@@ -356,10 +356,16 @@ def _ensure_payments_table():
                     payment_date DATE DEFAULT CURRENT_DATE,
                     created_at TIMESTAMPTZ DEFAULT NOW(),
                     created_by BIGINT,
-                    record_type TEXT DEFAULT 'payout'
+                    record_type TEXT DEFAULT 'payout',
+                    status TEXT DEFAULT 'approved',
+                    proposed_by_name TEXT,
+                    approved_by_name TEXT
                 )
             """)
-            cur.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS record_type TEXT DEFAULT 'payout'")
+            # Миграции для существующих БД
+            cur.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'approved'")
+            cur.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS proposed_by_name TEXT")
+            cur.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS approved_by_name TEXT")
 
 @routes.post('/api/payments/add')
 async def handle_payment_add(request):
@@ -381,7 +387,10 @@ async def handle_payment_add(request):
         _ensure_payments_table()
         with get_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute("INSERT INTO payments (user_id, amount, comment, created_by, record_type) VALUES (%s, %s, %s, %s, 'payout')", (target_uid, amount, comment, user["user_id"]))
+                cur.execute("""
+                    INSERT INTO payments (user_id, amount, comment, created_by, record_type, status) 
+                    VALUES (%s, %s, %s, %s, 'payout', 'approved')
+                """, (target_uid, amount, comment, user["user_id"]))
     await _run(_sync)
     return web.json_response({"ok": True})
 
@@ -401,11 +410,56 @@ async def handle_accrual_add(request):
     if amount <= 0: return web.json_response({"error": "Сумма должна быть больше нуля"}, status=400)
     if not comment: return web.json_response({"error": "Комментарий обязателен"}, status=400)
         
+    is_hr_or_super = _is_hr_or_super(user)
+    status = 'approved' if is_hr_or_super else 'pending'
+    proposed_by_name = None if is_hr_or_super else user.get("full_name")
+
     def _sync():
         _ensure_payments_table()
         with get_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute("INSERT INTO payments (user_id, amount, comment, created_by, record_type) VALUES (%s, %s, %s, %s, 'accrual')", (target_uid, amount, comment, user["user_id"]))
+                cur.execute("""
+                    INSERT INTO payments (user_id, amount, comment, created_by, record_type, status, proposed_by_name) 
+                    VALUES (%s, %s, %s, %s, 'accrual', %s, %s)
+                """, (target_uid, amount, comment, user["user_id"], status, proposed_by_name))
+    await _run(_sync)
+    return web.json_response({"ok": True, "status": status})
+
+@routes.post('/api/accruals/approve')
+async def handle_accrual_approve(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    if not _is_hr_or_super(user): return web.json_response({"error": "forbidden"}, status=403)
+    
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    pid = _safe_int(body.get("id"))
+    if pid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE payments SET status = 'approved', approved_by_name = %s WHERE id = %s", (user.get("full_name"), pid))
+    await _run(_sync)
+    return web.json_response({"ok": True})
+
+@routes.post('/api/accruals/reject')
+async def handle_accrual_reject(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    if not _is_hr_or_super(user): return web.json_response({"error": "forbidden"}, status=403)
+    
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    pid = _safe_int(body.get("id"))
+    if pid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE payments SET status = 'rejected' WHERE id = %s", (pid,))
     await _run(_sync)
     return web.json_response({"ok": True})
 
@@ -453,10 +507,11 @@ async def handle_payments_list(request):
                 cur.execute(base, params)
                 employees = [dict(r) for r in cur.fetchall()]
                 
+                # Считаем ТОЛЬКО одобренные (approved) операции
                 cur.execute("""
                     SELECT user_id, record_type, SUM(amount) as total_amount
                     FROM payments
-                    WHERE payment_date >= %s::date AND payment_date <= %s::date
+                    WHERE payment_date >= %s::date AND payment_date <= %s::date AND status = 'approved'
                     GROUP BY user_id, record_type
                 """, (date_from, date_to))
                 
@@ -478,11 +533,23 @@ async def handle_payments_list(request):
                     emp["paid"] = paid_map.get(emp["user_id"], 0.0)
                     emp["remaining"] = emp["total_accrued"] - emp["paid"]
                     
-        return employees
+                # Получаем список на модерации (только для HR/Super)
+                pending = []
+                if is_hr_or_super:
+                    cur.execute("""
+                        SELECT p.id, p.user_id, u.full_name, p.amount, p.comment, p.payment_date, p.proposed_by_name
+                        FROM payments p
+                        JOIN users u ON p.user_id = u.user_id
+                        WHERE p.record_type = 'accrual' AND p.status = 'pending'
+                        ORDER BY p.created_at DESC
+                    """)
+                    pending = [dict(r) for r in cur.fetchall()]
+                    
+        return employees, pending, is_hr_or_super
 
     try:
-        employees = await _run(_sync)
-        return web.json_response({"employees": employees})
+        employees, pending, is_hr_or_super = await _run(_sync)
+        return web.json_response({"employees": employees, "pending": pending, "is_hr_or_super": is_hr_or_super})
     except Exception as e:
         logging.error(f"Error in payments list: {traceback.format_exc()}")
         return web.json_response({"error": f"Ошибка БД: {str(e)}"}, status=500)
@@ -506,7 +573,6 @@ async def handle_employee_finance(request):
         _ensure_payments_table()
         with get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # Данные о сотруднике и ставке
                 cur.execute("""
                     SELECT u.position, u.payment_type, COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate 
                     FROM users u 
@@ -516,7 +582,6 @@ async def handle_employee_finance(request):
                 emp = cur.fetchone()
                 if not emp: return None
 
-                # Часы по табелю
                 cur.execute("""
                     SELECT COALESCE(SUM(hours), 0) as total_hours 
                     FROM timesheet_records 
@@ -524,9 +589,10 @@ async def handle_employee_finance(request):
                 """, (target_uid, date_from, date_to))
                 total_hours = float(cur.fetchone()["total_hours"] or 0)
 
-                # История операций
+                # Получаем всю историю (включая pending и rejected, чтобы сотрудник видел статус)
                 cur.execute("""
-                    SELECT p.id, p.amount, p.comment, p.payment_date, p.record_type, p.created_at, creator.full_name as created_by_name
+                    SELECT p.id, p.amount, p.comment, p.payment_date, p.record_type, p.status, p.created_at, 
+                           creator.full_name as created_by_name, p.proposed_by_name, p.approved_by_name
                     FROM payments p
                     LEFT JOIN users creator ON p.created_by = creator.user_id
                     WHERE p.user_id = %s AND p.payment_date >= %s::date AND p.payment_date <= %s::date
@@ -534,8 +600,9 @@ async def handle_employee_finance(request):
                 """, (target_uid, date_from, date_to))
                 history = [dict(r) for r in cur.fetchall()]
 
-                extra_accrued = sum(float(h["amount"]) for h in history if h["record_type"] == 'accrual')
-                paid = sum(float(h["amount"]) for h in history if h["record_type"] == 'payout')
+                # Считаем баланс ТОЛЬКО по approved
+                extra_accrued = sum(float(h["amount"]) for h in history if h["record_type"] == 'accrual' and h["status"] == 'approved')
+                paid = sum(float(h["amount"]) for h in history if h["record_type"] == 'payout' and h["status"] == 'approved')
                 
                 rate = float(emp["rate"] or 0)
                 is_fixed = emp["payment_type"] == 'fixed'

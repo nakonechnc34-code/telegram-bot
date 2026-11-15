@@ -38,8 +38,40 @@
   
   * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
   body { font-family: var(--font); background: var(--bg); color: var(--text-main); height: 100vh; display: flex; overflow: hidden; font-size: 14px; }
-  
-  .layout { display: flex; width: 100%; height: 100vh; }
+
+  /* ================== ЭКРАН ВХОДА ================== */
+  #login-screen { 
+    position: fixed; inset: 0; background: var(--bg); 
+    display: none; align-items: center; justify-content: center; padding: 24px; z-index: 1000; 
+  }
+  .login-card { 
+    background: #fff; border-radius: var(--radius); padding: 40px 32px; 
+    box-shadow: 0 10px 40px rgba(0,0,0,0.08); width: 100%; max-width: 400px; text-align: center; 
+    animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .login-logo { 
+    width: 72px; height: 72px; border-radius: 20px; background: var(--accent-soft); 
+    margin: 0 auto 24px; display: flex; align-items: center; justify-content: center; 
+    font-size: 32px; font-weight: 800; color: var(--accent); 
+  }
+  .login-title { font-size: 26px; font-weight: 800; margin-bottom: 8px; letter-spacing: -1px; color: var(--text-main); }
+  .login-sub { font-size: 15px; color: var(--text-muted); margin-bottom: 32px; font-weight: 500; }
+  .login-input { 
+    width: 100%; border: 1px solid #E5E5EA; border-radius: 14px; padding: 16px; 
+    font-size: 16px; background: #FAFAFA; color: var(--text-main); font-weight: 600; 
+    margin-bottom: 16px; text-align: center; transition: all 0.3s; font-family: var(--font); outline: none;
+  }
+  .login-input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
+  .login-btn { 
+    width: 100%; background: var(--text-main); color: #fff; border-radius: 14px; padding: 18px; 
+    font-size: 16px; font-weight: 600; margin-top: 8px; border: none; cursor: pointer; transition: opacity 0.2s; font-family: var(--font);
+  }
+  .login-btn:hover { opacity: 0.9; }
+  .login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .login-error { color: var(--red); font-size: 14px; font-weight: 500; min-height: 20px; margin-top: 16px; }
+
+  /* ================== ОСНОВНОЙ ИНТЕРФЕЙС ================== */
+  .layout { display: none; width: 100%; height: 100vh; }
   
   /* САЙДБАР */
   .sidebar { 
@@ -56,13 +88,13 @@
   .tab:hover { background: #F3F4F6; color: var(--text-main); }
   .tab.active { background: var(--accent-soft); color: var(--accent); }
   
-  .sidebar-footer { margin-top: auto; padding-top: 20px; border-top: 1px solid var(--border); }
-  .btn-close { 
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    background: #F3F4F6; color: var(--text-main); padding: 14px; 
-    border-radius: 12px; text-decoration: none; font-weight: 600; font-size: 14px; transition: background 0.2s;
+  /* Кнопка выхода */
+  .logout-btn {
+    background: transparent; border: 1px solid var(--border); color: var(--text-muted);
+    padding: 12px; border-radius: 12px; font-weight: 600; font-size: 14px;
+    cursor: pointer; transition: all 0.2s; margin-top: auto;
   }
-  .btn-close:hover { background: #E5E7EB; }
+  .logout-btn:hover { background: #F3F4F6; color: var(--red); border-color: #FECACA; }
 
   /* ОСНОВНАЯ ЧАСТЬ */
   .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
@@ -83,23 +115,11 @@
   
   .month-selector { display: flex; align-items: center; }
   .month-picker-input {
-    background: #F3F4F6;
-    border: 1px solid var(--border);
-    padding: 10px 16px;
-    border-radius: 12px;
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--text-main);
-    font-family: var(--font);
-    outline: none;
-    cursor: pointer;
-    transition: all 0.2s;
+    background: #F3F4F6; border: 1px solid var(--border); padding: 10px 16px;
+    border-radius: 12px; font-size: 15px; font-weight: 600; color: var(--text-main);
+    font-family: var(--font); outline: none; cursor: pointer; transition: all 0.2s;
   }
-  .month-picker-input:focus {
-    border-color: var(--accent);
-    background: #fff;
-    box-shadow: 0 0 0 3px var(--accent-soft);
-  }
+  .month-picker-input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
   .month-title { font-size: 18px; font-weight: 800; color: var(--text-main); }
   
   .right-controls { display: flex; align-items: center; gap: 16px; }
@@ -185,10 +205,7 @@
     display: flex; flex-direction: column; align-items: center; justify-content: center; 
     height: 100%; min-height: 400px; color: var(--text-muted); text-align: center; 
   }
-  /* Современная SVG-иконка вместо смайлика */
-  .empty-icon-svg {
-    width: 64px; height: 64px; margin-bottom: 24px; color: #D1D5DB;
-  }
+  .empty-icon-svg { width: 64px; height: 64px; margin-bottom: 24px; color: #D1D5DB; }
   .empty-title { font-size: 20px; font-weight: 700; color: var(--text-main); margin-bottom: 8px; }
   .empty-desc { font-size: 15px; max-width: 400px; line-height: 1.5; }
 
@@ -258,7 +275,7 @@
     .sidebar-logo { justify-content: center; padding: 0 0 24px; font-size: 16px; }
     .sidebar-logo span { display: none; }
     .tab { text-align: center; padding: 14px 0; font-size: 12px; }
-    .sidebar-footer { display: none; }
+    .logout-btn { padding: 10px; font-size: 12px; }
     .legend { display: none; }
   }
 
@@ -270,6 +287,7 @@
     .sidebar-logo { padding: 0; font-size: 18px; }
     .nav-menu { flex-direction: row; gap: 8px; flex: none; }
     .tab { padding: 8px 16px; font-size: 14px; }
+    .logout-btn { margin-top: 0; padding: 8px 12px; }
     
     .main { height: auto; flex: 1; overflow: visible; }
     .topbar { padding: 16px; flex-direction: column; align-items: stretch; }
@@ -286,7 +304,21 @@
 </head>
 <body>
 
-<div class="layout">
+<!-- ЭКРАН ВХОДА -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">W</div>
+    <div class="login-title">Табель</div>
+    <div class="login-sub">Вход в систему</div>
+    <input class="login-input" id="login-login" type="text" placeholder="Логин" maxlength="5" autocomplete="username" style="text-transform: lowercase;">
+    <input class="login-input" id="login-password" type="password" placeholder="Пароль" autocomplete="current-password">
+    <button class="login-btn" id="login-btn">Войти</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<!-- ОСНОВНОЙ ИНТЕРФЕЙС -->
+<div class="layout" id="main-layout">
   <aside class="sidebar">
     <div class="sidebar-logo">Wokker <span style="color: var(--text-muted); font-weight: 500; margin-left: 4px;">| Табель</span></div>
     <nav class="nav-menu">
@@ -294,9 +326,7 @@
       <button class="tab" data-sec="tab-reports">Отчёты</button>
       <button class="tab" data-sec="tab-settings">Настройки</button>
     </nav>
-    <div class="sidebar-footer">
-      <a href="/" class="btn-close">← На портал</a>
-    </div>
+    <button class="logout-btn" onclick="doLogout()">Выйти</button>
   </aside>
 
   <div class="main">
@@ -332,7 +362,6 @@
 
       <div class="section" id="tab-reports">
         <div class="empty-state">
-          <!-- Аккуратная SVG иконка графика -->
           <svg class="empty-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
             <line x1="3" y1="9" x2="21" y2="9"></line>
@@ -391,6 +420,8 @@
 
 <script>
 const TOKEN_KEY = 'wokker_staff_token';
+const LOGIN_RE = /^[a-z]{3}\d{2}$/;
+
 let CURRENT_DATE = new Date();
 let CURRENT_MONTH = CURRENT_DATE.getMonth() + 1;
 let CURRENT_YEAR = CURRENT_DATE.getFullYear();
@@ -404,16 +435,93 @@ const $ = id => document.getElementById(id);
 const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
+function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
+function clearToken() { localStorage.removeItem(TOKEN_KEY); }
 
+// ================== АВТОРИЗАЦИЯ ==================
+function showLogin() {
+  $('main-layout').style.display = 'none';
+  $('login-screen').style.display = 'flex';
+  $('login-error').textContent = '';
+  $('login-login').value = '';
+  $('login-password').value = '';
+}
+
+function showApp() {
+  $('login-screen').style.display = 'none';
+  $('main-layout').style.display = 'flex';
+}
+
+$('login-login').addEventListener('input', e => {
+  e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5);
+});
+
+async function doLogin() {
+  const login = $('login-login').value.trim().toLowerCase();
+  const password = $('login-password').value;
+  const errEl = $('login-error');
+  errEl.textContent = '';
+
+  if (!LOGIN_RE.test(login)) { errEl.textContent = 'Логин: 3 латинские буквы + 2 цифры'; return; }
+  if (!password) { errEl.textContent = 'Введите пароль'; return; }
+
+  const btn = $('login-btn');
+  btn.disabled = true; btn.textContent = 'Проверяем…';
+
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ login, password }),
+    });
+
+    if (res.status === 401) { errEl.textContent = 'Неверный логин или пароль'; return; }
+    if (res.status === 403) { errEl.textContent = 'Аккаунт уволен или заблокирован'; return; }
+    if (!res.ok) { errEl.textContent = 'Ошибка сервера'; return; }
+
+    const data = await res.json();
+    if (!data.token) { errEl.textContent = 'Ошибка получения токена'; return; }
+
+    setToken(data.token);
+    
+    // Скрываем логин и показываем приложение
+    showApp();
+    updatePeriodTitle();
+    await loadMatrix();
+
+  } catch (e) {
+    errEl.textContent = 'Сеть недоступна';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Войти';
+  }
+}
+
+function doLogout() {
+  if (!confirm('Выйти из аккаунта?')) return;
+  clearToken();
+  showLogin();
+}
+
+$('login-btn').addEventListener('click', doLogin);
+$('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+$('login-login').addEventListener('keydown', e => { if (e.key === 'Enter') $('login-password').focus(); });
+
+// ================== API ЗАПРОСЫ ==================
 async function api(path, body) {
   const payload = { webToken: getToken() };
   if (body && typeof body === 'object') Object.assign(payload, body);
+  
   const res = await fetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (res.status === 401) { window.location.href = '/'; throw new Error('unauthorized'); }
+  
+  if (res.status === 401) { 
+    clearToken(); 
+    showLogin(); 
+    throw new Error('unauthorized'); 
+  }
   if (!res.ok) {
     let msg = 'error';
     try { const j = await res.json(); msg = j.error || msg; } catch (e) {}
@@ -526,7 +634,9 @@ async function loadMatrix() {
     EMPLOYEES_DATA = res.employees || [];
     renderMatrix();
   } catch (e) {
-    $('matrix-container').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
+    if (e.message !== 'unauthorized') {
+      $('matrix-container').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
+    }
   }
 }
 
@@ -643,7 +753,7 @@ async function saveCellDirect(inp) {
     }
     showSaveIndicator();
   } catch (err) {
-    alert('Ошибка сохранения: ' + err.message);
+    if (err.message !== 'unauthorized') alert('Ошибка сохранения: ' + err.message);
     const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
     if (emp && emp.data[day]) inp.value = getCellDisplayValue(emp.data[day]);
   }
@@ -696,7 +806,9 @@ async function loadSettings() {
       </div>
     `).join('');
   } catch (e) {
-    $('settings-list').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
+    if (e.message !== 'unauthorized') {
+      $('settings-list').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
+    }
   }
 }
 
@@ -714,17 +826,29 @@ async function saveSettings() {
     }
     showSaveIndicator();
   } catch (e) {
-    alert('Ошибка сохранения: ' + e.message);
+    if (e.message !== 'unauthorized') alert('Ошибка сохранения: ' + e.message);
   } finally {
     btn.disabled = false;
     btn.textContent = 'Сохранить настройки';
   }
 }
 
+// ================== ИНИЦИАЛИЗАЦИЯ ==================
 (async function init() {
-  if (!getToken()) { window.location.href = '/'; return; }
-  updatePeriodTitle();
-  await loadMatrix();
+  // Если токена нет — показываем экран логина
+  if (!getToken()) { 
+    showLogin(); 
+    return; 
+  }
+  
+  // Если токен есть, проверяем его валидность, загружая данные
+  try {
+    showApp();
+    updatePeriodTitle();
+    await loadMatrix();
+  } catch (e) {
+    // Если токен просрочен, функция api() сама вызовет showLogin()
+  }
 })();
 </script>
 </body>

@@ -40,32 +40,14 @@
   body { font-family: var(--font); background: var(--bg); color: var(--text-main); height: 100vh; display: flex; overflow: hidden; font-size: 14px; }
 
   /* ================== ЭКРАН ВХОДА ================== */
-  #login-screen { 
-    position: fixed; inset: 0; background: var(--bg); 
-    display: none; align-items: center; justify-content: center; padding: 24px; z-index: 1000; 
-  }
-  .login-card { 
-    background: #fff; border-radius: var(--radius); padding: 40px 32px; 
-    box-shadow: 0 10px 40px rgba(0,0,0,0.08); width: 100%; max-width: 400px; text-align: center; 
-    animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  .login-logo { 
-    width: 72px; height: 72px; border-radius: 20px; background: var(--accent-soft); 
-    margin: 0 auto 24px; display: flex; align-items: center; justify-content: center; 
-    font-size: 32px; font-weight: 800; color: var(--accent); 
-  }
+  #login-screen { position: fixed; inset: 0; background: var(--bg); display: none; align-items: center; justify-content: center; padding: 24px; z-index: 1000; }
+  .login-card { background: #fff; border-radius: var(--radius); padding: 40px 32px; box-shadow: 0 10px 40px rgba(0,0,0,0.08); width: 100%; max-width: 400px; text-align: center; animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+  .login-logo { width: 72px; height: 72px; border-radius: 20px; background: var(--accent-soft); margin: 0 auto 24px; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 800; color: var(--accent); }
   .login-title { font-size: 26px; font-weight: 800; margin-bottom: 8px; letter-spacing: -1px; color: var(--text-main); }
   .login-sub { font-size: 15px; color: var(--text-muted); margin-bottom: 32px; font-weight: 500; }
-  .login-input { 
-    width: 100%; border: 1px solid #E5E5EA; border-radius: 14px; padding: 16px; 
-    font-size: 16px; background: #FAFAFA; color: var(--text-main); font-weight: 600; 
-    margin-bottom: 16px; text-align: center; transition: all 0.3s; font-family: var(--font); outline: none;
-  }
+  .login-input { width: 100%; border: 1px solid #E5E5EA; border-radius: 14px; padding: 16px; font-size: 16px; background: #FAFAFA; color: var(--text-main); font-weight: 600; margin-bottom: 16px; text-align: center; transition: all 0.3s; font-family: var(--font); outline: none; }
   .login-input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
-  .login-btn { 
-    width: 100%; background: var(--text-main); color: #fff; border-radius: 14px; padding: 18px; 
-    font-size: 16px; font-weight: 600; margin-top: 8px; border: none; cursor: pointer; transition: opacity 0.2s; font-family: var(--font);
-  }
+  .login-btn { width: 100%; background: var(--text-main); color: #fff; border-radius: 14px; padding: 18px; font-size: 16px; font-weight: 600; margin-top: 8px; border: none; cursor: pointer; transition: opacity 0.2s; font-family: var(--font); }
   .login-btn:hover { opacity: 0.9; }
   .login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .login-error { color: var(--red); font-size: 14px; font-weight: 500; min-height: 20px; margin-top: 16px; }
@@ -74,51 +56,27 @@
   .layout { display: none; width: 100%; height: 100vh; }
   
   /* САЙДБАР */
-  .sidebar { 
-    width: 260px; background: var(--sidebar); border-right: 1px solid var(--border); 
-    display: flex; flex-direction: column; flex-shrink: 0; padding: 24px 20px; z-index: 10; 
-  }
+  .sidebar { width: 260px; background: var(--sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; padding: 24px 20px; z-index: 10; }
   .sidebar-logo { font-size: 20px; font-weight: 800; display: flex; align-items: center; gap: 10px; padding: 0 8px 32px; color: var(--text-main); letter-spacing: -0.5px; }
   .nav-menu { display: flex; flex-direction: column; gap: 8px; flex: 1; }
-  .tab { 
-    background: transparent; border: none; padding: 14px 16px; text-align: left; 
-    font-weight: 600; font-size: 15px; color: var(--text-muted); border-radius: 12px; 
-    cursor: pointer; transition: all 0.2s; 
-  }
+  .tab { background: transparent; border: none; padding: 14px 16px; text-align: left; font-weight: 600; font-size: 15px; color: var(--text-muted); border-radius: 12px; cursor: pointer; transition: all 0.2s; }
   .tab:hover { background: #F3F4F6; color: var(--text-main); }
   .tab.active { background: var(--accent-soft); color: var(--accent); }
   
-  /* Кнопка выхода */
-  .logout-btn {
-    background: transparent; border: 1px solid var(--border); color: var(--text-muted);
-    padding: 12px; border-radius: 12px; font-weight: 600; font-size: 14px;
-    cursor: pointer; transition: all 0.2s; margin-top: auto;
-  }
+  .logout-btn { background: transparent; border: 1px solid var(--border); color: var(--text-muted); padding: 12px; border-radius: 12px; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.2s; margin-top: auto; }
   .logout-btn:hover { background: #F3F4F6; color: var(--red); border-color: #FECACA; }
 
   /* ОСНОВНАЯ ЧАСТЬ */
   .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
   
-  .topbar { 
-    background: var(--card-bg); padding: 20px 32px; border-bottom: 1px solid var(--border); 
-    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px; flex-shrink: 0;
-  }
-  
+  .topbar { background: var(--card-bg); padding: 20px 32px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px; flex-shrink: 0; }
   .left-controls { display: flex; align-items: center; gap: 24px; }
-  
   .view-toggle { display: flex; background: #F3F4F6; border-radius: 100px; padding: 4px; }
-  .view-toggle button { 
-    background: none; border: none; padding: 8px 20px; border-radius: 100px; 
-    font-weight: 600; font-size: 13px; color: var(--text-muted); cursor: pointer; transition: all 0.2s; 
-  }
+  .view-toggle button { background: none; border: none; padding: 8px 20px; border-radius: 100px; font-weight: 600; font-size: 13px; color: var(--text-muted); cursor: pointer; transition: all 0.2s; }
   .view-toggle button.active { background: #fff; color: var(--text-main); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
   
   .month-selector { display: flex; align-items: center; }
-  .month-picker-input {
-    background: #F3F4F6; border: 1px solid var(--border); padding: 10px 16px;
-    border-radius: 12px; font-size: 15px; font-weight: 600; color: var(--text-main);
-    font-family: var(--font); outline: none; cursor: pointer; transition: all 0.2s;
-  }
+  .month-picker-input { background: #F3F4F6; border: 1px solid var(--border); padding: 10px 16px; border-radius: 12px; font-size: 15px; font-weight: 600; color: var(--text-main); font-family: var(--font); outline: none; cursor: pointer; transition: all 0.2s; }
   .month-picker-input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
   .month-title { font-size: 18px; font-weight: 800; color: var(--text-main); }
   
@@ -132,127 +90,75 @@
   .section.active { display: flex; flex-direction: column; }
   
   /* ТАБЛИЦА */
-  .table-scroll { 
-    flex: 1; overflow: auto; background: var(--card-bg); border-radius: var(--radius); 
-    box-shadow: 0 4px 20px rgba(0,0,0,0.03); position: relative; width: 100%; border: 1px solid var(--border);
-  }
-  
+  .table-scroll { flex: 1; overflow: auto; background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.03); position: relative; width: 100%; border: 1px solid var(--border); }
   table { border-collapse: separate; border-spacing: 0; width: 100%; table-layout: fixed; }
   
-  th { 
-    position: sticky; top: 0; background: #F9FAFB; z-index: 10; font-weight: 600; 
-    color: var(--text-muted); font-size: 12px; padding: 16px 4px; 
-    border-bottom: 1px solid var(--border); text-align: center;
-  }
-  
+  th { position: sticky; top: 0; background: #F9FAFB; z-index: 10; font-weight: 600; color: var(--text-muted); font-size: 12px; padding: 16px 4px; border-bottom: 1px solid var(--border); text-align: center; }
   th.weekend { color: var(--red); background: #FEF2F2; }
   
-  th.sticky-col, td.sticky-col { 
-    position: sticky; left: 0; background: var(--card-bg); z-index: 5; text-align: left; 
-    border-right: 1px solid var(--border); padding: 16px 20px;
-    white-space: normal; word-break: break-word; line-height: 1.4;
-    width: 240px; min-width: 240px; max-width: 240px;
-  }
+  th.sticky-col, td.sticky-col { position: sticky; left: 0; background: var(--card-bg); z-index: 5; text-align: left; border-right: 1px solid var(--border); padding: 16px 20px; white-space: normal; word-break: break-word; line-height: 1.4; width: 240px; min-width: 240px; max-width: 240px; }
   thead th.sticky-col { z-index: 15; background: #F9FAFB; font-size: 12px; }
   
-  /* Кликабельное ФИО */
-  .emp-name { 
-    font-weight: 600; font-size: 15px; color: var(--text-main); cursor: pointer; 
-    transition: color 0.2s; display: inline-block; 
-  }
+  .emp-name { font-weight: 600; font-size: 15px; color: var(--text-main); cursor: pointer; transition: color 0.2s; display: inline-block; }
   .emp-name:hover { color: var(--accent); text-decoration: underline; }
 
-  /* Группировка по ресторанам */
-  .rest-header td { 
-    background: #F9FAFB !important; font-weight: 700; padding: 12px 20px; 
-    border-bottom: 1px solid var(--border); border-top: 1px solid var(--border);
-    text-transform: uppercase; font-size: 12px; color: var(--text-muted); 
-  }
+  .rest-header td { background: #F9FAFB !important; font-weight: 700; padding: 12px 20px; border-bottom: 1px solid var(--border); border-top: 1px solid var(--border); text-transform: uppercase; font-size: 12px; color: var(--text-muted); }
   .rest-header td.sticky-col { background: #F9FAFB !important; color: var(--text-main); }
 
-  /* ЯЧЕЙКИ */
-  td { 
-    border-bottom: 1px solid var(--border); border-right: 1px solid #F3F4F6; 
-    vertical-align: middle; text-align: center; padding: 0; height: 52px;
-  }
+  /* ЯЧЕЙКИ ТАБЕЛЯ */
+  td { border-bottom: 1px solid var(--border); border-right: 1px solid #F3F4F6; vertical-align: middle; text-align: center; padding: 0; height: 52px; }
   td.weekend { background: #FAFAFA; }
   td:last-child { border-right: none; }
 
-  .cell-input { 
-    width: 100%; height: 100%; min-height: 52px; border: 2px solid transparent; 
-    text-align: center; font-weight: 600; font-size: 14px; background: transparent; 
-    transition: all 0.2s; outline: none; color: var(--text-main);
-  }
+  .cell-input { width: 100%; height: 100%; min-height: 52px; border: 2px solid transparent; text-align: center; font-weight: 600; font-size: 14px; background: transparent; transition: all 0.2s; outline: none; color: var(--text-main); }
   .cell-input:hover { background: #F3F4F6; }
-  .cell-input:focus { 
-    background: #fff; border-color: var(--accent); 
-    box-shadow: inset 0 0 0 1px var(--accent); border-radius: 8px; z-index: 2; position: relative;
-  }
-
-  /* Статусы */
+  .cell-input:focus { background: #fff; border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); border-radius: 8px; z-index: 2; position: relative; }
   .cell-input.status-vacation { background: var(--green-soft); color: var(--green-text); }
   .cell-input.status-sick { background: var(--amber-soft); color: var(--amber-text); }
   .cell-input.status-absent { background: var(--red-soft); color: var(--red-text); }
 
-  /* Итоговая колонка */
-  .col-total { 
-    font-weight: 700; background: #F9FAFB; width: 100px; font-size: 15px; 
-    color: var(--text-main); border-left: 1px solid var(--border); position: sticky; right: 0; z-index: 5;
-  }
+  .col-total { font-weight: 700; background: #F9FAFB; width: 100px; font-size: 15px; color: var(--text-main); border-left: 1px solid var(--border); position: sticky; right: 0; z-index: 5; }
 
-  /* ЗАГЛУШКА ДЛЯ ОТЧЕТОВ */
-  .empty-state { 
-    display: flex; flex-direction: column; align-items: center; justify-content: center; 
-    height: 100%; min-height: 400px; color: var(--text-muted); text-align: center; 
-  }
+  /* РАЗДЕЛ ВЫПЛАТЫ */
+  .payout-summary { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px 32px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 20px rgba(0,0,0,0.03); flex-shrink: 0; }
+  .payout-summary-title { font-size: 15px; color: var(--text-muted); font-weight: 600; margin-bottom: 8px; }
+  .payout-summary-value { font-size: 32px; font-weight: 800; color: var(--text-main); letter-spacing: -1px; }
+  .payout-summary-count { font-size: 14px; color: var(--text-muted); font-weight: 500; background: #F3F4F6; padding: 8px 16px; border-radius: 12px; }
+  
+  .payout-table th { padding: 16px 20px; text-align: left; }
+  .payout-table td { padding: 16px 20px; text-align: left; height: auto; font-size: 15px; border-bottom: 1px solid var(--border); }
+  .payout-table tr:last-child td { border-bottom: none; }
+  .payout-table .col-right { text-align: right; }
+  .payout-table .total-cell { font-weight: 700; color: var(--green-text); font-size: 16px; }
+
+  /* ЗАГЛУШКА */
+  .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; min-height: 400px; color: var(--text-muted); text-align: center; }
   .empty-icon-svg { width: 64px; height: 64px; margin-bottom: 24px; color: #D1D5DB; }
   .empty-title { font-size: 20px; font-weight: 700; color: var(--text-main); margin-bottom: 8px; }
   .empty-desc { font-size: 15px; max-width: 400px; line-height: 1.5; }
 
   /* НАСТРОЙКИ */
-  .settings-container { 
-    padding: 32px; background: var(--card-bg); border-radius: var(--radius); 
-    box-shadow: 0 4px 20px rgba(0,0,0,0.03); max-width: 600px; margin: 0 auto; 
-    width: 100%; border: 1px solid var(--border); 
-  }
+  .settings-container { padding: 32px; background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.03); max-width: 600px; margin: 0 auto; width: 100%; border: 1px solid var(--border); }
   .settings-title { font-size: 22px; font-weight: 700; margin-bottom: 24px; letter-spacing: -0.5px; }
   .setting-row { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--border); }
   .setting-row:last-child { border-bottom: none; }
   .setting-row span { font-weight: 500; font-size: 15px; }
-  .setting-row input { 
-    width: 140px; text-align: right; padding: 12px 16px; border: 1px solid var(--border); 
-    border-radius: 12px; font-size: 15px; font-weight: 600; outline: none; transition: all 0.2s; background: #F9FAFB;
-  }
+  .setting-row input { width: 140px; text-align: right; padding: 12px 16px; border: 1px solid var(--border); border-radius: 12px; font-size: 15px; font-weight: 600; outline: none; transition: all 0.2s; background: #F9FAFB; }
   .setting-row input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
-  .btn-save-settings { 
-    width: 100%; background: var(--text-main); color: #fff; border-radius: 12px; padding: 18px; 
-    font-size: 16px; font-weight: 600; margin-top: 32px; border: none; cursor: pointer; transition: opacity 0.2s; 
-  }
+  .btn-save-settings { width: 100%; background: var(--text-main); color: #fff; border-radius: 12px; padding: 18px; font-size: 16px; font-weight: 600; margin-top: 32px; border: none; cursor: pointer; transition: opacity 0.2s; }
   .btn-save-settings:hover { opacity: 0.9; }
 
   /* МОДАЛЬНОЕ ОКНО */
-  .modal-overlay { 
-    position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); 
-    display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; 
-  }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
   .modal-overlay.show { display: flex; animation: fadeIn 0.2s; }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-  
-  .emp-card { 
-    background: var(--card-bg); border-radius: var(--radius); width: 100%; max-width: 440px; 
-    box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); 
-  }
+  .emp-card { background: var(--card-bg); border-radius: var(--radius); width: 100%; max-width: 440px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
   @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-  
-  .emp-card-header { 
-    padding: 24px 24px 20px; border-bottom: 1px solid var(--border); 
-    display: flex; justify-content: space-between; align-items: flex-start; background: #F9FAFB;
-  }
+  .emp-card-header { padding: 24px 24px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: flex-start; background: #F9FAFB; }
   .emp-card-name { font-size: 22px; font-weight: 700; margin-bottom: 4px; letter-spacing: -0.5px; }
   .emp-card-pos { font-size: 14px; color: var(--text-muted); font-weight: 500; }
   .emp-card-close { background: #E5E7EB; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-main); transition: background 0.2s; }
   .emp-card-close:hover { background: #D1D5DB; }
-  
   .emp-card-body { padding: 24px; }
   .emp-stat-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px dashed var(--border); }
   .emp-stat-row:last-child { border-bottom: none; padding-bottom: 0; }
@@ -260,12 +166,7 @@
   .emp-stat-value { font-weight: 600; text-align: right; }
   .emp-stat-value.highlight { color: var(--green-text); font-size: 20px; font-weight: 700; }
 
-  .save-indicator { 
-    position: fixed; bottom: 32px; right: 32px; background: var(--text-main); color: #fff; 
-    padding: 14px 28px; border-radius: 100px; font-weight: 500; font-size: 14px; 
-    box-shadow: 0 10px 30px rgba(0,0,0,0.15); opacity: 0; transform: translateY(10px); 
-    transition: all 0.3s; pointer-events: none; z-index: 100; 
-  }
+  .save-indicator { position: fixed; bottom: 32px; right: 32px; background: var(--text-main); color: #fff; padding: 14px 28px; border-radius: 100px; font-weight: 500; font-size: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); opacity: 0; transform: translateY(10px); transition: all 0.3s; pointer-events: none; z-index: 100; }
   .save-indicator.show { opacity: 1; transform: translateY(0); }
   .loader { text-align: center; padding: 60px; color: var(--text-muted); font-weight: 500; font-size: 15px; }
 
@@ -282,23 +183,21 @@
   @media (max-width: 768px) {
     body { flex-direction: column; overflow: auto; height: auto; min-height: 100vh; }
     .layout { flex-direction: column; height: auto; }
-    
     .sidebar { width: 100%; flex-direction: row; padding: 12px; height: auto; border-right: none; border-bottom: 1px solid var(--border); justify-content: space-between; align-items: center; }
     .sidebar-logo { padding: 0; font-size: 18px; }
     .nav-menu { flex-direction: row; gap: 8px; flex: none; }
     .tab { padding: 8px 16px; font-size: 14px; }
     .logout-btn { margin-top: 0; padding: 8px 12px; }
-    
     .main { height: auto; flex: 1; overflow: visible; }
     .topbar { padding: 16px; flex-direction: column; align-items: stretch; }
     .left-controls { flex-direction: column; align-items: stretch; gap: 12px; }
     .right-controls { justify-content: space-between; }
-    
     .content { padding: 16px; overflow: visible; }
     .table-scroll { max-height: none; overflow-x: auto; }
     table { width: max-content; min-width: 100%; }
     th.sticky-col, td.sticky-col { width: 180px; min-width: 180px; max-width: 180px; padding: 12px; }
     .col-total { position: static; }
+    .payout-summary { flex-direction: column; align-items: flex-start; gap: 16px; padding: 20px; }
   }
 </style>
 </head>
@@ -323,6 +222,7 @@
     <div class="sidebar-logo">Wokker <span style="color: var(--text-muted); font-weight: 500; margin-left: 4px;">| Табель</span></div>
     <nav class="nav-menu">
       <button class="tab active" data-sec="tab-sheet">Табель</button>
+      <button class="tab" data-sec="tab-payouts">Выплаты</button>
       <button class="tab" data-sec="tab-reports">Отчёты</button>
       <button class="tab" data-sec="tab-settings">Настройки</button>
     </nav>
@@ -354,12 +254,41 @@
     </div>
 
     <div class="content">
+      <!-- ВКЛАДКА: ТАБЕЛЬ -->
       <div class="section active" id="tab-sheet">
         <div class="table-scroll" id="matrix-container">
           <div class="loader">Загрузка данных...</div>
         </div>
       </div>
 
+      <!-- ВКЛАДКА: ВЫПЛАТЫ -->
+      <div class="section" id="tab-payouts">
+        <div class="payout-summary">
+          <div>
+            <div class="payout-summary-title">Общая сумма к выплате за период</div>
+            <div class="payout-summary-value" id="total-payout-sum">0 ₽</div>
+          </div>
+          <div class="payout-summary-count" id="payout-emp-count">0 сотрудников</div>
+        </div>
+        <div class="table-scroll">
+          <table class="payout-table">
+            <thead>
+              <tr>
+                <th style="padding-left: 24px;">Сотрудник</th>
+                <th>Должность</th>
+                <th class="col-right">Отработано</th>
+                <th class="col-right">Ставка</th>
+                <th class="col-right" style="padding-right: 24px;">К выплате</th>
+              </tr>
+            </thead>
+            <tbody id="payouts-list">
+              <tr><td colspan="5" class="loader">Загрузка...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ВКЛАДКА: ОТЧЕТЫ -->
       <div class="section" id="tab-reports">
         <div class="empty-state">
           <svg class="empty-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -372,6 +301,7 @@
         </div>
       </div>
 
+      <!-- ВКЛАДКА: НАСТРОЙКИ -->
       <div class="section" id="tab-settings">
         <div class="settings-container">
           <div class="settings-title">Ставки по должностям</div>
@@ -483,8 +413,6 @@ async function doLogin() {
     if (!data.token) { errEl.textContent = 'Ошибка получения токена'; return; }
 
     setToken(data.token);
-    
-    // Скрываем логин и показываем приложение
     showApp();
     updatePeriodTitle();
     await loadMatrix();
@@ -517,11 +445,7 @@ async function api(path, body) {
     body: JSON.stringify(payload),
   });
   
-  if (res.status === 401) { 
-    clearToken(); 
-    showLogin(); 
-    throw new Error('unauthorized'); 
-  }
+  if (res.status === 401) { clearToken(); showLogin(); throw new Error('unauthorized'); }
   if (!res.ok) {
     let msg = 'error';
     try { const j = await res.json(); msg = j.error || msg; } catch (e) {}
@@ -536,6 +460,7 @@ function showSaveIndicator() {
   setTimeout(() => ind.classList.remove('show'), 2000);
 }
 
+// ================== НАВИГАЦИЯ ==================
 document.querySelectorAll('.tab').forEach(t => {
   t.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
@@ -543,7 +468,8 @@ document.querySelectorAll('.tab').forEach(t => {
     t.classList.add('active');
     $(t.dataset.sec).classList.add('active');
     
-    if (t.dataset.sec === 'tab-settings' || t.dataset.sec === 'tab-reports') {
+    // Скрываем панель управления для финансовых и служебных вкладок
+    if (t.dataset.sec === 'tab-settings' || t.dataset.sec === 'tab-reports' || t.dataset.sec === 'tab-payouts') {
       $('left-controls-wrapper').style.display = 'none';
       $('right-controls-wrapper').style.display = 'none';
     } else {
@@ -552,27 +478,25 @@ document.querySelectorAll('.tab').forEach(t => {
     }
     
     if (t.dataset.sec === 'tab-sheet') loadMatrix();
+    if (t.dataset.sec === 'tab-payouts') loadPayouts();
     if (t.dataset.sec === 'tab-settings') loadSettings();
   });
 });
 
+// ================== ДАТЫ ==================
 function getMonday(d) {
   d = new Date(d);
-  var day = d.getDay(),
-      diff = d.getDate() - day + (day == 0 ? -6 : 1);
+  var day = d.getDay(), diff = d.getDate() - day + (day == 0 ? -6 : 1);
   return new Date(d.setDate(diff));
 }
-
 function formatDate(d) {
   const pad = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 }
-
 function formatDateShort(d) {
   const pad = n => String(n).padStart(2, '0');
   return `${pad(d.getDate())}.${pad(d.getMonth()+1)}`;
 }
-
 function getPeriodDates() {
   if (VIEW_MODE === 'month') {
     const start = new Date(CURRENT_YEAR, CURRENT_MONTH - 1, 1);
@@ -584,10 +508,8 @@ function getPeriodDates() {
     return { start, end };
   }
 }
-
 function updatePeriodTitle() {
   const { start, end } = getPeriodDates();
-  
   if (VIEW_MODE === 'month') {
     $('month-selector-wrapper').style.display = 'block';
     $('current-period-title').style.display = 'none';
@@ -598,7 +520,6 @@ function updatePeriodTitle() {
     $('current-period-title').textContent = `${formatDateShort(start)} — ${formatDateShort(end)}`;
   }
 }
-
 function changeMonthFromPicker(val) {
   if (!val) return;
   const parts = val.split('-');
@@ -607,22 +528,17 @@ function changeMonthFromPicker(val) {
   updatePeriodTitle();
   loadMatrix();
 }
-
 function setViewMode(mode) {
   VIEW_MODE = mode;
   document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.view-toggle button')[mode === 'month' ? 0 : 1].classList.add('active');
-  
-  if (mode === 'week') {
-    CURRENT_WEEK_START = getMonday(new Date(CURRENT_YEAR, CURRENT_MONTH - 1, 15));
-  } else {
-    CURRENT_MONTH = CURRENT_WEEK_START.getMonth() + 1;
-    CURRENT_YEAR = CURRENT_WEEK_START.getFullYear();
-  }
+  if (mode === 'week') CURRENT_WEEK_START = getMonday(new Date(CURRENT_YEAR, CURRENT_MONTH - 1, 15));
+  else { CURRENT_MONTH = CURRENT_WEEK_START.getMonth() + 1; CURRENT_YEAR = CURRENT_WEEK_START.getFullYear(); }
   updatePeriodTitle();
   loadMatrix();
 }
 
+// ================== ТАБЕЛЬ ==================
 async function loadMatrix() {
   $('matrix-container').innerHTML = '<div class="loader">Загрузка табеля...</div>';
   const { start, end } = getPeriodDates();
@@ -759,7 +675,63 @@ async function saveCellDirect(inp) {
   }
 }
 
-/* ================== КАРТОЧКА СОТРУДНИКА ================== */
+// ================== ВЫПЛАТЫ ==================
+async function loadPayouts() {
+  $('payouts-list').innerHTML = '<tr><td colspan="5" class="loader">Загрузка...</td></tr>';
+  $('total-payout-sum').textContent = '0 ₽';
+  $('payout-emp-count').textContent = '0 сотрудников';
+
+  // Для выплат мы запрашиваем данные за весь текущий месяц
+  const month = CURRENT_DATE.getMonth() + 1;
+  const year = CURRENT_DATE.getFullYear();
+  const lastDay = new Date(year, month, 0).getDate();
+  const dateFrom = `${year}-${String(month).padStart(2, '0')}-01`;
+  const dateTo = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+  try {
+    const res = await api('/api/timesheet/reports', { date_from: dateFrom, date_to: dateTo });
+    const report = res.report || [];
+    
+    if (!report.length) {
+      $('payouts-list').innerHTML = '<tr><td colspan="5" class="loader">Нет данных за текущий месяц</td></tr>';
+      return;
+    }
+
+    let totalSum = 0;
+    let validEmployeesCount = 0;
+
+    $('payouts-list').innerHTML = report.map(r => {
+      const salary = parseFloat(r.total_salary) || 0;
+      if (salary > 0) validEmployeesCount++;
+      totalSum += salary;
+
+      const rateStr = r.payment_type === 'fixed' 
+        ? `${(parseFloat(r.rate) || 0).toLocaleString('ru-RU')} ₽ (оклад)` 
+        : `${(parseFloat(r.rate) || 0).toLocaleString('ru-RU')} ₽/ч`;
+
+      return `
+        <tr>
+          <td><b>${esc(r.full_name)}</b></td>
+          <td style="color:var(--text-muted);">${esc(r.position || '—')}</td>
+          <td class="col-right">${r.total_hours} ч</td>
+          <td class="col-right" style="color:var(--text-muted);">${rateStr}</td>
+          <td class="col-right total-cell">${salary.toLocaleString('ru-RU')} ₽</td>
+        </tr>
+      `;
+    }).join('');
+
+    // Обновляем верхнюю карточку
+    $('total-payout-sum').textContent = `${totalSum.toLocaleString('ru-RU')} ₽`;
+    $('payout-emp-count').textContent = `${validEmployeesCount} сотр.`;
+
+  } catch (e) {
+    if (e.message !== 'unauthorized') {
+      $('payouts-list').innerHTML = `<tr><td colspan="5" class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</td></tr>`;
+    }
+  }
+}
+
+// ================== КАРТОЧКА СОТРУДНИКА ==================
 function openEmpModal(uid) {
   const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
   if (!emp) return;
@@ -789,7 +761,7 @@ function closeEmpModal() {
   $('emp-modal').classList.remove('show');
 }
 
-/* ================== НАСТРОЙКИ ================== */
+// ================== НАСТРОЙКИ ==================
 async function loadSettings() {
   $('settings-list').innerHTML = '<div class="loader">Загрузка...</div>';
   try {
@@ -835,20 +807,12 @@ async function saveSettings() {
 
 // ================== ИНИЦИАЛИЗАЦИЯ ==================
 (async function init() {
-  // Если токена нет — показываем экран логина
-  if (!getToken()) { 
-    showLogin(); 
-    return; 
-  }
-  
-  // Если токен есть, проверяем его валидность, загружая данные
+  if (!getToken()) { showLogin(); return; }
   try {
     showApp();
     updatePeriodTitle();
     await loadMatrix();
-  } catch (e) {
-    // Если токен просрочен, функция api() сама вызовет showLogin()
-  }
+  } catch (e) {}
 })();
 </script>
 </body>

@@ -1,884 +1,459 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Табель · Wokker</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23F5F5F7'/%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%23007AFF' stroke-width='8'/%3E%3Cpath d='M25 50 A 25 25 0 0 0 75 50' fill='none' stroke='%23007AFF' stroke-width='12' stroke-linecap='round'/%3E%3C/svg%3E">
-<link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#F5F5F7">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --bg: #F7F8FA; --card-bg: #FFFFFF; --text-main: #111827; --text-muted: #6B7280;
-    --accent: #007AFF; --accent-soft: #EFF6FF; 
-    --green: #10B981; --green-soft: #ECFDF5; --green-text: #047857;
-    --amber: #F59E0B; --amber-soft: #FFFBEB; --amber-text: #B45309;
-    --red: #EF4444; --red-soft: #FEF2F2; --red-text: #B91C1C;
-    --border: #E5E7EB; --font: 'Inter', sans-serif; --radius: 20px; --sidebar: #FFFFFF; 
-  }
-  
-  * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
-  body { font-family: var(--font); background: var(--bg); color: var(--text-main); height: 100vh; display: flex; overflow: hidden; font-size: 14px; }
+from aiohttp import web
+from psycopg2.extras import RealDictCursor
+from db import get_conn, _run
+from utils.auth_helpers import get_auth_user, denied, _is_hr_or_super, _is_tu
+import calendar
+from datetime import datetime
+import io
+import traceback
+import logging
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 
-  /* ЭКРАН ВХОДА */
-  #login-screen { position: fixed; inset: 0; background: var(--bg); display: none; align-items: center; justify-content: center; padding: 24px; z-index: 1000; }
-  .login-card { background: #fff; border-radius: var(--radius); padding: 40px 32px; box-shadow: 0 10px 40px rgba(0,0,0,0.08); width: 100%; max-width: 400px; text-align: center; animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
-  .login-logo { width: 72px; height: 72px; border-radius: 20px; background: var(--accent-soft); margin: 0 auto 24px; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 800; color: var(--accent); }
-  .login-title { font-size: 26px; font-weight: 800; margin-bottom: 8px; letter-spacing: -1px; color: var(--text-main); }
-  .login-sub { font-size: 15px; color: var(--text-muted); margin-bottom: 32px; font-weight: 500; }
-  .login-input { width: 100%; border: 1px solid #E5E5EA; border-radius: 14px; padding: 16px; font-size: 16px; background: #FAFAFA; color: var(--text-main); font-weight: 600; margin-bottom: 16px; text-align: center; transition: all 0.3s; font-family: var(--font); outline: none; }
-  .login-input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
-  .login-btn { width: 100%; background: var(--text-main); color: #fff; border-radius: 14px; padding: 18px; font-size: 16px; font-weight: 600; margin-top: 8px; border: none; cursor: pointer; transition: opacity 0.2s; font-family: var(--font); }
-  .login-btn:hover { opacity: 0.9; }
-  .login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .login-error { color: var(--red); font-size: 14px; font-weight: 500; min-height: 20px; margin-top: 16px; }
+routes = web.RouteTableDef()
 
-  /* ИНТЕРФЕЙС */
-  .layout { display: none; width: 100%; height: 100vh; }
-  
-  .sidebar { width: 260px; background: var(--sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; padding: 24px 20px; z-index: 10; }
-  .sidebar-logo { font-size: 20px; font-weight: 800; display: flex; align-items: center; gap: 10px; padding: 0 8px 32px; color: var(--text-main); letter-spacing: -0.5px; }
-  .nav-menu { display: flex; flex-direction: column; gap: 8px; flex: 1; }
-  .tab { background: transparent; border: none; padding: 14px 16px; text-align: left; font-weight: 600; font-size: 15px; color: var(--text-muted); border-radius: 12px; cursor: pointer; transition: all 0.2s; }
-  .tab:hover { background: #F3F4F6; color: var(--text-main); }
-  .tab.active { background: var(--accent-soft); color: var(--accent); }
-  
-  .logout-btn { background: transparent; border: 1px solid var(--border); color: var(--text-muted); padding: 12px; border-radius: 12px; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.2s; margin-top: auto; }
-  .logout-btn:hover { background: #F3F4F6; color: var(--red); border-color: #FECACA; }
+def _safe_int(val, default=0):
+    try: return int(val)
+    except: return default
 
-  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-  
-  .topbar { background: var(--card-bg); padding: 20px 32px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px; flex-shrink: 0; }
-  .left-controls { display: flex; align-items: center; gap: 24px; }
-  .view-toggle { display: flex; background: #F3F4F6; border-radius: 100px; padding: 4px; }
-  .view-toggle button { background: none; border: none; padding: 8px 20px; border-radius: 100px; font-weight: 600; font-size: 13px; color: var(--text-muted); cursor: pointer; transition: all 0.2s; }
-  .view-toggle button.active { background: #fff; color: var(--text-main); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-  
-  .month-selector { display: flex; align-items: center; }
-  .month-picker-input { background: #F3F4F6; border: 1px solid var(--border); padding: 10px 16px; border-radius: 12px; font-size: 15px; font-weight: 600; color: var(--text-main); font-family: var(--font); outline: none; cursor: pointer; transition: all 0.2s; }
-  .month-picker-input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
-  .month-title { font-size: 18px; font-weight: 800; color: var(--text-main); }
-  
-  .right-controls { display: flex; align-items: center; gap: 16px; }
-  .legend { display: flex; gap: 16px; font-size: 13px; color: var(--text-muted); font-weight: 500; }
-  .legend-item { display: flex; align-items: center; gap: 6px; }
-  .legend-color { width: 10px; height: 10px; border-radius: 50%; }
+def _check_can_edit_user(editor_user, target_uid):
+    if editor_user["is_super_admin"] or (editor_user.get("position") or "").strip().upper() == "HR": 
+        return True
+    if editor_user["user_id"] == target_uid: 
+        return True
+    pos_lower = (editor_user.get("position") or "").lower()
+    is_tu = "территориальный" in pos_lower
+    is_us = "управляющий сменой" in pos_lower
+    if not (is_tu or is_us): return False
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT restaurant_key FROM users WHERE user_id = %s", (target_uid,))
+            target = cur.fetchone()
+            if not target: return False
+            if is_us: return target["restaurant_key"] == editor_user.get("restaurant_key")
+            elif is_tu:
+                cur.execute("SELECT key FROM restaurants WHERE territory_manager_id = %s AND key = %s", (editor_user["user_id"], target["restaurant_key"]))
+                return cur.fetchone() is not None
+    return False
 
-  .content { padding: 24px 32px; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-  .section { display: none; height: 100%; width: 100%; overflow-y: auto; }
-  .section.active { display: flex; flex-direction: column; }
-  
-  /* ТАБЛИЦА */
-  .table-scroll { background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.03); position: relative; width: 100%; border: 1px solid var(--border); overflow: auto; }
-  table { border-collapse: separate; border-spacing: 0; width: 100%; table-layout: fixed; }
-  th { position: sticky; top: 0; background: #F9FAFB; z-index: 10; font-weight: 600; color: var(--text-muted); font-size: 12px; padding: 16px 4px; border-bottom: 1px solid var(--border); text-align: center; }
-  th.weekend { color: var(--red); background: #FEF2F2; }
-  
-  th.sticky-col, td.sticky-col { position: sticky; left: 0; background: var(--card-bg); z-index: 5; text-align: left; border-right: 1px solid var(--border); padding: 16px 20px; white-space: normal; word-break: break-word; line-height: 1.4; width: 240px; min-width: 240px; max-width: 240px; }
-  thead th.sticky-col { z-index: 15; background: #F9FAFB; font-size: 12px; }
-  
-  .emp-name { font-weight: 600; font-size: 15px; color: var(--text-main); cursor: pointer; transition: color 0.2s; display: inline-block; }
-  .emp-name:hover { color: var(--accent); text-decoration: underline; }
+# ================== МАТРИЦА ==================
+def _sync_timesheet_matrix(user_id, date_from, date_to):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+            u = cur.fetchone()
+            if not u: return []
+            
+            is_hr_or_super = _is_hr_or_super(u)
+            is_tu = _is_tu(u)
+            is_us = "управляющий сменой" in (u.get("position") or "").lower()
+            
+            query = """SELECT u.user_id, u.full_name, u.position, COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, u.payment_type, r.name AS restaurant_name
+                FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key
+                LEFT JOIN position_rates pr ON u.position = pr.position_name
+                WHERE COALESCE(u.is_fired, FALSE) = FALSE AND COALESCE(u.is_admin, FALSE) = FALSE AND u.login IS NOT NULL"""
+            params = []
+            if is_us:
+                query += " AND u.restaurant_key = %s"; params.append(u.get("restaurant_key"))
+            elif is_tu:
+                query += " AND u.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id = %s)"; params.append(user_id)
+            elif not is_hr_or_super:
+                query += " AND u.user_id = %s"; params.append(user_id)
+            query += " ORDER BY r.name, u.full_name"
+            
+            cur.execute(query, params)
+            employees = [dict(r) for r in cur.fetchall()]
+            if not employees: return []
+            
+            emp_ids = [e["user_id"] for e in employees]
+            cur.execute("SELECT user_id, work_date, hours, status FROM timesheet_records WHERE user_id = ANY(%s) AND work_date >= %s::date AND work_date <= %s::date", (emp_ids, date_from, date_to))
+            records = cur.fetchall()
+            
+            data_map = {eid: {} for eid in emp_ids}
+            for r in records:
+                data_map[r["user_id"]][str(r["work_date"].day)] = {"h": float(r["hours"] or 0), "s": r["status"] or "work"}
+            for e in employees:
+                e["data"] = data_map[e["user_id"]]
+            return employees
 
-  .rest-header td { background: #F9FAFB !important; font-weight: 700; padding: 12px 20px; border-bottom: 1px solid var(--border); border-top: 1px solid var(--border); text-transform: uppercase; font-size: 12px; color: var(--text-muted); }
-  .rest-header td.sticky-col { background: #F9FAFB !important; color: var(--text-main); }
-
-  td { border-bottom: 1px solid var(--border); border-right: 1px solid #F3F4F6; vertical-align: middle; text-align: center; padding: 0; height: 52px; }
-  td.weekend { background: #FAFAFA; }
-  td:last-child { border-right: none; }
-
-  .cell-input { width: 100%; height: 100%; min-height: 52px; border: 2px solid transparent; text-align: center; font-weight: 600; font-size: 14px; background: transparent; transition: all 0.2s; outline: none; color: var(--text-main); }
-  .cell-input:hover { background: #F3F4F6; }
-  .cell-input:focus { background: #fff; border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); border-radius: 8px; z-index: 2; position: relative; }
-  .cell-input.status-vacation { background: var(--green-soft); color: var(--green-text); }
-  .cell-input.status-sick { background: var(--amber-soft); color: var(--amber-text); }
-  .cell-input.status-absent { background: var(--red-soft); color: var(--red-text); }
-
-  .col-total { font-weight: 700; background: #F9FAFB; width: 100px; font-size: 15px; color: var(--text-main); border-left: 1px solid var(--border); position: sticky; right: 0; z-index: 5; }
-
-  /* ВЫПЛАТЫ */
-  .payout-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-shrink: 0; }
-  .payout-summary { display: flex; gap: 16px; }
-  .summary-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 20px 24px; min-width: 200px; box-shadow: 0 4px 20px rgba(0,0,0,0.02); }
-  .summary-title { font-size: 13px; color: var(--text-muted); font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
-  .summary-value { font-size: 28px; font-weight: 800; color: var(--text-main); letter-spacing: -1px; }
-  .summary-value.green { color: var(--green-text); }
-  .summary-value.amber { color: var(--amber-text); }
-  
-  .btn-add-payout { background: var(--text-main); color: #fff; border: none; padding: 14px 24px; border-radius: 12px; font-weight: 600; font-size: 15px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: opacity 0.2s; }
-  .btn-add-payout:hover { opacity: 0.9; }
-
-  .payout-layout { display: flex; flex-direction: column; gap: 24px; padding-bottom: 24px; }
-  
-  .payout-table th, .payout-table td { text-align: left; padding: 16px 24px; height: auto; border-right: none; }
-  .payout-table th { background: #F9FAFB; }
-  .payout-table tr:last-child td { border-bottom: none; }
-  .payout-table .right { text-align: right; }
-
-  /* МОДАЛЬНЫЕ ОКНА */
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
-  .modal-overlay.show { display: flex; animation: fadeIn 0.2s; }
-  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-
-  .modal-card { background: var(--card-bg); border-radius: var(--radius); width: 100%; max-width: 440px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-  .modal-header { padding: 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: #F9FAFB; }
-  .modal-title { font-size: 20px; font-weight: 700; }
-  .modal-close { background: #E5E7EB; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-main); transition: background 0.2s; }
-  .modal-close:hover { background: #D1D5DB; }
-  .modal-body { padding: 24px; }
-  
-  .form-group { margin-bottom: 20px; }
-  .form-label { display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
-  .form-input, .form-select, .form-textarea { width: 100%; border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; font-size: 15px; font-family: var(--font); background: #F9FAFB; color: var(--text-main); outline: none; transition: all 0.2s; }
-  .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
-  .form-textarea { resize: vertical; min-height: 100px; }
-  .btn-submit { width: 100%; background: var(--text-main); color: #fff; border-radius: 12px; padding: 16px; font-size: 16px; font-weight: 600; border: none; cursor: pointer; transition: opacity 0.2s; margin-top: 8px; }
-  .btn-submit:hover { opacity: 0.9; }
-
-  /* КАРТОЧКА СОТРУДНИКА */
-  .emp-card { background: var(--card-bg); border-radius: var(--radius); width: 100%; max-width: 440px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-  .emp-card-header { padding: 24px 24px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: flex-start; background: #F9FAFB; }
-  .emp-card-name { font-size: 22px; font-weight: 700; margin-bottom: 4px; letter-spacing: -0.5px; }
-  .emp-card-pos { font-size: 14px; color: var(--text-muted); font-weight: 500; }
-  .emp-card-body { padding: 24px; }
-  .emp-stat-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px dashed var(--border); }
-  .emp-stat-row:last-child { border-bottom: none; padding-bottom: 0; }
-  .emp-stat-label { color: var(--text-muted); font-weight: 500; }
-  .emp-stat-value { font-weight: 600; text-align: right; }
-  .emp-stat-value.highlight { color: var(--green-text); font-size: 20px; font-weight: 700; }
-
-  .toast { position: fixed; bottom: 32px; right: 32px; background: var(--text-main); color: #fff; padding: 14px 28px; border-radius: 100px; font-weight: 500; font-size: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); opacity: 0; transform: translateY(10px); transition: all 0.3s; pointer-events: none; z-index: 100; }
-  .toast.show { opacity: 1; transform: translateY(0); }
-  .loader { text-align: center; padding: 60px; color: var(--text-muted); font-weight: 500; font-size: 15px; }
-
-  @media (max-width: 1024px) {
-    .sidebar { width: 80px; padding: 24px 12px; }
-    .sidebar-logo { justify-content: center; padding: 0 0 24px; font-size: 16px; }
-    .sidebar-logo span { display: none; }
-    .tab { text-align: center; padding: 14px 0; font-size: 12px; }
-    .logout-btn { padding: 10px; font-size: 12px; }
-    .legend { display: none; }
-    .payout-summary { flex-direction: column; width: 100%; }
-    .summary-card { width: 100%; }
-    .payout-header { flex-direction: column; align-items: stretch; gap: 16px; }
-  }
-
-  @media (max-width: 768px) {
-    body { flex-direction: column; overflow: auto; height: auto; min-height: 100vh; }
-    .layout { flex-direction: column; height: auto; }
-    .sidebar { width: 100%; flex-direction: row; padding: 12px; height: auto; border-right: none; border-bottom: 1px solid var(--border); justify-content: space-between; align-items: center; }
-    .sidebar-logo { padding: 0; font-size: 18px; }
-    .nav-menu { flex-direction: row; gap: 8px; flex: none; overflow-x: auto; }
-    .tab { padding: 8px 16px; font-size: 14px; white-space: nowrap; }
-    .logout-btn { margin-top: 0; padding: 8px 12px; }
-    .main { height: auto; flex: 1; overflow: visible; }
-    .topbar { padding: 16px; flex-direction: column; align-items: stretch; }
-    .left-controls { flex-direction: column; align-items: stretch; gap: 12px; }
-    .right-controls { justify-content: space-between; }
-    .content { padding: 16px; overflow: visible; }
-    .table-scroll { max-height: none; overflow-x: auto; }
-    table { width: max-content; min-width: 100%; }
-    th.sticky-col, td.sticky-col { width: 180px; min-width: 180px; max-width: 180px; padding: 12px; }
-    .col-total { position: static; }
-    .payout-table th, .payout-table td { padding: 12px 16px; }
-  }
-</style>
-</head>
-<body>
-
-<div id="login-screen">
-  <div class="login-card">
-    <div class="login-logo">W</div>
-    <div class="login-title">Табель</div>
-    <div class="login-sub">Вход в систему</div>
-    <input class="login-input" id="login-login" type="text" placeholder="Логин" maxlength="5" autocomplete="username" style="text-transform: lowercase;">
-    <input class="login-input" id="login-password" type="password" placeholder="Пароль" autocomplete="current-password">
-    <button class="login-btn" id="login-btn">Войти</button>
-    <div class="login-error" id="login-error"></div>
-  </div>
-</div>
-
-<div class="layout" id="main-layout">
-  <aside class="sidebar">
-    <div class="sidebar-logo">Wokker <span style="color: var(--text-muted); font-weight: 500; margin-left: 4px;">| Табель</span></div>
-    <nav class="nav-menu">
-      <button class="tab active" data-sec="tab-sheet">Табель</button>
-      <button class="tab" data-sec="tab-payouts">Выплаты</button>
-      <button class="tab" data-sec="tab-reports">Отчёты</button>
-      <button class="tab" data-sec="tab-settings">Настройки</button>
-    </nav>
-    <button class="logout-btn" onclick="doLogout()">Выйти</button>
-  </aside>
-
-  <div class="main">
-    <div class="topbar" id="topbar-wrapper">
-      <div class="left-controls" id="left-controls-wrapper">
-        <div class="view-toggle" id="view-toggle-wrapper">
-          <button class="active" onclick="setViewMode('month')">Месяц</button>
-          <button onclick="setViewMode('week')">Неделя</button>
-        </div>
-        
-        <div class="month-selector" id="month-selector-wrapper">
-          <input type="month" id="month-picker" class="month-picker-input" onchange="changeMonthFromPicker(this.value)">
-        </div>
-
-        <div class="month-title" id="current-period-title" style="display: none;"></div>
-      </div>
-      
-      <div class="right-controls" id="right-controls-wrapper">
-        <div class="legend">
-          <div class="legend-item"><div class="legend-color" style="background:var(--green)"></div> Отпуск (В)</div>
-          <div class="legend-item"><div class="legend-color" style="background:var(--amber)"></div> Больничный (Б)</div>
-          <div class="legend-item"><div class="legend-color" style="background:var(--red)"></div> Прогул (Н)</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="content">
-      <div class="section active" id="tab-sheet">
-        <div class="table-scroll" id="matrix-container" style="height: 100%;">
-          <div class="loader">Загрузка данных...</div>
-        </div>
-      </div>
-
-      <div class="section" id="tab-payouts">
-        <div class="payout-header">
-          <div class="payout-summary">
-            <div class="summary-card">
-              <div class="summary-title">Начислено за месяц</div>
-              <div class="summary-value" id="sum-accrued">0 ₽</div>
-            </div>
-            <div class="summary-card">
-              <div class="summary-title">Выплачено</div>
-              <div class="summary-value green" id="sum-paid">0 ₽</div>
-            </div>
-            <div class="summary-card">
-              <div class="summary-title">Остаток к выплате</div>
-              <div class="summary-value amber" id="sum-remaining">0 ₽</div>
-            </div>
-          </div>
-          <button class="btn-add-payout" onclick="openPayoutModal()">+ Добавить выплату</button>
-        </div>
-
-        <div class="payout-layout">
-          <div class="table-scroll">
-            <table class="payout-table">
-              <thead>
-                <tr>
-                  <th>Сотрудник</th>
-                  <th>Должность</th>
-                  <th class="right">Начислено</th>
-                  <th class="right">Выплачено</th>
-                  <th class="right">Остаток</th>
-                </tr>
-              </thead>
-              <tbody id="payouts-list">
-                <tr><td colspan="5" class="loader">Загрузка...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <div class="section" id="tab-reports">
-        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; min-height: 400px; color: var(--text-muted); text-align: center;">
-          <svg style="width: 64px; height: 64px; margin-bottom: 24px; color: #D1D5DB;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-            <line x1="3" y1="9" x2="21" y2="9"></line>
-            <line x1="9" y1="21" x2="9" y2="9"></line>
-          </svg>
-          <div style="font-size: 20px; font-weight: 700; color: var(--text-main); margin-bottom: 8px;">Раздел в разработке</div>
-          <div style="font-size: 15px; max-width: 400px; line-height: 1.5;">Здесь скоро появятся новые дашборды и отчёты для бухгалтерии и HR.</div>
-        </div>
-      </div>
-
-      <div class="section" id="tab-settings">
-        <div style="padding: 32px; background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.03); max-width: 600px; margin: 0 auto; width: 100%; border: 1px solid var(--border);">
-          <div style="font-size: 22px; font-weight: 700; margin-bottom: 24px; letter-spacing: -0.5px;">Ставки по должностям</div>
-          <div id="settings-list">
-            <div class="loader">Загрузка...</div>
-          </div>
-          <button class="btn-submit" onclick="saveSettings()" style="margin-top: 32px;">Сохранить настройки</button>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="emp-modal" onclick="if(event.target===this) closeEmpModal()">
-  <div class="emp-card">
-    <div class="emp-card-header">
-      <div>
-        <div class="emp-card-name" id="modal-emp-name">—</div>
-        <div class="emp-card-pos" id="modal-emp-pos">—</div>
-      </div>
-      <button class="modal-close" onclick="closeEmpModal()">✕</button>
-    </div>
-    <div class="emp-card-body">
-      <div class="emp-stat-row">
-        <span class="emp-stat-label">Тип оплаты</span>
-        <span class="emp-stat-value" id="modal-emp-type">—</span>
-      </div>
-      <div class="emp-stat-row">
-        <span class="emp-stat-label">Ставка</span>
-        <span class="emp-stat-value" id="modal-emp-rate">—</span>
-      </div>
-      <div class="emp-stat-row">
-        <span class="emp-stat-label">Отработано часов</span>
-        <span class="emp-stat-value" id="modal-emp-hours">—</span>
-      </div>
-      <div class="emp-stat-row" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
-        <span class="emp-stat-label" style="font-weight: 600; color: var(--text-main);">Начислено за период</span>
-        <span class="emp-stat-value highlight" id="modal-emp-salary">— ₽</span>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="payout-modal" onclick="if(event.target===this) closePayoutModal()">
-  <div class="modal-card">
-    <div class="modal-header">
-      <div class="modal-title">Новая выплата</div>
-      <button class="modal-close" onclick="closePayoutModal()">✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label class="form-label">Сотрудник</label>
-        <select class="form-select" id="pay-user">
-          <option value="">Выберите сотрудника...</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Сумма (₽)</label>
-        <input type="number" class="form-input" id="pay-amount" placeholder="Например: 15000" min="1" step="100">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Комментарий (обязательно)</label>
-        <textarea class="form-textarea" id="pay-comment" placeholder="Например: Аванс за первую половину месяца"></textarea>
-      </div>
-      <div class="form-error" id="pay-error" style="color: var(--red); font-size: 13px; font-weight: 500; margin-bottom: 12px; display: none;"></div>
-      <button class="btn-submit" id="btn-save-payout" onclick="savePayout()">Сохранить выплату</button>
-    </div>
-  </div>
-</div>
-
-<div class="toast" id="toast">Сохранено</div>
-
-<script>
-const TOKEN_KEY = 'wokker_staff_token';
-const LOGIN_RE = /^[a-z]{3}\d{2}$/;
-
-let CURRENT_DATE = new Date();
-let CURRENT_MONTH = CURRENT_DATE.getMonth() + 1;
-let CURRENT_YEAR = CURRENT_DATE.getFullYear();
-let CURRENT_WEEK_START = getMonday(new Date());
-
-let VIEW_MODE = 'month';
-let EMPLOYEES_DATA = [];
-let SETTINGS_DATA = [];
-
-const $ = id => document.getElementById(id);
-const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-
-function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
-function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
-function clearToken() { localStorage.removeItem(TOKEN_KEY); }
-
-// ================== АВТОРИЗАЦИЯ ==================
-function showLogin() {
-  $('main-layout').style.display = 'none';
-  $('login-screen').style.display = 'flex';
-  $('login-error').textContent = '';
-  $('login-login').value = '';
-  $('login-password').value = '';
-}
-
-function showApp() {
-  $('login-screen').style.display = 'none';
-  $('main-layout').style.display = 'flex';
-}
-
-$('login-login').addEventListener('input', e => {
-  e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5);
-});
-
-async function doLogin() {
-  const login = $('login-login').value.trim().toLowerCase();
-  const password = $('login-password').value;
-  const errEl = $('login-error');
-  errEl.textContent = '';
-
-  if (!LOGIN_RE.test(login)) { errEl.textContent = 'Логин: 3 латинские буквы + 2 цифры'; return; }
-  if (!password) { errEl.textContent = 'Введите пароль'; return; }
-
-  const btn = $('login-btn');
-  btn.disabled = true; btn.textContent = 'Проверяем…';
-
-  try {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ login, password }),
-    });
-
-    if (res.status === 401) { errEl.textContent = 'Неверный логин или пароль'; return; }
-    if (res.status === 403) { errEl.textContent = 'Аккаунт уволен или заблокирован'; return; }
-    if (!res.ok) { errEl.textContent = 'Ошибка сервера'; return; }
-
-    const data = await res.json();
-    if (!data.token) { errEl.textContent = 'Ошибка получения токена'; return; }
-
-    setToken(data.token);
-    showApp();
-    updatePeriodTitle();
-    await loadMatrix();
-
-  } catch (e) {
-    errEl.textContent = 'Сеть недоступна';
-  } finally {
-    btn.disabled = false; btn.textContent = 'Войти';
-  }
-}
-
-function doLogout() {
-  if (!confirm('Выйти из аккаунта?')) return;
-  clearToken();
-  showLogin();
-}
-
-$('login-btn').addEventListener('click', doLogin);
-$('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
-$('login-login').addEventListener('keydown', e => { if (e.key === 'Enter') $('login-password').focus(); });
-
-// ================== API ==================
-async function api(path, body) {
-  const payload = { webToken: getToken() };
-  if (body && typeof body === 'object') Object.assign(payload, body);
-  
-  const res = await fetch(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  
-  if (res.status === 401) { clearToken(); showLogin(); throw new Error('unauthorized'); }
-  if (!res.ok) {
-    let msg = 'Ошибка на сервере';
-    try { 
-        const j = await res.json(); 
-        msg = j.detail || j.error || msg; 
-    } catch (e) {
-        msg = `Ошибка сервера (код ${res.status})`;
-    }
-    throw new Error(msg);
-  }
-  return res.json();
-}
-
-function toast(text) {
-  const el = $('toast');
-  el.textContent = text;
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 2500);
-}
-
-// ================== НАВИГАЦИЯ ==================
-document.querySelectorAll('.tab').forEach(t => {
-  t.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-    t.classList.add('active');
-    $(t.dataset.sec).classList.add('active');
+@routes.post('/api/timesheet/matrix')
+async def handle_timesheet_matrix(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
-    if (t.dataset.sec === 'tab-settings' || t.dataset.sec === 'tab-reports') {
-      $('left-controls-wrapper').style.display = 'none';
-      $('right-controls-wrapper').style.display = 'none';
-    } else {
-      $('left-controls-wrapper').style.display = 'flex';
-      $('right-controls-wrapper').style.display = 'flex';
-    }
+    date_from = body.get("date_from")
+    date_to = body.get("date_to")
+    if not date_from or not date_to:
+        month = _safe_int(body.get("month", datetime.now().month))
+        year = _safe_int(body.get("year", datetime.now().year))
+        last_day = calendar.monthrange(year, month)[1]
+        date_from = f"{year}-{month:02d}-01"
+        date_to = f"{year}-{month:02d}-{last_day:02d}"
+        
+    employees = await _run(_sync_timesheet_matrix, user["user_id"], date_from, date_to)
+    return web.json_response({"employees": employees})
+
+# ================== СОХРАНЕНИЕ ЯЧЕЕК ==================
+def _sync_save_cell(user_id, target_uid, work_date, hours, status):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if hours <= 0 and status == 'work':
+                cur.execute("DELETE FROM timesheet_records WHERE user_id = %s AND work_date = %s", (target_uid, work_date))
+            else:
+                cur.execute("""INSERT INTO timesheet_records (user_id, work_date, hours, status, updated_at) VALUES (%s, %s, %s, %s, NOW())
+                    ON CONFLICT (user_id, work_date) DO UPDATE SET hours = EXCLUDED.hours, status = EXCLUDED.status, updated_at = NOW()""", (target_uid, work_date, hours, status))
+
+@routes.post('/api/timesheet/save_cell')
+async def handle_timesheet_save_cell(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
-    if (t.dataset.sec === 'tab-sheet') loadMatrix();
-    if (t.dataset.sec === 'tab-payouts') loadPayouts();
-    if (t.dataset.sec === 'tab-settings') loadSettings();
-  });
-});
-
-// ================== ДАТЫ ==================
-function getMonday(d) {
-  d = new Date(d);
-  var day = d.getDay(), diff = d.getDate() - day + (day == 0 ? -6 : 1);
-  return new Date(d.setDate(diff));
-}
-function formatDate(d) {
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-}
-function formatDateShort(d) {
-  const pad = n => String(n).padStart(2, '0');
-  return `${pad(d.getDate())}.${pad(d.getMonth()+1)}`;
-}
-function getPeriodDates() {
-  if (VIEW_MODE === 'month') {
-    const start = new Date(CURRENT_YEAR, CURRENT_MONTH - 1, 1);
-    const end = new Date(CURRENT_YEAR, CURRENT_MONTH, 0);
-    return { start, end };
-  } else {
-    const start = new Date(CURRENT_WEEK_START);
-    const end = new Date(CURRENT_WEEK_START.getTime() + 6 * 86400000);
-    return { start, end };
-  }
-}
-function updatePeriodTitle() {
-  const { start, end } = getPeriodDates();
-  if (VIEW_MODE === 'month') {
-    $('month-selector-wrapper').style.display = 'block';
-    $('current-period-title').style.display = 'none';
-    $('month-picker').value = `${CURRENT_YEAR}-${String(CURRENT_MONTH).padStart(2, '0')}`;
-  } else {
-    $('month-selector-wrapper').style.display = 'none';
-    $('current-period-title').style.display = 'block';
-    $('current-period-title').textContent = `${formatDateShort(start)} — ${formatDateShort(end)}`;
-  }
-}
-function changeMonthFromPicker(val) {
-  if (!val) return;
-  const parts = val.split('-');
-  CURRENT_YEAR = parseInt(parts[0]);
-  CURRENT_MONTH = parseInt(parts[1]);
-  updatePeriodTitle();
-  loadMatrix();
-}
-function setViewMode(mode) {
-  VIEW_MODE = mode;
-  document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.view-toggle button')[mode === 'month' ? 0 : 1].classList.add('active');
-  if (mode === 'week') CURRENT_WEEK_START = getMonday(new Date(CURRENT_YEAR, CURRENT_MONTH - 1, 15));
-  else { CURRENT_MONTH = CURRENT_WEEK_START.getMonth() + 1; CURRENT_YEAR = CURRENT_WEEK_START.getFullYear(); }
-  updatePeriodTitle();
-  loadMatrix();
-}
-
-// ================== ТАБЕЛЬ ==================
-async function loadMatrix() {
-  $('matrix-container').innerHTML = '<div class="loader">Загрузка табеля...</div>';
-  const { start, end } = getPeriodDates();
-  const dateFrom = formatDate(start);
-  const dateTo = formatDate(end);
-
-  try {
-    const res = await api('/api/timesheet/matrix', { date_from: dateFrom, date_to: dateTo });
-    EMPLOYEES_DATA = res.employees || [];
-    renderMatrix();
-  } catch (e) {
-    if (e.message !== 'unauthorized') {
-      $('matrix-container').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
-    }
-  }
-}
-
-function getCellDisplayValue(c) {
-  if (c.s === 'vacation') return 'В';
-  if (c.s === 'sick') return 'Б';
-  if (c.s === 'absent') return 'Н';
-  return c.h || '';
-}
-
-function renderMatrix() {
-  if (!EMPLOYEES_DATA.length) {
-    $('matrix-container').innerHTML = '<div class="loader">Нет сотрудников для отображения</div>';
-    return;
-  }
-  const { start, end } = getPeriodDates();
-  const grouped = {};
-  EMPLOYEES_DATA.forEach(emp => {
-    const rest = emp.restaurant_name || 'Без ресторана';
-    if (!grouped[rest]) grouped[rest] = [];
-    grouped[rest].push(emp);
-  });
-
-  let thead = `<thead><tr><th class="sticky-col">Сотрудник</th>`;
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const dayOfWeek = d.getDay();
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    thead += `<th class="${isWeekend ? 'weekend' : ''}">${d.getDate()}<br><span style="font-size:10px;font-weight:500;">${['Вс','Пн','Вт','Ср','Чт','Пт','Сб'][dayOfWeek]}</span></th>`;
-  }
-  let dayCount = 0;
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) dayCount++;
-  thead += `<th class="col-total">Итого</th></tr></thead>`;
-
-  let tbody = '<tbody>';
-  for (const [restName, employees] of Object.entries(grouped)) {
-    tbody += `<tr class="rest-header"><td class="sticky-col">${esc(restName)}</td><td colspan="${dayCount + 1}"></td></tr>`;
-    employees.forEach(emp => {
-      tbody += `<tr data-uid="${emp.user_id}">
-        <td class="sticky-col">
-          <span class="emp-name" onclick="openEmpModal(${emp.user_id})">${esc(emp.full_name)}</span>
-        </td>`;
-        
-      let totalHours = 0;
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const dayOfWeek = d.getDay();
-        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-        const dayNum = d.getDate();
-        const cellData = emp.data[dayNum] || { h: '', s: 'work' };
-        
-        if (cellData.s === 'work') totalHours += parseFloat(cellData.h || 0);
-        else if (cellData.s === 'vacation' || cellData.s === 'sick') totalHours += 8;
-
-        let statusClass = '';
-        if (cellData.s === 'vacation') statusClass = 'status-vacation';
-        else if (cellData.s === 'sick') statusClass = 'status-sick';
-        else if (cellData.s === 'absent') statusClass = 'status-absent';
-
-        tbody += `<td class="${isWeekend ? 'weekend' : ''}">
-          <input type="text" class="cell-input ${statusClass}" 
-                 data-uid="${emp.user_id}" data-day="${dayNum}"
-                 value="${getCellDisplayValue(cellData)}"
-                 title="В = отпуск, Б = больничный, Н = прогул"
-                 onchange="saveCellDirect(this)"
-                 onfocus="this.select()"
-                 onkeydown="if(event.key==='Enter') this.blur()">
-        </td>`;
-      }
-      tbody += `<td class="col-total total-hours">${totalHours}</td></tr>`;
-    });
-  }
-  tbody += '</tbody>';
-  $('matrix-container').innerHTML = `<table>${thead}${tbody}</table>`;
-}
-
-async function saveCellDirect(inp) {
-  const uid = parseInt(inp.dataset.uid);
-  const day = parseInt(inp.dataset.day);
-  let val = inp.value.trim().toUpperCase();
-  let hours = 0;
-  let status = 'work';
-
-  if (val === 'В') { status = 'vacation'; hours = 8; inp.value = 'В'; }
-  else if (val === 'Б') { status = 'sick'; hours = 8; inp.value = 'Б'; }
-  else if (val === 'Н') { status = 'absent'; hours = 0; inp.value = 'Н'; }
-  else if (val === '') { status = 'work'; hours = 0; inp.value = ''; }
-  else { status = 'work'; hours = parseFloat(val.replace(',', '.')) || 0; inp.value = hours || ''; }
-
-  inp.classList.remove('status-vacation', 'status-sick', 'status-absent');
-  if (status === 'vacation') inp.classList.add('status-vacation');
-  else if (status === 'sick') inp.classList.add('status-sick');
-  else if (status === 'absent') inp.classList.add('status-absent');
-
-  const { start } = getPeriodDates();
-  const targetDate = new Date(start.getFullYear(), start.getMonth(), day);
-  if (day < start.getDate()) targetDate.setMonth(targetDate.getMonth() + 1);
-  const dateStr = formatDate(targetDate);
-
-  try {
-    await api('/api/timesheet/save_cell', { user_id: uid, work_date: dateStr, hours: hours, status: status });
-    const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
-    if (emp) {
-      emp.data[day] = { h: hours, s: status };
-      let totalHours = 0;
-      for (const key in emp.data) {
-        const c = emp.data[key];
-        if (c.s === 'work') totalHours += parseFloat(c.h || 0);
-        else if (c.s === 'vacation' || c.s === 'sick') totalHours += 8;
-      }
-      const row = inp.closest('tr');
-      if (row) {
-        const totalCell = row.querySelector('.total-hours');
-        if (totalCell) totalCell.textContent = totalHours;
-      }
-    }
-    toast('Сохранено');
-  } catch (err) {
-    if (err.message !== 'unauthorized') alert('Ошибка сохранения: ' + err.message);
-    const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
-    if (emp && emp.data[day]) inp.value = getCellDisplayValue(emp.data[day]);
-  }
-}
-
-// ================== ВЫПЛАТЫ ==================
-async function loadPayouts() {
-  $('payouts-list').innerHTML = '<tr><td colspan="5" class="loader">Загрузка...</td></tr>';
-  
-  const { start, end } = getPeriodDates();
-  const dateFrom = formatDate(start);
-  const dateTo = formatDate(end);
-
-  try {
-    const res = await api('/api/payments/list', { date_from: dateFrom, date_to: dateTo });
-    const employees = res.employees || [];
+    target_uid = _safe_int(body.get("user_id"))
+    work_date = body.get("work_date")
+    hours = float(body.get("hours", 0))
+    status = body.get("status", "work")
     
-    // Наполняем селект для модалки
-    const select = $('pay-user');
-    select.innerHTML = '<option value="">Выберите сотрудника...</option>';
-    employees.forEach(e => {
-      select.innerHTML += `<option value="${e.user_id}">${esc(e.full_name)} (Остаток: ${(e.accrued - e.paid).toLocaleString('ru-RU')} ₽)</option>`;
-    });
+    if not work_date or target_uid <= 0: return web.json_response({"error": "invalid_data"}, status=400)
+    allowed = await _run(_check_can_edit_user, user, target_uid)
+    if not allowed: return web.json_response({"error": "forbidden_edit_other"}, status=403)
+    
+    await _run(_sync_save_cell, user["user_id"], target_uid, work_date, hours, status)
+    return web.json_response({"ok": True})
 
-    // Считаем итоги
-    let totalAccrued = 0;
-    let totalPaid = 0;
+def _sync_bulk_save_cells(user_id, cells):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            for cell in cells:
+                target_uid = cell.get("user_id")
+                work_date = cell.get("work_date")
+                hours = cell.get("hours", 0)
+                status = cell.get("status", "work")
+                if not work_date or not target_uid: continue
+                if hours <= 0 and status == 'work':
+                    cur.execute("DELETE FROM timesheet_records WHERE user_id = %s AND work_date = %s", (target_uid, work_date))
+                else:
+                    cur.execute("""INSERT INTO timesheet_records (user_id, work_date, hours, status, updated_at) VALUES (%s, %s, %s, %s, NOW())
+                        ON CONFLICT (user_id, work_date) DO UPDATE SET hours = EXCLUDED.hours, status = EXCLUDED.status, updated_at = NOW()""", (target_uid, work_date, hours, status))
 
-    if (!employees.length) {
-      $('payouts-list').innerHTML = '<tr><td colspan="5" class="loader">Нет данных</td></tr>';
-    } else {
-      $('payouts-list').innerHTML = employees.map(e => {
-        const accrued = parseFloat(e.accrued) || 0;
-        const paid = parseFloat(e.paid) || 0;
-        const remaining = accrued - paid;
+@routes.post('/api/timesheet/bulk_save')
+async def handle_timesheet_bulk_save(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    cells = body.get("cells") or []
+    if not cells: return web.json_response({"ok": True})
+    for cell in cells:
+        allowed = await _run(_check_can_edit_user, user, cell.get("user_id"))
+        if not allowed: return web.json_response({"error": "forbidden_edit_other"}, status=403)
+    await _run(_sync_bulk_save_cells, user["user_id"], cells)
+    return web.json_response({"ok": True})
+
+# ================== ОТЧЕТЫ И EXCEL ==================
+def _sync_reports(user_id, date_from, date_to):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+            u = cur.fetchone()
+            is_hr_or_super = _is_hr_or_super(u)
+            is_tu = _is_tu(u)
+            is_us = "управляющий сменой" in (u.get("position") or "").lower()
+            
+            base = """SELECT u.full_name, u.position, r.name AS restaurant_name, SUM(t.hours) as total_hours, 
+                       COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, u.payment_type,
+                       CASE WHEN u.payment_type = 'fixed' THEN COALESCE(NULLIF(u.rate, 0), pr.rate, 0)
+                            ELSE (SUM(t.hours) * COALESCE(NULLIF(u.rate, 0), pr.rate, 0)) END as total_salary
+                FROM users u JOIN timesheet_records t ON u.user_id = t.user_id
+                LEFT JOIN restaurants r ON u.restaurant_key = r.key
+                LEFT JOIN position_rates pr ON u.position = pr.position_name
+                WHERE COALESCE(u.is_fired, FALSE) = FALSE AND u.login IS NOT NULL
+                  AND t.work_date >= %s::date AND t.work_date <= %s::date"""
+            params = [date_from, date_to]
+            if is_us:
+                base += " AND u.restaurant_key = %s"; params.append(u.get("restaurant_key"))
+            elif is_tu:
+                base += " AND u.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id = %s)"; params.append(user_id)
+            elif not is_hr_or_super:
+                base += " AND u.user_id = %s"; params.append(user_id)
+            base += " GROUP BY u.user_id, u.full_name, u.position, r.name, u.rate, pr.rate, u.payment_type ORDER BY r.name, u.full_name"
+            
+            cur.execute(base, params)
+            return [dict(r) for r in cur.fetchall()]
+
+@routes.post('/api/timesheet/reports')
+async def handle_timesheet_reports(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    date_from = body.get("date_from")
+    date_to = body.get("date_to")
+    if not date_from or not date_to:
+        month = _safe_int(body.get("month", datetime.now().month))
+        year = _safe_int(body.get("year", datetime.now().year))
+        last_day = calendar.monthrange(year, month)[1]
+        date_from = f"{year}-{month:02d}-01"
+        date_to = f"{year}-{month:02d}-{last_day:02d}"
         
-        totalAccrued += accrued;
-        totalPaid += paid;
+    report = await _run(_sync_reports, user["user_id"], date_from, date_to)
+    return web.json_response({"report": report})
 
-        return `
-          <tr>
-            <td><b>${esc(e.full_name)}</b></td>
-            <td style="color:var(--text-muted);">${esc(e.position || '—')}</td>
-            <td class="right">${accrued.toLocaleString('ru-RU')} ₽</td>
-            <td class="right" style="color:var(--green-text); font-weight:600;">${paid.toLocaleString('ru-RU')} ₽</td>
-            <td class="right" style="font-weight:700; color:${remaining > 0 ? 'var(--amber-text)' : 'var(--text-main)'};">${remaining.toLocaleString('ru-RU')} ₽</td>
-          </tr>
-        `;
-      }).join('');
-    }
+@routes.get('/api/timesheet/export_excel')
+async def handle_timesheet_export_excel(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    
+    date_from = request.query.get("date_from")
+    date_to = request.query.get("date_to")
+    if not date_from or not date_to:
+        return web.Response(text="Укажите даты", status=400)
 
-    $('sum-accrued').textContent = `${totalAccrued.toLocaleString('ru-RU')} ₽`;
-    $('sum-paid').textContent = `${totalPaid.toLocaleString('ru-RU')} ₽`;
-    $('sum-remaining').textContent = `${(totalAccrued - totalPaid).toLocaleString('ru-RU')} ₽`;
+    report = await _run(_sync_reports, user["user_id"], date_from, date_to)
 
-  } catch (e) {
-    if (e.message !== 'unauthorized') {
-      $('payouts-list').innerHTML = `<tr><td colspan="5" class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</td></tr>`;
-    }
-  }
-}
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Табель"
 
-function openPayoutModal() {
-  $('pay-user').value = '';
-  $('pay-amount').value = '';
-  $('pay-comment').value = '';
-  $('pay-error').style.display = 'none';
-  $('payout-modal').classList.add('show');
-}
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1C1C1E", end_color="1C1C1E", fill_type="solid")
+    border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+    center_align = Alignment(horizontal="center", vertical="center")
 
-function closePayoutModal() {
-  $('payout-modal').classList.remove('show');
-}
+    headers = ["Сотрудник", "Должность", "Ресторан", "Часов", "Ставка (₽)", "К оплате (₽)"]
+    ws.append(headers)
+    
+    for col_num, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_num)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center_align
+        cell.border = border
 
-async function savePayout() {
-  const userId = $('pay-user').value;
-  const amount = parseFloat($('pay-amount').value);
-  const comment = $('pay-comment').value.trim();
-  const errEl = $('pay-error');
+    for r in report:
+        row_data = [
+            r.get("full_name", ""),
+            r.get("position", ""),
+            r.get("restaurant_name", ""),
+            float(r.get("total_hours", 0)),
+            "Оклад" if r.get("payment_type") == 'fixed' else float(r.get("rate", 0)),
+            float(r.get("total_salary", 0))
+        ]
+        ws.append(row_data)
+        current_row = ws.max_row
+        for col_num in range(1, 7):
+            cell = ws.cell(row=current_row, column=col_num)
+            cell.border = border
+            if col_num >= 4:
+                cell.alignment = Alignment(horizontal="right", vertical="center")
 
-  if (!userId) { errEl.textContent = 'Выберите сотрудника'; errEl.style.display = 'block'; return; }
-  if (!amount || amount <= 0) { errEl.textContent = 'Укажите корректную сумму'; errEl.style.display = 'block'; return; }
-  if (!comment) { errEl.textContent = 'Комментарий обязателен'; errEl.style.display = 'block'; return; }
+    for col in ws.columns:
+        max_length = 0
+        column = col[0].column_letter
+        for cell in col:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except: pass
+        ws.column_dimensions[column].width = max_length + 2
 
-  errEl.style.display = 'none';
-  const btn = $('btn-save-payout');
-  btn.disabled = true; btn.textContent = 'Сохранение...';
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
 
-  try {
-    await api('/api/payments/add', { user_id: parseInt(userId), amount: amount, comment: comment });
-    closePayoutModal();
-    toast('Выплата добавлена');
-    await loadPayouts(); // Обновляем данные
-  } catch (e) {
-    if (e.message !== 'unauthorized') {
-      errEl.textContent = 'Ошибка: ' + e.message;
-      errEl.style.display = 'block';
-    }
-  } finally {
-    btn.disabled = false; btn.textContent = 'Сохранить выплату';
-  }
-}
+    filename = f"Табель_{date_from}_{date_to}.xlsx"
+    return web.Response(
+        body=output.read(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
 
-// ================== КАРТОЧКА СОТРУДНИКА ==================
-function openEmpModal(uid) {
-  const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
-  if (!emp) return;
+# ================== НАСТРОЙКИ ==================
+def _sync_settings_get(user_id):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+            u = cur.fetchone()
+            if not u or not _is_hr_or_super(u): return []
+            cur.execute("""SELECT p.name AS position_name, COALESCE(pr.rate, 0) AS rate
+                FROM positions p LEFT JOIN position_rates pr ON p.name = pr.position_name
+                WHERE p.is_archived = FALSE ORDER BY p.sort, p.name""")
+            return [dict(r) for r in cur.fetchall()]
 
-  let totalHours = 0;
-  for (const key in emp.data) {
-    const c = emp.data[key];
-    if (c.s === 'work') totalHours += parseFloat(c.h || 0);
-    else if (c.s === 'vacation' || c.s === 'sick') totalHours += 8;
-  }
+@routes.post('/api/timesheet/settings')
+async def handle_timesheet_settings_get(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    settings = await _run(_sync_settings_get, user["user_id"])
+    return web.json_response({"settings": settings})
 
-  const rate = parseFloat(emp.rate) || 0;
-  const isFixed = emp.payment_type === 'fixed';
-  let salary = isFixed ? rate : (totalHours * rate);
+@routes.post('/api/timesheet/settings/save')
+async def handle_timesheet_settings_save(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    if not _is_hr_or_super(user): return web.json_response({"error": "forbidden"}, status=403)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    position_name = (body.get("position_name") or "").strip()
+    rate = float(body.get("rate", 0))
+    if not position_name: return web.json_response({"error": "invalid_position"}, status=400)
+    
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""INSERT INTO position_rates (position_name, rate) VALUES (%s, %s)
+                    ON CONFLICT (position_name) DO UPDATE SET rate = EXCLUDED.rate""", (position_name, rate))
+    await _run(_sync)
+    return web.json_response({"ok": True})
 
-  $('modal-emp-name').textContent = emp.full_name;
-  $('modal-emp-pos').textContent = emp.position || 'Должность не указана';
-  $('modal-emp-type').textContent = isFixed ? 'Фиксированный оклад' : 'Почасовая';
-  $('modal-emp-rate').textContent = isFixed ? `${rate.toLocaleString('ru-RU')} ₽ / мес` : `${rate.toLocaleString('ru-RU')} ₽ / час`;
-  $('modal-emp-hours').textContent = `${totalHours} ч`;
-  $('modal-emp-salary').textContent = `${salary.toLocaleString('ru-RU')} ₽`;
+@routes.post('/api/timesheet/employees')
+async def handle_timesheet_employees(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM users WHERE user_id = %s", (user["user_id"],))
+                u = cur.fetchone()
+                is_hr_or_super = _is_hr_or_super(u)
+                is_tu = _is_tu(u)
+                is_us = "управляющий сменой" in (u.get("position") or "").lower()
+                if not (is_hr_or_super or is_tu or is_us): return []
+                
+                query = """SELECT u.user_id, u.full_name, u.position, r.name AS restaurant_name
+                    FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key
+                    WHERE COALESCE(u.is_fired, FALSE) = FALSE AND COALESCE(u.is_admin, FALSE) = FALSE AND u.login IS NOT NULL"""
+                params = []
+                if is_us:
+                    query += " AND u.restaurant_key = %s"; params.append(u.get("restaurant_key"))
+                elif is_tu:
+                    query += " AND u.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id = %s)"; params.append(user["user_id"])
+                query += " ORDER BY u.full_name"
+                cur.execute(query, params)
+                return [dict(r) for r in cur.fetchall()]
+                
+    employees = await _run(_sync)
+    return web.json_response({"employees": employees})
 
-  $('emp-modal').classList.add('show');
-}
+# ================== ВЫПЛАТЫ (PAYOUTS) ==================
 
-function closeEmpModal() {
-  $('emp-modal').classList.remove('show');
-}
+def _ensure_payments_table():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS payments (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,
+                    amount NUMERIC(10,2) NOT NULL,
+                    comment TEXT NOT NULL,
+                    payment_date DATE DEFAULT CURRENT_DATE,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    created_by BIGINT
+                )
+            """)
 
-// ================== НАСТРОЙКИ ==================
-async function loadSettings() {
-  $('settings-list').innerHTML = '<div class="loader">Загрузка...</div>';
-  try {
-    const res = await api('/api/timesheet/settings', {});
-    SETTINGS_DATA = res.settings || [];
-    if (!SETTINGS_DATA.length) {
-      $('settings-list').innerHTML = '<div class="loader">У вас нет прав для просмотра настроек, либо нет доступных должностей.</div>';
-      return;
-    }
-    $('settings-list').innerHTML = SETTINGS_DATA.map(s => `
-      <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--border);">
-        <span style="font-weight: 500; font-size: 15px;">${esc(s.position_name)}</span>
-        <input type="number" class="setting-input" data-pos="${esc(s.position_name)}" value="${s.rate}" min="0" step="10" placeholder="0 ₽" style="width: 140px; text-align: right; padding: 12px 16px; border: 1px solid var(--border); border-radius: 12px; font-size: 15px; font-weight: 600; outline: none; background: #F9FAFB;">
-      </div>
-    `).join('');
-  } catch (e) {
-    if (e.message !== 'unauthorized') {
-      $('settings-list').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
-    }
-  }
-}
+@routes.post('/api/payments/add')
+async def handle_payment_add(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    
+    target_uid = _safe_int(body.get("user_id"))
+    amount = float(body.get("amount", 0))
+    comment = (body.get("comment") or "").strip()
+    
+    if target_uid <= 0:
+        return web.json_response({"error": "Выберите сотрудника"}, status=400)
+    if amount <= 0:
+        return web.json_response({"error": "Сумма должна быть больше нуля"}, status=400)
+    if not comment:
+        return web.json_response({"error": "Комментарий обязателен"}, status=400)
+        
+    def _sync():
+        _ensure_payments_table()
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO payments (user_id, amount, comment, created_by)
+                    VALUES (%s, %s, %s, %s)
+                """, (target_uid, amount, comment, user["user_id"]))
+    await _run(_sync)
+    return web.json_response({"ok": True})
 
-async function saveSettings() {
-  const inputs = document.querySelectorAll('.setting-input');
-  if (!inputs.length) return;
-  const btn = document.querySelector('.btn-submit');
-  btn.disabled = true;
-  btn.textContent = 'Сохранение...';
-  try {
-    for (const inp of inputs) {
-      const posName = inp.dataset.pos;
-      const rate = parseFloat(inp.value) || 0;
-      await api('/api/timesheet/settings/save', { position_name: posName, rate });
-    }
-    toast('Настройки сохранены');
-  } catch (e) {
-    if (e.message !== 'unauthorized') alert('Ошибка сохранения: ' + e.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Сохранить настройки';
-  }
-}
+@routes.post('/api/payments/list')
+async def handle_payments_list(request):
+    user, err = await get_auth_user(request)
+    if err: return denied(err)
+    
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+        
+    date_from = body.get("date_from")
+    date_to = body.get("date_to")
+    if not date_from or not date_to:
+        return web.json_response({"error": "invalid_dates"}, status=400)
 
-// ================== ИНИЦИАЛИЗАЦИЯ ==================
-(async function init() {
-  if (!getToken()) { showLogin(); return; }
-  try {
-    showApp();
-    updatePeriodTitle();
-    await loadMatrix();
-  } catch (e) {}
-})();
-</script>
-</body>
-</html>
+    def _sync():
+        _ensure_payments_table()
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM users WHERE user_id = %s", (user["user_id"],))
+                u = cur.fetchone()
+                is_hr_or_super = _is_hr_or_super(u)
+                is_tu = _is_tu(u)
+                is_us = "управляющий сменой" in (u.get("position") or "").lower()
+                
+                base = """
+                    SELECT u.user_id, u.full_name, u.position, 
+                           COALESCE(SUM(t.hours), 0) as total_hours, 
+                           COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, 
+                           u.payment_type
+                    FROM users u 
+                    LEFT JOIN timesheet_records t ON u.user_id = t.user_id AND t.work_date >= %s::date AND t.work_date <= %s::date
+                    LEFT JOIN position_rates pr ON u.position = pr.position_name
+                    WHERE COALESCE(u.is_fired, FALSE) = FALSE AND COALESCE(u.is_admin, FALSE) = FALSE AND u.login IS NOT NULL
+                """
+                params = [date_from, date_to]
+                
+                if is_us:
+                    base += " AND u.restaurant_key = %s"; params.append(u.get("restaurant_key"))
+                elif is_tu:
+                    base += " AND u.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id = %s)"; params.append(user["user_id"])
+                elif not is_hr_or_super:
+                    base += " AND u.user_id = %s"; params.append(user["user_id"])
+                    
+                base += " GROUP BY u.user_id, u.full_name, u.position, u.rate, pr.rate, u.payment_type ORDER BY u.full_name"
+                cur.execute(base, params)
+                employees = [dict(r) for r in cur.fetchall()]
+                
+                cur.execute("""
+                    SELECT user_id, SUM(amount) as total_paid
+                    FROM payments
+                    WHERE payment_date >= %s::date AND payment_date <= %s::date
+                    GROUP BY user_id
+                """, (date_from, date_to))
+                paid_map = {r["user_id"]: float(r["total_paid"] or 0) for r in cur.fetchall()}
+                
+                for emp in employees:
+                    hours = float(emp["total_hours"] or 0)
+                    rate = float(emp["rate"] or 0)
+                    emp["accrued"] = rate if emp["payment_type"] == 'fixed' else (hours * rate)
+                    emp["paid"] = paid_map.get(emp["user_id"], 0.0)
+                    
+        return employees
+
+    try:
+        employees = await _run(_sync)
+        return web.json_response({"employees": employees})
+    except Exception as e:
+        logging.error(f"Error in payments: {traceback.format_exc()}")
+        return web.json_response({"error": f"Ошибка БД: {str(e)}"}, status=500)

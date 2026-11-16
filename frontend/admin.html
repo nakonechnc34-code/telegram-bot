@@ -606,7 +606,7 @@
   </div>
 </div>
 
-<script nonce="__CSP_NONCE__">
+<script>
 /* ================== CONSTANTS ================== */
 const TOKEN_KEY = 'wokker_admin_token';
 const LOGIN_RE = /^[a-z]{3}\d{2}$/;
@@ -678,7 +678,19 @@ function clearCache() {
 }
 
 function cleanHTML(html) {
-    let clean = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+    if (!html) return '';
+    let clean = String(html);
+    clean = clean.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+    clean = clean.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '');
+    clean = clean.replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, '');
+    clean = clean.replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, '');
+    clean = clean.replace(/<embed\b[^>]*\/?>/gi, '');
+    clean = clean.replace(/<form\b[^>]*>[\s\S]*?<\/form>/gi, '');
+    clean = clean.replace(/\s+on\w+\s*=\s*"[^"]*"/gi, '');
+    clean = clean.replace(/\s+on\w+\s*=\s*'[^']*'/gi, '');
+    clean = clean.replace(/\s+on\w+\s*=\s*[^\s>]+/gi, '');
+    clean = clean.replace(/href\s*=\s*["']?\s*javascript:[^"'\s>]*/gi, 'href="#"');
+    clean = clean.replace(/src\s*=\s*["']?\s*javascript:[^"'\s>]*/gi, '');
     clean = clean.replace(/<meta[^>]*>/gi, '');
     clean = clean.replace(/<link[^>]*>/gi, '');
     clean = clean.replace(/\s*(class|id)="[^"]*"/gi, '');
@@ -732,7 +744,13 @@ async function api(path, body) {
     } catch (e) {}
     throw new Error(msg);
   }
-  return res.json();
+  const data = await res.json();
+  if (data && (data.error === 'forbidden' || data.error === 'fired' || data.error === 'unauthorized')) {
+    clearToken();
+    showLogin();
+    throw new Error(data.error);
+  }
+  return data;
 }
 
 async function uploadFile(file) {
@@ -955,6 +973,8 @@ function navigate(sec) {
         $('page-content').innerHTML = '<div class="empty">Ошибка: ' + esc(e.message) + '</div>';
       }
     });
+
+  refreshCounters();
 }
 
 async function refreshCounters() {
@@ -1733,7 +1753,11 @@ function parseDdMmYyyy(s) {
 }
 function addMonthsClient(d, months) {
   const r = new Date(d);
-  r.setMonth(r.getMonth() + months);
+  const targetMonth = r.getMonth() + months;
+  r.setDate(1);
+  r.setMonth(targetMonth);
+  const lastDay = new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate();
+  r.setDate(Math.min(d.getDate(), lastDay));
   return r;
 }
 function entryStatusClient(dateStr, validityMonths) {
@@ -2772,7 +2796,7 @@ function openStdEdit(id, news) {
     <div id="std-text-area" style="display: ${isTable ? 'none' : 'block'};">
       <div class="form-group">
         <label>Текст стандарта (Можно вставлять прямо из Word / PDF)</label>
-        <div contenteditable="true" id="edit-std-body" class="rich-editor">${!isTable ? (n.body || '') : ''}</div>
+        <div contenteditable="true" id="edit-std-body" class="rich-editor">${!isTable ? cleanHTML(n.body || '') : ''}</div>
       </div>
     </div>
 
@@ -3131,8 +3155,8 @@ async function loadReports() {
       <div class="stat-card"><div class="label">Всего</div><div class="value">${report.total}</div></div>
       <div class="stat-card green"><div class="label">Активных</div><div class="value">${report.active}</div></div>
       <div class="stat-card accent"><div class="label">Уволено</div><div class="value">${report.fired}</div></div>
-      <div class="stat-card"><div class="label">Новых за 7д</div><div class="value">${report.new7}</div></div>
-      <div class="stat-card amber"><div class="label">Неактивных 7+</div><div class="value">${report.inactive7}</div></div>
+      <div class="stat-card"><div class="label">Новых за 7 дней</div><div class="value">${report.new7}</div></div>
+      <div class="stat-card amber"><div class="label">Открытых вопросов</div><div class="value">${report.questions_open || 0}</div></div>
     </div>`;
 }
 

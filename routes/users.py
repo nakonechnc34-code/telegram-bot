@@ -49,7 +49,7 @@ def validate_user_create_data(body):
         except (ValueError, TypeError): return None, "invalid_citizenship_id"
     return {
         "full_name": full_name, "password": password,
-        "personnel_number": (body.get("personnel_number") or "").strip()[:50], # <--- ДОБАВЛЕНО
+        "personnel_number": (body.get("personnel_number") or "").strip()[:50],
         "phone": (body.get("phone") or "")[:50], "birth_date": (body.get("birth_date") or "")[:20],
         "position": (body.get("position") or "")[:100],
         "restaurant_key": (body.get("restaurant_key") or body.get("restaurant") or "")[:100],
@@ -79,6 +79,17 @@ def _sync_list_users(search="", fired=False, tu_rests=None):
             base += " ORDER BY u.user_id DESC"
             cur.execute(base, params)
             return [dict(r) for r in cur.fetchall()]
+
+# ИСПРАВЛЕНО: Добавлена проверка, может ли админ редактировать этого юзера
+async def _check_admin_can_manage_user(admin, target_uid):
+    if admin.get("is_super_admin") or (admin.get("position") or "").strip().upper() == "HR":
+        return True
+    target = await _run(_sync_get_user_by_id, target_uid)
+    if not target: return False
+    if _is_tu(admin):
+        allowed_rests = await _run(_sync_get_tu_rests, admin["user_id"])
+        return target.get("restaurant_key") in allowed_rests
+    return False # Обычные админы без спец. прав не могут менять других
 
 @routes.post('/api/admin/users')
 async def handle_admin_users(request):
@@ -170,6 +181,11 @@ async def handle_admin_user_get(request):
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     uid = int(body.get("user_id", 0))
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    
+    # ИСПРАВЛЕНО: ТУ не может смотреть чужих юзеров
+    if not await _check_admin_can_manage_user(admin, uid):
+        return web.json_response({"error": "forbidden"}, status=403)
+
     user = await _run(_sync_get_user_by_id, uid)
     if not user: return web.json_response({"error": "not_found"}, status=404)
     return web.json_response({"user": user})
@@ -203,12 +219,24 @@ async def handle_admin_user_update(request):
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     uid = int(body.get("user_id", 0))
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    
+    # ИСПРАВЛЕНО: Проверка границ ТУ
+    if not await _check_admin_can_manage_user(admin, uid):
+        return web.json_response({"error": "forbidden"}, status=403)
+
     updates = body.get("updates") or {}
     target = await _run(_sync_get_user_by_id, uid)
     if not target: return web.json_response({"error": "not_found"}, status=404)
     if "is_admin" in updates and not admin["is_super_admin"]: return web.json_response({"error": "forbidden_is_admin"}, status=403)
     if target.get("is_super_admin") and not admin["is_super_admin"]: return web.json_response({"error": "cannot_edit_super"}, status=403)
     if "restaurant" in updates: updates["restaurant_key"] = updates.pop("restaurant")
+    
+    # ИСПРАВЛЕНО: ТУ не может перевести юзера в чужой ресторан
+    if _is_tu(admin) and "restaurant_key" in updates:
+        allowed_rests = await _run(_sync_get_tu_rests, admin["user_id"])
+        if updates["restaurant_key"] not in allowed_rests:
+            return web.json_response({"error": "forbidden_restaurant"}, status=403)
+
     err_code = await _run(_sync_update_user, uid, updates)
     if err_code: return web.json_response({"error": err_code}, status=400)
     updated = await _run(_sync_get_user_by_id, uid)
@@ -224,6 +252,11 @@ async def handle_admin_user_fire(request):
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     uid = int(body.get("user_id", 0))
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    
+    # ИСПРАВЛЕНО: ТУ не может уволить чужого
+    if not await _check_admin_can_manage_user(admin, uid):
+        return web.json_response({"error": "forbidden"}, status=403)
+
     target = await _run(_sync_get_user_by_id, uid)
     if not target: return web.json_response({"error": "not_found"}, status=404)
     if target.get("is_super_admin"): return web.json_response({"error": "cannot_fire_super"}, status=403)
@@ -247,6 +280,10 @@ async def handle_admin_user_restore(request):
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     uid = int(body.get("user_id", 0))
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    
+    if not await _check_admin_can_manage_user(admin, uid):
+        return web.json_response({"error": "forbidden"}, status=403)
+
     def _sync():
         with get_conn() as conn:
             with conn.cursor() as cur:

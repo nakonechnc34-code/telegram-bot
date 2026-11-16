@@ -606,12 +606,22 @@ document.querySelectorAll('.tab').forEach(t => {
     t.classList.add('active');
     $(t.dataset.sec).classList.add('active');
     
+    // Скрываем/показываем верхнюю панель целиком
     if (t.dataset.sec === 'tab-settings' || t.dataset.sec === 'tab-reports') {
       $('left-controls-wrapper').style.display = 'none';
       $('right-controls-wrapper').style.display = 'none';
     } else {
       $('left-controls-wrapper').style.display = 'flex';
       $('right-controls-wrapper').style.display = 'flex';
+    }
+
+    // Селектор ресторана "Работа в:" показываем ТОЛЬКО на вкладке Табель
+    if (t.dataset.sec === 'tab-sheet') {
+        if (RESTAURANTS_LIST.length > 0) {
+            $('rest-select-wrapper').style.display = 'flex';
+        }
+    } else {
+        $('rest-select-wrapper').style.display = 'none';
     }
     
     if (t.dataset.sec === 'tab-sheet') loadMatrix();
@@ -697,7 +707,10 @@ async function loadRestaurants() {
                 select.innerHTML += `<option value="${r.key}">${esc(r.name)}</option>`;
             });
             CURRENT_WORK_REST = '';
-            $('rest-select-wrapper').style.display = 'flex';
+            // Показываем только если сейчас активна вкладка Табель
+            if (document.querySelector('.section.active').id === 'tab-sheet') {
+                $('rest-select-wrapper').style.display = 'flex';
+            }
         } else {
             $('rest-select-wrapper').style.display = 'none';
         }

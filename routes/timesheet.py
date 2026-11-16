@@ -17,7 +17,9 @@ def _safe_int(val, default=0):
     except: return default
 
 def _require_timesheet_access(user):
-    if not _sync_user_has_perm(user, "timesheet_access"):
+    has_access = _sync_user_has_perm(user, "timesheet_access")
+    if not has_access:
+        print(f"DEBUG [TIMESHEET]: Отказано в доступе пользователю {user.get('login')}")
         return web.json_response({"error": "forbidden"}, status=403)
     return None
 

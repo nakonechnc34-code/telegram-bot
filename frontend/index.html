@@ -368,6 +368,7 @@ async function api(path, body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+  
   if (res.status === 401) { clearToken(); showLogin(); throw new Error('unauthorized'); }
   if (res.status === 403) {
     let j = {};
@@ -375,12 +376,21 @@ async function api(path, body) {
     if (j.error === 'fired') { clearToken(); showLogin(); throw new Error('fired'); }
     throw new Error(j.error || 'forbidden');
   }
+  
   if (!res.ok) {
     let msg = 'error';
     try { const j = await res.json(); msg = j.detail || j.error || msg; } catch (e) {}
     throw new Error(msg);
   }
-  return res.json();
+  
+  const data = await res.json();
+  // Защита от бага бэкенда (200 OK с ошибкой внутри)
+  if (data.error === 'forbidden' || data.error === 'fired') {
+      clearToken();
+      showLogin();
+      throw new Error('forbidden');
+  }
+  return data;
 }
 
 function fmtDate(iso) {
@@ -653,6 +663,9 @@ function renderProfileFromBoot() {
   const avatarLetter = (p.full_name || '?').charAt(0).toUpperCase();
   const phoneClean = (p.phone || '').replace(/[^\d+]/g, '');
 
+  // Отладка прав доступа
+  console.log("DEBUG [PROFILE]: can_access_timesheet =", p.can_access_timesheet);
+
   let medbookHtml = '';
   if (mb && !p.is_admin) {
     let statusClass = 'invalid', statusText = '❌ Недействительна';
@@ -777,8 +790,9 @@ function renderProfileFromBoot() {
     </div>
   `;
 
+  // Показываем кнопку ТОЛЬКО если бэкенд подтвердил наличие прав
   const timesheetBtn = $('open-timesheet-btn');
-  if (timesheetBtn && BOOT.profile.can_access_timesheet) {
+  if (timesheetBtn && p.can_access_timesheet === true) {
     timesheetBtn.style.display = 'flex';
   }
 

@@ -611,6 +611,23 @@
 const TOKEN_KEY = 'wokker_admin_token';
 const LOGIN_RE = /^[a-z]{3}\d{2}$/;
 
+let ME = null;
+
+// ВАЖНО: Перенесено наверх, чтобы избежать ошибки инициализации
+const SECTION_TITLES = {
+  dashboard: 'Дашборд', users: 'Сотрудники', medbooks: 'Медкнижки',
+  restaurants: 'Рестораны', news: 'Новости', standards: 'Стандарты', certification: 'Сертификация', faq: 'FAQ',
+  positions: 'Должности', questions: 'Вопросы', admins: 'Администраторы',
+  reports: 'Отчёты', audit: 'История',
+};
+
+const SECTION_LOADERS = {
+  dashboard: loadDashboard, users: loadUsers, medbooks: loadMedbooks,
+  restaurants: loadRestaurants, news: loadNews, standards: loadStandards, certification: loadCertification,
+  faq: loadFaq, positions: loadPositions, questions: loadQuestions,
+  admins: loadAdmins, reports: loadReports, audit: loadAudit,
+};
+
 const PERMISSIONS_LIST = [
   { key: 'users_create', label: 'Добавлять сотрудников' },
   { key: 'users_edit', label: 'Редактировать сотрудников' },
@@ -644,8 +661,6 @@ const STANDARD_GROUPS = [
   'Холодный цех', 
   'Общее'
 ];
-
-let ME = null;
 
 /* ================== UTILS ================== */
 const $ = id => document.getElementById(id);
@@ -914,18 +929,6 @@ document.addEventListener('keydown', (e) => {
 });
 
 /* ================== NAV ================== */
-const SECTION_TITLES = {
-  dashboard: 'Дашборд', users: 'Сотрудники', medbooks: 'Медкнижки',
-  restaurants: 'Рестораны', news: 'Новости', standards: 'Стандарты', certification: 'Сертификация', faq: 'FAQ',
-  positions: 'Должности', questions: 'Вопросы', admins: 'Администраторы',
-  reports: 'Отчёты', audit: 'История',
-};
-const SECTION_LOADERS = {
-  dashboard: loadDashboard, users: loadUsers, medbooks: loadMedbooks,
-  restaurants: loadRestaurants, news: loadNews, standards: loadStandards, certification: loadCertification,
-  faq: loadFaq, positions: loadPositions, questions: loadQuestions,
-  admins: loadAdmins, reports: loadReports, audit: loadAudit,
-};
 document.querySelectorAll('.nav-item').forEach(btn => {
   btn.addEventListener('click', () => { closeSidebar(); navigate(btn.dataset.sec); });
 });
@@ -1197,7 +1200,8 @@ async function loadDashboard() {
     }
   }
 }
-  /* ================== USERS ================== */
+
+/* ================== USERS ================== */
 let _usersCurrentSearch = '';
 let _usersTab = 'active';
 let _citizenshipsList = [];
@@ -1301,7 +1305,6 @@ function renderUsersTbody(users) {
     const showFireBtn = canFire && !u.is_super_admin && u.user_id !== ME.user_id;
     const ptTag = u.payment_type === 'fixed' ? '<span class="tag amber" style="font-size:10px; padding: 2px 6px;">Оклад</span>' : '<span class="tag gray" style="font-size:10px; padding: 2px 6px;">Почасовка</span>';
     
-    // Отображение табельного номера
     const pnStr = u.personnel_number ? `<br><span style="font-family:monospace;font-size:12px;color:var(--text-muted);">Таб. №: ${esc(u.personnel_number)}</span>` : '';
 
     return `
@@ -1754,7 +1757,8 @@ function parseDdMmYyyy(s) {
   return d;
 }
 
-// (Остальные функции для News, Standards, Restaurants, Positions, Questions, Admins и т.д. остаются без изменений, так как вы их не присылали в этом фрагменте, но подразумевается, что они есть в полном файле)
+// ================== OTHER SECTIONS ==================
+// (Остальные функции для News, Standards, Restaurants, Positions, Questions, Admins и т.д. остаются без изменений)
 </script>
 </body>
 </html>

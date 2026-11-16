@@ -4,7 +4,7 @@ from psycopg2 import sql
 from db import get_conn, _run
 from utils.auth_helpers import get_admin_user, denied, require_perm, _sync_user_has_perm, _is_tu, _sync_get_tu_rests
 from utils.security import hash_password
-from routes.medbooks import compute_medbook_status, _sync_get_medbook_refs  # <-- ДОБАВЛЕНО
+from routes.medbooks import compute_medbook_status, _sync_get_medbook_refs
 import random
 
 routes = web.RouteTableDef()
@@ -49,6 +49,7 @@ def validate_user_create_data(body):
         except (ValueError, TypeError): return None, "invalid_citizenship_id"
     return {
         "full_name": full_name, "password": password,
+        "personnel_number": (body.get("personnel_number") or "").strip()[:50], # <--- ДОБАВЛЕНО
         "phone": (body.get("phone") or "")[:50], "birth_date": (body.get("birth_date") or "")[:20],
         "position": (body.get("position") or "")[:100],
         "restaurant_key": (body.get("restaurant_key") or body.get("restaurant") or "")[:100],
@@ -59,7 +60,7 @@ def validate_user_create_data(body):
 def _sync_list_users(search="", fired=False, tu_rests=None):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            base = """SELECT u.user_id, u.login, u.full_name, u.phone, u.birth_date, u.position, u.restaurant_key, r.name AS restaurant_name,
+            base = """SELECT u.user_id, u.login, u.full_name, u.personnel_number, u.phone, u.birth_date, u.position, u.restaurant_key, r.name AS restaurant_name,
                        COALESCE(u.is_admin, FALSE) AS is_admin, COALESCE(u.is_super_admin, FALSE) AS is_super_admin,
                        COALESCE(u.is_fired, FALSE) AS is_fired, COALESCE(u.is_certified, FALSE) AS is_certified,
                        u.medbook, u.created_at, u.last_seen_at, u.fired_at, u.fired_by,
@@ -72,9 +73,9 @@ def _sync_list_users(search="", fired=False, tu_rests=None):
                 if not tu_rests: return []
                 base += " AND u.restaurant_key = ANY(%s)"; params.append(tu_rests)
             if search:
-                base += " AND (LOWER(COALESCE(u.full_name,'')) LIKE %s OR LOWER(COALESCE(u.login,'')) LIKE %s OR COALESCE(u.phone,'') LIKE %s OR CAST(u.user_id AS TEXT) LIKE %s)"
+                base += " AND (LOWER(COALESCE(u.full_name,'')) LIKE %s OR LOWER(COALESCE(u.login,'')) LIKE %s OR COALESCE(u.phone,'') LIKE %s OR CAST(u.user_id AS TEXT) LIKE %s OR LOWER(COALESCE(u.personnel_number,'')) LIKE %s)"
                 s = f"%{search.lower()}%"
-                params.extend([s, s, f"%{search}%", f"%{search}%"])
+                params.extend([s, s, f"%{search}%", f"%{search}%", s])
             base += " ORDER BY u.user_id DESC"
             cur.execute(base, params)
             return [dict(r) for r in cur.fetchall()]
@@ -93,7 +94,6 @@ async def handle_admin_users(request):
         
     users = await _run(_sync_list_users, search, fired, tu_rests)
     
-    # --- ДОБАВЛЕНО: Расчет статуса медкнижки для каждого ---
     doctors, tests, vaccines = await _run(_sync_get_medbook_refs)
     for u in users:
         mb = u.get("medbook") or {}
@@ -116,8 +116,9 @@ def _sync_create_user(data, existing_logins, admin_id=None):
     pw_hash = hash_password(data["password"])
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("INSERT INTO users (login, password_hash, full_name, phone, birth_date, position, restaurant_key, is_certified, hire_date, citizenship_id, payment_type) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *",
-                        (login, pw_hash, full_name, data.get("phone", ""), data.get("birth_date", ""), data.get("position", ""), restaurant_key, data.get("is_certified", False), data.get("hire_date", ""), data.get("citizenship_id"), data.get("payment_type", "hourly")))
+            cur.execute("""INSERT INTO users (login, password_hash, full_name, personnel_number, phone, birth_date, position, restaurant_key, is_certified, hire_date, citizenship_id, payment_type) 
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
+                        (login, pw_hash, full_name, data.get("personnel_number", ""), data.get("phone", ""), data.get("birth_date", ""), data.get("position", ""), restaurant_key, data.get("is_certified", False), data.get("hire_date", ""), data.get("citizenship_id"), data.get("payment_type", "hourly")))
             new_user = dict(cur.fetchone())
             cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin_id, "user_create", "user", str(new_user["user_id"]), f"login={login}"))
     return new_user, None
@@ -151,7 +152,7 @@ async def handle_admin_user_create(request):
 def _sync_get_user_by_id(user_id):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("""SELECT u.user_id, u.login, u.full_name, u.phone, u.birth_date, u.position, u.restaurant_key, r.name AS restaurant_name,
+            cur.execute("""SELECT u.user_id, u.login, u.full_name, u.personnel_number, u.phone, u.birth_date, u.position, u.restaurant_key, r.name AS restaurant_name,
                        COALESCE(u.is_admin, FALSE) AS is_admin, COALESCE(u.is_super_admin, FALSE) AS is_super_admin,
                        COALESCE(u.is_fired, FALSE) AS is_fired, COALESCE(u.is_certified, FALSE) AS is_certified,
                        u.medbook, u.created_at, u.last_seen_at, u.fired_at, u.fired_by, u.permissions,
@@ -174,7 +175,7 @@ async def handle_admin_user_get(request):
     return web.json_response({"user": user})
 
 def _sync_update_user(uid, updates):
-    allowed_simple = {"full_name", "phone", "birth_date", "position", "restaurant_key", "is_certified", "hire_date", "citizenship_id", "payment_type"}
+    allowed_simple = {"full_name", "phone", "birth_date", "position", "restaurant_key", "is_certified", "hire_date", "citizenship_id", "payment_type", "personnel_number"}
     if "payment_type" in updates and updates["payment_type"] not in ('hourly', 'fixed'):
         return "invalid_payment_type"
     with get_conn() as conn:

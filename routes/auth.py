@@ -39,7 +39,7 @@ async def handle_auth_login_staff(request):
     if user.get("is_fired"): return web.json_response({"error": "fired"}, status=403)
 
     token = await _run(_sync_create_session, user["user_id"])
-    return web.json_response({"ok": True, "token": token, "is_admin": bool(user.get("is_admin"))})
+    return web.json_response({"ok": True, "token": token, "is_admin": bool(user.get("is_admin") or user.get("is_super_admin"))})
 
 
 @routes.post('/api/auth/logout')
@@ -72,7 +72,10 @@ async def handle_auth_login_admin(request):
 
     _reset_rate_limit(ip)
     if user.get("is_fired"): return web.json_response({"error": "fired"}, status=403)
-    if not user.get("is_admin"): return web.json_response({"error": "not_admin"}, status=403)
+    
+    # ИСПРАВЛЕНИЕ: Пропускаем, если is_admin ИЛИ is_super_admin
+    if not (user.get("is_admin") or user.get("is_super_admin")):
+        return web.json_response({"error": "not_admin"}, status=403)
 
     token = await _run(_sync_create_session, user["user_id"])
     return web.json_response({"ok": True, "token": token, "is_admin": True})

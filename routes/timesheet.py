@@ -54,7 +54,6 @@ async def handle_timesheet_restaurants(request):
     def _sync():
         with get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # Если это УС (управляющий сменой), он видит только свой ресторан
                 if "управляющий сменой" in (user.get("position") or "").lower():
                     cur.execute("SELECT key, name FROM restaurants WHERE key = %s", (user.get("restaurant_key"),))
                 else:
@@ -76,11 +75,15 @@ def _sync_timesheet_matrix(user_id, date_from, date_to):
             is_tu = _is_tu(u)
             is_us = "управляющий сменой" in (u.get("position") or "").lower()
             
+            # ИСКЛЮЧАЕМ ОКЛАДНИКОВ ИЗ ТАБЕЛЯ (payment_type != 'fixed')
             query = """SELECT u.user_id, u.full_name, u.position, u.restaurant_key AS main_restaurant_key,
                        COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, u.payment_type, r.name AS restaurant_name
                 FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key
                 LEFT JOIN position_rates pr ON u.position = pr.position_name
-                WHERE COALESCE(u.is_fired, FALSE) = FALSE AND COALESCE(u.is_admin, FALSE) = FALSE AND u.login IS NOT NULL"""
+                WHERE COALESCE(u.is_fired, FALSE) = FALSE 
+                  AND COALESCE(u.is_admin, FALSE) = FALSE 
+                  AND u.login IS NOT NULL
+                  AND COALESCE(u.payment_type, '') != 'fixed' """
             params = []
             if is_us:
                 query += " AND u.restaurant_key = %s"; params.append(u.get("restaurant_key"))
@@ -103,7 +106,7 @@ def _sync_timesheet_matrix(user_id, date_from, date_to):
                 data_map[r["user_id"]][str(r["work_date"].day)] = {
                     "h": float(r["hours"] or 0), 
                     "s": r["status"] or "work",
-                    "rk": r["restaurant_key"] # Передаем ключ ресторана на фронт
+                    "rk": r["restaurant_key"]
                 }
             for e in employees:
                 e["data"] = data_map[e["user_id"]]
@@ -213,7 +216,6 @@ def _sync_reports(user_id, date_from, date_to):
             is_tu = _is_tu(u)
             is_us = "управляющий сменой" in (u.get("position") or "").lower()
             
-            # ВАЖНО: используем COALESCE(t.restaurant_key, u.restaurant_key) для правильной группировки
             base = """SELECT u.full_name, u.position, 
                        COALESCE(tr.name, r.name) AS restaurant_name, 
                        SUM(t.hours) as total_hours, 
@@ -492,7 +494,6 @@ async def handle_accrual_reject(request):
     await _run(_sync)
     return web.json_response({"ok": True})
 
-# НОВАЯ РУЧКА УДАЛЕНИЯ
 @routes.post('/api/payments/delete')
 async def handle_payment_delete(request):
     user, err = await get_auth_user(request)
@@ -676,7 +677,7 @@ async def handle_employee_finance(request):
                     "rate": rate,
                     "payment_type": emp["payment_type"],
                     "history": history,
-                    "can_delete": _is_hr_or_super(user) # <--- Флаг для фронтенда
+                    "can_delete": _is_hr_or_super(user)
                 }
 
     try:

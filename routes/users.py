@@ -80,6 +80,7 @@ def _sync_list_users(search="", fired=False, tu_rests=None):
             cur.execute(base, params)
             return [dict(r) for r in cur.fetchall()]
 
+# ИСПРАВЛЕНО: Защита от IDOR (ТУ может менять только своих)
 async def _check_admin_can_manage_user(admin, target_uid):
     if admin.get("is_super_admin") or (admin.get("position") or "").strip().upper() == "HR":
         return True
@@ -257,6 +258,7 @@ async def handle_admin_user_fire(request):
     if target.get("is_super_admin"): return web.json_response({"error": "cannot_fire_super"}, status=403)
     if target.get("is_admin") and not admin["is_super_admin"]: return web.json_response({"error": "cannot_fire_admin"}, status=403)
     if uid == admin["user_id"]: return web.json_response({"error": "cannot_fire_self"}, status=403)
+    
     def _sync():
         with get_conn() as conn:
             with conn.cursor() as cur:
@@ -312,3 +314,64 @@ async def handle_admin_dashboard(request):
     if err: return denied(err)
     stats = await _run(_sync_dashboard_stats)
     return web.json_response({"stats": stats})
+
+# ================== ДОБАВЛЕНО: БЫСТРЫЙ ДАШБОРД ==================
+@routes.post('/api/admin/dashboard/summary')
+async def handle_admin_dashboard_summary(request):
+    user, err = await get_admin_user(request)
+    if err: return denied(err)
+    
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT 
+                        COUNT(*) FILTER (WHERE COALESCE(is_admin, FALSE) = FALSE AND COALESCE(is_fired, FALSE) = FALSE AND login IS NOT NULL) as active,
+                        COUNT(*) FILTER (WHERE login IS NOT NULL) as total,
+                        COUNT(*) FILTER (WHERE COALESCE(is_fired, FALSE) = TRUE) as fired,
+                        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days' AND COALESCE(is_admin, FALSE) = FALSE AND COALESCE(is_fired, FALSE) = FALSE AND login IS NOT NULL) as new7
+                    FROM users
+                """)
+                stats = dict(cur.fetchone())
+
+                cur.execute("SELECT COUNT(*) FROM questions WHERE replied = FALSE")
+                stats["questions_open"] = cur.fetchone()[0] or 0
+                cur.execute("SELECT q.id, q.text, u.full_name FROM questions q LEFT JOIN users u ON q.user_id = u.user_id WHERE q.replied = FALSE ORDER BY q.created_at DESC LIMIT 4")
+                open_qs = [dict(r) for r in cur.fetchall()]
+
+                cur.execute("SELECT COUNT(*) FROM news WHERE status = 'pending'")
+                stats["news_pending"] = cur.fetchone()[0] or 0
+                cur.execute("SELECT id, title FROM news WHERE status = 'pending' ORDER BY created_at DESC LIMIT 2")
+                pending_news = [dict(r) for r in cur.fetchall()]
+
+                cur.execute("SELECT COUNT(*) FROM standards WHERE status = 'pending'")
+                stats["standards_pending"] = cur.fetchone()[0] or 0
+
+                cur.execute("SELECT user_id, full_name, position FROM users WHERE login IS NOT NULL AND COALESCE(is_fired, FALSE) = FALSE AND COALESCE(is_admin, FALSE) = FALSE ORDER BY created_at DESC LIMIT 4")
+                new_users = [dict(r) for r in cur.fetchall()]
+
+                doctors, tests, vaccines = _sync_get_medbook_refs()
+                cur.execute("SELECT full_name, medbook FROM users WHERE login IS NOT NULL AND COALESCE(is_fired, FALSE) = FALSE AND COALESCE(is_admin, FALSE) = FALSE AND medbook IS NOT NULL")
+                users_with_mb = cur.fetchall()
+                
+                total_mb_alerts = 0
+                mb_alerts = []
+                for u in users_with_mb:
+                    st = compute_medbook_status(u.get("medbook") or {}, doctors, tests, vaccines)
+                    if st in ('invalid', 'expiring'):
+                        total_mb_alerts += 1
+                        if len(mb_alerts) < 5:
+                            mb_alerts.append({"full_name": u["full_name"], "status": st})
+                
+                stats["medbooks_alert"] = total_mb_alerts
+
+        return {
+            "stats": stats,
+            "questions": open_qs,
+            "news": pending_news,
+            "users": new_users,
+            "medbook_alerts": mb_alerts
+        }
+
+    data = await _run(_sync)
+    return web.json_response(data)

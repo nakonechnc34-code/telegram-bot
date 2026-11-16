@@ -4,6 +4,7 @@ from psycopg2 import sql
 from db import get_conn, _run
 from utils.auth_helpers import get_admin_user, get_auth_user, denied, require_perm, _sync_user_has_perm
 from utils.security import sanitize_html
+import logging
 
 routes = web.RouteTableDef()
 
@@ -17,7 +18,6 @@ def _auto_publish_scheduled(cur):
 def _check_can_publish(admin):
     return admin["is_super_admin"] or (admin.get("position") or "").strip().upper() == "HR"
 
-# ================== NEWS ==================
 @routes.post('/api/admin/news')
 async def handle_admin_news_list(request):
     admin, err = await get_admin_user(request)
@@ -45,6 +45,9 @@ async def handle_admin_news_add(request):
     if not title or not text or len(title) > 200 or len(text) > 5000:
         return web.json_response({"error": "invalid_or_too_long"}, status=400)
     
+    title = sanitize_html(title)
+    text = sanitize_html(text)
+
     level = body.get("level") or "normal"
     intent = body.get("intent") or "suggest"
     publish_at = body.get("publish_at")
@@ -69,10 +72,6 @@ async def handle_admin_news_add(request):
     news_row = await _run(_sync)
     return web.json_response({"ok": True, "status": status, "news": news_row})
 
-# (Остальные эндпоинты для news: update, delete, approve, reject - аналогично, я опускаю для краткости, 
-# но они должны быть перенесены сюда из старого app.py)
-
-# ================== STANDARDS ==================
 @routes.post('/api/admin/standards')
 async def handle_admin_standards(request):
     admin, err = await get_admin_user(request)
@@ -122,7 +121,6 @@ async def handle_admin_standard_add(request):
     std_row = await _run(_sync)
     return web.json_response({"ok": True, "status": status, "standard": std_row})
 
-# ================== CERTIFICATION ==================
 @routes.post('/api/admin/certification')
 async def handle_admin_certification_list(request):
     admin, err = await get_admin_user(request)
@@ -157,7 +155,6 @@ async def handle_admin_certification_add(request):
     await _run(_sync)
     return web.json_response({"ok": True})
 
-# ================== FAQ ==================
 @routes.post('/api/admin/faq')
 async def handle_admin_faq(request):
     admin, err = await get_admin_user(request)
@@ -187,7 +184,6 @@ async def handle_admin_faq_add(request):
     await _run(_sync)
     return web.json_response({"ok": True})
 
-# ================== POSITIONS ==================
 @routes.post('/api/admin/positions')
 async def handle_admin_positions(request):
     admin, err = await get_admin_user(request)
@@ -220,7 +216,6 @@ async def handle_admin_position_add(request):
     if res == "duplicate": return web.json_response({"ok": False, "error": "duplicate"}, status=409)
     return web.json_response({"ok": True})
 
-# ================== QUESTIONS ==================
 @routes.post('/api/admin/questions')
 async def handle_admin_questions(request):
     admin, err = await get_admin_user(request)
@@ -264,7 +259,7 @@ async def handle_questions_staff(request):
                 cur.execute("INSERT INTO questions (user_id, text) VALUES (%s,%s)", (user["user_id"], text))
     await _run(_sync)
     return web.json_response({"ok": True})
-    # ================== NEWS (UPDATE/DELETE/APPROVE) ==================
+
 @routes.post('/api/admin/news/update')
 async def handle_admin_news_update(request):
     admin, err = await get_admin_user(request)
@@ -279,8 +274,12 @@ async def handle_admin_news_update(request):
     updates = {k: body[k] for k in allowed if k in body}
     if not updates: return web.json_response({"ok": True})
     
-    if "title" in updates and len(updates["title"]) > 200: return web.json_response({"error": "title_too_long"}, status=400)
-    if "body" in updates and len(updates["body"]) > 5000: return web.json_response({"error": "body_too_long"}, status=400)
+    if "title" in updates: 
+        if len(updates["title"]) > 200: return web.json_response({"error": "title_too_long"}, status=400)
+        updates["title"] = sanitize_html(updates["title"])
+    if "body" in updates: 
+        if len(updates["body"]) > 5000: return web.json_response({"error": "body_too_long"}, status=400)
+        updates["body"] = sanitize_html(updates["body"])
 
     set_clause = sql.SQL(", ").join(sql.SQL("{} = %s").format(sql.Identifier(k)) for k in updates)
     query = sql.SQL("UPDATE news SET {} WHERE id = %s").format(set_clause)
@@ -340,7 +339,6 @@ async def handle_admin_news_reject(request):
     await _run(_sync)
     return web.json_response({"ok": True})
 
-# ================== STANDARDS (UPDATE/DELETE/APPROVE) ==================
 @routes.post('/api/admin/standard/update')
 async def handle_admin_standard_update(request):
     admin, err = await get_admin_user(request)
@@ -423,7 +421,6 @@ async def handle_admin_standard_reject(request):
     await _run(_sync)
     return web.json_response({"ok": True})
 
-# ================== FAQ (UPDATE/DELETE) ==================
 @routes.post('/api/admin/faq/update')
 async def handle_admin_faq_update(request):
     admin, err = await get_admin_user(request)
@@ -464,7 +461,6 @@ async def handle_admin_faq_delete(request):
     await _run(_sync)
     return web.json_response({"ok": True})
 
-# ================== POSITIONS (ARCHIVE) ==================
 @routes.post('/api/admin/position/archive')
 async def handle_admin_position_archive(request):
     admin, err = await get_admin_user(request)
@@ -482,7 +478,6 @@ async def handle_admin_position_archive(request):
     await _run(_sync)
     return web.json_response({"ok": True})
 
-# ================== CERTIFICATION (DELETE + STAFF) ==================
 @routes.post('/api/admin/certification/delete')
 async def handle_admin_certification_delete(request):
     admin, err = await get_admin_user(request)
@@ -527,20 +522,17 @@ async def handle_staff_certification_submit(request):
                 cur.execute("SELECT id, correct_option FROM certification_questions")
                 correct_db = {str(r["id"]): r["correct_option"] for r in cur.fetchall()}
                 
+                score = 0
                 total = len(correct_db)
-                if total == 0: return {"ok": True, "passed": True, "score": 100}
-                    
-                correct_count = 0
-                for qid, ans in answers.items():
-                    if correct_db.get(qid) == ans:
-                        correct_count += 1
-                        
-                score = int((correct_count / total) * 100)
-                passed = score >= 80
+                for q_id, ans in answers.items():
+                    if correct_db.get(str(q_id)) == str(ans).lower():
+                        score += 1
                 
+                passed = total > 0 and (score / total) >= 0.8 
                 if passed:
                     cur.execute("UPDATE users SET is_certified = TRUE WHERE user_id = %s", (user["user_id"],))
-                    cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (user["user_id"], "certification_pass", "user", str(user["user_id"]), f"score={score}"))
-        return {"ok": True, "passed": passed, "score": score}
+                
+                return {"score": score, "total": total, "passed": passed}
+
     result = await _run(_sync)
     return web.json_response(result)

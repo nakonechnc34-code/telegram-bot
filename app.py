@@ -6,6 +6,7 @@ import traceback
 import json
 from datetime import datetime, date
 from decimal import Decimal
+from email.utils import formatdate # Добавили для кэширования
 from aiohttp import web
 
 import config
@@ -45,11 +46,9 @@ def run_migrations():
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
-                # Колонка для ресторана, где отработана смена
                 cur.execute("ALTER TABLE timesheet_records ADD COLUMN IF NOT EXISTS restaurant_key TEXT;")
-                # Колонка для табельного номера сотрудника
                 cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS personnel_number VARCHAR(50);")
-                logging.info("✅ Миграция БД: колонки 'restaurant_key' и 'personnel_number' проверены/добавлены.")
+                logging.info("✅ Миграция БД: колонки проверены/добавлены.")
     except Exception as e:
         logging.error(f"❌ Ошибка миграции БД: {e}")
 
@@ -74,9 +73,7 @@ async def gzip_middleware(request, handler):
     if (body is not None and len(body) > 500 and "gzip" in request.headers.get("Accept-Encoding", "")
             and not response.headers.get("Content-Encoding") and response.content_type in _GZIP_TYPES):
         
-        # Безопасное приведение к bytes
         body_bytes = body.encode('utf-8') if isinstance(body, str) else body
-        
         try:
             compressed = gzip.compress(body_bytes, compresslevel=6)
             if len(compressed) < len(body_bytes):
@@ -86,9 +83,7 @@ async def gzip_middleware(request, handler):
                     del response.headers["Content-Length"]
                 response.headers["Vary"] = "Accept-Encoding"
         except Exception as e:
-            # Если сжатие не удалось, просто отдаем ответ как есть
             logging.warning(f"Gzip compression failed: {e}")
-            
     return response
 
 @web.middleware
@@ -98,6 +93,7 @@ async def security_headers_middleware(request, handler):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # TODO: В будущем убрать 'unsafe-inline', вынеся JS в отдельные файлы
     csp = (
         "default-src 'self'; script-src 'self' 'unsafe-inline'; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
@@ -116,50 +112,46 @@ _TIMESHEET_CACHE = {"data": None, "mtime": 0.0}
 _STATIC_FILES_CACHE = {}
 
 def _serve_file(name, cache):
+    """Возвращает (data, mtime)"""
     p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", name)
-    if not os.path.exists(p): return None
+    if not os.path.exists(p): return None, 0
     try:
         mtime = os.stat(p).st_mtime
         if cache["data"] is None or cache["mtime"] != mtime:
             with open(p, "rb") as f: cache["data"] = f.read()
             cache["mtime"] = mtime
-        return cache["data"]
-    except OSError: return None
+        return cache["data"], mtime
+    except OSError: return None, 0
 
-async def handle_index(request):
-    data = _serve_file("index.html", _INDEX_CACHE)
-    if not data: return web.Response(text="frontend/index.html not found", status=404)
-    return web.Response(body=data, content_type="text/html", charset="utf-8")
+async def _handle_html(name, cache):
+    data, mtime = _serve_file(name, cache)
+    if not data: return web.Response(text=f"frontend/{name} not found", status=404)
+    return web.Response(
+        body=data, 
+        content_type="text/html", 
+        charset="utf-8",
+        headers={"Last-Modified": formatdate(mtime, usegmt=True)}
+    )
 
-async def handle_admin_page(request):
-    data = _serve_file("admin.html", _ADMIN_CACHE)
-    if not data: return web.Response(text="frontend/admin.html not found", status=404)
-    return web.Response(body=data, content_type="text/html", charset="utf-8")
-
-async def handle_academy_page(request):
-    data = _serve_file("academy.html", _ACADEMY_CACHE)
-    if not data: return web.Response(text="frontend/academy.html not found", status=404)
-    return web.Response(body=data, content_type="text/html", charset="utf-8")
-
-async def handle_timesheet_page(request):
-    data = _serve_file("timesheet.html", _TIMESHEET_CACHE)
-    if not data: return web.Response(text="frontend/timesheet.html not found", status=404)
-    return web.Response(body=data, content_type="text/html", charset="utf-8")
+async def handle_index(request): return await _handle_html("index.html", _INDEX_CACHE)
+async def handle_admin_page(request): return await _handle_html("admin.html", _ADMIN_CACHE)
+async def handle_academy_page(request): return await _handle_html("academy.html", _ACADEMY_CACHE)
+async def handle_timesheet_page(request): return await _handle_html("timesheet.html", _TIMESHEET_CACHE)
 
 async def _send_static_file(name, content_type):
     if name not in _STATIC_FILES_CACHE: _STATIC_FILES_CACHE[name] = {"data": None, "mtime": 0.0}
-    data = _serve_file(name, _STATIC_FILES_CACHE[name])
+    data, mtime = _serve_file(name, _STATIC_FILES_CACHE[name])
     if not data: return web.Response(status=404)
     kwargs = {"body": data, "content_type": content_type}
     if content_type.startswith("text/") or content_type in ("application/javascript", "application/manifest+json"):
         kwargs["charset"] = "utf-8"
+    kwargs["headers"] = {"Last-Modified": formatdate(mtime, usegmt=True)}
     return web.Response(**kwargs)
 
 async def handle_manifest(request): return await _send_static_file("manifest.json", "application/manifest+json")
 async def handle_sw(request): return await _send_static_file("sw.js", "application/javascript")
 async def handle_icon192(request): return await _send_static_file("icon-192.svg", "image/svg+xml")
 async def handle_icon512(request): return await _send_static_file("icon-512.svg", "image/svg+xml")
-
 async def handle_icon192_png(request): return await _send_static_file("icon-192.png", "image/png")
 async def handle_icon512_png(request): return await _send_static_file("icon-512.png", "image/png")
 async def handle_screenshot(request): return await _send_static_file("screenshot1.png", "image/png")
@@ -204,14 +196,16 @@ app.router.add_get("/.well-known/assetlinks.json", handle_assetlinks)
 async def main():
     port = int(os.getenv("PORT", 8080))
     
-    # 1. Инициализируем пул соединений
-    init_pool()
+    # 1. Инициализируем пул соединений в отдельном потоке (не блокируем Event Loop)
+    logging.info("⏳ Инициализация пула БД...")
+    await asyncio.to_thread(init_pool)
     
-    # 2. Запускаем миграции
-    run_migrations()
-    
+    # 2. Запускаем миграции ТОЛЬКО если установлен флаг
     if os.getenv("RUN_MIGRATIONS", "true").lower() == "true":
-        logging.info("⏳ Миграции пропущены (запускайте init_db_and_seed отдельным скриптом)")
+        logging.info("⏳ Запуск миграций БД...")
+        await asyncio.to_thread(run_migrations)
+    else:
+        logging.info("⏳ Миграции пропущены (RUN_MIGRATIONS=false)")
 
     runner = web.AppRunner(app)
     await runner.setup()
@@ -224,8 +218,9 @@ async def main():
     try:
         await asyncio.Event().wait()
     finally:
+        logging.info("🛑 Завершение работы сервера...")
         await runner.cleanup()
-        close_pool()
+        await asyncio.to_thread(close_pool)
 
 if __name__ == "__main__":
     asyncio.run(main())

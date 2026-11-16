@@ -66,15 +66,11 @@ def _sync_delete_session(token):
 
 def _sync_user_has_perm(user, perm):
     if not user: return False
+    # Супер-админ и HR имеют доступ ко всему
     if user.get("is_super_admin"): return True
     if (user.get("position") or "").strip().upper() == "HR": return True
     
-    # Автоматический доступ к табелю для управляющих
-    if perm == "timesheet_access":
-        pos_lower = (user.get("position") or "").lower()
-        if "территориальный" in pos_lower or "управляющий сменой" in pos_lower:
-            return True
-
+    # ВСЕ ОСТАЛЬНЫЕ — только по галочке из JSON permissions
     perms = user.get("permissions") or {}
     if isinstance(perms, str):
         try: perms = json.loads(perms)

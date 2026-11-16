@@ -493,12 +493,16 @@ async function doLogin() {
     updatePeriodTitle();
     await loadMatrix();
 
-  } catch (e) {
-    errEl.textContent = 'Сеть недоступна';
-  } finally {
-    btn.disabled = false; btn.textContent = 'Войти';
+    } catch (e) {
+    if (e.message === 'forbidden') {
+      alert('У вас нет доступа к табелю. Сейчас вы будете перенаправлены на главную.');
+      window.location.href = '/';
+      return;
+    }
+    if (e.message !== 'unauthorized') {
+      $('matrix-container').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
+    }
   }
-}
 
 function doLogout() {
   if (!confirm('Выйти из аккаунта?')) return;

@@ -394,6 +394,10 @@
         </select>
       </div>
       <div class="form-group">
+        <label class="form-label">Дата выплаты</label>
+        <input type="date" class="form-input" id="pay-date">
+      </div>
+      <div class="form-group">
         <label class="form-label">Сумма (₽)</label>
         <input type="number" class="form-input" id="pay-amount" placeholder="Например: 15000" min="1" step="100">
       </div>
@@ -420,6 +424,10 @@
         <select class="form-select" id="acc-user">
           <option value="">Выберите сотрудника...</option>
         </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Дата начисления</label>
+        <input type="date" class="form-input" id="acc-date">
       </div>
       <div class="form-group">
         <label class="form-label">Сумма (₽)</label>
@@ -458,6 +466,12 @@ const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&a
 function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
 function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
 function clearToken() { localStorage.removeItem(TOKEN_KEY); }
+
+function getTodayStr() {
+    const today = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    return `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
+}
 
 // ================== АВТОРИЗАЦИЯ ==================
 function showLogin() {
@@ -847,7 +861,6 @@ async function saveCellDirect(inp) {
   const uid = parseInt(inp.dataset.uid);
   const day = parseInt(inp.dataset.day);
   
-  // Если в шапке выбран ресторан, используем его (перевод). Если пусто - берем ресторан из строки.
   const targetRestKey = CURRENT_WORK_REST || inp.dataset.rest;
 
   let val = inp.value.trim().toUpperCase();
@@ -874,7 +887,6 @@ async function saveCellDirect(inp) {
         restaurant_key: targetRestKey 
     });
     toast('Сохранено');
-    // Перезагружаем матрицу, чтобы строки правильно перегруппировались по ресторанам
     await loadMatrix();
   } catch (err) {
     if (err.message !== 'unauthorized' && err.message !== 'forbidden') alert('Ошибка сохранения: ' + err.message);
@@ -986,40 +998,81 @@ async function rejectAccrual(id) {
 }
 
 function openPayoutModal() {
-  $('pay-user').value = ''; $('pay-amount').value = ''; $('pay-comment').value = '';
-  $('pay-error').style.display = 'none'; $('payout-modal').classList.add('show');
+  $('pay-user').value = ''; 
+  $('pay-amount').value = ''; 
+  $('pay-comment').value = '';
+  $('pay-date').value = getTodayStr(); // Устанавливаем сегодняшнюю дату по умолчанию
+  $('pay-error').style.display = 'none'; 
+  $('payout-modal').classList.add('show');
 }
 function closePayoutModal() { $('payout-modal').classList.remove('show'); }
 
 function openAccrualModal() {
-  $('acc-user').value = ''; $('acc-amount').value = ''; $('acc-comment').value = '';
-  $('acc-error').style.display = 'none'; $('accrual-modal').classList.add('show');
+  $('acc-user').value = ''; 
+  $('acc-amount').value = ''; 
+  $('acc-comment').value = '';
+  $('acc-date').value = getTodayStr(); // Устанавливаем сегодняшнюю дату по умолчанию
+  $('acc-error').style.display = 'none'; 
+  $('accrual-modal').classList.add('show');
 }
 function closeAccrualModal() { $('accrual-modal').classList.remove('show'); }
+
+async function savePayout() {
+  const userId = $('pay-user').value;
+  const amount = parseFloat($('pay-amount').value);
+  const comment = $('pay-comment').value.trim();
+  const paymentDate = $('pay-date').value;
+  const errEl = $('pay-error');
+
+  if (!userId) { errEl.textContent = 'Выберите сотрудника'; errEl.style.display = 'block'; return; }
+  if (!paymentDate) { errEl.textContent = 'Укажите дату выплаты'; errEl.style.display = 'block'; return; }
+  if (!amount || amount <= 0) { errEl.textContent = 'Укажите сумму'; errEl.style.display = 'block'; return; }
+  if (!comment) { errEl.textContent = 'Комментарий обязателен'; errEl.style.display = 'block'; return; }
+
+  errEl.style.display = 'none';
+  const btn = $('btn-save-payout');
+  btn.disabled = true; btn.textContent = '...';
+
+  try {
+    await api('/api/payments/add', { 
+        user_id: parseInt(userId), 
+        amount, 
+        comment,
+        payment_date: paymentDate 
+    });
+    closePayoutModal();
+    toast('Выплата добавлена');
+    await loadPayouts();
+  } catch (e) {
+    if (e.message !== 'unauthorized' && e.message !== 'forbidden') { 
+        errEl.textContent = 'Ошибка: ' + e.message; 
+        errEl.style.display = 'block'; 
+    }
+  } finally { btn.disabled = false; btn.textContent = 'Сохранить'; }
+}
 
 async function saveAccrual() {
   const userId = $('acc-user').value;
   const amount = parseFloat($('acc-amount').value);
   const comment = $('acc-comment').value.trim();
+  const paymentDate = $('acc-date').value;
   const errEl = $('acc-error');
 
   if (!userId) { errEl.textContent = 'Выберите сотрудника'; errEl.style.display = 'block'; return; }
+  if (!paymentDate) { errEl.textContent = 'Укажите дату начисления'; errEl.style.display = 'block'; return; }
   if (!amount || amount <= 0) { errEl.textContent = 'Укажите сумму'; errEl.style.display = 'block'; return; }
   if (!comment) { errEl.textContent = 'Комментарий обязателен'; errEl.style.display = 'block'; return; }
 
   errEl.style.display = 'none';
   const btn = $('btn-save-accrual');
   btn.disabled = true; btn.textContent = '...';
-  
-  const today = new Date();
-  const dateStr = formatDate(today);
 
   try {
     const res = await api('/api/accruals/add', { 
         user_id: parseInt(userId), 
         amount, 
         comment,
-        payment_date: dateStr 
+        payment_date: paymentDate 
     });
     closeAccrualModal();
     if (res.status === 'pending') {

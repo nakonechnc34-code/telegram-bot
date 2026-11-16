@@ -38,7 +38,6 @@ def _medbook_missing_count(medbook, doctors, tests, vaccines):
 def _auto_publish_scheduled(cur):
     cur.execute("UPDATE news SET status = 'published' WHERE status = 'scheduled' AND publish_at IS NOT NULL AND publish_at <= NOW()")
 
-# ================== BOOTSTRAP (ГЛАВНЫЙ ЭКРАН СОТРУДНИКА) ==================
 def _sync_bootstrap(user_id):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -120,7 +119,7 @@ async def handle_bootstrap(request):
             break
 
     profile = {
-        "user_id": u["user_id"], # <--- ДОБАВЛЕНО ДЛЯ ВИДЖЕТА ЗАРПЛАТЫ
+        "user_id": u["user_id"],
         "full_name": u.get("full_name") or "", "first_name": (u.get("full_name") or "").split()[0] if u.get("full_name") else "",
         "phone": u.get("phone") or "", "birth_date": u.get("birth_date") or "", "position": u.get("position") or "—",
         "restaurant": restaurant_name or "—", "restaurant_key": restaurant_key, "is_certified": bool(u.get("is_certified")), "is_admin": bool(u.get("is_admin")),
@@ -167,7 +166,6 @@ async def handle_bootstrap(request):
         "restaurants": rest_rows, "team": team_list, "can_see_team": can_see_team,
     })
 
-# ================== RESTAURANTS ==================
 def _sync_restaurants():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -183,7 +181,7 @@ def _sync_restaurants_by_tu(user_id):
 def _sync_tu_candidates():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT user_id, full_name FROM users WHERE COALESCE(is_fired, FALSE) = FALSE AND LOWER(COALESCE(position,'')) LIKE '%%территориальный%%' ORDER BY full_name")
+            cur.execute("SELECT user_id, full_name FROM users WHERE COALESCE(is_fired, FALSE) = FALSE AND LOWER(COALESCE(position,'')) LIKE '%территориальный%' ORDER BY full_name")
             return [dict(r) for r in cur.fetchall()]
 
 @routes.post('/api/admin/restaurants')
@@ -256,7 +254,7 @@ async def handle_admin_restaurant_tu(request):
         with get_conn() as conn:
             with conn.cursor() as cur:
                 if tu is not None:
-                    cur.execute("SELECT user_id FROM users WHERE user_id = %s AND LOWER(COALESCE(position,'')) LIKE '%%территориальный%%' AND COALESCE(is_fired, FALSE) = FALSE", (tu,))
+                    cur.execute("SELECT user_id FROM users WHERE user_id = %s AND LOWER(COALESCE(position,'')) LIKE '%территориальный%' AND COALESCE(is_fired, FALSE) = FALSE", (tu,))
                     if not cur.fetchone(): return "invalid_tu"
                 cur.execute("UPDATE restaurants SET territory_manager_id = %s WHERE key = %s", (tu, key))
     res = await _run(_sync)
@@ -280,7 +278,6 @@ async def handle_admin_restaurant_status(request):
     await _run(_sync)
     return web.json_response({"ok": True})
 
-# ================== CITIZENSHIPS ==================
 @routes.post('/api/admin/citizenships')
 async def handle_admin_citizenships(request):
     admin, err = await get_admin_user(request)
@@ -311,7 +308,6 @@ async def handle_admin_citizenship_add(request):
     if not new_c: return web.json_response({"ok": False, "error": "duplicate"}, status=409)
     return web.json_response({"ok": True, "citizenship": dict(new_c)})
 
-# ================== ADMINS & PERMISSIONS ==================
 def _sync_list_admins():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -344,7 +340,6 @@ async def handle_admin_set_permissions(request):
     await _run(_sync)
     return web.json_response({"ok": True})
 
-# ================== REPORTS / AUDIT / PASSWORD ==================
 @routes.post('/api/admin/reports')
 async def handle_admin_reports(request):
     admin, err = await get_admin_user(request)
@@ -381,15 +376,10 @@ async def handle_admin_change_password(request):
     await _run(_sync)
     return web.json_response({"ok": True})
 
-# ================== UPLOAD / DOWNLOAD FILES ==================
 @routes.post('/api/admin/upload')
 async def handle_admin_upload(request):
-    token = request.headers.get("X-Token") or request.query.get("token") or request.query.get("webToken")
-    if not token: return web.json_response({"error": "unauthorized"}, status=401)
-    user_id = await _run(_sync_get_session_user, token)
-    if not user_id: return web.json_response({"error": "unauthorized"}, status=401)
-    admin = await _run(_sync_get_user, user_id)
-    if not admin or not admin.get("is_admin"): return web.json_response({"error": "forbidden"}, status=403)
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
     
     try:
         reader = await request.multipart()
@@ -418,17 +408,14 @@ async def handle_admin_upload(request):
 
 @routes.get('/uploads/{filename}')
 async def handle_uploaded_file(request):
-    filename = request.match_info['filename']
-    token = request.headers.get("X-Token") or request.query.get("token") or request.query.get("webToken")
-    if not token: return web.Response(status=401, text="Unauthorized")
-    user_id = await _run(_sync_get_session_user, token)
-    if not user_id: return web.Response(status=401, text="Unauthorized")
-    user = await _run(_sync_get_user, user_id)
-    if not user or user.get("is_fired"): return web.Response(status=403, text="Forbidden")
+    user, err = await get_auth_user(request)
+    if err: return web.Response(status=401, text="Unauthorized")
 
+    filename = request.match_info['filename']
     data_dir = os.getenv("DATA_DIR", "/data")
     upload_dir = os.path.abspath(os.path.join(data_dir, "uploads"))
     safe_path = os.path.abspath(os.path.join(upload_dir, os.path.basename(filename)))
+    
     if not safe_path.startswith(upload_dir + os.sep): return web.Response(status=403)
     if not os.path.exists(safe_path): return web.Response(status=404)
     
@@ -444,7 +431,6 @@ async def handle_uploaded_file(request):
         elif ext == '.webp': headers["Content-Type"] = "image/webp"
     return web.FileResponse(safe_path, headers=headers)
 
-# ================== PUSH ==================
 def _sync_get_user(user_id):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:

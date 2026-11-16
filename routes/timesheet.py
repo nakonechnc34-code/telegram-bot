@@ -582,13 +582,16 @@ async def handle_employee_finance(request):
     if target_uid <= 0 or not date_from or not date_to:
         return web.json_response({"error": "invalid_data"}, status=400)
 
-    # Здесь доступ к СВОЕЙ зарплате разрешен всем, к ЧУЖОЙ — только HR/ТУ/УС
-    is_hr = _is_hr_or_super(user)
-    is_tu = _is_tu(user)
-    is_us = "управляющий сменой" in (user.get("position") or "").lower()
-    
-    if not (is_hr or is_tu or is_us):
-        if target_uid != user["user_id"]:
+    # ИСПРАВЛЕНИЕ: Если смотрит НЕ свою карточку, требуем права на табель и роль HR/ТУ/УС
+    if target_uid != user["user_id"]:
+        if _require_timesheet_access(user): 
+            return _require_timesheet_access(user)
+        
+        is_hr = _is_hr_or_super(user)
+        is_tu = _is_tu(user)
+        is_us = "управляющий сменой" in (user.get("position") or "").lower()
+        
+        if not (is_hr or is_tu or is_us):
             return web.json_response({"error": "forbidden"}, status=403)
 
     def _sync():

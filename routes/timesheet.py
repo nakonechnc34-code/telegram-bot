@@ -17,8 +17,7 @@ def _safe_int(val, default=0):
     except: return default
 
 def _require_timesheet_access(user):
-    has_access = _sync_user_has_perm(user, "timesheet_access")
-    if not has_access:
+    if not _sync_user_has_perm(user, "timesheet_access"):
         print(f"DEBUG [TIMESHEET]: Отказано в доступе пользователю {user.get('login')}")
         return web.json_response({"error": "forbidden"}, status=403)
     return None
@@ -87,7 +86,10 @@ def _sync_timesheet_matrix(user_id, date_from, date_to):
 async def handle_timesheet_matrix(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
-    if _require_timesheet_access(user): return _require_timesheet_access(user)
+    
+    deny = _require_timesheet_access(user)
+    if deny: return deny
+
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
@@ -117,7 +119,10 @@ def _sync_save_cell(user_id, target_uid, work_date, hours, status):
 async def handle_timesheet_save_cell(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
-    if _require_timesheet_access(user): return _require_timesheet_access(user)
+    
+    deny = _require_timesheet_access(user)
+    if deny: return deny
+    
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
@@ -152,7 +157,10 @@ def _sync_bulk_save_cells(user_id, cells):
 async def handle_timesheet_bulk_save(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
-    if _require_timesheet_access(user): return _require_timesheet_access(user)
+    
+    deny = _require_timesheet_access(user)
+    if deny: return deny
+    
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
@@ -199,7 +207,10 @@ def _sync_reports(user_id, date_from, date_to):
 async def handle_timesheet_reports(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
-    if _require_timesheet_access(user): return _require_timesheet_access(user)
+    
+    deny = _require_timesheet_access(user)
+    if deny: return deny
+    
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
@@ -219,7 +230,9 @@ async def handle_timesheet_reports(request):
 async def handle_timesheet_export_excel(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
-    if _require_timesheet_access(user): return _require_timesheet_access(user)
+    
+    deny = _require_timesheet_access(user)
+    if deny: return deny
     
     date_from = request.query.get("date_from")
     date_to = request.query.get("date_to")
@@ -328,7 +341,9 @@ async def handle_timesheet_settings_save(request):
 async def handle_timesheet_employees(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
-    if _require_timesheet_access(user): return _require_timesheet_access(user)
+    
+    deny = _require_timesheet_access(user)
+    if deny: return deny
     
     def _sync():
         with get_conn() as conn:
@@ -383,7 +398,9 @@ def _ensure_payments_table():
 async def handle_payment_add(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
-    if _require_timesheet_access(user): return _require_timesheet_access(user)
+    
+    deny = _require_timesheet_access(user)
+    if deny: return deny
     
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
@@ -412,7 +429,9 @@ async def handle_payment_add(request):
 async def handle_accrual_add(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
-    if _require_timesheet_access(user): return _require_timesheet_access(user)
+    
+    deny = _require_timesheet_access(user)
+    if deny: return deny
     
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
@@ -483,7 +502,9 @@ async def handle_accrual_reject(request):
 async def handle_payments_list(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
-    if _require_timesheet_access(user): return _require_timesheet_access(user)
+    
+    deny = _require_timesheet_access(user)
+    if deny: return deny
     
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
@@ -584,10 +605,9 @@ async def handle_employee_finance(request):
     if target_uid <= 0 or not date_from or not date_to:
         return web.json_response({"error": "invalid_data"}, status=400)
 
-    # ИСПРАВЛЕНИЕ: Если смотрит НЕ свою карточку, требуем права на табель и роль HR/ТУ/УС
     if target_uid != user["user_id"]:
-        if _require_timesheet_access(user): 
-            return _require_timesheet_access(user)
+        deny = _require_timesheet_access(user)
+        if deny: return deny
         
         is_hr = _is_hr_or_super(user)
         is_tu = _is_tu(user)

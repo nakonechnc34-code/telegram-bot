@@ -490,7 +490,7 @@ async function doLogin() {
 
     setToken(data.token);
     
-    // ИСПРАВЛЕНИЕ: Сначала проверяем права (запрашиваем данные табеля), и только потом показываем интерфейс
+    // Сначала проверяем права (запрашиваем данные табеля), и только потом показываем интерфейс
     const { start, end } = getPeriodDates();
     try {
         const matrixRes = await api('/api/timesheet/matrix', { date_from: formatDate(start), date_to: formatDate(end) });
@@ -500,7 +500,6 @@ async function doLogin() {
         updatePeriodTitle();
         renderMatrix();
     } catch (apiErr) {
-        // Если apiErr - это forbidden, функция api() уже сделала редирект на главную
         if (apiErr.message !== 'forbidden' && apiErr.message !== 'unauthorized') {
             errEl.textContent = 'Ошибка загрузки: ' + apiErr.message;
         }
@@ -537,7 +536,21 @@ async function api(path, body) {
     body: JSON.stringify(payload),
   });
   
-  if (res.status === 401) { clearToken(); showLogin(); throw new Error('unauthorized'); }
+  // 401 - Не авторизован
+  if (res.status === 401) { 
+      clearToken(); 
+      showLogin(); 
+      throw new Error('unauthorized'); 
+  }
+  
+  // 403 - НЕТ ПРАВ (ЖЕСТКАЯ БЛОКИРОВКА)
+  if (res.status === 403) {
+      clearToken();
+      alert('У вас нет прав доступа к табелю. Сейчас вы будете перенаправлены на главную страницу.');
+      window.location.href = '/';
+      throw new Error('forbidden');
+  }
+
   if (!res.ok) {
     let msg = 'Ошибка на сервере';
     try { 
@@ -546,15 +559,6 @@ async function api(path, body) {
     } catch (e) {
         msg = `Ошибка сервера (код ${res.status})`;
     }
-
-    // ИСПРАВЛЕНИЕ: Если сервер вернул "forbidden", значит нет прав на доступ к системе
-    if (msg === 'forbidden') {
-        clearToken();
-        alert('У вас нет прав доступа к табелю. Сейчас вы будете перенаправлены на главную страницу.');
-        window.location.href = '/';
-        throw new Error('forbidden');
-    }
-    
     throw new Error(msg);
   }
   return res.json();
@@ -805,7 +809,6 @@ async function loadPayouts() {
     const pending = res.pending || [];
     const isHr = res.is_hr_or_super || false;
     
-    // Отрисовка модерации
     if (isHr && pending.length > 0) {
       pendingBox.style.display = 'block';
       pendingList.innerHTML = pending.map(p => `
@@ -825,7 +828,6 @@ async function loadPayouts() {
       pendingBox.style.display = 'none';
     }
 
-    // Наполняем селекты
     const paySelect = $('pay-user');
     const accSelect = $('acc-user');
     paySelect.innerHTML = '<option value="">Выберите сотрудника...</option>';
@@ -837,7 +839,6 @@ async function loadPayouts() {
       accSelect.innerHTML += opt;
     });
 
-    // Считаем итоги
     let totalTimesheet = 0;
     let totalExtra = 0;
     let totalPaid = 0;
@@ -877,7 +878,6 @@ async function loadPayouts() {
   }
 }
 
-// Модерация начислений
 async function approveAccrual(id) {
   if (!confirm('Согласовать это начисление?')) return;
   try {
@@ -896,7 +896,6 @@ async function rejectAccrual(id) {
   } catch (e) { if(e.message !== 'forbidden') toast(e.message, 'error'); }
 }
 
-// Модалки выплат и начислений
 function openPayoutModal() {
   $('pay-user').value = ''; $('pay-amount').value = ''; $('pay-comment').value = '';
   $('pay-error').style.display = 'none'; $('payout-modal').classList.add('show');
@@ -923,7 +922,6 @@ async function saveAccrual() {
   const btn = $('btn-save-accrual');
   btn.disabled = true; btn.textContent = '...';
   
-  // Передаем сегодняшнюю дату, чтобы начисление не пропадало
   const today = new Date();
   const dateStr = formatDate(today);
 
@@ -987,7 +985,6 @@ async function openEmpModal(uid) {
             const prefix = isAccrual ? '+' : '';
             const cls = isAccrual ? 'accrual' : 'payout';
             
-            // Обработка статусов
             let statusTag = '';
             if (h.status === 'pending') {
                 statusTag = ' <span class="tag amber" style="font-size:10px; padding:2px 6px;">На модерации</span>';
@@ -995,7 +992,6 @@ async function openEmpModal(uid) {
                 statusTag = ' <span class="tag red" style="font-size:10px; padding:2px 6px;">Отклонено</span>';
             }
             
-            // Перечеркиваем, если отклонено
             const styleText = h.status === 'rejected' ? 'text-decoration: line-through; opacity: 0.6;' : '';
             const typeLbl = isAccrual ? 'Начисление' : 'Выплата';
             
@@ -1109,18 +1105,13 @@ async function saveSettings() {
   if (!getToken()) { showLogin(); return; }
   try {
     const { start, end } = getPeriodDates();
-    // Сначала загружаем данные, проверяя права
     const res = await api('/api/timesheet/matrix', { date_from: formatDate(start), date_to: formatDate(end) });
     EMPLOYEES_DATA = res.employees || [];
     
-    // Показываем интерфейс только после успешной проверки
     showApp();
     updatePeriodTitle();
     renderMatrix();
-  } catch (e) {
-    // Если e.message === 'forbidden', api() уже перенаправит пользователя на главную.
-    // Если e.message === 'unauthorized', api() покажет окно входа.
-  }
+  } catch (e) {}
 })();
 </script>
 </body>

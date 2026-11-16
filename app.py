@@ -9,7 +9,7 @@ from decimal import Decimal
 from aiohttp import web
 
 import config
-from db import init_pool, close_pool
+from db import init_pool, close_pool, get_conn
 
 # ============= JSON SERIALIZER FIX =============
 def _json_default(obj):
@@ -38,6 +38,18 @@ from routes.core import routes as core_routes
 from routes.academy import routes as academy_routes
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+# ============= МИГРАЦИИ БАЗЫ ДАННЫХ =============
+def run_migrations():
+    """Автоматически добавляет нужные колонки в БД при старте"""
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                # Добавляем колонку для хранения ресторана, где фактически отработана смена
+                cur.execute("ALTER TABLE timesheet_records ADD COLUMN IF NOT EXISTS restaurant_key TEXT;")
+                logging.info("✅ Миграция БД: колонка 'restaurant_key' успешно проверена/добавлена.")
+    except Exception as e:
+        logging.error(f"❌ Ошибка миграции БД: {e}")
 
 # ============= MIDDLEWARES =============
 @web.middleware
@@ -185,7 +197,13 @@ app.router.add_get("/.well-known/assetlinks.json", handle_assetlinks)
 # ============= MAIN =============
 async def main():
     port = int(os.getenv("PORT", 8080))
+    
+    # 1. Инициализируем пул соединений
     init_pool()
+    
+    # 2. Запускаем миграции (добавляем колонку restaurant_key)
+    run_migrations()
+    
     if os.getenv("RUN_MIGRATIONS", "true").lower() == "true":
         logging.info("⏳ Миграции пропущены (запускайте init_db_and_seed отдельным скриптом)")
 

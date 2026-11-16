@@ -13,6 +13,7 @@
 <meta name="apple-mobile-web-app-title" content="Wokker">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
+  /* ... (все стили оставляем без изменений) ... */
   :root {
     --bg: #F8F5F2; --card-bg: #FFFFFF; --text-main: #1C1C1E; --text-muted: #8E8E93;
     --accent: #1C1C1E; --accent-soft: #F0EAE1; --gold: #D4C4B7; 
@@ -628,29 +629,29 @@ async function renderSalaryWidgetData() {
     const extra = res.extra_accrued || 0;
     const remaining = res.remaining || 0;
 
-    widget.querySelector('#salary-content').outerHTML = `
-        <div id="salary-content">
-            <div class="salary-row">
-                <span class="salary-lbl">Отработано часов</span>
-                <span class="salary-val">${hours} ч</span>
-            </div>
-            <div class="salary-row">
-                <span class="salary-lbl">Начислено по табелю</span>
-                <span class="salary-val">${formatMoney(accrued)}</span>
-            </div>
-            ${extra > 0 ? `
-            <div class="salary-row">
-                <span class="salary-lbl">Доб. начисление</span>
-                <span class="salary-val" style="color:var(--accent);">+${formatMoney(extra)}</span>
-            </div>` : ''}
-            <div class="salary-row" style="margin-top: 8px; padding-top: 12px; border-top: 1px solid #F2F2F7;">
-                <span class="salary-lbl" style="font-weight: 700; color: var(--text-main);">К выплате</span>
-                <span class="salary-val amber">${formatMoney(remaining)}</span>
-            </div>
+    const content = widget.querySelector('#salary-content');
+    if(content) content.innerHTML = `
+        <div class="salary-row">
+            <span class="salary-lbl">Отработано часов</span>
+            <span class="salary-val">${hours} ч</span>
+        </div>
+        <div class="salary-row">
+            <span class="salary-lbl">Начислено по табелю</span>
+            <span class="salary-val">${formatMoney(accrued)}</span>
+        </div>
+        ${extra > 0 ? `
+        <div class="salary-row">
+            <span class="salary-lbl">Доб. начисление</span>
+            <span class="salary-val" style="color:var(--accent);">+${formatMoney(extra)}</span>
+        </div>` : ''}
+        <div class="salary-row" style="margin-top: 8px; padding-top: 12px; border-top: 1px solid #F2F2F7;">
+            <span class="salary-lbl" style="font-weight: 700; color: var(--text-main);">К выплате</span>
+            <span class="salary-val amber">${formatMoney(remaining)}</span>
         </div>
     `;
   } catch (e) {
-    widget.querySelector('#salary-content').innerHTML = `<div style="color:var(--red-text); font-size:14px;">Ошибка загрузки: ${esc(e.message)}</div>`;
+    const content = widget.querySelector('#salary-content');
+    if(content) content.innerHTML = `<div style="color:var(--red-text); font-size:14px;">Ошибка загрузки: ${esc(e.message)}</div>`;
   }
 }
 
@@ -662,9 +663,6 @@ function renderProfileFromBoot() {
   const mb = BOOT.medbook || null;
   const avatarLetter = (p.full_name || '?').charAt(0).toUpperCase();
   const phoneClean = (p.phone || '').replace(/[^\d+]/g, '');
-
-  // Отладка прав доступа
-  console.log("DEBUG [PROFILE]: can_access_timesheet =", p.can_access_timesheet);
 
   let medbookHtml = '';
   if (mb && !p.is_admin) {
@@ -1173,7 +1171,8 @@ function drawStandardsList() {
           ${s.number ? `<div class="std-number">${esc(s.number)}</div>` : ''}
           <div class="std-group-tag">${esc(s.group_name || 'Общее')}</div>
           <div class="std-title">${esc(s.title)}</div>
-          <div class="std-snippet">${esc(s.body.replace(/<[^>]*>?/gm, ''))}</div>
+          <!-- Исправлено: добавлена проверка на null для s.body -->
+          <div class="std-snippet">${esc((s.body || '').replace(/<[^>]*>?/gm, ''))}</div>
         </div>
       </div>
     `;
@@ -1231,7 +1230,8 @@ function showStandardDetail(id) {
     `;
     contentHtml = `<div class="std-content-card">${tableHtml}</div>`;
   } else {
-    contentHtml = `<div class="std-content-card"><div class="std-detail-text">${s.body}</div></div>`;
+    // HTML уже санитизирован на бэкенде (bleach), поэтому вставляем как есть
+    contentHtml = `<div class="std-content-card"><div class="std-detail-text">${s.body || ''}</div></div>`;
   }
 
   let fileHtml = '';

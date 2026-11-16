@@ -1323,7 +1323,11 @@ function renderUsersTbody(users) {
     return `
       <tr class="row-clickable" data-uid="${u.user_id}">
         <td data-label="Логин">${u.login ? `<span class="login-cell">${esc(u.login)}</span>` : '<span class="tag gray">нет</span>'}</td>
-        <td data-label="ФИО"><b>${esc(u.full_name || '—')}</b><br>${ptTag}</td>
+        <td data-label="ФИО">
+          <b>${esc(u.full_name || '—')}</b>
+          ${u.personnel_number ? `<br><span class="tag blue" style="font-size:10px; padding: 2px 6px;" title="Табельный номер">Таб. № ${esc(u.personnel_number)}</span>` : ''}
+          <br>${ptTag}
+        </td>
         <td data-label="Должность">${esc(u.position || '—')}</td>
         <td data-label="Медкнижка">${mbTag}</td>
         <td class="actions-cell" data-label="">
@@ -1385,7 +1389,13 @@ async function openUserCreate() {
         </div>
       </div>
       <div class="form-group"><label>Пароль</label><input class="form-input" id="nc-password" placeholder="Минимум 6 символов"><div class="form-hint">Сотрудник сможет сменить после первого входа</div></div>
-      
+
+      <div class="form-group">
+        <label>Табельный номер</label>
+        <input class="form-input" id="nc-personnel-number" placeholder="Например: 1024" maxlength="50">
+        <div class="form-hint">Нужен для импорта табеля из Excel. Можно оставить пустым.</div>
+      </div>
+
       <div class="form-row">
         <div class="form-group"><label>Телефон</label><input class="form-input" id="nc-phone" inputmode="tel"></div>
         <div class="form-group"><label>Дата рождения</label><input class="form-input" id="nc-birth" placeholder="ДД.ММ.ГГГГ"></div>
@@ -1445,6 +1455,7 @@ async function openUserCreate() {
       try {
         const res = await api('/api/admin/user/create', {
           password, full_name: name,
+          personnel_number: $('nc-personnel-number').value.trim(),
           phone: $('nc-phone').value.trim(), birth_date: $('nc-birth').value.trim(),
           position: $('nc-position').value, restaurant: $('nc-restaurant').value,
           is_certified: $('nc-cert').checked,
@@ -1507,6 +1518,13 @@ async function openUserEditor(uid) {
       <div class="form-group"><label>Логин</label><input class="form-input" value="${esc(u.login || '')}" readonly><div class="form-hint">Не изменяется</div></div>
       ${canEdit ? `<div class="form-group"><label>Новый пароль</label><input class="form-input" id="eu-password" placeholder="Оставьте пустым"></div>` : ''}
       <div class="form-group"><label>ФИО</label><input class="form-input" id="eu-name" value="${esc(u.full_name)}" ${canEdit?'':'disabled'}></div>
+
+      <div class="form-group">
+        <label>Табельный номер</label>
+        <input class="form-input" id="eu-personnel-number" value="${esc(u.personnel_number || '')}" maxlength="50" placeholder="Например: 1024" ${canEdit?'':'disabled'}>
+        <div class="form-hint">Используется при импорте табеля из Excel</div>
+      </div>
+
       <div class="form-row">
         <div class="form-group"><label>Телефон</label><input class="form-input" id="eu-phone" value="${esc(u.phone)}" inputmode="tel" ${canEdit?'':'disabled'}></div>
         <div class="form-group"><label>Дата рождения</label><input class="form-input" id="eu-birth" value="${esc(u.birth_date)}" ${canEdit?'':'disabled'}></div>
@@ -1555,7 +1573,9 @@ async function openUserEditor(uid) {
     if (saveBtn) saveBtn.addEventListener('click', async () => {
       const errEl = $('eu-error'); errEl.textContent = '';
       const updates = {
-        full_name: $('eu-name').value.trim(), phone: $('eu-phone').value.trim(),
+        full_name: $('eu-name').value.trim(),
+        personnel_number: $('eu-personnel-number').value.trim(),
+        phone: $('eu-phone').value.trim(),
         birth_date: $('eu-birth').value.trim(), position: $('eu-position').value,
         restaurant: $('eu-restaurant').value, is_certified: $('eu-cert').checked,
         hire_date: $('eu-hire-date').value, citizenship_id: $('eu-citizenship').value,

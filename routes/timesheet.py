@@ -1,7 +1,7 @@
 from aiohttp import web
 from psycopg2.extras import RealDictCursor
 from db import get_conn, _run
-from utils.auth_helpers import get_auth_user, denied, _is_hr_or_super, _is_tu
+from utils.auth_helpers import get_auth_user, denied, _is_hr_or_super, _is_tu, _sync_user_has_perm
 import calendar
 from datetime import datetime
 import io
@@ -15,6 +15,11 @@ routes = web.RouteTableDef()
 def _safe_int(val, default=0):
     try: return int(val)
     except: return default
+
+def _require_timesheet_access(user):
+    if not _sync_user_has_perm(user, "timesheet_access"):
+        return web.json_response({"error": "forbidden"}, status=403)
+    return None
 
 def _check_can_edit_user(editor_user, target_uid):
     if editor_user["is_super_admin"] or (editor_user.get("position") or "").strip().upper() == "HR": 
@@ -80,6 +85,7 @@ def _sync_timesheet_matrix(user_id, date_from, date_to):
 async def handle_timesheet_matrix(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
+    if _require_timesheet_access(user): return _require_timesheet_access(user)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
@@ -109,6 +115,7 @@ def _sync_save_cell(user_id, target_uid, work_date, hours, status):
 async def handle_timesheet_save_cell(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
+    if _require_timesheet_access(user): return _require_timesheet_access(user)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
@@ -143,6 +150,7 @@ def _sync_bulk_save_cells(user_id, cells):
 async def handle_timesheet_bulk_save(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
+    if _require_timesheet_access(user): return _require_timesheet_access(user)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
@@ -189,6 +197,7 @@ def _sync_reports(user_id, date_from, date_to):
 async def handle_timesheet_reports(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
+    if _require_timesheet_access(user): return _require_timesheet_access(user)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
@@ -208,6 +217,7 @@ async def handle_timesheet_reports(request):
 async def handle_timesheet_export_excel(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
+    if _require_timesheet_access(user): return _require_timesheet_access(user)
     
     date_from = request.query.get("date_from")
     date_to = request.query.get("date_to")
@@ -316,6 +326,7 @@ async def handle_timesheet_settings_save(request):
 async def handle_timesheet_employees(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
+    if _require_timesheet_access(user): return _require_timesheet_access(user)
     
     def _sync():
         with get_conn() as conn:
@@ -370,6 +381,7 @@ def _ensure_payments_table():
 async def handle_payment_add(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
+    if _require_timesheet_access(user): return _require_timesheet_access(user)
     
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
@@ -377,7 +389,7 @@ async def handle_payment_add(request):
     target_uid = _safe_int(body.get("user_id"))
     amount = float(body.get("amount", 0))
     comment = (body.get("comment") or "").strip()
-    payment_date = body.get("payment_date") # <--- НОВОЕ
+    payment_date = body.get("payment_date")
     
     if target_uid <= 0: return web.json_response({"error": "Выберите сотрудника"}, status=400)
     if amount <= 0: return web.json_response({"error": "Сумма должна быть больше нуля"}, status=400)
@@ -398,6 +410,7 @@ async def handle_payment_add(request):
 async def handle_accrual_add(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
+    if _require_timesheet_access(user): return _require_timesheet_access(user)
     
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
@@ -405,7 +418,7 @@ async def handle_accrual_add(request):
     target_uid = _safe_int(body.get("user_id"))
     amount = float(body.get("amount", 0))
     comment = (body.get("comment") or "").strip()
-    payment_date = body.get("payment_date") # <--- НОВОЕ
+    payment_date = body.get("payment_date")
     
     if target_uid <= 0: return web.json_response({"error": "Выберите сотрудника"}, status=400)
     if amount <= 0: return web.json_response({"error": "Сумма должна быть больше нуля"}, status=400)
@@ -468,6 +481,7 @@ async def handle_accrual_reject(request):
 async def handle_payments_list(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
+    if _require_timesheet_access(user): return _require_timesheet_access(user)
     
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)

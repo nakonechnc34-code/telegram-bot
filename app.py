@@ -45,9 +45,11 @@ def run_migrations():
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
-                # Добавляем колонку для хранения ресторана, где фактически отработана смена
+                # Колонка для ресторана, где отработана смена
                 cur.execute("ALTER TABLE timesheet_records ADD COLUMN IF NOT EXISTS restaurant_key TEXT;")
-                logging.info("✅ Миграция БД: колонка 'restaurant_key' успешно проверена/добавлена.")
+                # Колонка для табельного номера сотрудника
+                cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS personnel_number VARCHAR(50);")
+                logging.info("✅ Миграция БД: колонки 'restaurant_key' и 'personnel_number' проверены/добавлены.")
     except Exception as e:
         logging.error(f"❌ Ошибка миграции БД: {e}")
 
@@ -149,12 +151,10 @@ async def handle_sw(request): return await _send_static_file("sw.js", "applicati
 async def handle_icon192(request): return await _send_static_file("icon-192.svg", "image/svg+xml")
 async def handle_icon512(request): return await _send_static_file("icon-512.svg", "image/svg+xml")
 
-# --- НОВЫЕ ОБРАБОТЧИКИ ---
 async def handle_icon192_png(request): return await _send_static_file("icon-192.png", "image/png")
 async def handle_icon512_png(request): return await _send_static_file("icon-512.png", "image/png")
 async def handle_screenshot(request): return await _send_static_file("screenshot1.png", "image/png")
 async def handle_assetlinks(request): return await _send_static_file(".well-known/assetlinks.json", "application/json")
-# -------------------------
 
 async def handle_favicon(request): return web.Response(status=204)
 async def handle_health(request): return web.Response(text="OK")
@@ -186,13 +186,10 @@ app.router.add_get("/manifest.json", handle_manifest)
 app.router.add_get("/sw.js", handle_sw)
 app.router.add_get("/static/icon-192.svg", handle_icon192)
 app.router.add_get("/static/icon-512.svg", handle_icon512)
-
-# --- НОВЫЕ МАРШРУТЫ ---
 app.router.add_get("/static/icon-192.png", handle_icon192_png)
 app.router.add_get("/static/icon-512.png", handle_icon512_png)
 app.router.add_get("/static/screenshot1.png", handle_screenshot)
 app.router.add_get("/.well-known/assetlinks.json", handle_assetlinks)
-# ----------------------
 
 # ============= MAIN =============
 async def main():
@@ -201,7 +198,7 @@ async def main():
     # 1. Инициализируем пул соединений
     init_pool()
     
-    # 2. Запускаем миграции (добавляем колонку restaurant_key)
+    # 2. Запускаем миграции
     run_migrations()
     
     if os.getenv("RUN_MIGRATIONS", "true").lower() == "true":

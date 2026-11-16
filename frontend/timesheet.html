@@ -489,20 +489,31 @@ async function doLogin() {
     if (!data.token) { errEl.textContent = 'Ошибка получения токена'; return; }
 
     setToken(data.token);
-    showApp();
-    updatePeriodTitle();
-    await loadMatrix();
+    
+    // ИСПРАВЛЕНИЕ: Сначала проверяем права (запрашиваем данные табеля), и только потом показываем интерфейс
+    const { start, end } = getPeriodDates();
+    try {
+        const matrixRes = await api('/api/timesheet/matrix', { date_from: formatDate(start), date_to: formatDate(end) });
+        EMPLOYEES_DATA = matrixRes.employees || [];
+        
+        showApp();
+        updatePeriodTitle();
+        renderMatrix();
+    } catch (apiErr) {
+        // Если apiErr - это forbidden, функция api() уже сделала редирект на главную
+        if (apiErr.message !== 'forbidden' && apiErr.message !== 'unauthorized') {
+            errEl.textContent = 'Ошибка загрузки: ' + apiErr.message;
+        }
+    }
 
   } catch (e) {
-    if (e.message === 'forbidden') {
-      alert('У вас нет доступа к табелю. Сейчас вы будете перенаправлены на главную.');
-      window.location.href = '/';
-      return;
-    }
     if (e.message !== 'unauthorized') {
-      $('matrix-container').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
+      errEl.textContent = 'Ошибка: ' + e.message;
     }
-  } // <-- ИСПРАВЛЕНО: добавлена закрывающая скобка функции doLogin
+  } finally {
+    btn.disabled = false; 
+    btn.textContent = 'Войти';
+  }
 }
 
 function doLogout() {
@@ -535,6 +546,15 @@ async function api(path, body) {
     } catch (e) {
         msg = `Ошибка сервера (код ${res.status})`;
     }
+
+    // ИСПРАВЛЕНИЕ: Если сервер вернул "forbidden", значит нет прав на доступ к системе
+    if (msg === 'forbidden') {
+        clearToken();
+        alert('У вас нет прав доступа к табелю. Сейчас вы будете перенаправлены на главную страницу.');
+        window.location.href = '/';
+        throw new Error('forbidden');
+    }
+    
     throw new Error(msg);
   }
   return res.json();
@@ -644,7 +664,7 @@ async function loadMatrix() {
     EMPLOYEES_DATA = res.employees || [];
     renderMatrix();
   } catch (e) {
-    if (e.message !== 'unauthorized') {
+    if (e.message !== 'unauthorized' && e.message !== 'forbidden') {
       $('matrix-container').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
     }
   }
@@ -763,7 +783,7 @@ async function saveCellDirect(inp) {
     }
     toast('Сохранено');
   } catch (err) {
-    if (err.message !== 'unauthorized') alert('Ошибка сохранения: ' + err.message);
+    if (err.message !== 'unauthorized' && err.message !== 'forbidden') alert('Ошибка сохранения: ' + err.message);
     const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
     if (emp && emp.data[day]) inp.value = getCellDisplayValue(emp.data[day]);
   }
@@ -851,7 +871,7 @@ async function loadPayouts() {
     $('sum-remaining').textContent = `${totalRemaining.toLocaleString('ru-RU')} ₽`;
 
   } catch (e) {
-    if (e.message !== 'unauthorized') {
+    if (e.message !== 'unauthorized' && e.message !== 'forbidden') {
       $('payouts-list').innerHTML = `<tr><td colspan="6" class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</td></tr>`;
     }
   }
@@ -864,7 +884,7 @@ async function approveAccrual(id) {
     await api('/api/accruals/approve', { id });
     toast('Начисление одобрено');
     await loadPayouts();
-  } catch (e) { toast(e.message, 'error'); }
+  } catch (e) { if(e.message !== 'forbidden') toast(e.message, 'error'); }
 }
 
 async function rejectAccrual(id) {
@@ -873,7 +893,7 @@ async function rejectAccrual(id) {
     await api('/api/accruals/reject', { id });
     toast('Начисление отклонено');
     await loadPayouts();
-  } catch (e) { toast(e.message, 'error'); }
+  } catch (e) { if(e.message !== 'forbidden') toast(e.message, 'error'); }
 }
 
 // Модалки выплат и начислений
@@ -889,7 +909,6 @@ function openAccrualModal() {
 }
 function closeAccrualModal() { $('accrual-modal').classList.remove('show'); }
 
-// ИСПРАВЛЕНО: удален дубликат функции saveAccrual()
 async function saveAccrual() {
   const userId = $('acc-user').value;
   const amount = parseFloat($('acc-amount').value);
@@ -923,7 +942,10 @@ async function saveAccrual() {
     }
     await loadPayouts();
   } catch (e) {
-    if (e.message !== 'unauthorized') { errEl.textContent = 'Ошибка: ' + e.message; errEl.style.display = 'block'; }
+    if (e.message !== 'unauthorized' && e.message !== 'forbidden') { 
+        errEl.textContent = 'Ошибка: ' + e.message; 
+        errEl.style.display = 'block'; 
+    }
   } finally { btn.disabled = false; btn.textContent = 'Сохранить'; }
 }
 
@@ -1019,7 +1041,11 @@ async function openEmpModal(uid) {
     `;
 
   } catch (e) {
-    $('modal-emp-body-content').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
+    if (e.message !== 'forbidden') {
+        $('modal-emp-body-content').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
+    } else {
+        closeEmpModal();
+    }
   }
 }
 
@@ -1051,7 +1077,7 @@ async function loadSettings() {
       </div>
     `).join('');
   } catch (e) {
-    if (e.message !== 'unauthorized') {
+    if (e.message !== 'unauthorized' && e.message !== 'forbidden') {
       $('settings-list').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
     }
   }
@@ -1071,7 +1097,7 @@ async function saveSettings() {
     }
     toast('Настройки сохранены');
   } catch (e) {
-    if (e.message !== 'unauthorized') alert('Ошибка сохранения: ' + e.message);
+    if (e.message !== 'unauthorized' && e.message !== 'forbidden') alert('Ошибка сохранения: ' + e.message);
   } finally {
     btn.disabled = false;
     btn.textContent = 'Сохранить настройки';
@@ -1082,10 +1108,19 @@ async function saveSettings() {
 (async function init() {
   if (!getToken()) { showLogin(); return; }
   try {
+    const { start, end } = getPeriodDates();
+    // Сначала загружаем данные, проверяя права
+    const res = await api('/api/timesheet/matrix', { date_from: formatDate(start), date_to: formatDate(end) });
+    EMPLOYEES_DATA = res.employees || [];
+    
+    // Показываем интерфейс только после успешной проверки
     showApp();
     updatePeriodTitle();
-    await loadMatrix();
-  } catch (e) {}
+    renderMatrix();
+  } catch (e) {
+    // Если e.message === 'forbidden', api() уже перенаправит пользователя на главную.
+    // Если e.message === 'unauthorized', api() покажет окно входа.
+  }
 })();
 </script>
 </body>

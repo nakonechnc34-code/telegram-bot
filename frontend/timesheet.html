@@ -265,6 +265,11 @@
                 <option value="">По основному месту</option>
             </select>
         </div>
+
+        <!-- КНОПКА ИМПОРТА -->
+        <button class="btn-action" onclick="openImportModal()" style="background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); padding: 10px 16px;">
+            📥 Импорт явок
+        </button>
       </div>
       
       <div class="right-controls" id="right-controls-wrapper">
@@ -359,6 +364,30 @@
           <button class="btn-submit" onclick="saveSettings()" style="margin-top: 32px;">Сохранить настройки</button>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА: ИМПОРТ ЯВОК -->
+<div class="modal-overlay" id="import-modal" onclick="if(event.target===this) closeImportModal()">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="modal-title">Импорт явок</div>
+      <button class="modal-close" onclick="closeImportModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size: 14px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5;">
+        Загрузите Excel-файл (.xlsx) с тремя колонками:<br>
+        1. Дата (например, 2026-11-01)<br>
+        2. <b>Табельный номер</b> сотрудника (например, 1024)<br>
+        3. Часы (например, 8) или статус (В, Б, Н)
+      </div>
+      <div class="form-group">
+        <label class="form-label">Выберите файл</label>
+        <input type="file" id="import-file" class="form-input" accept=".xlsx, .xls" style="padding: 10px;">
+      </div>
+      <div class="form-error" id="import-error" style="color: var(--red); font-size: 13px; font-weight: 500; margin-bottom: 12px; display: none;"></div>
+      <button class="btn-submit" id="btn-import" style="background: var(--accent);" onclick="uploadAttendance()">Загрузить</button>
     </div>
   </div>
 </div>
@@ -615,7 +644,7 @@ document.querySelectorAll('.tab').forEach(t => {
       $('right-controls-wrapper').style.display = 'flex';
     }
 
-    // Селектор ресторана "Работа в:" показываем ТОЛЬКО на вкладке Табель
+    // Селектор ресторана "Работа в:" и кнопка "Импорт" показываем ТОЛЬКО на вкладке Табель
     if (t.dataset.sec === 'tab-sheet') {
         if (RESTAURANTS_LIST.length > 0) {
             $('rest-select-wrapper').style.display = 'flex';
@@ -722,6 +751,68 @@ async function loadRestaurants() {
 function changeWorkRestaurant(val) {
     CURRENT_WORK_REST = val;
     if(val) toast('Часы будут записаны в выбранный ресторан');
+}
+
+// ================== ИМПОРТ ЯВОК ==================
+function openImportModal() {
+    $('import-file').value = '';
+    $('import-error').style.display = 'none';
+    $('import-modal').classList.add('show');
+}
+function closeImportModal() { $('import-modal').classList.remove('show'); }
+
+async function uploadAttendance() {
+    const fileInput = $('import-file');
+    const file = fileInput.files[0];
+    const errEl = $('import-error');
+    const btn = $('btn-import');
+
+    if (!file) { 
+        errEl.textContent = 'Выберите файл для загрузки'; 
+        errEl.style.display = 'block'; 
+        return; 
+    }
+
+    errEl.style.display = 'none';
+    btn.disabled = true; 
+    btn.textContent = 'Загрузка...';
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const url = `/api/timesheet/import_attendance?webToken=${getToken()}&restaurant_key=${CURRENT_WORK_REST || ''}`;
+        const res = await fetch(url, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'Ошибка сервера при загрузке');
+        }
+
+        const data = await res.json();
+        
+        let msg = `Успешно загружено строк: ${data.success_count}`;
+        if (data.errors && data.errors.length > 0) {
+            msg += `\n\nВнимание, есть ошибки:\n${data.errors.join('\n')}`;
+        }
+        
+        alert(msg);
+        closeImportModal();
+        await loadMatrix();
+        toast('Явки успешно загружены');
+
+    } catch (e) {
+        if (e.message !== 'forbidden' && e.message !== 'unauthorized') {
+            errEl.textContent = 'Ошибка: ' + e.message;
+            errEl.style.display = 'block';
+        }
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Загрузить';
+    }
 }
 
 // ================== ТАБЕЛЬ ==================
@@ -1014,7 +1105,7 @@ function openPayoutModal() {
   $('pay-user').value = ''; 
   $('pay-amount').value = ''; 
   $('pay-comment').value = '';
-  $('pay-date').value = getTodayStr(); // Устанавливаем сегодняшнюю дату по умолчанию
+  $('pay-date').value = getTodayStr(); 
   $('pay-error').style.display = 'none'; 
   $('payout-modal').classList.add('show');
 }
@@ -1024,7 +1115,7 @@ function openAccrualModal() {
   $('acc-user').value = ''; 
   $('acc-amount').value = ''; 
   $('acc-comment').value = '';
-  $('acc-date').value = getTodayStr(); // Устанавливаем сегодняшнюю дату по умолчанию
+  $('acc-date').value = getTodayStr(); 
   $('acc-error').style.display = 'none'; 
   $('accrual-modal').classList.add('show');
 }

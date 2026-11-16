@@ -80,7 +80,6 @@ def _sync_list_users(search="", fired=False, tu_rests=None):
             cur.execute(base, params)
             return [dict(r) for r in cur.fetchall()]
 
-# ИСПРАВЛЕНО: Добавлена проверка, может ли админ редактировать этого юзера
 async def _check_admin_can_manage_user(admin, target_uid):
     if admin.get("is_super_admin") or (admin.get("position") or "").strip().upper() == "HR":
         return True
@@ -89,7 +88,7 @@ async def _check_admin_can_manage_user(admin, target_uid):
     if _is_tu(admin):
         allowed_rests = await _run(_sync_get_tu_rests, admin["user_id"])
         return target.get("restaurant_key") in allowed_rests
-    return False # Обычные админы без спец. прав не могут менять других
+    return False
 
 @routes.post('/api/admin/users')
 async def handle_admin_users(request):
@@ -182,7 +181,6 @@ async def handle_admin_user_get(request):
     uid = int(body.get("user_id", 0))
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     
-    # ИСПРАВЛЕНО: ТУ не может смотреть чужих юзеров
     if not await _check_admin_can_manage_user(admin, uid):
         return web.json_response({"error": "forbidden"}, status=403)
 
@@ -220,7 +218,6 @@ async def handle_admin_user_update(request):
     uid = int(body.get("user_id", 0))
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     
-    # ИСПРАВЛЕНО: Проверка границ ТУ
     if not await _check_admin_can_manage_user(admin, uid):
         return web.json_response({"error": "forbidden"}, status=403)
 
@@ -231,7 +228,6 @@ async def handle_admin_user_update(request):
     if target.get("is_super_admin") and not admin["is_super_admin"]: return web.json_response({"error": "cannot_edit_super"}, status=403)
     if "restaurant" in updates: updates["restaurant_key"] = updates.pop("restaurant")
     
-    # ИСПРАВЛЕНО: ТУ не может перевести юзера в чужой ресторан
     if _is_tu(admin) and "restaurant_key" in updates:
         allowed_rests = await _run(_sync_get_tu_rests, admin["user_id"])
         if updates["restaurant_key"] not in allowed_rests:
@@ -253,7 +249,6 @@ async def handle_admin_user_fire(request):
     uid = int(body.get("user_id", 0))
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     
-    # ИСПРАВЛЕНО: ТУ не может уволить чужого
     if not await _check_admin_can_manage_user(admin, uid):
         return web.json_response({"error": "forbidden"}, status=403)
 

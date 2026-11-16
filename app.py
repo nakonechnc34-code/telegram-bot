@@ -6,7 +6,7 @@ import traceback
 import json
 from datetime import datetime, date
 from decimal import Decimal
-from email.utils import formatdate # Добавили для кэширования
+from email.utils import formatdate
 from aiohttp import web
 
 import config
@@ -93,7 +93,6 @@ async def security_headers_middleware(request, handler):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    # TODO: В будущем убрать 'unsafe-inline', вынеся JS в отдельные файлы
     csp = (
         "default-src 'self'; script-src 'self' 'unsafe-inline'; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
@@ -112,7 +111,6 @@ _TIMESHEET_CACHE = {"data": None, "mtime": 0.0}
 _STATIC_FILES_CACHE = {}
 
 def _serve_file(name, cache):
-    """Возвращает (data, mtime)"""
     p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", name)
     if not os.path.exists(p): return None, 0
     try:
@@ -137,6 +135,20 @@ async def handle_index(request): return await _handle_html("index.html", _INDEX_
 async def handle_admin_page(request): return await _handle_html("admin.html", _ADMIN_CACHE)
 async def handle_academy_page(request): return await _handle_html("academy.html", _ACADEMY_CACHE)
 async def handle_timesheet_page(request): return await _handle_html("timesheet.html", _TIMESHEET_CACHE)
+
+# ДОБАВЛЕНО: Отдача CSS с долгим кэшированием (1 год)
+async def handle_admin_css(request):
+    data, mtime = _serve_file("admin.css", _STATIC_FILES_CACHE.setdefault("admin.css", {"data": None, "mtime": 0.0}))
+    if not data: return web.Response(text="admin.css not found", status=404)
+    return web.Response(
+        body=data, 
+        content_type="text/css", 
+        charset="utf-8",
+        headers={
+            "Cache-Control": "public, max-age=31536000",
+            "Last-Modified": formatdate(mtime, usegmt=True)
+        }
+    )
 
 async def _send_static_file(name, content_type):
     if name not in _STATIC_FILES_CACHE: _STATIC_FILES_CACHE[name] = {"data": None, "mtime": 0.0}
@@ -177,6 +189,7 @@ app.add_routes(academy_routes)
 app.router.add_get("/", handle_index)
 app.router.add_get("/admin", handle_admin_page)
 app.router.add_get("/admin/", handle_admin_page)
+app.router.add_get("/admin.css", handle_admin_css) # ДОБАВЛЕНО: роут для CSS
 app.router.add_get("/academy", handle_academy_page)
 app.router.add_get("/academy/", handle_academy_page)
 app.router.add_get("/timesheet", handle_timesheet_page)
@@ -196,11 +209,9 @@ app.router.add_get("/.well-known/assetlinks.json", handle_assetlinks)
 async def main():
     port = int(os.getenv("PORT", 8080))
     
-    # 1. Инициализируем пул соединений в отдельном потоке (не блокируем Event Loop)
     logging.info("⏳ Инициализация пула БД...")
     await asyncio.to_thread(init_pool)
     
-    # 2. Запускаем миграции ТОЛЬКО если установлен флаг
     if os.getenv("RUN_MIGRATIONS", "true").lower() == "true":
         logging.info("⏳ Запуск миграций БД...")
         await asyncio.to_thread(run_migrations)

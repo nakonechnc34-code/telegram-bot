@@ -15,6 +15,7 @@
     --green: #10B981; --green-soft: #ECFDF5; --green-text: #047857;
     --amber: #F59E0B; --amber-soft: #FFFBEB; --amber-text: #B45309;
     --red: #EF4444; --red-soft: #FEF2F2; --red-text: #B91C1C;
+    --purple: #8B5CF6; --purple-soft: #F3E8FF; --purple-text: #6B21A8;
     --border: #E5E7EB; --font: 'Inter', sans-serif; --radius: 20px; --sidebar: #FFFFFF; 
   }
   
@@ -50,7 +51,7 @@
   .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
   
   .topbar { background: var(--card-bg); padding: 20px 32px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px; flex-shrink: 0; }
-  .left-controls { display: flex; align-items: center; gap: 24px; }
+  .left-controls { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
   .view-toggle { display: flex; background: #F3F4F6; border-radius: 100px; padding: 4px; }
   .view-toggle button { background: none; border: none; padding: 8px 20px; border-radius: 100px; font-weight: 600; font-size: 13px; color: var(--text-muted); cursor: pointer; transition: all 0.2s; }
   .view-toggle button.active { background: #fff; color: var(--text-main); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
@@ -61,7 +62,7 @@
   .month-title { font-size: 18px; font-weight: 800; color: var(--text-main); }
   
   .right-controls { display: flex; align-items: center; gap: 16px; }
-  .legend { display: flex; gap: 16px; font-size: 13px; color: var(--text-muted); font-weight: 500; }
+  .legend { display: flex; gap: 16px; font-size: 13px; color: var(--text-muted); font-weight: 500; flex-wrap: wrap; }
   .legend-item { display: flex; align-items: center; gap: 6px; }
   .legend-color { width: 10px; height: 10px; border-radius: 50%; }
 
@@ -94,6 +95,9 @@
   .cell-input.status-vacation { background: var(--green-soft); color: var(--green-text); }
   .cell-input.status-sick { background: var(--amber-soft); color: var(--amber-text); }
   .cell-input.status-absent { background: var(--red-soft); color: var(--red-text); }
+  
+  /* Ячейка, отработанная в другом ресторане */
+  .cell-input.cross-rest { background: var(--purple-soft) !important; color: var(--purple-text) !important; border-color: var(--purple) !important; }
 
   .col-total { font-weight: 700; background: #F9FAFB; width: 100px; font-size: 15px; color: var(--text-main); border-left: 1px solid var(--border); position: sticky; right: 0; z-index: 5; }
 
@@ -252,6 +256,14 @@
         </div>
 
         <div class="month-title" id="current-period-title" style="display: none;"></div>
+
+        <!-- НОВЫЙ ВЫПАДАЮЩИЙ СПИСОК РЕСТОРАНОВ -->
+        <div class="month-selector" id="rest-select-wrapper" style="display: none; align-items: center; gap: 8px;">
+            <span style="font-size: 13px; font-weight: 600; color: var(--text-muted);">Работа в:</span>
+            <select id="work-restaurant-select" class="month-picker-input" style="background: var(--purple-soft); color: var(--purple-text); border-color: var(--purple); font-weight: 800;" onchange="changeWorkRestaurant(this.value)">
+                <option value="">Загрузка...</option>
+            </select>
+        </div>
       </div>
       
       <div class="right-controls" id="right-controls-wrapper">
@@ -259,6 +271,7 @@
           <div class="legend-item"><div class="legend-color" style="background:var(--green)"></div> Отпуск (В)</div>
           <div class="legend-item"><div class="legend-color" style="background:var(--amber)"></div> Больничный (Б)</div>
           <div class="legend-item"><div class="legend-color" style="background:var(--red)"></div> Прогул (Н)</div>
+          <div class="legend-item"><div class="legend-color" style="background:var(--purple)"></div> Другой ресторан</div>
         </div>
       </div>
     </div>
@@ -271,7 +284,6 @@
       </div>
 
       <div class="section" id="tab-payouts">
-        <!-- Контейнер для модерации (скрыт, если нет прав) -->
         <div id="pending-accruals-container" style="display: none; margin-bottom: 24px;">
           <h3 style="font-size: 16px; font-weight: 700; color: var(--amber-text); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
             <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--amber);"></span> На модерации
@@ -436,6 +448,8 @@ let CURRENT_WEEK_START = getMonday(new Date());
 let VIEW_MODE = 'month';
 let EMPLOYEES_DATA = [];
 let SETTINGS_DATA = [];
+let RESTAURANTS_LIST = [];
+let CURRENT_WORK_REST = ''; // Выбранный ресторан в шапке
 
 const $ = id => document.getElementById(id);
 const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -490,7 +504,6 @@ async function doLogin() {
 
     setToken(data.token);
     
-    // Сначала проверяем права (запрашиваем данные табеля), и только потом показываем интерфейс
     const { start, end } = getPeriodDates();
     try {
         const matrixRes = await api('/api/timesheet/matrix', { date_from: formatDate(start), date_to: formatDate(end) });
@@ -498,6 +511,7 @@ async function doLogin() {
         
         showApp();
         updatePeriodTitle();
+        await loadRestaurants(); // Загружаем рестораны для селекта
         renderMatrix();
     } catch (apiErr) {
         if (apiErr.message !== 'forbidden' && apiErr.message !== 'unauthorized') {
@@ -536,17 +550,10 @@ async function api(path, body) {
     body: JSON.stringify(payload),
   });
   
-  // 401 - Не авторизован
-  if (res.status === 401) { 
-      clearToken(); 
-      showLogin(); 
-      throw new Error('unauthorized'); 
-  }
-  
-  // 403 - НЕТ ПРАВ (ЖЕСТКАЯ БЛОКИРОВКА)
+  if (res.status === 401) { clearToken(); showLogin(); throw new Error('unauthorized'); }
   if (res.status === 403) {
       clearToken();
-      alert('У вас нет прав доступа к табелю. Сейчас вы будете перенаправлены на главную страницу.');
+      alert('У вас нет прав доступа. Сейчас вы будете перенаправлены на главную страницу.');
       window.location.href = '/';
       throw new Error('forbidden');
   }
@@ -561,7 +568,12 @@ async function api(path, body) {
     }
     throw new Error(msg);
   }
-  return res.json();
+
+  const data = await res.json();
+  if (data.error === 'forbidden' || data.error === 'fired') {
+      clearToken(); showLogin(); throw new Error('forbidden');
+  }
+  return data;
 }
 
 function toast(text) {
@@ -656,6 +668,34 @@ function setViewMode(mode) {
   if (activeSec === 'tab-payouts') loadPayouts();
 }
 
+// ================== РЕСТОРАНЫ (Селект) ==================
+async function loadRestaurants() {
+    try {
+        const res = await api('/api/timesheet/restaurants', {});
+        RESTAURANTS_LIST = res.restaurants || [];
+        
+        const select = $('work-restaurant-select');
+        select.innerHTML = '';
+        
+        if (RESTAURANTS_LIST.length > 0) {
+            RESTAURANTS_LIST.forEach(r => {
+                select.innerHTML += `<option value="${r.key}">${esc(r.name)}</option>`;
+            });
+            CURRENT_WORK_REST = RESTAURANTS_LIST[0].key;
+            $('rest-select-wrapper').style.display = 'flex';
+        } else {
+            $('rest-select-wrapper').style.display = 'none';
+        }
+    } catch (e) {
+        console.error('Ошибка загрузки ресторанов', e);
+    }
+}
+
+function changeWorkRestaurant(val) {
+    CURRENT_WORK_REST = val;
+    toast('Новые часы будут записаны в выбранный ресторан');
+}
+
 // ================== ТАБЕЛЬ ==================
 async function loadMatrix() {
   $('matrix-container').innerHTML = '<div class="loader">Загрузка табеля...</div>';
@@ -718,7 +758,7 @@ function renderMatrix() {
         const dayOfWeek = d.getDay();
         const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
         const dayNum = d.getDate();
-        const cellData = emp.data[dayNum] || { h: '', s: 'work' };
+        const cellData = emp.data[dayNum] || { h: '', s: 'work', rk: null };
         
         if (cellData.s === 'work') totalHours += parseFloat(cellData.h || 0);
         else if (cellData.s === 'vacation' || cellData.s === 'sick') totalHours += 8;
@@ -727,6 +767,11 @@ function renderMatrix() {
         if (cellData.s === 'vacation') statusClass = 'status-vacation';
         else if (cellData.s === 'sick') statusClass = 'status-sick';
         else if (cellData.s === 'absent') statusClass = 'status-absent';
+        
+        // Выделяем фиолетовым, если часы пробиты в другом ресторане (отличном от основного)
+        if (cellData.rk && cellData.rk !== emp.main_restaurant_key) {
+            statusClass += ' cross-rest';
+        }
 
         tbody += `<td class="${isWeekend ? 'weekend' : ''}">
           <input type="text" class="cell-input ${statusClass}" 
@@ -758,10 +803,17 @@ async function saveCellDirect(inp) {
   else if (val === '') { status = 'work'; hours = 0; inp.value = ''; }
   else { status = 'work'; hours = parseFloat(val.replace(',', '.')) || 0; inp.value = hours || ''; }
 
-  inp.classList.remove('status-vacation', 'status-sick', 'status-absent');
+  // Визуальное обновление класса
+  inp.classList.remove('status-vacation', 'status-sick', 'status-absent', 'cross-rest');
   if (status === 'vacation') inp.classList.add('status-vacation');
   else if (status === 'sick') inp.classList.add('status-sick');
   else if (status === 'absent') inp.classList.add('status-absent');
+  
+  // Если мы сохраняем и выбран ресторан, который отличается от основного, красим фиолетовым
+  const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
+  if (hours > 0 && CURRENT_WORK_REST && emp && CURRENT_WORK_REST !== emp.main_restaurant_key) {
+      inp.classList.add('cross-rest');
+  }
 
   const { start } = getPeriodDates();
   const targetDate = new Date(start.getFullYear(), start.getMonth(), day);
@@ -769,10 +821,17 @@ async function saveCellDirect(inp) {
   const dateStr = formatDate(targetDate);
 
   try {
-    await api('/api/timesheet/save_cell', { user_id: uid, work_date: dateStr, hours: hours, status: status });
-    const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
+    // Передаем CURRENT_WORK_REST
+    await api('/api/timesheet/save_cell', { 
+        user_id: uid, 
+        work_date: dateStr, 
+        hours: hours, 
+        status: status,
+        restaurant_key: CURRENT_WORK_REST 
+    });
+    
     if (emp) {
-      emp.data[day] = { h: hours, s: status };
+      emp.data[day] = { h: hours, s: status, rk: CURRENT_WORK_REST };
       let totalHours = 0;
       for (const key in emp.data) {
         const c = emp.data[key];
@@ -788,7 +847,6 @@ async function saveCellDirect(inp) {
     toast('Сохранено');
   } catch (err) {
     if (err.message !== 'unauthorized' && err.message !== 'forbidden') alert('Ошибка сохранения: ' + err.message);
-    const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
     if (emp && emp.data[day]) inp.value = getCellDisplayValue(emp.data[day]);
   }
 }
@@ -949,6 +1007,7 @@ async function saveAccrual() {
 
 // ================== КАРТОЧКА СОТРУДНИКА ==================
 async function openEmpModal(uid) {
+  window._currentEmpModalUid = uid;
   $('emp-modal').classList.add('show');
   $('modal-emp-name').textContent = 'Загрузка...';
   $('modal-emp-pos').textContent = '';
@@ -964,11 +1023,8 @@ async function openEmpModal(uid) {
     let emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
     if (!emp) {
         const selectOption = document.querySelector(`#pay-user option[value="${uid}"]`);
-        if (selectOption) {
-            $('modal-emp-name').textContent = selectOption.textContent.split(' (')[0];
-        } else {
-            $('modal-emp-name').textContent = 'Сотрудник';
-        }
+        if (selectOption) $('modal-emp-name').textContent = selectOption.textContent.split(' (')[0];
+        else $('modal-emp-name').textContent = 'Сотрудник';
     } else {
         $('modal-emp-name').textContent = emp.full_name;
         $('modal-emp-pos').textContent = emp.position || '—';
@@ -986,11 +1042,8 @@ async function openEmpModal(uid) {
             const cls = isAccrual ? 'accrual' : 'payout';
             
             let statusTag = '';
-            if (h.status === 'pending') {
-                statusTag = ' <span class="tag amber" style="font-size:10px; padding:2px 6px;">На модерации</span>';
-            } else if (h.status === 'rejected') {
-                statusTag = ' <span class="tag red" style="font-size:10px; padding:2px 6px;">Отклонено</span>';
-            }
+            if (h.status === 'pending') statusTag = ' <span class="tag amber" style="font-size:10px; padding:2px 6px;">На модерации</span>';
+            else if (h.status === 'rejected') statusTag = ' <span class="tag red" style="font-size:10px; padding:2px 6px;">Отклонено</span>';
             
             const styleText = h.status === 'rejected' ? 'text-decoration: line-through; opacity: 0.6;' : '';
             const typeLbl = isAccrual ? 'Начисление' : 'Выплата';
@@ -999,14 +1052,21 @@ async function openEmpModal(uid) {
             if (h.status === 'pending') authorLbl = 'Предложил: ' + (h.proposed_by_name || authorLbl);
             if (h.status === 'approved' && h.approved_by_name) authorLbl = 'Одобрил: ' + h.approved_by_name;
 
+            const deleteBtn = res.can_delete 
+                ? `<button onclick="deletePayment(${h.id}, this)" style="background:none; border:none; color:var(--red); cursor:pointer; padding:4px; margin-left: 10px;" title="Удалить">🗑️</button>` 
+                : '';
+
             return `
-                <div class="history-item ${cls}" style="${styleText}">
-                    <div class="history-meta">
-                        <span>${typeLbl} · ${fmtDate(h.payment_date)}${statusTag}</span>
-                        <span>${esc(authorLbl)}</span>
+                <div class="history-item ${cls}" style="${styleText}; display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div>
+                        <div class="history-meta">
+                            <span>${typeLbl} · ${fmtDate(h.payment_date)}${statusTag}</span>
+                        </div>
+                        <div class="history-amount ${cls}">${prefix}${formatMoney(h.amount)}</div>
+                        <div class="history-comment">${esc(h.comment)}</div>
+                        <div class="history-meta" style="margin-top:4px; font-size:10px;">${esc(authorLbl)}</div>
                     </div>
-                    <div class="history-amount ${cls}">${prefix}${formatMoney(h.amount)}</div>
-                    <div class="history-comment">${esc(h.comment)}</div>
+                    <div>${deleteBtn}</div>
                 </div>
             `;
         }).join('');
@@ -1043,6 +1103,23 @@ async function openEmpModal(uid) {
         closeEmpModal();
     }
   }
+}
+
+async function deletePayment(id, btnEl) {
+    if (!confirm('Вы уверены, что хотите безвозвратно удалить эту операцию?')) return;
+    btnEl.disabled = true;
+    btnEl.textContent = '...';
+    try {
+        await api('/api/payments/delete', { id });
+        toast('Операция удалена');
+        const uid = window._currentEmpModalUid; 
+        if (uid) await openEmpModal(uid);
+        else await loadPayouts();
+    } catch (e) {
+        if (e.message !== 'forbidden') alert('Ошибка: ' + e.message);
+        btnEl.disabled = false;
+        btnEl.textContent = '🗑️';
+    }
 }
 
 function closeEmpModal() { $('emp-modal').classList.remove('show'); }
@@ -1110,6 +1187,7 @@ async function saveSettings() {
     
     showApp();
     updatePeriodTitle();
+    await loadRestaurants();
     renderMatrix();
   } catch (e) {}
 })();

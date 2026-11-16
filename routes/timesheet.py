@@ -1,106 +1,191 @@
 from aiohttp import web
-from psycopg2.extras import RealDictCursor
+from psycopg2.extras import RealDictCursor, Json
+from psycopg2 import sql
 from db import get_conn, _run
-from utils.auth_helpers import get_auth_user, denied, _is_hr_or_super, _is_tu, _sync_user_has_perm
+from utils.auth_helpers import get_admin_user, denied, require_perm, _is_tu, _sync_get_tu_rests
+import datetime
 import calendar
-from datetime import datetime, date
-import io
-import traceback
-import logging
-from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+import json
 
 routes = web.RouteTableDef()
 
-def _safe_int(val, default=0):
-    try: return int(val)
-    except: return default
+def parse_date_ddmmYYYY(s):
+    if not s: return None
+    import re
+    m = re.match(r"^(\d{1,2})\.(\d{1,2})\.(\d{4})$", str(s).strip())
+    if not m: return None
+    try:
+        d = datetime.datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+        if d.day != int(m.group(1)) or d.month != int(m.group(2)): return None
+        return d
+    except ValueError: return None
 
-def _safe_float(val, default=0.0):
-    try: return float(val)
-    except: return default
+def add_months(dt, months):
+    y = dt.year + (dt.month - 1 + months) // 12
+    m = (dt.month - 1 + months) % 12 + 1
+    day = min(dt.day, calendar.monthrange(y, m)[1])
+    return dt.replace(year=y, month=m, day=day)
 
-def _require_timesheet_access(user):
-    if not _sync_user_has_perm(user, "timesheet_access"):
-        raise web.HTTPForbidden(text='{"error": "forbidden"}', content_type='application/json')
+def entry_status(date_str, validity_months):
+    if not date_str: return "missing"
+    d = parse_date_ddmmYYYY(date_str)
+    if not d: return "invalid_date"
+    exp = add_months(d, validity_months)
+    now = datetime.datetime.utcnow()
+    if exp < now: return "expired"
+    if (exp - now).days <= 30: return "expiring"
+    return "ok"
 
-def _check_can_edit_user(editor_user, target_uid):
-    if editor_user["is_super_admin"] or (editor_user.get("position") or "").strip().upper() == "HR": 
-        return True
-    if editor_user["user_id"] == target_uid: 
-        return True
-    pos_lower = (editor_user.get("position") or "").lower()
-    is_tu = "территориальный" in pos_lower
-    is_us = "управляющий сменой" in pos_lower
-    if not (is_tu or is_us): return False
+def _mb_items(medbook, doctors, tests, vaccines):
+    mb = medbook or {}
+    if isinstance(mb, str):
+        try: mb = json.loads(mb)
+        except Exception: mb = {}
+    items = []
+    for d in doctors: items.append((mb.get("doctors", {}).get(str(d["id"])), d["validity_months"]))
+    for t in tests: items.append((mb.get("tests", {}).get(str(t["id"])), t["validity_months"]))
+    for v in vaccines: items.append((mb.get("vaccines", {}).get(str(v["id"])), v["validity_months"]))
+    return items
+
+def compute_medbook_status(medbook, doctors, tests, vaccines):
+    has_expiring = False
+    for date_str, validity in _mb_items(medbook, doctors, tests, vaccines):
+        s = entry_status(date_str, validity)
+        if s in ("missing", "invalid_date", "expired"): return "invalid"
+        if s == "expiring": has_expiring = True
+    return "expiring" if has_expiring else "ok"
+
+def _sync_get_medbook_refs():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT restaurant_key FROM users WHERE user_id = %s", (target_uid,))
-            target = cur.fetchone()
-            if not target: return False
-            if is_us: return target["restaurant_key"] == editor_user.get("restaurant_key")
-            elif is_tu:
-                cur.execute("SELECT key FROM restaurants WHERE territory_manager_id = %s AND key = %s", (editor_user["user_id"], target["restaurant_key"]))
-                return cur.fetchone() is not None
-    return False
+            cur.execute("SELECT * FROM medbook_doctors ORDER BY sort, id")
+            doctors = [dict(r) for r in cur.fetchall()]
+            cur.execute("SELECT * FROM medbook_tests ORDER BY sort, id")
+            tests = [dict(r) for r in cur.fetchall()]
+            cur.execute("SELECT * FROM medbook_vaccines ORDER BY sort, id")
+            vaccines = [dict(r) for r in cur.fetchall()]
+    return doctors, tests, vaccines
 
-# ... (Роуты restaurants, matrix, save_cell остаются без изменений, они безопасны) ...
+def _sync_medbooks_full(user_id, is_tu_flag):
+    doctors, tests, vaccines = _sync_get_medbook_refs()
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            if is_tu_flag:
+                cur.execute("SELECT u.user_id, u.full_name, u.position, u.medbook, r.name AS restaurant_name FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key WHERE COALESCE(u.is_admin, FALSE) = FALSE AND COALESCE(u.is_fired, FALSE) = FALSE AND u.login IS NOT NULL AND r.territory_manager_id = %s ORDER BY u.full_name", (user_id,))
+            else:
+                cur.execute("SELECT u.user_id, u.full_name, u.position, u.medbook, r.name AS restaurant_name FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key WHERE COALESCE(u.is_admin, FALSE) = FALSE AND COALESCE(u.is_fired, FALSE) = FALSE AND u.login IS NOT NULL ORDER BY u.full_name")
+            users = [dict(r) for r in cur.fetchall()]
+    for u in users:
+        mb = u.get("medbook") or {}
+        u["medbook_status"] = compute_medbook_status(mb, doctors, tests, vaccines)
+    return doctors, tests, vaccines, users
 
-@routes.post('/api/timesheet/save_cell')
-async def handle_timesheet_save_cell(request):
-    user, err = await get_auth_user(request)
+@routes.post('/api/admin/medbooks')
+async def handle_admin_medbooks(request):
+    admin, err = await get_admin_user(request)
     if err: return denied(err)
-    _require_timesheet_access(user)
-    
+    doctors, tests, vaccines, users = await _run(_sync_medbooks_full, admin["user_id"], _is_tu(admin))
+    return web.json_response({"doctors": doctors, "tests": tests, "vaccines": vaccines, "users": users})
+
+@routes.post('/api/admin/medbook/get')
+async def handle_admin_medbook_get(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    uid = int(body.get("user_id", 0))
+    if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     
-    target_uid = _safe_int(body.get("user_id"))
-    work_date = body.get("work_date")
-    hours = _safe_float(body.get("hours", 0)) # ИСПРАВЛЕНО: безопасный float
-    status = body.get("status", "work")
-    restaurant_key = body.get("restaurant_key") 
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT u.user_id, u.full_name, u.position, u.medbook, r.name AS restaurant_name FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key WHERE u.user_id = %s", (uid,))
+                return cur.fetchone()
+    user = await _run(_sync)
+    if not user: return web.json_response({"error": "not_found"}, status=404)
     
-    if not work_date or target_uid <= 0: return web.json_response({"error": "invalid_data"}, status=400)
-    allowed = await _run(_check_can_edit_user, user, target_uid)
-    if not allowed: return web.json_response({"error": "forbidden_edit_other"}, status=403)
+    doctors, tests, vaccines = await _run(_sync_get_medbook_refs)
+    return web.json_response({
+        "user": {"user_id": user["user_id"], "full_name": user.get("full_name"), "position": user.get("position"), "restaurant_name": user.get("restaurant_name") or ""},
+        "medbook": user.get("medbook") or {}, "doctors": doctors, "tests": tests, "vaccines": vaccines,
+    })
+
+@routes.post('/api/admin/medbook/save')
+async def handle_admin_medbook_save(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "medbook_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    uid = int(body.get("user_id", 0))
+    if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     
-    await _run(_sync_save_cell, user["user_id"], target_uid, work_date, hours, status, restaurant_key)
+    from routes.users import _check_admin_can_manage_user
+    if not await _check_admin_can_manage_user(admin, uid):
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    mb = body.get("medbook") or {"doctors": {}, "tests": {}, "vaccines": {}}
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur: 
+                cur.execute("UPDATE users SET medbook = %s WHERE user_id = %s", (Json(mb), uid))
+    await _run(_sync)
     return web.json_response({"ok": True})
 
-# ИСПРАВЛЕНО: Парсинг Excel вынесен в отдельный поток!
-def _parse_excel_rows(file_data):
-    wb = load_workbook(filename=io.BytesIO(file_data), data_only=True)
-    ws = wb.active
-    rows = list(ws.iter_rows(values_only=True))
-    return rows[1:] if len(rows) > 1 else []
-
-@routes.post('/api/timesheet/import_attendance')
-async def handle_import_attendance(request):
-    user, err = await get_auth_user(request)
+@routes.post('/api/admin/medbook/reference/add')
+async def handle_admin_medbook_ref_add(request):
+    admin, err = await get_admin_user(request)
     if err: return denied(err)
-    _require_timesheet_access(user)
-    
-    reader = await request.multipart()
-    file_data = None
-    default_rest = request.query.get("restaurant_key")
-    
-    while True:
-        part = await reader.next()
-        if part is None: break
-        if part.name == 'file':
-            file_data = await part.read()
-            break
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    rtype = body.get("type")
+    if rtype not in ("doctor", "test", "vaccine"): return web.json_response({"error": "invalid_type"}, status=400)
+    name = (body.get("name") or "").strip()
+    if not name or len(name) > 100: return web.json_response({"error": "invalid"}, status=400)
+    months = max(1, min(120, int(body.get("validity_months", 12))))
+    required = bool(body.get("required"))
+    table = {"doctor": "medbook_doctors", "test": "medbook_tests", "vaccine": "medbook_vaccines"}[rtype]
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql.SQL("SELECT COALESCE(MAX(sort), 0) FROM {}").format(sql.Identifier(table)))
+                sort = (cur.fetchone()[0] or 0) + 1
+                cur.execute(sql.SQL("INSERT INTO {} (name, required, validity_months, sort) VALUES (%s,%s,%s,%s)").format(sql.Identifier(table)), (name, required, months, sort))
+    await _run(_sync)
+    return web.json_response({"ok": True})
 
-    if not file_data: 
-        return web.json_response({"error": "Файл не загружен"}, status=400)
+@routes.post('/api/admin/medbook/reference/update')
+async def handle_admin_medbook_ref_update(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    rtype = body.get("type")
+    rid = int(body.get("id", 0))
+    if rtype not in ("doctor", "test", "vaccine") or not rid: return web.json_response({"error": "invalid"}, status=400)
+    table = {"doctor": "medbook_doctors", "test": "medbook_tests", "vaccine": "medbook_vaccines"}[rtype]
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                if "name" in body: cur.execute(sql.SQL("UPDATE {} SET name = %s WHERE id = %s").format(sql.Identifier(table)), (body["name"], rid))
+                if "validity_months" in body: cur.execute(sql.SQL("UPDATE {} SET validity_months = %s WHERE id = %s").format(sql.Identifier(table)), (max(1, min(120, int(body["validity_months"]))), rid))
+                if "required" in body: cur.execute(sql.SQL("UPDATE {} SET required = %s WHERE id = %s").format(sql.Identifier(table)), (bool(body["required"]), rid))
+    await _run(_sync)
+    return web.json_response({"ok": True})
 
-    try:
-        # ИСПРАВЛЕНО: Вызов в отдельном потоке
-        rows = await _run(_parse_excel_rows, file_data)
-    except Exception as e:
-        return web.json_response({"error": f"Не удалось прочитать Excel: {str(e)}"}, status=400)
-
-    success, errors = await _run(_sync_import_attendance, user["user_id"], rows, default_rest)
-    return web.json_response({"ok": True, "success_count": success, "errors": errors})
-# ... (Остальной код без изменений)
+@routes.post('/api/admin/medbook/reference/delete')
+async def handle_admin_medbook_ref_delete(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    rtype = body.get("type")
+    rid = int(body.get("id", 0))
+    if rtype not in ("doctor", "test", "vaccine") or not rid: return web.json_response({"error": "invalid"}, status=400)
+    table = {"doctor": "medbook_doctors", "test": "medbook_tests", "vaccine": "medbook_vaccines"}[rtype]
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur: cur.execute(sql.SQL("DELETE FROM {} WHERE id = %s").format(sql.Identifier(table)), (rid,))
+    await _run(_sync)
+    return web.json_response({"ok": True})

@@ -877,19 +877,38 @@ function openPayoutModal() {
   $('pay-error').style.display = 'none'; $('payout-modal').classList.add('show');
 }
 function closePayoutModal() { $('payout-modal').classList.remove('show'); }
-async function savePayout() {
-  const userId = $('pay-user').value;
-  const amount = parseFloat($('pay-amount').value);
-  const comment = $('pay-comment').value.trim();
-  const errEl = $('pay-error');
+async function saveAccrual() {
+  const userId = $('acc-user').value;
+  const amount = parseFloat($('acc-amount').value);
+  const comment = $('acc-comment').value.trim();
+  const errEl = $('acc-error');
+
   if (!userId) { errEl.textContent = 'Выберите сотрудника'; errEl.style.display = 'block'; return; }
   if (!amount || amount <= 0) { errEl.textContent = 'Укажите сумму'; errEl.style.display = 'block'; return; }
   if (!comment) { errEl.textContent = 'Комментарий обязателен'; errEl.style.display = 'block'; return; }
+
   errEl.style.display = 'none';
-  const btn = $('btn-save-payout'); btn.disabled = true; btn.textContent = '...';
+  const btn = $('btn-save-accrual');
+  btn.disabled = true; btn.textContent = '...';
+  
+  // Передаем сегодняшнюю дату, чтобы начисление не пропадало
+  const today = new Date();
+  const dateStr = formatDate(today);
+
   try {
-    await api('/api/payments/add', { user_id: parseInt(userId), amount, comment });
-    closePayoutModal(); toast('Выплата добавлена'); await loadPayouts();
+    const res = await api('/api/accruals/add', { 
+        user_id: parseInt(userId), 
+        amount, 
+        comment,
+        payment_date: dateStr 
+    });
+    closeAccrualModal();
+    if (res.status === 'pending') {
+        toast('Отправлено на модерацию HR');
+    } else {
+        toast('Начисление добавлено');
+    }
+    await loadPayouts();
   } catch (e) {
     if (e.message !== 'unauthorized') { errEl.textContent = 'Ошибка: ' + e.message; errEl.style.display = 'block'; }
   } finally { btn.disabled = false; btn.textContent = 'Сохранить'; }

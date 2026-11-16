@@ -81,6 +81,7 @@
   
   .emp-name { font-weight: 600; font-size: 15px; color: var(--text-main); cursor: pointer; transition: color 0.2s; display: inline-block; }
   .emp-name:hover { color: var(--accent); text-decoration: underline; }
+  .emp-cross-tag { font-size: 11px; color: var(--purple-text); font-weight: 700; margin-top: 4px; background: var(--purple-soft); padding: 2px 8px; border-radius: 6px; display: inline-block; }
 
   .rest-header td { background: #F9FAFB !important; font-weight: 700; padding: 12px 20px; border-bottom: 1px solid var(--border); border-top: 1px solid var(--border); text-transform: uppercase; font-size: 12px; color: var(--text-muted); }
   .rest-header td.sticky-col { background: #F9FAFB !important; color: var(--text-main); }
@@ -96,8 +97,8 @@
   .cell-input.status-sick { background: var(--amber-soft); color: var(--amber-text); }
   .cell-input.status-absent { background: var(--red-soft); color: var(--red-text); }
   
-  /* Ячейка, отработанная в другом ресторане */
-  .cell-input.cross-rest { background: var(--purple-soft) !important; color: var(--purple-text) !important; border-color: var(--purple) !important; }
+  .cell-input.cross-rest { background: var(--purple-soft) !important; color: var(--purple-text) !important; border-color: var(--purple) !important; font-weight: 800; }
+  .cell-input.cell-occupied-other { background: repeating-linear-gradient(45deg, #FAFAFA, #FAFAFA 10px, #F3F4F6 10px, #F3F4F6 20px) !important; cursor: not-allowed; border: none; }
 
   .col-total { font-weight: 700; background: #F9FAFB; width: 100px; font-size: 15px; color: var(--text-main); border-left: 1px solid var(--border); position: sticky; right: 0; z-index: 5; }
 
@@ -257,11 +258,11 @@
 
         <div class="month-title" id="current-period-title" style="display: none;"></div>
 
-        <!-- НОВЫЙ ВЫПАДАЮЩИЙ СПИСОК РЕСТОРАНОВ -->
+        <!-- ВЫПАДАЮЩИЙ СПИСОК РЕСТОРАНОВ -->
         <div class="month-selector" id="rest-select-wrapper" style="display: none; align-items: center; gap: 8px;">
             <span style="font-size: 13px; font-weight: 600; color: var(--text-muted);">Работа в:</span>
             <select id="work-restaurant-select" class="month-picker-input" style="background: var(--purple-soft); color: var(--purple-text); border-color: var(--purple); font-weight: 800;" onchange="changeWorkRestaurant(this.value)">
-                <option value="">Загрузка...</option>
+                <option value="">По основному месту</option>
             </select>
         </div>
       </div>
@@ -449,7 +450,7 @@ let VIEW_MODE = 'month';
 let EMPLOYEES_DATA = [];
 let SETTINGS_DATA = [];
 let RESTAURANTS_LIST = [];
-let CURRENT_WORK_REST = ''; // Выбранный ресторан в шапке
+let CURRENT_WORK_REST = ''; 
 
 const $ = id => document.getElementById(id);
 const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -511,7 +512,7 @@ async function doLogin() {
         
         showApp();
         updatePeriodTitle();
-        await loadRestaurants(); // Загружаем рестораны для селекта
+        await loadRestaurants(); 
         renderMatrix();
     } catch (apiErr) {
         if (apiErr.message !== 'forbidden' && apiErr.message !== 'unauthorized') {
@@ -675,13 +676,13 @@ async function loadRestaurants() {
         RESTAURANTS_LIST = res.restaurants || [];
         
         const select = $('work-restaurant-select');
-        select.innerHTML = '';
+        select.innerHTML = '<option value="">По основному месту</option>';
         
         if (RESTAURANTS_LIST.length > 0) {
             RESTAURANTS_LIST.forEach(r => {
                 select.innerHTML += `<option value="${r.key}">${esc(r.name)}</option>`;
             });
-            CURRENT_WORK_REST = RESTAURANTS_LIST[0].key;
+            CURRENT_WORK_REST = '';
             $('rest-select-wrapper').style.display = 'flex';
         } else {
             $('rest-select-wrapper').style.display = 'none';
@@ -693,7 +694,7 @@ async function loadRestaurants() {
 
 function changeWorkRestaurant(val) {
     CURRENT_WORK_REST = val;
-    toast('Новые часы будут записаны в выбранный ресторан');
+    if(val) toast('Часы будут записаны в выбранный ресторан');
 }
 
 // ================== ТАБЕЛЬ ==================
@@ -714,24 +715,41 @@ async function loadMatrix() {
   }
 }
 
-function getCellDisplayValue(c) {
-  if (c.s === 'vacation') return 'В';
-  if (c.s === 'sick') return 'Б';
-  if (c.s === 'absent') return 'Н';
-  return c.h || '';
-}
-
 function renderMatrix() {
   if (!EMPLOYEES_DATA.length) {
     $('matrix-container').innerHTML = '<div class="loader">Нет сотрудников для отображения</div>';
     return;
   }
   const { start, end } = getPeriodDates();
-  const grouped = {};
+  const restNames = {};
+  RESTAURANTS_LIST.forEach(r => restNames[r.key] = r.name);
+
+  const grouped = {}; 
+
   EMPLOYEES_DATA.forEach(emp => {
-    const rest = emp.restaurant_name || 'Без ресторана';
-    if (!grouped[rest]) grouped[rest] = [];
-    grouped[rest].push(emp);
+    const mainRestName = emp.restaurant_name || 'Без ресторана';
+    const mainRestKey = emp.main_restaurant_key;
+    const crossRests = {}; 
+
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dayNum = d.getDate();
+        const cellData = emp.data[dayNum];
+        if (cellData && (parseFloat(cellData.h) > 0 || cellData.s !== 'work')) {
+            const rk = cellData.rk || mainRestKey;
+            if (rk !== mainRestKey) {
+                crossRests[rk] = restNames[rk] || 'Другой ресторан';
+            }
+        }
+    }
+
+    if (!grouped[mainRestName]) grouped[mainRestName] = [];
+    grouped[mainRestName].push({ emp: emp, isMain: true, targetRestKey: mainRestKey });
+
+    for (const rk in crossRests) {
+        const rn = crossRests[rk];
+        if (!grouped[rn]) grouped[rn] = [];
+        grouped[rn].push({ emp: emp, isMain: false, targetRestKey: rk });
+    }
   });
 
   let thead = `<thead><tr><th class="sticky-col">Сотрудник</th>`;
@@ -745,39 +763,72 @@ function renderMatrix() {
   thead += `<th class="col-total">Итого</th></tr></thead>`;
 
   let tbody = '<tbody>';
-  for (const [restName, employees] of Object.entries(grouped)) {
+  const sortedRests = Object.keys(grouped).sort();
+
+  for (const restName of sortedRests) {
+    const employees = grouped[restName];
     tbody += `<tr class="rest-header"><td class="sticky-col">${esc(restName)}</td><td colspan="${dayCount + 1}"></td></tr>`;
-    employees.forEach(emp => {
-      tbody += `<tr data-uid="${emp.user_id}">
-        <td class="sticky-col">
-          <span class="emp-name" onclick="openEmpModal(${emp.user_id})">${esc(emp.full_name)}</span>
-        </td>`;
-        
+
+    employees.forEach(item => {
+      const emp = item.emp;
+      const isMain = item.isMain;
+      const targetRestKey = item.targetRestKey;
+
+      let label = `<span class="emp-name" onclick="openEmpModal(${emp.user_id})">${esc(emp.full_name)}</span>`;
+      if (!isMain) {
+         label += `<div class="emp-cross-tag">↳ из ${esc(emp.restaurant_name)}</div>`;
+      }
+
+      tbody += `<tr data-uid="${emp.user_id}" data-target-rest="${targetRestKey}">
+        <td class="sticky-col">${label}</td>`;
+
       let totalHours = 0;
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dayOfWeek = d.getDay();
         const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
         const dayNum = d.getDate();
-        const cellData = emp.data[dayNum] || { h: '', s: 'work', rk: null };
-        
-        if (cellData.s === 'work') totalHours += parseFloat(cellData.h || 0);
-        else if (cellData.s === 'vacation' || cellData.s === 'sick') totalHours += 8;
+        const cellData = emp.data[dayNum];
 
-        let statusClass = '';
-        if (cellData.s === 'vacation') statusClass = 'status-vacation';
-        else if (cellData.s === 'sick') statusClass = 'status-sick';
-        else if (cellData.s === 'absent') statusClass = 'status-absent';
-        
-        // Выделяем фиолетовым, если часы пробиты в другом ресторане (отличном от основного)
-        if (cellData.rk && cellData.rk !== emp.main_restaurant_key) {
-            statusClass += ' cross-rest';
+        const cellRestKey = (cellData && cellData.rk) ? cellData.rk : emp.main_restaurant_key;
+        const belongsToTarget = cellRestKey === targetRestKey;
+
+        let val = '';
+        let status = 'work';
+        let cellClass = '';
+
+        if (belongsToTarget && cellData) {
+            if (cellData.s === 'vacation') val = 'В';
+            else if (cellData.s === 'sick') val = 'Б';
+            else if (cellData.s === 'absent') val = 'Н';
+            else val = cellData.h || '';
+
+            status = cellData.s || 'work';
+
+            if (status === 'vacation') cellClass = 'status-vacation';
+            else if (status === 'sick') cellClass = 'status-sick';
+            else if (status === 'absent') cellClass = 'status-absent';
+
+            if (!isMain && status === 'work') {
+                cellClass += ' cross-rest';
+            }
+
+            if (status === 'work') totalHours += parseFloat(cellData.h || 0);
+            else if (status === 'vacation' || status === 'sick') totalHours += 8;
+        } else if (!belongsToTarget && cellData) {
+            val = ''; 
+            cellClass = 'cell-occupied-other';
         }
 
+        const readonlyAttr = !belongsToTarget && cellData ? 'readonly' : '';
+        const styleAttr = !belongsToTarget && cellData ? 'background: repeating-linear-gradient(45deg, #FAFAFA, #FAFAFA 10px, #F3F4F6 10px, #F3F4F6 20px); cursor: not-allowed; border:none;' : '';
+
         tbody += `<td class="${isWeekend ? 'weekend' : ''}">
-          <input type="text" class="cell-input ${statusClass}" 
-                 data-uid="${emp.user_id}" data-day="${dayNum}"
-                 value="${getCellDisplayValue(cellData)}"
-                 title="В = отпуск, Б = больничный, Н = прогул"
+          <input type="text" class="cell-input ${cellClass}" 
+                 data-uid="${emp.user_id}" data-day="${dayNum}" data-rest="${targetRestKey}"
+                 value="${val}"
+                 ${readonlyAttr}
+                 style="${styleAttr}"
+                 title="${!belongsToTarget && cellData ? 'Смена в другом ресторане' : 'В = отпуск, Б = больничный, Н = прогул'}"
                  onchange="saveCellDirect(this)"
                  onfocus="this.select()"
                  onkeydown="if(event.key==='Enter') this.blur()">
@@ -791,8 +842,14 @@ function renderMatrix() {
 }
 
 async function saveCellDirect(inp) {
+  if (inp.hasAttribute('readonly')) return;
+
   const uid = parseInt(inp.dataset.uid);
   const day = parseInt(inp.dataset.day);
+  
+  // Если в шапке выбран ресторан, используем его (перевод). Если пусто - берем ресторан из строки.
+  const targetRestKey = CURRENT_WORK_REST || inp.dataset.rest;
+
   let val = inp.value.trim().toUpperCase();
   let hours = 0;
   let status = 'work';
@@ -803,51 +860,25 @@ async function saveCellDirect(inp) {
   else if (val === '') { status = 'work'; hours = 0; inp.value = ''; }
   else { status = 'work'; hours = parseFloat(val.replace(',', '.')) || 0; inp.value = hours || ''; }
 
-  // Визуальное обновление класса
-  inp.classList.remove('status-vacation', 'status-sick', 'status-absent', 'cross-rest');
-  if (status === 'vacation') inp.classList.add('status-vacation');
-  else if (status === 'sick') inp.classList.add('status-sick');
-  else if (status === 'absent') inp.classList.add('status-absent');
-  
-  // Если мы сохраняем и выбран ресторан, который отличается от основного, красим фиолетовым
-  const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
-  if (hours > 0 && CURRENT_WORK_REST && emp && CURRENT_WORK_REST !== emp.main_restaurant_key) {
-      inp.classList.add('cross-rest');
-  }
-
   const { start } = getPeriodDates();
   const targetDate = new Date(start.getFullYear(), start.getMonth(), day);
   if (day < start.getDate()) targetDate.setMonth(targetDate.getMonth() + 1);
   const dateStr = formatDate(targetDate);
 
   try {
-    // Передаем CURRENT_WORK_REST
     await api('/api/timesheet/save_cell', { 
         user_id: uid, 
         work_date: dateStr, 
         hours: hours, 
         status: status,
-        restaurant_key: CURRENT_WORK_REST 
+        restaurant_key: targetRestKey 
     });
-    
-    if (emp) {
-      emp.data[day] = { h: hours, s: status, rk: CURRENT_WORK_REST };
-      let totalHours = 0;
-      for (const key in emp.data) {
-        const c = emp.data[key];
-        if (c.s === 'work') totalHours += parseFloat(c.h || 0);
-        else if (c.s === 'vacation' || c.s === 'sick') totalHours += 8;
-      }
-      const row = inp.closest('tr');
-      if (row) {
-        const totalCell = row.querySelector('.total-hours');
-        if (totalCell) totalCell.textContent = totalHours;
-      }
-    }
     toast('Сохранено');
+    // Перезагружаем матрицу, чтобы строки правильно перегруппировались по ресторанам
+    await loadMatrix();
   } catch (err) {
     if (err.message !== 'unauthorized' && err.message !== 'forbidden') alert('Ошибка сохранения: ' + err.message);
-    if (emp && emp.data[day]) inp.value = getCellDisplayValue(emp.data[day]);
+    await loadMatrix(); 
   }
 }
 

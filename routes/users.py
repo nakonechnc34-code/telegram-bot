@@ -80,7 +80,6 @@ def _sync_list_users(search="", fired=False, tu_rests=None):
             cur.execute(base, params)
             return [dict(r) for r in cur.fetchall()]
 
-# ИСПРАВЛЕНО: Защита от IDOR (ТУ может менять только своих)
 async def _check_admin_can_manage_user(admin, target_uid):
     if admin.get("is_super_admin") or (admin.get("position") or "").strip().upper() == "HR":
         return True
@@ -315,7 +314,7 @@ async def handle_admin_dashboard(request):
     stats = await _run(_sync_dashboard_stats)
     return web.json_response({"stats": stats})
 
-# ================== ДОБАВЛЕНО: БЫСТРЫЙ ДАШБОРД ==================
+# ================== БЫСТРЫЙ ДАШБОРД ==================
 @routes.post('/api/admin/dashboard/summary')
 async def handle_admin_dashboard_summary(request):
     user, err = await get_admin_user(request)
@@ -334,18 +333,19 @@ async def handle_admin_dashboard_summary(request):
                 """)
                 stats = dict(cur.fetchone())
 
-                cur.execute("SELECT COUNT(*) FROM questions WHERE replied = FALSE")
-                stats["questions_open"] = cur.fetchone()[0] or 0
+                # ИСПРАВЛЕНО: добавлен as cnt и обращение по ключу
+                cur.execute("SELECT COUNT(*) as cnt FROM questions WHERE replied = FALSE")
+                stats["questions_open"] = cur.fetchone()["cnt"] or 0
                 cur.execute("SELECT q.id, q.text, u.full_name FROM questions q LEFT JOIN users u ON q.user_id = u.user_id WHERE q.replied = FALSE ORDER BY q.created_at DESC LIMIT 4")
                 open_qs = [dict(r) for r in cur.fetchall()]
 
-                cur.execute("SELECT COUNT(*) FROM news WHERE status = 'pending'")
-                stats["news_pending"] = cur.fetchone()[0] or 0
+                cur.execute("SELECT COUNT(*) as cnt FROM news WHERE status = 'pending'")
+                stats["news_pending"] = cur.fetchone()["cnt"] or 0
                 cur.execute("SELECT id, title FROM news WHERE status = 'pending' ORDER BY created_at DESC LIMIT 2")
                 pending_news = [dict(r) for r in cur.fetchall()]
 
-                cur.execute("SELECT COUNT(*) FROM standards WHERE status = 'pending'")
-                stats["standards_pending"] = cur.fetchone()[0] or 0
+                cur.execute("SELECT COUNT(*) as cnt FROM standards WHERE status = 'pending'")
+                stats["standards_pending"] = cur.fetchone()["cnt"] or 0
 
                 cur.execute("SELECT user_id, full_name, position FROM users WHERE login IS NOT NULL AND COALESCE(is_fired, FALSE) = FALSE AND COALESCE(is_admin, FALSE) = FALSE ORDER BY created_at DESC LIMIT 4")
                 new_users = [dict(r) for r in cur.fetchall()]

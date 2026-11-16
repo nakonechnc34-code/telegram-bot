@@ -493,7 +493,7 @@ async function doLogin() {
     updatePeriodTitle();
     await loadMatrix();
 
-     } catch (e) {
+  } catch (e) {
     if (e.message === 'forbidden') {
       alert('У вас нет доступа к табелю. Сейчас вы будете перенаправлены на главную.');
       window.location.href = '/';
@@ -502,7 +502,8 @@ async function doLogin() {
     if (e.message !== 'unauthorized') {
       $('matrix-container').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
     }
-  }
+  } // <-- ИСПРАВЛЕНО: добавлена закрывающая скобка функции doLogin
+}
 
 function doLogout() {
   if (!confirm('Выйти из аккаунта?')) return;
@@ -881,6 +882,14 @@ function openPayoutModal() {
   $('pay-error').style.display = 'none'; $('payout-modal').classList.add('show');
 }
 function closePayoutModal() { $('payout-modal').classList.remove('show'); }
+
+function openAccrualModal() {
+  $('acc-user').value = ''; $('acc-amount').value = ''; $('acc-comment').value = '';
+  $('acc-error').style.display = 'none'; $('accrual-modal').classList.add('show');
+}
+function closeAccrualModal() { $('accrual-modal').classList.remove('show'); }
+
+// ИСПРАВЛЕНО: удален дубликат функции saveAccrual()
 async function saveAccrual() {
   const userId = $('acc-user').value;
   const amount = parseFloat($('acc-amount').value);
@@ -906,35 +915,6 @@ async function saveAccrual() {
         comment,
         payment_date: dateStr 
     });
-    closeAccrualModal();
-    if (res.status === 'pending') {
-        toast('Отправлено на модерацию HR');
-    } else {
-        toast('Начисление добавлено');
-    }
-    await loadPayouts();
-  } catch (e) {
-    if (e.message !== 'unauthorized') { errEl.textContent = 'Ошибка: ' + e.message; errEl.style.display = 'block'; }
-  } finally { btn.disabled = false; btn.textContent = 'Сохранить'; }
-}
-
-function openAccrualModal() {
-  $('acc-user').value = ''; $('acc-amount').value = ''; $('acc-comment').value = '';
-  $('acc-error').style.display = 'none'; $('accrual-modal').classList.add('show');
-}
-function closeAccrualModal() { $('accrual-modal').classList.remove('show'); }
-async function saveAccrual() {
-  const userId = $('acc-user').value;
-  const amount = parseFloat($('acc-amount').value);
-  const comment = $('acc-comment').value.trim();
-  const errEl = $('acc-error');
-  if (!userId) { errEl.textContent = 'Выберите сотрудника'; errEl.style.display = 'block'; return; }
-  if (!amount || amount <= 0) { errEl.textContent = 'Укажите сумму'; errEl.style.display = 'block'; return; }
-  if (!comment) { errEl.textContent = 'Комментарий обязателен'; errEl.style.display = 'block'; return; }
-  errEl.style.display = 'none';
-  const btn = $('btn-save-accrual'); btn.disabled = true; btn.textContent = '...';
-  try {
-    const res = await api('/api/accruals/add', { user_id: parseInt(userId), amount, comment });
     closeAccrualModal();
     if (res.status === 'pending') {
         toast('Отправлено на модерацию HR');

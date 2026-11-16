@@ -377,6 +377,7 @@ async def handle_payment_add(request):
     target_uid = _safe_int(body.get("user_id"))
     amount = float(body.get("amount", 0))
     comment = (body.get("comment") or "").strip()
+    payment_date = body.get("payment_date") # <--- НОВОЕ
     
     if target_uid <= 0: return web.json_response({"error": "Выберите сотрудника"}, status=400)
     if amount <= 0: return web.json_response({"error": "Сумма должна быть больше нуля"}, status=400)
@@ -387,9 +388,9 @@ async def handle_payment_add(request):
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    INSERT INTO payments (user_id, amount, comment, created_by, record_type, status) 
-                    VALUES (%s, %s, %s, %s, 'payout', 'approved')
-                """, (target_uid, amount, comment, user["user_id"]))
+                    INSERT INTO payments (user_id, amount, comment, created_by, record_type, status, payment_date) 
+                    VALUES (%s, %s, %s, %s, 'payout', 'approved', COALESCE(%s::date, CURRENT_DATE))
+                """, (target_uid, amount, comment, user["user_id"], payment_date))
     await _run(_sync)
     return web.json_response({"ok": True})
 
@@ -404,6 +405,7 @@ async def handle_accrual_add(request):
     target_uid = _safe_int(body.get("user_id"))
     amount = float(body.get("amount", 0))
     comment = (body.get("comment") or "").strip()
+    payment_date = body.get("payment_date") # <--- НОВОЕ
     
     if target_uid <= 0: return web.json_response({"error": "Выберите сотрудника"}, status=400)
     if amount <= 0: return web.json_response({"error": "Сумма должна быть больше нуля"}, status=400)
@@ -418,9 +420,9 @@ async def handle_accrual_add(request):
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    INSERT INTO payments (user_id, amount, comment, created_by, record_type, status, proposed_by_name) 
-                    VALUES (%s, %s, %s, %s, 'accrual', %s, %s)
-                """, (target_uid, amount, comment, user["user_id"], status, proposed_by_name))
+                    INSERT INTO payments (user_id, amount, comment, created_by, record_type, status, proposed_by_name, payment_date) 
+                    VALUES (%s, %s, %s, %s, 'accrual', %s, %s, COALESCE(%s::date, CURRENT_DATE))
+                """, (target_uid, amount, comment, user["user_id"], status, proposed_by_name, payment_date))
     await _run(_sync)
     return web.json_response({"ok": True, "status": status})
 
@@ -566,7 +568,6 @@ async def handle_employee_finance(request):
     if target_uid <= 0 or not date_from or not date_to:
         return web.json_response({"error": "invalid_data"}, status=400)
 
-    # --- ПРОВЕРКА ПРАВ (добавлено) ---
     is_hr = _is_hr_or_super(user)
     is_tu = _is_tu(user)
     is_us = "управляющий сменой" in (user.get("position") or "").lower()
@@ -574,7 +575,6 @@ async def handle_employee_finance(request):
     if not (is_hr or is_tu or is_us):
         if target_uid != user["user_id"]:
             return web.json_response({"error": "forbidden"}, status=403)
-    # ---------------------------------
 
     def _sync():
         _ensure_payments_table()

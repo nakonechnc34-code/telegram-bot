@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wokker-cache-v5'; // Обновили версию для сброса старого кэша
+const CACHE_NAME = 'wokker-cache-v6'; // ВАЖНО: подняли версию
 const ASSETS_TO_CACHE = [
   '/',
   '/admin',
@@ -9,7 +9,6 @@ const ASSETS_TO_CACHE = [
   '/static/icon-512.svg'
 ];
 
-// --- БЕЗОПАСНАЯ РАБОТА С ФАЙЛАМИ ---
 let authToken = null;
 
 self.addEventListener('message', (event) => {
@@ -48,7 +47,8 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (event.request.method === 'POST' || event.request.headers.get('accept')?.includes('text/html')) {
+  // Добавлена проверка на навигацию (mode === 'navigate'), чтобы не кэшировать редиректы
+  if (event.request.method === 'POST' || event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
         .then((response) => {

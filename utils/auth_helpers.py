@@ -66,6 +66,10 @@ def _sync_delete_session(token):
 
 def _sync_user_has_perm(user, perm):
     if not user: return False
+    
+    # ВРЕМЕННЫЙ ЛОГ ДЛЯ ОТЛАДКИ
+    print(f"DEBUG [AUTH]: Проверка {perm} для {user.get('login')}. is_super={user.get('is_super_admin')}, pos={user.get('position')}, perms={user.get('permissions')}")
+
     # Супер-админ и HR имеют доступ ко всему
     if user.get("is_super_admin"): return True
     if (user.get("position") or "").strip().upper() == "HR": return True

@@ -162,7 +162,9 @@
   .tag.purple { background: var(--purple-soft); color: #7C3FA8; }
   .login-cell { font-family: monospace; font-weight: 700; font-size: 13px; background: #F2F2F7; padding: 4px 10px; border-radius: 8px; color: var(--text-main); }
 
-  .actions-cell { display: flex; gap: 8px; justify-content: flex-end; }
+   /* Исправлено: убрали flex с самой ячейки, чтобы не ломать таблицу */
+  .actions-cell { text-align: right; white-space: nowrap; }
+  .actions-cell .icon-btn { display: inline-flex; margin-left: 8px; vertical-align: middle; }
   .icon-btn { background: #F2F2F7; border: 1px solid var(--border); border-radius: 50%; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; transition: all 0.2s; color: var(--text-main);}
   .icon-btn:hover { background: #E5E5EA; transform: translateY(-2px); box-shadow: var(--shadow-sm); }
   .icon-btn.danger { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
@@ -462,7 +464,17 @@
     td:last-child { border-bottom: none; padding-bottom: 0; }
     td:first-child { padding-top: 0; }
     td::before { content: attr(data-label); font-weight: 700; color: var(--text-muted); font-size: 12px; text-transform: uppercase; margin-right: 16px; }
-    .actions-cell { justify-content: flex-start; margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(0,0,0,0.04); flex-wrap: wrap; }
+        /* На мобилках возвращаем flex, так как таблица превращается в карточки */
+    .actions-cell { 
+      display: flex; 
+      justify-content: flex-start; 
+      margin-top: 16px; 
+      padding-top: 16px; 
+      border-top: 1px solid rgba(0,0,0,0.04); 
+      flex-wrap: wrap; 
+      gap: 8px;
+    }
+    .actions-cell .icon-btn { margin-left: 0; }
     .stats-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
     .stat-card { padding: 16px; border-radius: 20px; min-height: 110px;}
     .stat-card .value { font-size: 26px; }

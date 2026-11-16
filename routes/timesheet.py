@@ -3,11 +3,11 @@ from psycopg2.extras import RealDictCursor
 from db import get_conn, _run
 from utils.auth_helpers import get_auth_user, denied, _is_hr_or_super, _is_tu, _sync_user_has_perm
 import calendar
-from datetime import datetime
+from datetime import datetime, date
 import io
 import traceback
 import logging
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 
 routes = web.RouteTableDef()
@@ -75,7 +75,6 @@ def _sync_timesheet_matrix(user_id, date_from, date_to):
             is_tu = _is_tu(u)
             is_us = "управляющий сменой" in (u.get("position") or "").lower()
             
-            # ИСКЛЮЧАЕМ ОКЛАДНИКОВ ИЗ ТАБЕЛЯ (payment_type != 'fixed')
             query = """SELECT u.user_id, u.full_name, u.position, u.restaurant_key AS main_restaurant_key,
                        COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, u.payment_type, r.name AS restaurant_name
                 FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key
@@ -169,42 +168,105 @@ async def handle_timesheet_save_cell(request):
     await _run(_sync_save_cell, user["user_id"], target_uid, work_date, hours, status, restaurant_key)
     return web.json_response({"ok": True})
 
-def _sync_bulk_save_cells(user_id, cells):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            for cell in cells:
-                target_uid = cell.get("user_id")
-                work_date = cell.get("work_date")
-                hours = cell.get("hours", 0)
-                status = cell.get("status", "work")
-                restaurant_key = cell.get("restaurant_key")
-                if not work_date or not target_uid: continue
-                if hours <= 0 and status == 'work':
-                    cur.execute("DELETE FROM timesheet_records WHERE user_id = %s AND work_date = %s", (target_uid, work_date))
-                else:
-                    cur.execute("""INSERT INTO timesheet_records (user_id, work_date, hours, status, restaurant_key, updated_at) 
-                        VALUES (%s, %s, %s, %s, %s, NOW())
-                        ON CONFLICT (user_id, work_date) DO UPDATE SET 
-                            hours = EXCLUDED.hours, status = EXCLUDED.status, 
-                            restaurant_key = EXCLUDED.restaurant_key, updated_at = NOW()""", 
-                        (target_uid, work_date, hours, status, restaurant_key))
+# ================== ИМПОРТ ЯВОК (EXCEL) ==================
+def _parse_date(val):
+    if isinstance(val, (datetime, date)):
+        return val.strftime("%Y-%m-%d")
+    s = str(val).strip()
+    for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%Y/%m/%d", "%d/%m/%Y"):
+        try: return datetime.strptime(s, fmt).strftime("%Y-%m-%d")
+        except: pass
+    return None
 
-@routes.post('/api/timesheet/bulk_save')
-async def handle_timesheet_bulk_save(request):
+def _sync_import_attendance(user_id, rows, default_rest_key=None):
+    success = 0
+    errors = []
+    
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # ТЕПЕРЬ ИЩЕМ ПО ТАБЕЛЬНОМУ НОМЕРУ (personnel_number)
+            cur.execute("""
+                SELECT user_id, login, personnel_number, restaurant_key 
+                FROM users 
+                WHERE personnel_number IS NOT NULL AND personnel_number != '' AND COALESCE(is_fired, FALSE) = FALSE
+            """)
+            users_map = {str(u["personnel_number"]).strip(): u for u in cur.fetchall()}
+            
+            for row in rows:
+                try:
+                    date_str = _parse_date(row[0])
+                    personnel_number = str(row[1]).strip() # Берем табельный номер
+                    raw_val = str(row[2]).strip().upper()
+
+                    if not date_str or not personnel_number:
+                        continue # Пропускаем пустые строки или заголовки
+                        
+                    target_user = users_map.get(personnel_number)
+                    if not target_user:
+                        errors.append(f"Сотрудник с таб. номером '{personnel_number}' не найден")
+                        continue
+                        
+                    hours = 0
+                    status = 'work'
+                    
+                    if raw_val in ('В', 'Б', 'Н'):
+                        status = {'В': 'vacation', 'Б': 'sick', 'Н': 'absent'}[raw_val]
+                        hours = 8 if status in ('vacation', 'sick') else 0
+                    else:
+                        try: hours = float(raw_val.replace(',', '.'))
+                        except: continue
+                        
+                    r_key = default_rest_key or target_user["restaurant_key"]
+                    
+                    if hours <= 0 and status == 'work':
+                        cur.execute("DELETE FROM timesheet_records WHERE user_id = %s AND work_date = %s", (target_user["user_id"], date_str))
+                    else:
+                        cur.execute("""INSERT INTO timesheet_records (user_id, work_date, hours, status, restaurant_key, updated_at) 
+                            VALUES (%s, %s, %s, %s, %s, NOW())
+                            ON CONFLICT (user_id, work_date) DO UPDATE SET 
+                                hours = EXCLUDED.hours, status = EXCLUDED.status, 
+                                restaurant_key = EXCLUDED.restaurant_key, updated_at = NOW()""", 
+                            (target_user["user_id"], date_str, hours, status, r_key))
+                    success += 1
+                except Exception as e:
+                    errors.append(f"Ошибка в строке {row}: {str(e)}")
+                    
+    return success, errors[:10] # Возвращаем количество успешных и первые 10 ошибок
+
+@routes.post('/api/timesheet/import_attendance')
+async def handle_import_attendance(request):
     user, err = await get_auth_user(request)
     if err: return denied(err)
     _require_timesheet_access(user)
     
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    reader = await request.multipart()
+    file_data = None
+    default_rest = request.query.get("restaurant_key")
     
-    cells = body.get("cells") or []
-    if not cells: return web.json_response({"ok": True})
-    for cell in cells:
-        allowed = await _run(_check_can_edit_user, user, cell.get("user_id"))
-        if not allowed: return web.json_response({"error": "forbidden_edit_other"}, status=403)
-    await _run(_sync_bulk_save_cells, user["user_id"], cells)
-    return web.json_response({"ok": True})
+    while True:
+        part = await reader.next()
+        if part is None: break
+        if part.name == 'file':
+            file_data = await part.read()
+            break
+
+    if not file_data: 
+        return web.json_response({"error": "Файл не загружен"}, status=400)
+
+    try:
+        wb = load_workbook(filename=io.BytesIO(file_data), data_only=True)
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+        if len(rows) > 1:
+            rows = rows[1:] # Пропускаем строку заголовков
+        else:
+            rows = []
+    except Exception as e:
+        return web.json_response({"error": f"Не удалось прочитать Excel: {str(e)}"}, status=400)
+
+    success, errors = await _run(_sync_import_attendance, user["user_id"], rows, default_rest)
+    return web.json_response({"ok": True, "success_count": success, "errors": errors})
+
 
 # ================== ОТЧЕТЫ И EXCEL ==================
 def _sync_reports(user_id, date_from, date_to):

@@ -176,7 +176,15 @@
   .search-bar input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
 
   /* ================== DARK DASHBOARD THEME ================== */
-  #page-content.dark-dash { background: var(--dash-bg); margin: -32px -40px; padding: 32px 40px; min-height: calc(100vh - 85px); color: var(--dash-text); box-sizing: border-box; }
+  #page-content.dark-dash {
+    background: var(--dash-bg);
+    margin: -32px -40px;
+    padding: 32px 40px;
+    min-height: calc(100vh - 85px);
+    color: var(--dash-text);
+    box-sizing: border-box;
+  }
+  
   body.dash-active .topbar { background: var(--dash-bg); border-bottom-color: rgba(255,255,255,0.05); box-shadow: none; }
   body.dash-active .topbar-title { color: #fff; }
   body.dash-active .topbar-search { background: rgba(255,255,255,0.05); color: var(--dash-muted); }
@@ -315,6 +323,32 @@
   .subtab.active { color: #fff; background: var(--text-main); }
   .subtab:hover:not(.active) { background: #E5E5EA; color: var(--text-main); transform: translateY(-1px); }
 
+  .medbook-section { margin-bottom: 40px; }
+  .medbook-section h4 { font-size: 14px; font-weight: 800; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+  .medbook-row { display: grid; grid-template-columns: 1fr 160px 100px; gap: 16px; align-items: center; padding: 16px 0; border-bottom: 1px solid rgba(0,0,0,0.04); font-size: 15px; }
+  .medbook-row:last-child { border-bottom: none; }
+  .medbook-row .name { font-weight: 600; color: var(--text-main); }
+  .medbook-row input { width: 100%; padding: 12px 16px; border: 1px solid #E5E5EA; border-radius: 100px; font-size: 14px; font-family: monospace; text-align: center; outline: none; font-weight: 600; background: #FAFAFA; color: var(--text-main); }
+  .medbook-row input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
+  .medbook-row input.err { border-color: var(--accent); background: var(--accent-soft); }
+  .medbook-row .status { font-size: 12px; font-weight: 800; text-align: center; padding: 6px; border-radius: 8px; }
+  .medbook-row .status.ok { background: var(--green-soft); color: #1B7A36; }
+  .medbook-row .status.expiring { background: var(--amber-soft); color: #C77700; }
+  .medbook-row .status.expired, .medbook-row .status.missing { background: var(--accent-soft); color: var(--accent); }
+
+  .ref-row { display: grid; grid-template-columns: 1fr 100px 80px 80px; gap: 12px; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--border); font-size: 15px; }
+  .ref-row:last-child { border-bottom: none; }
+  .ref-row .ref-name { font-weight: 600; color: var(--text-main); }
+  .ref-row .ref-badge { font-size: 12px; font-weight: 700; padding: 6px 10px; border-radius: 8px; text-align: center; }
+  .ref-row .ref-badge.req { background: var(--accent-soft); color: var(--accent); }
+  .ref-row .ref-badge.opt { background: #F2F2F7; color: var(--text-muted); }
+  .ref-row .ref-months { font-size: 13px; color: var(--text-muted); text-align: center; }
+
+  .medbook-status-banner { padding: 20px 24px; border-radius: 20px; margin-bottom: 32px; display: flex; align-items: center; gap: 16px; font-size: 15px; line-height: 1.5; font-weight: 500; }
+  .medbook-status-banner.ok { background: var(--green-soft); color: #1B7A36; border: 1px solid rgba(52,199,89,0.3); }
+  .medbook-status-banner.expiring { background: var(--amber-soft); color: #C77700; border: 1px solid rgba(255,149,0,0.3); }
+  .medbook-status-banner.invalid { background: var(--accent-soft); color: var(--accent); border: 1px solid rgba(255,59,48,0.3); }
+
   .toast-container { position: fixed; bottom: 32px; right: 32px; z-index: 3000; display: flex; flex-direction: column; gap: 12px; }
   .toast { background: rgba(28, 28, 30, 0.95); backdrop-filter: blur(10px); color: #fff; padding: 16px 28px; border-radius: 100px; font-size: 15px; font-weight: 600; max-width: 400px; box-shadow: var(--shadow-lg); animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
   .toast.error { background: rgba(255, 59, 48, 0.95); }
@@ -356,6 +390,10 @@
     .stats-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
     .stat-card { padding: 16px; border-radius: 20px; min-height: 110px;}
     .stat-card .value { font-size: 26px; }
+    .medbook-row { grid-template-columns: 1fr; gap: 8px; padding: 16px; background: #FAFAFA; border-radius: 16px; margin-bottom: 8px; border: 1px solid var(--border); }
+    .medbook-row .status { text-align: left; padding: 8px 12px; border-radius: 8px; display: inline-block;}
+    .ref-row { grid-template-columns: 1fr; gap: 8px; padding: 16px; background: #FAFAFA; border-radius: 16px; margin-bottom: 8px; border: 1px solid var(--border);}
+    .ref-row > div { text-align: left !important; }
     body.dash-active td::before { color: var(--dash-muted); }
     td { word-break: break-word; }
   }
@@ -368,6 +406,7 @@
     .stats-grid { grid-template-columns: 1fr; }
   }
 
+  /* ВИЗУАЛЬНЫЙ РЕДАКТОР (WYSIWYG) */
   .rich-editor { width: 100%; border: 1px solid #E5E5EA; border-radius: 20px; padding: 16px 24px; font-size: 15px; background: #FAFAFA; color: var(--text-main); outline: none; min-height: 200px; overflow-y: auto; transition: all 0.2s; line-height: 1.6; }
   .rich-editor:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 4px var(--accent-soft); }
   .rich-editor p { margin-bottom: 12px; }
@@ -466,7 +505,6 @@
 /* ================== CONSTANTS ================== */
 const TOKEN_KEY = 'wokker_admin_token';
 const LOGIN_RE = /^[a-z]{3}\d{2}$/;
-let ME = null;
 
 const PERMISSIONS_LIST = [
   { key: 'users_create', label: 'Добавлять сотрудников' },
@@ -494,14 +532,15 @@ const PERMISSIONS_LIST = [
   { key: 'timesheet_access', label: 'Доступ к Табелю' },
 ];
 
-const STANDARD_GROUPS = ['Пищевая Безопасность', 'Касса', 'Горячий цех', 'Холодный цех', 'Общее'];
+const STANDARD_GROUPS = [
+  'Пищевая Безопасность', 
+  'Касса', 
+  'Горячий цех', 
+  'Холодный цех', 
+  'Общее'
+];
 
-const SECTION_TITLES = {
-  dashboard: 'Дашборд', users: 'Сотрудники', medbooks: 'Медкнижки',
-  restaurants: 'Рестораны', news: 'Новости', standards: 'Стандарты', certification: 'Сертификация', faq: 'FAQ',
-  positions: 'Должности', questions: 'Вопросы', admins: 'Администраторы',
-  reports: 'Отчёты', audit: 'История',
-};
+let ME = null;
 
 /* ================== UTILS ================== */
 const $ = id => document.getElementById(id);
@@ -510,18 +549,40 @@ const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&a
 function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
 function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
 function clearToken() { localStorage.removeItem(TOKEN_KEY); }
-function getFileUrl(url) { return url ? url + '?token=' + getToken() : ''; }
 
+function getFileUrl(url) {
+    if (!url) return '';
+    return url + '?token=' + getToken();
+}
+
+// ================= КЕШ =================
 let _cache = {};
 async function cachedApi(path, body, ttl = 30000) {
     const key = path + (body ? JSON.stringify(body) : '');
     const now = Date.now();
-    if (_cache[key] && now - _cache[key].time < ttl) return _cache[key].data;
+    if (_cache[key] && now - _cache[key].time < ttl) {
+        return _cache[key].data;
+    }
     const data = await api(path, body);
     _cache[key] = { data, time: now };
     return data;
 }
-function clearCache() { _cache = {}; }
+
+function clearCache() {
+    _cache = {};
+}
+
+function cleanHTML(html) {
+    let clean = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+    clean = clean.replace(/<meta[^>]*>/gi, '');
+    clean = clean.replace(/<link[^>]*>/gi, '');
+    clean = clean.replace(/\s*(class|id)="[^"]*"/gi, '');
+    clean = clean.replace(/font-size\s*:\s*[^;"]+;?/gi, '');
+    clean = clean.replace(/line-height\s*:\s*[^;"]+;?/gi, '');
+    clean = clean.replace(/<p><br><\/p>/gi, '');
+    clean = clean.replace(/<p>&nbsp;<\/p>/gi, '');
+    return clean.trim();
+}
 
 function toast(text, type) {
   const el = document.createElement('div');
@@ -546,18 +607,48 @@ function fmtDate(iso, withTime) {
 async function api(path, body) {
   const payload = { webToken: getToken() };
   if (body && typeof body === 'object') Object.assign(payload, body);
-  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
   if (res.status === 401) { clearToken(); showLogin(); throw new Error('unauthorized'); }
   if (res.status === 403) {
-    let j = {}; try { j = await res.json(); } catch (e) {}
+    let j = {};
+    try { j = await res.json(); } catch (e) {}
     if (j.error === 'fired') { clearToken(); showLogin(); throw new Error('fired'); }
     throw new Error(j.error || 'forbidden');
   }
   if (!res.ok) {
-    let msg = 'error'; try { const j = await res.json(); msg = j.detail || j.error || msg; } catch (e) {}
+    let msg = 'error';
+    try { 
+        const j = await res.json(); 
+        msg = j.detail || j.error || msg; 
+    } catch (e) {}
     throw new Error(msg);
   }
   return res.json();
+}
+
+async function uploadFile(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+        const res = await fetch('/api/admin/upload', {
+            method: 'POST',
+            headers: {
+                'X-Token': getToken()
+            },
+            body: formData
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Upload failed');
+        }
+        return await res.json();
+    } catch (e) {
+        throw new Error('Ошибка сети при загрузке файла');
+    }
 }
 
 /* ================== MOBILE SIDEBAR ================== */
@@ -575,36 +666,55 @@ function isHR() { return !!(ME && ME.is_hr); }
 function canPublish() { return isSuperAdmin() || isHR(); }
 function hasPerm(perm) {
   if (!ME) return false;
-  if (ME.is_super_admin || ME.is_hr) return true;
+  if (ME.is_super_admin) return true;
+  if (ME.is_hr) return true;
   return !!(ME.permissions && ME.permissions[perm]);
 }
 
 /* ================== LOGIN ================== */
 function showLogin() {
-  $('app').style.display = 'none'; $('login-screen').style.display = 'flex';
-  $('login-error').textContent = ''; $('login-login').value = ''; $('login-password').value = '';
-  document.body.classList.remove('dash-active'); clearCache();
+  $('app').style.display = 'none';
+  $('login-screen').style.display = 'flex';
+  $('login-error').textContent = '';
+  $('login-login').value = '';
+  $('login-password').value = '';
+  document.body.classList.remove('dash-active');
+  clearCache();
 }
 function showApp() { $('login-screen').style.display = 'none'; $('app').style.display = 'block'; }
 
-$('login-login').addEventListener('input', e => { e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5); });
+$('login-login').addEventListener('input', e => {
+  e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5);
+});
 
 async function doLogin() {
   const login = $('login-login').value.trim().toLowerCase();
   const password = $('login-password').value;
-  const errEl = $('login-error'); errEl.textContent = '';
+  const errEl = $('login-error');
+  errEl.textContent = '';
   if (!LOGIN_RE.test(login)) { errEl.textContent = 'Логин: 3 латинские буквы + 2 цифры'; return; }
   if (!password) { errEl.textContent = 'Введите пароль'; return; }
-  const btn = $('login-btn'); btn.disabled = true; btn.textContent = 'Проверяем…';
+  const btn = $('login-btn');
+  btn.disabled = true; btn.textContent = 'Проверяем…';
   try {
-    const res = await fetch('/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login, password }) });
+    const res = await fetch('/api/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ login, password }),
+    });
     if (res.status === 401) { errEl.textContent = 'Неверный логин или пароль'; return; }
     if (res.status === 403) { errEl.textContent = 'Аккаунт уволен или нет прав администратора'; return; }
     if (!res.ok) { errEl.textContent = 'Ошибка сервера'; return; }
     const data = await res.json();
     if (!data.token) { errEl.textContent = 'Ошибка'; return; }
-    setToken(data.token); clearCache(); await checkAdminAndLoad();
-  } catch (e) { errEl.textContent = 'Сеть недоступна'; } finally { btn.disabled = false; btn.textContent = 'Войти'; }
+    setToken(data.token);
+    clearCache();
+    await checkAdminAndLoad();
+  } catch (e) {
+    errEl.textContent = 'Сеть недоступна';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Войти';
+  }
 }
 
 $('login-btn').addEventListener('click', doLogin);
@@ -615,20 +725,36 @@ async function checkAdminAndLoad() {
   try {
     const res = await api('/api/admin/me', {});
     ME = res.profile;
+    
     $('admin-name').textContent = ME.full_name;
     $('admin-login').textContent = '@' + ME.login;
-    if (ME.full_name) $('topbar-avatar').textContent = ME.full_name.charAt(0).toUpperCase();
+    
+    const avatarEl = $('topbar-avatar');
+    if (avatarEl && ME.full_name) {
+        avatarEl.textContent = ME.full_name.charAt(0).toUpperCase();
+    }
+
     const roleEl = $('admin-role');
     if (ME.is_super_admin) { roleEl.textContent = 'Супер-админ'; roleEl.className = 'badge-role super'; }
     else if (ME.is_hr) { roleEl.textContent = 'HR'; roleEl.className = 'badge-role hr'; }
     else { roleEl.textContent = 'Админ'; roleEl.className = 'badge-role regular'; }
     $('nav-admins').style.display = ME.is_super_admin ? 'block' : 'none';
+    
     showApp();
+    
     if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({ type: 'SET_TOKEN', token: getToken() });
+        navigator.serviceWorker.controller.postMessage({
+            type: 'SET_TOKEN',
+            token: getToken()
+        });
     }
-    navigate('dashboard'); refreshCounters();
-  } catch (e) { showLogin(); $('login-error').textContent = 'Ошибка: ' + e.message; }
+
+    navigate('dashboard');
+    refreshCounters();
+  } catch (e) {
+    showLogin();
+    $('login-error').textContent = 'Ошибка: ' + e.message;
+  }
 }
 
 $('logout-btn').addEventListener('click', async () => {
@@ -638,6 +764,7 @@ $('logout-btn').addEventListener('click', async () => {
 });
 $('change-password-btn').addEventListener('click', () => { closeSidebar(); openChangePassword(); });
 
+/* ================== CHANGE PASSWORD ================== */
 function openChangePassword() {
   openModal('Сменить пароль', `
     <div class="form-group"><label>Текущий пароль</label><input class="form-input" id="cp-old" type="password"></div>
@@ -646,7 +773,8 @@ function openChangePassword() {
     <div class="form-hint error" id="cp-error"></div>
   `, `<button class="btn ghost" onclick="closeModal()">Отмена</button><button class="btn primary" id="cp-save">Сохранить</button>`);
   $('cp-save').addEventListener('click', async () => {
-    const errEl = $('cp-error'); errEl.textContent = '';
+    const errEl = $('cp-error');
+    errEl.textContent = '';
     if (!$('cp-old').value) { errEl.textContent = 'Введите текущий пароль'; return; }
     if (!$('cp-new').value || $('cp-new').value.length < 8) { errEl.textContent = 'Новый минимум 8 символов'; return; }
     if ($('cp-new').value !== $('cp-new2').value) { errEl.textContent = 'Пароли не совпадают'; return; }
@@ -673,16 +801,26 @@ function openModal(title, bodyHtml, footerHtml, opts) {
 function closeModal() { $('modal-overlay').classList.remove('show'); }
 $('modal-close').addEventListener('click', closeModal);
 $('modal-overlay').addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('modal-overlay').classList.contains('show')) closeModal(); });
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && $('modal-overlay').classList.contains('show')) {
+    closeModal();
+  }
+});
 
 /* ================== NAV ================== */
-const SECTION_LOADERS = {
-  dashboard: () => loadDashboard(), users: () => loadUsers(), medbooks: () => loadMedbooks(),
-  restaurants: () => loadRestaurants(), news: () => loadNews(), standards: () => loadStandards(), certification: () => loadCertification(),
-  faq: () => loadFaq(), positions: () => loadPositions(), questions: () => loadQuestions(),
-  admins: () => loadAdmins(), reports: () => loadReports(), audit: () => loadAudit(),
+const SECTION_TITLES = {
+  dashboard: 'Дашборд', users: 'Сотрудники', medbooks: 'Медкнижки',
+  restaurants: 'Рестораны', news: 'Новости', standards: 'Стандарты', certification: 'Сертификация', faq: 'FAQ',
+  positions: 'Должности', questions: 'Вопросы', admins: 'Администраторы',
+  reports: 'Отчёты', audit: 'История',
 };
-
+const SECTION_LOADERS = {
+  dashboard: loadDashboard, users: loadUsers, medbooks: loadMedbooks,
+  restaurants: loadRestaurants, news: loadNews, standards: loadStandards, certification: loadCertification,
+  faq: loadFaq, positions: loadPositions, questions: loadQuestions,
+  admins: loadAdmins, reports: loadReports, audit: loadAudit,
+};
 document.querySelectorAll('.nav-item').forEach(btn => {
   btn.addEventListener('click', () => { closeSidebar(); navigate(btn.dataset.sec); });
 });
@@ -693,20 +831,25 @@ function navigate(sec) {
   $('page-actions').innerHTML = '';
   
   if (sec === 'dashboard') {
-    document.body.classList.add('dash-active'); $('page-content').classList.add('dark-dash'); $('page-content').innerHTML = '';
+    document.body.classList.add('dash-active');
+    $('page-content').classList.add('dark-dash');
+    $('page-content').innerHTML = '';
   } else {
-    document.body.classList.remove('dash-active'); $('page-content').classList.remove('dark-dash');
+    document.body.classList.remove('dash-active');
+    $('page-content').classList.remove('dark-dash');
     $('page-content').innerHTML = '<div class="loading">Загрузка…</div>';
   }
 
   const loader = SECTION_LOADERS[sec];
   if (!loader) return;
-  Promise.resolve().then(() => loader()).catch(e => {
+  Promise.resolve()
+    .then(() => loader())
+    .catch(e => {
       console.error('load:', e);
       if (e.message !== 'unauthorized' && e.message !== 'fired') {
         $('page-content').innerHTML = '<div class="empty">Ошибка: ' + esc(e.message) + '</div>';
       }
-  });
+    });
 }
 
 async function refreshCounters() {
@@ -714,19 +857,22 @@ async function refreshCounters() {
     const q = await api('/api/admin/questions', {});
     const open = (q.questions || []).filter(x => !x.replied).length;
     const qEl = $('q-count');
-    if (open > 0) { qEl.textContent = open; qEl.style.display = 'inline-block'; } else qEl.style.display = 'none';
+    if (open > 0) { qEl.textContent = open; qEl.style.display = 'inline-block'; }
+    else qEl.style.display = 'none';
   } catch (e) {}
   try {
     const n = await api('/api/admin/news', {});
     const pending = (n.news || []).filter(x => x.status === 'pending').length;
     const nEl = $('news-pending-count');
-    if (pending > 0 && canPublish()) { nEl.textContent = pending; nEl.style.display = 'inline-block'; } else nEl.style.display = 'none';
+    if (pending > 0 && canPublish()) { nEl.textContent = pending; nEl.style.display = 'inline-block'; }
+    else nEl.style.display = 'none';
   } catch (e) {}
   try {
     const s = await api('/api/admin/standards', {});
     const pending = (s.standards || []).filter(x => x.status === 'pending').length;
     const sEl = $('standards-pending-count');
-    if (pending > 0 && canPublish()) { sEl.textContent = pending; sEl.style.display = 'inline-block'; } else sEl.style.display = 'none';
+    if (pending > 0 && canPublish()) { sEl.textContent = pending; sEl.style.display = 'inline-block'; }
+    else sEl.style.display = 'none';
   } catch (e) {}
 }
 
@@ -734,67 +880,216 @@ async function refreshCounters() {
 async function loadDashboard() {
   $('page-content').innerHTML = `
     <div class="dash-layout">
+      
+      <!-- Блок статистики -->
       <div class="dash-stats-grid">
-        <div class="dash-stat-card green"><div class="ds-label">Активные сотрудники</div><div class="ds-value" id="stat-active"><div class="skeleton skeleton-stat"></div></div></div>
-        <div class="dash-stat-card blue"><div class="ds-label">Новые за 7 дней</div><div class="ds-value" id="stat-new7"><div class="skeleton skeleton-stat"></div></div></div>
-        <div class="dash-stat-card accent"><div class="ds-label">Открытые вопросы</div><div class="ds-value" id="stat-questions"><div class="skeleton skeleton-stat"></div></div></div>
-        <div class="dash-stat-card amber"><div class="ds-label">Требуют внимания</div><div class="ds-value" id="stat-medbooks"><div class="skeleton skeleton-stat"></div></div></div>
+        <div class="dash-stat-card green">
+          <div class="ds-label">Активные сотрудники</div>
+          <div class="ds-value" id="stat-active"><div class="skeleton skeleton-stat"></div></div>
+        </div>
+        <div class="dash-stat-card blue">
+          <div class="ds-label">Новые за 7 дней</div>
+          <div class="ds-value" id="stat-new7"><div class="skeleton skeleton-stat"></div></div>
+        </div>
+        <div class="dash-stat-card accent">
+          <div class="ds-label">Открытые вопросы</div>
+          <div class="ds-value" id="stat-questions"><div class="skeleton skeleton-stat"></div></div>
+        </div>
+        <div class="dash-stat-card amber">
+          <div class="ds-label">Требуют внимания</div>
+          <div class="ds-value" id="stat-medbooks"><div class="skeleton skeleton-stat"></div></div>
+        </div>
       </div>
+
+      <!-- График -->
       <div class="dash-chart-card">
-        <div class="dash-chart-header"><div class="dash-section-title" style="margin: 0;">Структура персонала</div></div>
-        <div class="dash-bar-chart" id="dash-chart-container"><div style="width:100%; text-align:center; color: var(--dash-muted); margin-top: 40px;">Загрузка...</div></div>
+        <div class="dash-chart-header">
+          <div class="dash-section-title" style="margin: 0;">Структура персонала</div>
+        </div>
+        <div class="dash-bar-chart" id="dash-chart-container">
+          <div style="width:100%; text-align:center; color: var(--dash-muted); margin-top: 40px;">Загрузка данных...</div>
+        </div>
       </div>
+
+      <!-- Вопросы -->
       <div class="dash-list-card">
-        <div class="dash-section-title" style="margin: 0;">Вопросы сотрудников</div>
-        <div class="dash-list" id="dash-questions-container"></div>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div class="dash-section-title" style="margin: 0;">Вопросы сотрудников</div>
+        </div>
+        <div class="dash-list" id="dash-questions-container">
+           ${[1,2,3].map(() => `<div class="dash-list-item" style="pointer-events:none;"><div class="skeleton skeleton-avatar"></div><div class="dash-list-content"><div class="skeleton skeleton-text" style="width: 60%;"></div><div class="skeleton skeleton-text" style="width: 90%; height: 12px;"></div></div></div>`).join('')}
+        </div>
       </div>
+
+      <!-- Нижний ряд -->
       <div class="dash-bottom-grid">
-        <div class="dash-bottom-card"><div class="dash-section-title">Новые сотрудники</div><div class="dash-user-list" id="dash-users-container"></div></div>
-        <div class="dash-bottom-card"><div class="dash-section-title">На модерации</div><div class="dash-list" style="margin-top: 0;" id="dash-mod-container"></div></div>
-        <div class="dash-bottom-card"><div class="dash-section-title">Внимание: Медкнижки</div><div class="dash-alert-list" id="dash-medbook-container"></div></div>
+        <div class="dash-bottom-card">
+          <div class="dash-section-title">Новые сотрудники</div>
+          <div class="dash-user-list" id="dash-users-container">
+            ${[1,2,3].map(() => `<div class="dash-user-item"><div class="skeleton skeleton-avatar" style="width:32px; height:32px;"></div><div class="dash-user-info"><div class="skeleton skeleton-text" style="width: 80%; margin: 0 0 4px 0;"></div><div class="skeleton skeleton-text" style="width: 60%; margin:0; height: 10px;"></div></div></div>`).join('')}
+          </div>
+        </div>
+        
+        <div class="dash-bottom-card">
+          <div class="dash-section-title">На модерации</div>
+          <div class="dash-list" style="margin-top: 0;" id="dash-mod-container">
+            ${[1,2].map(() => `<div class="dash-list-item" style="pointer-events:none;"><div class="skeleton skeleton-avatar"></div><div class="dash-list-content"><div class="skeleton skeleton-text" style="width: 70%;"></div><div class="skeleton skeleton-text" style="width: 40%; height: 12px;"></div></div></div>`).join('')}
+          </div>
+        </div>
+
+        <div class="dash-bottom-card">
+          <div class="dash-section-title">Внимание: Медкнижки</div>
+          <div class="dash-alert-list" id="dash-medbook-container">
+            ${[1,2,3].map(() => `<div class="dash-alert-item"><div class="skeleton skeleton-text" style="width: 60%; margin:0;"></div><div class="skeleton skeleton-text" style="width: 30%; margin:0;"></div></div>`).join('')}
+          </div>
+        </div>
       </div>
     </div>`;
 
-  let stats = { active: 0, total: 0, new7: 0, questions_open: 0, standards_pending: 0 };
+  let stats = { active: 0, total: 0, new7: 0, new_today: 0, fired: 0, questions_open: 0, news_pending: 0, standards_pending: 0 };
   let newsList = [], qsList = [], usersList = [];
+  let medbookAlerts = [];
   
   try {
     const results = await Promise.allSettled([
-      cachedApi('/api/admin/dashboard', {}, 10000), cachedApi('/api/admin/news', {}, 10000), 
-      cachedApi('/api/admin/questions', {}, 10000), cachedApi('/api/admin/users', {}, 10000)
+      cachedApi('/api/admin/dashboard', {}, 10000), 
+      cachedApi('/api/admin/news', {}, 10000), 
+      cachedApi('/api/admin/questions', {}, 10000), 
+      cachedApi('/api/admin/users', {}, 10000), 
+      cachedApi('/api/admin/medbooks', {}, 10000)
     ]);
+    
     if (results[0].status === 'fulfilled' && results[0].value.stats) stats = results[0].value.stats;
     if (results[1].status === 'fulfilled' && results[1].value.news) newsList = results[1].value.news;
     if (results[2].status === 'fulfilled' && results[2].value.questions) qsList = results[2].value.questions;
     if (results[3].status === 'fulfilled' && results[3].value.users) usersList = results[3].value.users;
+    
+    if (results[4].status === 'fulfilled' && results[4].value.users) {
+      medbookAlerts = results[4].value.users.filter(u => u.medbook_status === 'invalid' || u.medbook_status === 'expiring');
+    }
   } catch(e) { console.error('Dashboard load error', e); }
 
-  if ($('stat-active')) $('stat-active').textContent = stats.active || 0;
-  if ($('stat-new7')) $('stat-new7').textContent = stats.new7 || 0;
-  if ($('stat-questions')) $('stat-questions').textContent = stats.questions_open || 0;
+  const statActiveEl = $('stat-active');
+  if (statActiveEl) statActiveEl.textContent = stats.active || 0;
+  
+  const statNew7El = $('stat-new7');
+  if (statNew7El) statNew7El.textContent = stats.new7 || 0;
 
-  if ($('dash-chart-container') && stats.total > 0) {
-    const maxVal = Math.max(stats.active, stats.fired || 0, stats.new7, 1);
-    const genBar = (label, val, cls) => `<div class="dash-bar-col"><div class="dash-bar-value">${val}</div><div class="dash-bar-fill ${cls}" style="height: ${Math.max(Math.min((val/maxVal)*100, 100), 5)}%;"></div><div class="dash-bar-label">${label}</div></div>`;
-    $('dash-chart-container').innerHTML = genBar('Активные', stats.active, 'green') + genBar('Новые', stats.new7, 'blue') + genBar('Уволенные', stats.fired||0, 'red') + genBar('Всего', stats.total, '');
+  const statQuestionsEl = $('stat-questions');
+  if (statQuestionsEl) statQuestionsEl.textContent = stats.questions_open || 0;
+
+  const statMedbooksEl = $('stat-medbooks');
+  if (statMedbooksEl) statMedbooksEl.textContent = medbookAlerts.length || 0;
+
+  const chartContainer = $('dash-chart-container');
+  if (chartContainer && stats.total > 0) {
+    const maxVal = Math.max(stats.active, stats.fired, stats.new7, 1);
+    const generateBar = (label, val, colorClass) => {
+      const heightPerc = Math.min((val / maxVal) * 100, 100);
+      return `
+        <div class="dash-bar-col">
+          <div class="dash-bar-value">${val}</div>
+          <div class="dash-bar-fill ${colorClass}" style="height: ${Math.max(heightPerc, 5)}%;"></div>
+          <div class="dash-bar-label">${label}</div>
+        </div>
+      `;
+    };
+    
+    chartContainer.innerHTML = 
+      generateBar('Активные', stats.active, 'green') +
+      generateBar('Новые', stats.new7, 'blue') +
+      generateBar('Уволенные', stats.fired, 'red') +
+      generateBar('Всего', stats.total, '');
   }
 
-  if ($('dash-questions-container')) {
-    const openQs = qsList.filter(x => !x.replied).slice(0, 4);
-    $('dash-questions-container').innerHTML = openQs.length ? openQs.map(q => `
+  const qsContainer = $('dash-questions-container');
+  if (qsContainer) {
+    const openQs = qsList.filter(x => !x.replied);
+    if (openQs.length) {
+      qsContainer.innerHTML = openQs.slice(0, 4).map(q => `
         <div class="dash-list-item">
           <div class="dash-list-avatar" style="background: var(--dash-blue);">${esc((q.full_name || 'С').charAt(0))}</div>
-          <div class="dash-list-content"><div class="dash-list-title">${esc(q.full_name)}</div><div class="dash-list-sub">${esc(q.text)}</div></div>
-        </div>`).join('') : '<div style="color: var(--dash-muted); text-align: center; margin-top: 20px;">Нет активных вопросов</div>';
+          <div class="dash-list-content">
+            <div class="dash-list-title">${esc(q.full_name || 'Сотрудник')}</div>
+            <div class="dash-list-sub">${esc(q.text)}</div>
+          </div>
+          <button class="btn primary small" style="padding: 4px 12px; font-size: 11px;" onclick="navigate('questions')">Ответить</button>
+        </div>
+      `).join('');
+    } else {
+      qsContainer.innerHTML = '<div style="color: var(--dash-muted); font-size: 14px; text-align: center; margin-top: 20px;">Нет активных вопросов</div>';
+    }
   }
 
-  if ($('dash-users-container')) {
+  const usersContainer = $('dash-users-container');
+  if (usersContainer) {
     const newUsers = usersList.slice(0, 4);
-    $('dash-users-container').innerHTML = newUsers.length ? newUsers.map(u => `
+    if (newUsers.length) {
+      usersContainer.innerHTML = newUsers.map(u => `
         <div class="dash-user-item">
           <div class="dash-user-avatar">${esc((u.full_name || '?').charAt(0))}</div>
-          <div class="dash-user-info"><div class="dash-user-name">${esc(u.full_name)}</div><div class="dash-user-pos">${esc(u.position)}</div></div>
-        </div>`).join('') : '<div style="color: var(--dash-muted); text-align: center; margin-top: 20px;">Нет данных</div>';
+          <div class="dash-user-info">
+            <div class="dash-user-name">${esc(u.full_name || '—')}</div>
+            <div class="dash-user-pos">${esc(u.position || '—')}</div>
+          </div>
+        </div>
+      `).join('');
+    } else {
+      usersContainer.innerHTML = '<div style="color: var(--dash-muted); font-size: 14px; text-align: center; margin-top: 20px;">Нет данных</div>';
+    }
+  }
+
+  const modContainer = $('dash-mod-container');
+  if (modContainer) {
+    const pendingNews = newsList.filter(x => x.status === 'pending');
+    let modHtml = '';
+    if (pendingNews.length) {
+      modHtml += pendingNews.slice(0, 2).map(n => `
+        <div class="dash-list-item">
+          <div class="dash-list-avatar" style="background: var(--dash-accent); color: #000;">Н</div>
+          <div class="dash-list-content">
+            <div class="dash-list-title">${esc(n.title)}</div>
+            <div class="dash-list-sub">Новость</div>
+          </div>
+          <div class="dash-list-price">Модерация</div>
+        </div>
+      `).join('');
+    }
+    if (stats.standards_pending > 0) {
+      modHtml += `
+        <div class="dash-list-item">
+          <div class="dash-list-avatar" style="background: var(--dash-blue);">С</div>
+          <div class="dash-list-content">
+            <div class="dash-list-title">Новые стандарты</div>
+            <div class="dash-list-sub">Ожидают согласования</div>
+          </div>
+          <div class="dash-list-price blue">${stats.standards_pending} шт.</div>
+        </div>
+      `;
+    }
+    if (!modHtml) {
+      modHtml = '<div style="color: var(--dash-muted); font-size: 14px; text-align: center; margin-top: 20px;">Все проверено</div>';
+    }
+    modContainer.innerHTML = modHtml;
+  }
+
+  const medbookContainer = $('dash-medbook-container');
+  if (medbookContainer) {
+    if (medbookAlerts.length) {
+      medbookContainer.innerHTML = medbookAlerts.slice(0, 5).map(u => {
+        const isExpiring = u.medbook_status === 'expiring';
+        return `
+          <div class="dash-alert-item">
+            <div class="dash-alert-name">${esc(u.full_name)}</div>
+            <div class="dash-alert-status ${isExpiring ? 'amber' : 'red'}">
+              ${isExpiring ? 'Истекает' : 'Просрочена'}
+            </div>
+          </div>
+        `;
+      }).join('');
+    } else {
+      medbookContainer.innerHTML = '<div style="color: var(--dash-muted); font-size: 14px; text-align: center; margin-top: 20px;">Все в порядке</div>';
+    }
   }
 }
 
@@ -805,7 +1100,11 @@ let _citizenshipsList = [];
 
 async function loadCitizenships() {
     if (_citizenshipsList.length > 0) return _citizenshipsList;
-    try { const res = await api('/api/admin/citizenships', {}); _citizenshipsList = res.citizenships || []; return _citizenshipsList; } catch(e) { return []; }
+    try {
+        const res = await api('/api/admin/citizenships', {});
+        _citizenshipsList = res.citizenships || [];
+        return _citizenshipsList;
+    } catch(e) { return []; }
 }
 
 async function loadUsers(search) {
@@ -821,22 +1120,35 @@ async function loadUsers(search) {
     </div>
     <div class="search-bar"><input id="users-search" placeholder="Поиск по логину, ФИО, телефону, ID…" value="${esc(_usersCurrentSearch)}" autocomplete="off"></div>
     <div class="table-wrap" id="users-table-container">
-      <table id="users-table"><thead id="users-thead"></thead><tbody id="users-tbody"></tbody></table>
+      <table id="users-table">
+        <thead id="users-thead"></thead>
+        <tbody id="users-tbody"></tbody>
+      </table>
     </div>`;
 
-  document.querySelectorAll('[data-users-tab]').forEach(t => t.addEventListener('click', () => { _usersTab = t.dataset.usersTab; loadUsers(_usersCurrentSearch); }));
-  $('users-thead').innerHTML = _usersTab === 'fired' ? '<tr><th>Логин</th><th>ФИО</th><th>Должность</th><th>Уволен</th><th></th></tr>' : '<tr><th>Логин</th><th>ФИО / Таб. номер</th><th>Должность</th><th>Медкнижка</th><th></th></tr>';
+  document.querySelectorAll('[data-users-tab]').forEach(t => t.addEventListener('click', () => {
+    _usersTab = t.dataset.usersTab;
+    loadUsers(_usersCurrentSearch);
+  }));
+
+  const thead = $('users-thead');
+  if (_usersTab === 'fired') {
+    thead.innerHTML = '<tr><th>Логин</th><th>ФИО</th><th>Должность</th><th>Уволен</th><th></th></tr>';
+  } else {
+    thead.innerHTML = '<tr><th>Логин</th><th>ФИО</th><th>Должность</th><th>Медкнижка</th><th></th></tr>';
+  }
 
   const inp = $('users-search');
   let timer = null;
   inp.addEventListener('input', () => {
-    _usersCurrentSearch = inp.value; clearTimeout(timer);
+    _usersCurrentSearch = inp.value;
+    clearTimeout(timer);
     timer = setTimeout(() => refreshUsersTable(_usersCurrentSearch.trim()), 200);
   });
 
   $('users-tbody').addEventListener('click', (e) => {
     const e1 = e.target.closest('[data-edit]'); if (e1) { e.stopPropagation(); openUserEditor(parseInt(e1.dataset.edit)); return; }
-    const e2 = e.target.closest('[data-medbook]'); if (e2) { e.stopPropagation(); toast('Редактор медкнижки на реконструкции', 'error'); return; }
+    const e2 = e.target.closest('[data-medbook]'); if (e2) { e.stopPropagation(); openMedbookEditor(parseInt(e2.dataset.medbook)); return; }
     const e3 = e.target.closest('[data-fire]'); if (e3) { e.stopPropagation(); fireUser(parseInt(e3.dataset.fire)); return; }
     const e4 = e.target.closest('[data-restore]'); if (e4) { e.stopPropagation(); restoreUser(parseInt(e4.dataset.restore)); return; }
     const tr = e.target.closest('tr[data-uid]'); if (tr) openUserEditor(parseInt(tr.dataset.uid));
@@ -847,106 +1159,640 @@ async function loadUsers(search) {
   if (_usersCurrentSearch) { inp.focus(); const l = inp.value.length; inp.setSelectionRange(l, l); }
 }
 async function refreshUsersTable(search) {
-  _usersCurrentSearch = search || ''; if (!$('users-tbody')) return;
+  _usersCurrentSearch = search || '';
+  if (!$('users-tbody')) return;
   const data = await api('/api/admin/users', { search: _usersCurrentSearch, fired: _usersTab === 'fired' });
   renderUsersTbody(data.users);
 }
 function renderUsersTbody(users) {
-  const tbody = $('users-tbody'); if (!tbody) return;
-  if (!users.length) { tbody.innerHTML = `<tr><td colspan="5"><div class="empty">Нет сотрудников</div></td></tr>`; return; }
-  const canEdit = hasPerm('users_edit'), canFire = hasPerm('users_fire');
+  const tbody = $('users-tbody');
+  if (!tbody) return;
+  if (!users.length) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty">${_usersTab === 'fired' ? 'Уволенных нет' : 'Нет сотрудников'}</div></td></tr>`;
+    return;
+  }
+  const canEdit = hasPerm('users_edit');
+  const canMedbook = hasPerm('medbook_edit');
+  const canFire = hasPerm('users_fire');
 
   tbody.innerHTML = users.map(u => {
     if (_usersTab === 'fired') {
-      return `<tr class="row-clickable fired-row" data-uid="${u.user_id}"><td data-label="Логин">${u.login ? `<span class="login-cell">${esc(u.login)}</span>` : '—'}</td><td data-label="ФИО"><b>${esc(u.full_name)}</b></td><td data-label="Должность">${esc(u.position)}</td><td data-label="Уволен">${fmtDate(u.fired_at, false)}</td><td class="actions-cell">${canFire ? `<button class="icon-btn restore" data-restore="${u.user_id}">Восст.</button>` : ''}</td></tr>`;
+      return `
+        <tr class="row-clickable fired-row" data-uid="${u.user_id}">
+          <td data-label="Логин">${u.login ? `<span class="login-cell">${esc(u.login)}</span>` : '<span class="tag gray">нет</span>'}</td>
+          <td data-label="ФИО"><b>${esc(u.full_name || '—')}</b></td>
+          <td data-label="Должность">${esc(u.position || '—')}</td>
+          <td data-label="Уволен" style="font-size:13px;color:var(--text-muted);">${fmtDate(u.fired_at, false)}</td>
+          <td class="actions-cell" data-label="">
+            ${canFire ? `<button class="icon-btn restore" data-restore="${u.user_id}" title="Восстановить">Восст.</button>` : ''}
+          </td>
+        </tr>`;
     }
+    const mbStatus = u.medbook_status || 'invalid';
+    let mbTag = '';
+    if (u.is_admin) mbTag = '<span class="tag gray">—</span>';
+    else if (mbStatus === 'ok') mbTag = '<span class="tag green">ОК</span>';
+    else if (mbStatus === 'expiring') mbTag = '<span class="tag amber">Скоро</span>';
+    else mbTag = '<span class="tag red">Ошибка</span>';
     const showFireBtn = canFire && !u.is_super_admin && u.user_id !== ME.user_id;
-    return `<tr class="row-clickable" data-uid="${u.user_id}"><td data-label="Логин">${u.login ? `<span class="login-cell">${esc(u.login)}</span>` : '—'}</td><td data-label="ФИО"><b>${esc(u.full_name)}</b></td><td data-label="Должность">${esc(u.position)}</td><td data-label="Медкнижка"><span class="tag gray">—</span></td><td class="actions-cell">${canEdit ? `<button class="icon-btn" data-edit="${u.user_id}">Ред.</button>` : ''}${showFireBtn ? `<button class="icon-btn fire" data-fire="${u.user_id}">Увол.</button>` : ''}</td></tr>`;
+    const ptTag = u.payment_type === 'fixed' ? '<span class="tag amber" style="font-size:10px; padding: 2px 6px;">Оклад</span>' : '<span class="tag gray" style="font-size:10px; padding: 2px 6px;">Почасовка</span>';
+    return `
+      <tr class="row-clickable" data-uid="${u.user_id}">
+        <td data-label="Логин">${u.login ? `<span class="login-cell">${esc(u.login)}</span>` : '<span class="tag gray">нет</span>'}</td>
+        <td data-label="ФИО"><b>${esc(u.full_name || '—')}</b><br>${ptTag}</td>
+        <td data-label="Должность">${esc(u.position || '—')}</td>
+        <td data-label="Медкнижка">${mbTag}</td>
+        <td class="actions-cell" data-label="">
+          ${!u.is_admin && canMedbook ? `<button class="icon-btn" data-medbook="${u.user_id}" title="Медкнижка">Мед.</button>` : ''}
+          ${canEdit ? `<button class="icon-btn" data-edit="${u.user_id}">Ред.</button>` : ''}
+          ${showFireBtn ? `<button class="icon-btn fire" data-fire="${u.user_id}" title="Уволить">Увол.</button>` : ''}
+        </td>
+      </tr>`;
   }).join('');
 }
 
 async function fireUser(uid) {
-  if (!confirm('Уволить сотрудника?')) return;
-  try { await api('/api/admin/user/fire', { user_id: uid }); toast('Уволен', 'success'); clearCache(); loadUsers(_usersCurrentSearch); } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+  if (!confirm('Уволить сотрудника? Он потеряет доступ и переместится во вкладку «Уволенные».')) return;
+  try {
+    await api('/api/admin/user/fire', { user_id: uid });
+    toast('Сотрудник уволен', 'success');
+    clearCache();
+    loadUsers(_usersCurrentSearch);
+  } catch (e) {
+    const map = { forbidden: 'Нет права увольнять', cannot_fire_super: 'Нельзя уволить супер-админа',
+      cannot_fire_admin: 'Только супер-админ может уволить другого админа',
+      cannot_fire_self: 'Нельзя уволить себя', already_fired: 'Уже уволен', invalid_id: 'Неверный ID' };
+    toast(map[e.message] || 'Ошибка: ' + e.message, 'error');
+  }
 }
 async function restoreUser(uid) {
   if (!confirm('Восстановить сотрудника?')) return;
-  try { await api('/api/admin/user/restore', { user_id: uid }); toast('Восстановлен', 'success'); clearCache(); loadUsers(_usersCurrentSearch); } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+  try {
+    await api('/api/admin/user/restore', { user_id: uid });
+    toast('Восстановлен', 'success');
+    clearCache();
+    loadUsers(_usersCurrentSearch);
+  } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
 }
 
 async function openUserCreate() {
+  if (!hasPerm('users_create')) { toast('Нет права', 'error'); return; }
   try {
-    const [restData, posData, cits] = await Promise.all([api('/api/admin/restaurants', {}), api('/api/admin/positions', {}), loadCitizenships()]);
+    const [restData, posData, cits] = await Promise.all([
+      api('/api/admin/restaurants', {}),
+      api('/api/admin/positions', {}),
+      loadCitizenships()
+    ]);
     const restOpts = restData.restaurants.map(r => `<option value="${esc(r.key)}">${esc(r.name)}</option>`).join('');
     const posOpts = posData.positions.filter(p => !p.is_archived).map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');
     const citOpts = cits.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
 
     openModal('Создать сотрудника', `
-      <div class="form-group"><label>ФИО</label><input class="form-input" id="nc-name" placeholder="Иванов Иван"></div>
-      <div class="form-group"><label>Пароль</label><input class="form-input" id="nc-password" placeholder="Минимум 6 символов"></div>
+      <div class="form-group">
+        <label>ФИО</label>
+        <input class="form-input" id="nc-name" placeholder="Иванов Иван Иванович" autocomplete="off">
+        <div class="form-hint">Логин будет сгенерирован из фамилии автоматически</div>
+      </div>
+      <div class="login-preview" id="login-preview" style="display:none;">
+        <div style="flex:1;">
+          <div class="lp-label">Логин будет выдан</div>
+          <div class="lp-value" id="lp-value">—</div>
+          <div class="lp-hint">Примерно. Точный логин покажем после создания.</div>
+        </div>
+      </div>
+      <div class="form-group"><label>Пароль</label><input class="form-input" id="nc-password" placeholder="Минимум 6 символов"><div class="form-hint">Сотрудник сможет сменить после первого входа</div></div>
+      
       <div class="form-row">
-        <div class="form-group"><label>Телефон</label><input class="form-input" id="nc-phone"></div>
+        <div class="form-group"><label>Телефон</label><input class="form-input" id="nc-phone" inputmode="tel"></div>
         <div class="form-group"><label>Дата рождения</label><input class="form-input" id="nc-birth" placeholder="ДД.ММ.ГГГГ"></div>
       </div>
+
       <div class="form-row">
         <div class="form-group"><label>Дата трудоустройства</label><input class="form-input" id="nc-hire-date" type="date"></div>
-        <div class="form-group"><label>Гражданство</label><select class="form-select" id="nc-citizenship">${citOpts}</select></div>
+        <div class="form-group">
+          <label>Гражданство <button class="btn primary small" type="button" onclick="addNewCitizenship('nc-citizenship')" style="padding:4px 10px; margin-left:8px; border-radius:100px;">+</button></label>
+          <select class="form-select" id="nc-citizenship">${citOpts}</select>
+        </div>
       </div>
+
       <div class="form-row">
         <div class="form-group"><label>Должность</label><select class="form-select" id="nc-position">${posOpts}</select></div>
         <div class="form-group"><label>Ресторан</label><select class="form-select" id="nc-restaurant"><option value="">—</option>${restOpts}</select></div>
       </div>
-      <div class="form-group"><label>Тип оплаты</label><select class="form-select" id="nc-payment-type"><option value="hourly">Почасовая</option><option value="fixed">Фиксированный оклад</option></select></div>
+      
+      <div class="form-group">
+        <label>Тип оплаты</label>
+        <select class="form-select" id="nc-payment-type">
+            <option value="hourly">Почасовая</option>
+            <option value="fixed">Фиксированный оклад</option>
+        </select>
+      </div>
+
       <div class="form-group"><div class="checkbox-row"><input type="checkbox" id="nc-cert"><label for="nc-cert">Сертификация пройдена</label></div></div>
       <div class="form-hint error" id="nc-error"></div>
     `, `<button class="btn ghost" onclick="closeModal()">Отмена</button><button class="btn primary" id="nc-save">Создать</button>`);
 
-    $('nc-save').addEventListener('click', async () => {
-      const errEl = $('nc-error'); errEl.textContent = '';
-      const name = $('nc-name').value.trim(), password = $('nc-password').value;
-      if (!name || password.length < 6) { errEl.textContent = 'Заполните ФИО и пароль (от 6 символов)'; return; }
-      try {
-        const res = await api('/api/admin/user/create', { password, full_name: name, phone: $('nc-phone').value.trim(), birth_date: $('nc-birth').value.trim(), position: $('nc-position').value, restaurant: $('nc-restaurant').value, is_certified: $('nc-cert').checked, hire_date: $('nc-hire-date').value, citizenship_id: $('nc-citizenship').value, payment_type: $('nc-payment-type').value });
-        clearCache(); closeModal();
-        openModal('Сотрудник создан', `<div style="text-align:center; padding: 10px 0;"><div style="font-size:20px; font-weight:800; margin-bottom:16px;">${esc(res.user.full_name)}</div><div class="login-preview" style="display:inline-flex; text-align:left;"><div><div class="lp-label">Логин</div><div class="lp-value">${esc(res.user.login)}</div></div></div></div>`, `<button class="btn primary" id="after-create-ok" style="width:100%;">Понятно</button>`);
-        $('after-create-ok').addEventListener('click', () => { closeModal(); refreshUsersTable(_usersCurrentSearch); });
-      } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+    function previewLogin(name) {
+      const translit = {"а":"a","б":"b","в":"v","г":"g","д":"d","е":"e","ё":"e","ж":"zh","з":"z","и":"i","й":"y","к":"k","л":"l","м":"m","н":"n","о":"o","п":"p","р":"r","с":"s","т":"t","у":"u","ф":"f","х":"h","ц":"ts","ч":"ch","ш":"sh","щ":"sch","ъ":"","ы":"y","ь":"","э":"e","ю":"yu","я":"ya"};
+      const parts = (name || "").trim().split(/\s+/);
+      const surname = (parts[0] || "").toLowerCase();
+      let letters = "";
+      for (const ch of surname) { if (letters.length >= 3) break; const t = translit[ch]; if (t) letters += t; }
+      while (letters.length < 3) letters += "abcdefghijklmnopqrstuvwxyz"[Math.floor(Math.random() * 26)];
+      const rnd = Math.floor(Math.random() * 90) + 10;
+      return letters.slice(0, 3) + rnd;
+    }
+
+    $('nc-name').addEventListener('input', (e) => {
+      const name = e.target.value.trim();
+      const p = $('login-preview');
+      if (!name) { p.style.display = 'none'; return; }
+      p.style.display = 'flex';
+      $('lp-value').textContent = previewLogin(name);
     });
-  } catch (e) { toast('Ошибка загрузки: ' + e.message, 'error'); }
+
+    $('nc-save').addEventListener('click', async () => {
+      const errEl = $('nc-error');
+      errEl.textContent = '';
+      const name = $('nc-name').value.trim();
+      const password = $('nc-password').value;
+      if (!name) { errEl.textContent = 'Введите ФИО'; return; }
+      if (!password || password.length < 6) { errEl.textContent = 'Пароль должен быть минимум 6 символов'; return; }
+      try {
+        const res = await api('/api/admin/user/create', {
+          password, full_name: name,
+          phone: $('nc-phone').value.trim(), birth_date: $('nc-birth').value.trim(),
+          position: $('nc-position').value, restaurant: $('nc-restaurant').value,
+          is_certified: $('nc-cert').checked,
+          hire_date: $('nc-hire-date').value, citizenship_id: $('nc-citizenship').value,
+          payment_type: $('nc-payment-type').value
+        });
+        clearCache();
+        closeModal();
+        openModal('Сотрудник создан', `
+          <div style="text-align:center; padding: 10px 0;">
+            <div style="font-size:20px; font-weight:800; margin-bottom:16px; color:var(--text-main);">${esc(res.user.full_name)}</div>
+            <div class="login-preview" style="display:inline-flex; text-align:left; margin:0 auto;">
+              <div><div class="lp-label">Логин</div>
+              <div class="lp-value" style="font-size:28px;">${esc(res.user.login)}</div>
+              <div class="lp-hint">Сообщите сотруднику вместе с паролем</div></div>
+            </div>
+          </div>
+        `, `<button class="btn primary" id="after-create-ok" style="width:100%;">Понятно</button>`);
+        $('after-create-ok').addEventListener('click', () => {
+          closeModal();
+          refreshUsersTable(_usersCurrentSearch);
+        });
+      } catch (e) {
+        const map = { invalid: 'Проверьте данные (пароль минимум 6 символов)', forbidden: 'Нет права', invalid_json: 'Ошибка данных' };
+        errEl.textContent = map[e.message] || 'Ошибка: ' + e.message;
+      }
+    });
+  } catch (e) {
+    toast('Ошибка загрузки данных: ' + e.message, 'error');
+  }
 }
 
 async function openUserEditor(uid) {
   try {
-    const [data, restData, posData, cits] = await Promise.all([api('/api/admin/user/get', { user_id: uid }), api('/api/admin/restaurants', {}), api('/api/admin/positions', {}), loadCitizenships()]);
+    const [data, restData, posData, cits] = await Promise.all([
+      api('/api/admin/user/get', { user_id: uid }),
+      api('/api/admin/restaurants', {}),
+      api('/api/admin/positions', {}),
+      loadCitizenships()
+    ]);
     const u = data.user;
+    const targetIsLocked = u.is_super_admin && !isSuperAdmin();
+    const canEdit = hasPerm('users_edit') && !targetIsLocked;
+    const canFire = hasPerm('users_fire');
     const restOpts = restData.restaurants.map(r => `<option value="${esc(r.key)}" ${r.key === u.restaurant_key ? 'selected' : ''}>${esc(r.name)}</option>`).join('');
     const posOpts = posData.positions.filter(p => !p.is_archived).map(p => `<option value="${esc(p.name)}" ${p.name === u.position ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
     const citOpts = cits.map(c => `<option value="${c.id}" ${c.id === u.citizenship_id ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+    
+    const mbStatus = u.medbook_status || 'invalid';
+    let mbBadge = '';
+    if (!u.is_admin) {
+      if (mbStatus === 'ok') mbBadge = '<span class="tag green">Действительна</span>';
+      else if (mbStatus === 'expiring') mbBadge = '<span class="tag amber">Скоро истекает</span>';
+      else mbBadge = '<span class="tag red">Недействительна</span>';
+    }
+    const showFireBtn = canFire && !u.is_super_admin && u.user_id !== ME.user_id
+                        && !u.is_fired && (!u.is_admin || isSuperAdmin());
 
-    openModal('Редактирование', `
-      <div class="form-group"><label>Логин</label><input class="form-input" value="${esc(u.login || '')}" readonly></div>
-      <div class="form-group"><label>Новый пароль</label><input class="form-input" id="eu-password" placeholder="Оставьте пустым"></div>
-      <div class="form-group"><label>ФИО</label><input class="form-input" id="eu-name" value="${esc(u.full_name)}"></div>
-      <div class="form-row"><div class="form-group"><label>Телефон</label><input class="form-input" id="eu-phone" value="${esc(u.phone)}"></div><div class="form-group"><label>Дата рождения</label><input class="form-input" id="eu-birth" value="${esc(u.birth_date)}"></div></div>
-      <div class="form-row"><div class="form-group"><label>Дата трудоустройства</label><input class="form-input" id="eu-hire-date" type="date" value="${esc(u.hire_date || '')}"></div><div class="form-group"><label>Гражданство</label><select class="form-select" id="eu-citizenship">${citOpts}</select></div></div>
-      <div class="form-row"><div class="form-group"><label>Должность</label><select class="form-select" id="eu-position">${posOpts}</select></div><div class="form-group"><label>Ресторан</label><select class="form-select" id="eu-restaurant"><option value="">—</option>${restOpts}</select></div></div>
-      <div class="form-group"><label>Тип оплаты</label><select class="form-select" id="eu-payment-type"><option value="hourly" ${u.payment_type === 'hourly' ? 'selected' : ''}>Почасовая</option><option value="fixed" ${u.payment_type === 'fixed' ? 'selected' : ''}>Оклад</option></select></div>
-      <div class="form-group"><div class="checkbox-row"><input type="checkbox" id="eu-cert" ${u.is_certified ? 'checked' : ''}><label for="eu-cert">Сертификация</label></div></div>
+    openModal('Редактирование сотрудника', `
+      <div class="form-group"><label>Логин</label><input class="form-input" value="${esc(u.login || '')}" readonly><div class="form-hint">Не изменяется</div></div>
+      ${canEdit ? `<div class="form-group"><label>Новый пароль</label><input class="form-input" id="eu-password" placeholder="Оставьте пустым"></div>` : ''}
+      <div class="form-group"><label>ФИО</label><input class="form-input" id="eu-name" value="${esc(u.full_name)}" ${canEdit?'':'disabled'}></div>
+      <div class="form-row">
+        <div class="form-group"><label>Телефон</label><input class="form-input" id="eu-phone" value="${esc(u.phone)}" inputmode="tel" ${canEdit?'':'disabled'}></div>
+        <div class="form-group"><label>Дата рождения</label><input class="form-input" id="eu-birth" value="${esc(u.birth_date)}" ${canEdit?'':'disabled'}></div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group"><label>Дата трудоустройства</label><input class="form-input" id="eu-hire-date" type="date" value="${esc(u.hire_date || '')}" ${canEdit?'':'disabled'}></div>
+        <div class="form-group">
+          <label>Гражданство <button class="btn primary small" type="button" onclick="addNewCitizenship('eu-citizenship')" style="padding:4px 10px; margin-left:8px; border-radius:100px;" ${!canEdit?'disabled':''}>+</button></label>
+          <select class="form-select" id="eu-citizenship" ${canEdit?'':'disabled'}>${citOpts}</select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group"><label>Должность</label><select class="form-select" id="eu-position" ${canEdit?'':'disabled'}>${posOpts}</select></div>
+        <div class="form-group"><label>Ресторан</label><select class="form-select" id="eu-restaurant" ${canEdit?'':'disabled'}><option value="">—</option>${restOpts}</select></div>
+      </div>
+      
+      <div class="form-group">
+        <label>Тип оплаты</label>
+        <select class="form-select" id="eu-payment-type" ${canEdit?'':'disabled'}>
+            <option value="hourly" ${u.payment_type === 'hourly' ? 'selected' : ''}>Почасовая</option>
+            <option value="fixed" ${u.payment_type === 'fixed' ? 'selected' : ''}>Фиксированный оклад</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <div class="checkbox-row"><input type="checkbox" id="eu-cert" ${u.is_certified ? 'checked' : ''} ${canEdit?'':'disabled'}><label for="eu-cert">Сертификация</label></div>
+        ${!u.is_admin ? `<div style="margin-top:16px;"><label style="font-size:12px;color:var(--text-muted);font-weight:700;text-transform:uppercase; margin-left:8px;">МЕД. КНИЖКА</label><div style="margin-top:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">${mbBadge} <button class="btn ghost small" id="eu-open-mb" ${hasPerm('medbook_edit')?'':'disabled'}>Открыть</button></div></div>` : ''}
+        ${isSuperAdmin() && !u.is_super_admin ? `<div class="checkbox-row" style="margin-top:16px;"><input type="checkbox" id="eu-admin" ${u.is_admin ? 'checked' : ''}><label for="eu-admin">Права администратора</label></div>` : ''}
+        ${u.is_super_admin ? '<div class="tag purple" style="margin-top:16px;">Супер-администратор</div>' : ''}
+      </div>
       <div class="form-hint error" id="eu-error"></div>
-    `, `<button class="btn ghost" onclick="closeModal()">Отмена</button><button class="btn primary" id="eu-save">Сохранить</button>`);
+    `, `
+      <div>${showFireBtn ? `<button class="btn danger" id="eu-fire-btn">Уволить</button>` : ''}</div>
+      <div class="right-side">
+        <button class="btn ghost" onclick="closeModal()">Отмена</button>
+        ${canEdit ? `<button class="btn primary" id="eu-save">Сохранить</button>` : ''}
+      </div>`);
 
-    $('eu-save').addEventListener('click', async () => {
+    const openMbBtn = $('eu-open-mb');
+    if (openMbBtn) openMbBtn.addEventListener('click', () => { closeModal(); openMedbookEditor(uid); });
+    const fireBtn = $('eu-fire-btn');
+    if (fireBtn) fireBtn.addEventListener('click', async () => { closeModal(); await fireUser(uid); });
+    const saveBtn = $('eu-save');
+    if (saveBtn) saveBtn.addEventListener('click', async () => {
       const errEl = $('eu-error'); errEl.textContent = '';
-      const updates = { full_name: $('eu-name').value.trim(), phone: $('eu-phone').value.trim(), birth_date: $('eu-birth').value.trim(), position: $('eu-position').value, restaurant: $('eu-restaurant').value, is_certified: $('eu-cert').checked, hire_date: $('eu-hire-date').value, citizenship_id: $('eu-citizenship').value, payment_type: $('eu-payment-type').value };
-      if ($('eu-password').value) updates.password = $('eu-password').value;
-      try { await api('/api/admin/user/update', { user_id: uid, updates }); toast('Сохранено', 'success'); clearCache(); closeModal(); refreshUsersTable(_usersCurrentSearch); } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+      const updates = {
+        full_name: $('eu-name').value.trim(), phone: $('eu-phone').value.trim(),
+        birth_date: $('eu-birth').value.trim(), position: $('eu-position').value,
+        restaurant: $('eu-restaurant').value, is_certified: $('eu-cert').checked,
+        hire_date: $('eu-hire-date').value, citizenship_id: $('eu-citizenship').value,
+        payment_type: $('eu-payment-type').value
+      };
+      if (isSuperAdmin() && !u.is_super_admin && $('eu-admin')) updates.is_admin = $('eu-admin').checked;
+      const np = $('eu-password') ? $('eu-password').value : '';
+      if (np) updates.password = np;
+      try {
+        await api('/api/admin/user/update', { user_id: uid, updates });
+        toast('Сохранено', 'success');
+        clearCache();
+        closeModal();
+        refreshUsersTable(_usersCurrentSearch);
+      } catch (e) {
+        const map = { forbidden: 'Нет права', forbidden_is_admin: 'Только супер-админ может менять админ-права', cannot_edit_super: 'Нельзя редактировать супер-админа', invalid_id: 'Неверный ID' };
+        errEl.textContent = map[e.message] || 'Ошибка: ' + e.message;
+      }
     });
-  } catch (e) { toast('Ошибка загрузки', 'error'); }
+  } catch (e) {
+    toast('Ошибка загрузки', 'error');
+  }
 }
 
-/* ================== MEDBOOKS (ЗАГЛУШКА) ================== */
+async function addNewCitizenship(selectId) {
+    if (!hasPerm('citizenships_edit')) {
+        toast('Нет права добавлять гражданства', 'error');
+        return;
+    }
+    const name = prompt("Введите название страны (гражданства):");
+    if (!name || !name.trim()) return;
+    
+    try {
+        const res = await api('/api/admin/citizenship/add', { name: name.trim() });
+        if (res.ok) {
+            toast('Гражданство добавлено', 'success');
+            _citizenshipsList = []; 
+            const cits = await loadCitizenships();
+            
+            const sel = $(selectId);
+            if (sel) {
+                const curVal = sel.value;
+                sel.innerHTML = cits.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+                const newOpt = Array.from(sel.options).find(o => o.text === name.trim());
+                if (newOpt) sel.value = newOpt.value;
+                else sel.value = curVal;
+            }
+        } else {
+            toast('Такое гражданство уже существует', 'error');
+        }
+    } catch(e) {
+        toast('Ошибка: ' + e.message, 'error');
+    }
+}
+
+/* ================== MEDBOOKS ================== */
+let _medbooksTab = 'staff';
+let _medbooksData = null;
+
 async function loadMedbooks() {
-  $('page-content').innerHTML = '<div class="empty">Раздел "Медкнижки" находится на реконструкции</div>';
+  const data = await cachedApi('/api/admin/medbooks', {});
+  _medbooksData = data;
+  const canEdit = hasPerm('medbook_edit');
+
+  const tabs = `
+    <div class="subtabs">
+      <button class="subtab ${_medbooksTab==='staff'?'active':''}" data-mb-tab="staff">Сотрудники</button>
+      <button class="subtab ${_medbooksTab==='doctors'?'active':''}" data-mb-tab="doctors">Врачи</button>
+      <button class="subtab ${_medbooksTab==='tests'?'active':''}" data-mb-tab="tests">Анализы</button>
+      <button class="subtab ${_medbooksTab==='vaccines'?'active':''}" data-mb-tab="vaccines">Прививки</button>
+    </div>`;
+
+  let contentHtml = '';
+  if (_medbooksTab === 'staff') {
+    const staff = data.users || [];
+    const rows = staff.map(u => {
+      let statusTag = '';
+      if (u.medbook_status === 'ok') statusTag = '<span class="tag green">ОК</span>';
+      else if (u.medbook_status === 'expiring') statusTag = '<span class="tag amber">Скоро</span>';
+      else statusTag = `<span class="tag red">${u.missing}/${u.total}</span>`;
+      return `
+        <tr class="row-clickable" data-mb-user="${u.user_id}">
+          <td data-label="ФИО"><b>${esc(u.full_name)}</b></td>
+          <td data-label="Должность">${esc(u.position || '—')}</td>
+          <td data-label="Статус">${statusTag}</td>
+          <td class="actions-cell" data-label="">
+            ${canEdit ? `<button class="icon-btn" data-mb-edit="${u.user_id}" title="Заполнить">Ред.</button>` : '<span style="color:var(--text-muted);font-size:14px;">—</span>'}
+          </td>
+        </tr>`;
+    }).join('');
+    const invalid = staff.filter(u => u.medbook_status === 'invalid').length;
+    const expiring = staff.filter(u => u.medbook_status === 'expiring').length;
+    const ok = staff.filter(u => u.medbook_status === 'ok').length;
+    contentHtml = `
+      <div class="stats-grid" style="margin-bottom:32px;">
+        <div class="stat-card green"><div class="label">Действительны</div><div class="value">${ok}</div></div>
+        <div class="stat-card amber"><div class="label">Скоро истекают</div><div class="value">${expiring}</div></div>
+        <div class="stat-card accent"><div class="label">Недействительны</div><div class="value">${invalid}</div></div>
+      </div>
+      ${!canEdit ? '<div class="card" style="margin-bottom:24px;padding:20px 24px;background:#FAFAFA;border-radius:20px;font-size:14px;color:var(--text-muted);border:1px solid var(--border);">Нет права заполнять медкнижки</div>' : ''}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ФИО</th><th>Должность</th><th>Статус</th><th></th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="4"><div class="empty">Нет сотрудников</div></td></tr>'}</tbody>
+        </table>
+      </div>`;
+  } else {
+    const typeMap = { doctors: 'doctor', tests: 'test', vaccines: 'vaccine' };
+    const listMap = { doctors: data.doctors, tests: data.tests, vaccines: data.vaccines };
+    const permMap = { doctors: 'medbook_doctors_manage', tests: 'medbook_tests_manage', vaccines: 'medbook_vaccines_manage' };
+    const type = typeMap[_medbooksTab];
+    const list = listMap[_medbooksTab];
+    const canManage = hasPerm(permMap[_medbooksTab]);
+    const rows = list.map(item => `
+      <div class="ref-row">
+        <div class="ref-name">${esc(item.name)}</div>
+        <div style="text-align:center;">${item.required ? '<span class="ref-badge req">Обяз.</span>' : '<span class="ref-badge opt">Опц.</span>'}</div>
+        <div class="ref-months">${item.validity_months}м</div>
+        <div class="actions-cell" style="justify-content:flex-end;">
+          ${canManage ? `<button class="icon-btn" data-ref-edit="${item.id}" data-ref-type="${type}">Ред.</button>
+            <button class="icon-btn danger" data-ref-del="${item.id}" data-ref-type="${type}">Удал.</button>` : '<span style="color:var(--text-muted);font-size:14px;">—</span>'}
+        </div>
+      </div>
+    `).join('');
+    contentHtml = `
+      ${!canManage ? `<div class="card" style="margin-bottom:24px;padding:20px 24px;background:#FAFAFA;border-radius:20px;font-size:14px;color:var(--text-muted);border:1px solid var(--border);">Нет права управлять справочником</div>` : ''}
+      <div class="table-card" style="padding: 24px;">
+        <div class="ref-row" style="font-size:12px; font-weight:700; color:var(--text-muted); text-transform:uppercase; border-bottom:1px solid var(--border); padding-top:0;">
+          <div>Название</div><div style="text-align:center;">Обяз.</div><div class="ref-months">Срок</div><div></div>
+        </div>
+        ${rows}
+        ${canManage ? `
+          <div style="padding:32px 0 0; border-top:1px solid var(--border); margin-top:16px; display:flex; flex-direction:column; gap:16px;">
+            <input class="form-input" id="ref-new-name" placeholder="Название" style="width:100%;">
+            <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+              <input class="form-input" id="ref-new-months" type="number" value="12" min="1" max="120" style="flex:1; min-width:120px;" placeholder="Срок (мес.)">
+              <label style="display:flex; align-items:center; gap:8px; font-size:14px; white-space:nowrap; color:var(--text-muted); cursor:pointer;"><input type="checkbox" id="ref-new-required" style="width:20px;height:20px;accent-color:var(--accent);"> Обязательно</label>
+            </div>
+            <button class="btn primary" id="ref-add-btn" data-ref-type="${type}" style="justify-content:center;">Добавить</button>
+          </div>
+        ` : ''}
+      </div>`;
+  }
+
+  $('page-content').innerHTML = tabs + contentHtml;
+
+  document.querySelectorAll('[data-mb-tab]').forEach(t => t.addEventListener('click', () => {
+    _medbooksTab = t.dataset.mbTab;
+    loadMedbooks();
+  }));
+  document.querySelectorAll('tr[data-mb-user]').forEach(tr => {
+    tr.addEventListener('click', () => openMedbookEditor(parseInt(tr.dataset.mbUser)));
+  });
+  document.querySelectorAll('[data-mb-edit]').forEach(b => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openMedbookEditor(parseInt(b.dataset.mbEdit));
+  }));
+  document.querySelectorAll('[data-ref-edit]').forEach(b => b.addEventListener('click', () => {
+    openRefEdit(b.dataset.refType, parseInt(b.dataset.refEdit));
+  }));
+  document.querySelectorAll('[data-ref-del]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm('Удалить из справочника?')) return;
+    try {
+      await api('/api/admin/medbook/reference/delete', { type: b.dataset.refType, id: parseInt(b.dataset.refDel) });
+      toast('Удалено', 'success');
+      clearCache();
+      loadMedbooks();
+    } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+  }));
+  const addBtn = $('ref-add-btn');
+  if (addBtn) addBtn.addEventListener('click', async () => {
+    const name = $('ref-new-name').value.trim();
+    const months = parseInt($('ref-new-months').value) || 12;
+    const required = $('ref-new-required').checked;
+    if (!name) { toast('Введите название', 'error'); return; }
+    try {
+      await api('/api/admin/medbook/reference/add', {
+        type: addBtn.dataset.refType, name, required, validity_months: months,
+      });
+      toast('Добавлено', 'success');
+      clearCache();
+      loadMedbooks();
+    } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+  });
+}
+
+function parseDdMmYyyy(s) {
+  if (!s) return null;
+  const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(s.trim());
+  if (!m) return null;
+  const d = new Date(+m[3], +m[2] - 1, +m[1]);
+  if (isNaN(d.getTime())) return null;
+  if (d.getDate() !== +m[1] || d.getMonth() !== +m[2] - 1) return null;
+  return d;
+}
+function addMonthsClient(d, months) {
+  const res = new Date(d.getTime());
+  res.setMonth(res.getMonth() + months);
+  return res;
+}
+
+async function openMedbookEditor(uid) {
+  openModal('Загрузка...', '<div class="loading">Загрузка медкнижки…</div>', '');
+  
+  try {
+    const data = await api('/api/admin/medbook/get', { user_id: uid });
+    const user = data.user;
+    const mb = data.medbook || {}; 
+    const doctors = data.doctors || [];
+    const tests = data.tests || [];
+    const vaccines = data.vaccines || [];
+
+    const renderSection = (title, items, sourceKey) => {
+      if (!items || !items.length) return '';
+      const rows = items.map(item => {
+        const val = (mb[sourceKey] && mb[sourceKey][item.id]) ? mb[sourceKey][item.id] : '';
+        return `
+          <div class="medbook-row">
+            <div class="name">${esc(item.name)}</div>
+            <input type="text" class="mb-input" data-source="${sourceKey}" data-id="${item.id}" value="${esc(val)}" placeholder="ДД.ММ.ГГГГ">
+            <div class="status missing" id="mb-status-${sourceKey}-${item.id}">—</div>
+          </div>
+        `;
+      }).join('');
+      return `
+        <div class="medbook-section">
+          <h4>${title}</h4>
+          ${rows}
+        </div>
+      `;
+    };
+
+    const html = `
+      <div style="margin-bottom:24px; padding:16px; background:#FAFAFA; border-radius:16px; border:1px solid var(--border);">
+        <div style="font-size:18px; font-weight:800; color:var(--text-main); margin-bottom:4px;">${esc(user.full_name)}</div>
+        <div style="font-size:14px; color:var(--text-muted);">${esc(user.position || '')} ${user.restaurant_name ? '· ' + esc(user.restaurant_name) : ''}</div>
+      </div>
+      ${renderSection('Врачи', doctors, 'doctors')}
+      ${renderSection('Анализы', tests, 'tests')}
+      ${renderSection('Прививки', vaccines, 'vaccines')}
+      <div class="form-hint error" id="mb-error"></div>
+    `;
+
+    openModal(`Медкнижка`, html, `
+      <button class="btn ghost" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" id="mb-save">Сохранить</button>
+    `, { wide: true });
+
+    document.querySelectorAll('.mb-input').forEach(inp => {
+      inp.addEventListener('input', (e) => {
+        const val = e.target.value.trim();
+        const statusEl = e.target.nextElementSibling;
+        if (!val) {
+          statusEl.className = 'status missing';
+          statusEl.textContent = 'Нет';
+          e.target.classList.remove('err');
+        } else if (parseDdMmYyyy(val)) {
+          statusEl.className = 'status ok';
+          statusEl.textContent = 'ОК';
+          e.target.classList.remove('err');
+        } else {
+          statusEl.className = 'status expired';
+          statusEl.textContent = 'Ошибка';
+          e.target.classList.add('err');
+        }
+      });
+      inp.dispatchEvent(new Event('input'));
+    });
+
+    $('mb-save').addEventListener('click', async () => {
+      const errEl = $('mb-error');
+      errEl.textContent = '';
+      
+      const newMb = { doctors: {}, tests: {}, vaccines: {} };
+      let hasError = false;
+      
+      document.querySelectorAll('.mb-input').forEach(inp => {
+        const val = inp.value.trim();
+        if (val && !parseDdMmYyyy(val)) {
+          hasError = true;
+          inp.classList.add('err');
+        }
+        if (val) {
+          newMb[inp.dataset.source][inp.dataset.id] = val;
+        }
+      });
+
+      if (hasError) {
+        errEl.textContent = 'Исправьте ошибки в датах (формат ДД.ММ.ГГГГ)';
+        return;
+      }
+
+      const btn = $('mb-save');
+      btn.disabled = true; btn.textContent = 'Сохранение...';
+
+      try {
+        await api('/api/admin/medbook/save', { user_id: uid, medbook: newMb });
+        toast('Медкнижка сохранена', 'success');
+        clearCache();
+        closeModal();
+        loadMedbooks();
+      } catch (e) {
+        errEl.textContent = 'Ошибка сохранения: ' + e.message;
+        btn.disabled = false; btn.textContent = 'Сохранить';
+      }
+    });
+  } catch(e) {
+    closeModal();
+    toast('Ошибка загрузки медкнижки: ' + e.message, 'error');
+  }
+}
+
+function openRefEdit(type, id) {
+  if (!_medbooksData) return;
+  
+  const listMap = { doctor: _medbooksData.doctors, test: _medbooksData.tests, vaccine: _medbooksData.vaccines };
+  const list = listMap[type] || [];
+  const item = list.find(x => x.id === id);
+  if (!item) return;
+
+  openModal('Редактировать справочник', `
+    <div class="form-group"><label>Название</label><input class="form-input" id="ref-edit-name" value="${esc(item.name)}"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Срок действия (мес.)</label><input class="form-input" id="ref-edit-months" type="number" min="1" max="120" value="${item.validity_months}"></div>
+      <div class="form-group">
+        <label>Обязательность</label>
+        <div class="checkbox-row" style="padding-top:14px;">
+          <input type="checkbox" id="ref-edit-required" ${item.required ? 'checked' : ''}>
+          <label for="ref-edit-required">Обязательно</label>
+        </div>
+      </div>
+    </div>
+    <div class="form-hint error" id="ref-edit-err"></div>
+  `, `<button class="btn ghost" onclick="closeModal()">Отмена</button><button class="btn primary" id="ref-edit-save">Сохранить</button>`);
+
+  $('ref-edit-save').addEventListener('click', async () => {
+    const errEl = $('ref-edit-err');
+    errEl.textContent = '';
+    const name = $('ref-edit-name').value.trim();
+    const months = parseInt($('ref-edit-months').value);
+    const required = $('ref-edit-required').checked;
+    
+    if (!name) { errEl.textContent = 'Введите название'; return; }
+    if (!months || months < 1) { errEl.textContent = 'Введите корректный срок'; return; }
+
+    const btn = $('ref-edit-save');
+    btn.disabled = true; btn.textContent = 'Сохранение...';
+
+    try {
+      await api('/api/admin/medbook/reference/update', { 
+        type, id, name, validity_months: months, required 
+      });
+      toast('Справочник обновлен', 'success');
+      clearCache();
+      closeModal();
+      loadMedbooks();
+    } catch (e) {
+      errEl.textContent = 'Ошибка: ' + e.message;
+      btn.disabled = false; btn.textContent = 'Сохранить';
+    }
+  });
 }
 
 /* ================== RESTAURANTS ================== */

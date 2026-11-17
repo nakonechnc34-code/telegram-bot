@@ -3,6 +3,7 @@ import uuid
 from aiohttp import web
 from psycopg2.extras import RealDictCursor, Json
 from psycopg2 import sql
+from multidict import CIMultiDict
 from db import get_conn, _run
 from utils.auth_helpers import get_admin_user, get_auth_user, denied, require_perm, _sync_user_has_perm
 from utils.security import sanitize_html
@@ -540,29 +541,39 @@ async def handle_staff_certification_submit(request):
     return web.json_response(result)
 
 # ============= ЗАГРУЗКА ФАЙЛОВ =============
-# Вспомогательный класс, чтобы get_admin_user смог прочитать токен из URL или FormData
 class DummyRequest:
     def __init__(self, original_request, token):
         self._original = original_request
         self._token = token
-
-    def __getattr__(self, name):
-        # Делегируем все остальные атрибуты (query, headers и т.д.) оригинальному запросу
-        return getattr(self._original, name)
+        # Принудительно вписываем токен во все возможные заголовки
+        self.headers = CIMultiDict(original_request.headers)
+        self.headers['X-Token'] = token
+        self.headers['Authorization'] = f'Bearer {token}'
+        self.query = original_request.query
+        self.match_info = original_request.match_info
 
     async def json(self):
         return {"webToken": self._token}
+        
+    async def post(self):
+        return {"webToken": self._token}
+
+    def __getattr__(self, name):
+        return getattr(self._original, name)
 
 @routes.post('/api/admin/upload')
 async def handle_admin_upload(request):
-    # 1. Пытаемся взять токен из URL
+    # 1. Ищем токен везде, где только можно
     token = request.query.get('webToken')
+    
     if not token:
         auth_header = request.headers.get('Authorization')
         if auth_header and auth_header.startswith('Bearer '):
             token = auth_header.split(' ')[1]
+        elif request.headers.get('X-Token'):
+            token = request.headers.get('X-Token')
             
-    # 2. Читаем multipart-данные (файл и токен из формы)
+    # 2. Читаем multipart-данные
     reader = await request.multipart()
     file_data = None
     original_name = "file.pdf"
@@ -571,11 +582,9 @@ async def handle_admin_upload(request):
         part = await reader.next()
         if part is None: break
         
-        # Если токен пришел в скрытом поле формы
-        if part.name == 'webToken':
+        if part.name == 'webToken' and not token:
             token = await part.text()
             
-        # Если это сам файл
         elif part.name == 'file':
             original_name = part.filename
             file_data = await part.read()
@@ -583,7 +592,7 @@ async def handle_admin_upload(request):
     if not token:
         return web.json_response({"error": "No token provided"}, status=401)
         
-    # 3. Проверяем права через фейковый запрос
+    # 3. Проверяем права
     dummy_req = DummyRequest(request, token)
     admin, err = await get_admin_user(dummy_req)
     if err: 
@@ -592,24 +601,19 @@ async def handle_admin_upload(request):
     if not file_data:
         return web.json_response({"error": "Файл не загружен"}, status=400)
         
-    # 4. Сохраняем файл с уникальным именем
+    # 4. Сохраняем файл
     ext = os.path.splitext(original_name)[1]
     unique_filename = f"{uuid.uuid4().hex}{ext}"
     
-    # Создаем папку uploads, если ее нет (в корне проекта)
     upload_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads")
     os.makedirs(upload_dir, exist_ok=True)
     
     filepath = os.path.join(upload_dir, unique_filename)
-    
     with open(filepath, 'wb') as f:
         f.write(file_data)
         
-    # 5. Возвращаем путь для сохранения в БД
-    file_url = f"/uploads/{unique_filename}"
-    
     return web.json_response({
         "ok": True,
-        "file_url": file_url,
+        "file_url": f"/uploads/{unique_filename}",
         "file_name": original_name
     })

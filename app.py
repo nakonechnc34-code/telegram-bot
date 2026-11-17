@@ -42,8 +42,14 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 
 # ============= МИГРАЦИИ БАЗЫ ДАННЫХ =============
 def run_migrations():
-    """Автоматически добавляет нужные колонки в БД при старте"""
+    """Автоматически добавляет нужные колонки в БД при старте и создает папку uploads"""
     try:
+        # АВТОМАТИЧЕСКОЕ СОЗДАНИЕ ПАПКИ UPLOADS
+        upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+        os.makedirs(upload_dir, exist_ok=True)
+        logging.info(f"✅ Папка uploads проверена: {upload_dir}")
+
+        # МИГРАЦИИ БД
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("ALTER TABLE timesheet_records ADD COLUMN IF NOT EXISTS restaurant_key TEXT;")
@@ -52,7 +58,7 @@ def run_migrations():
                 cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS personnel_number VARCHAR(50);")
                 logging.info("✅ Миграция БД: колонки проверены/добавлены.")
     except Exception as e:
-        logging.error(f"❌ Ошибка миграции БД: {e}")
+        logging.error(f"❌ Ошибка миграции/создания папок: {e}")
 
 # ============= MIDDLEWARES =============
 @web.middleware
@@ -173,7 +179,7 @@ async def handle_assetlinks(request): return await _send_static_file(".well-know
 async def handle_favicon(request): return web.Response(status=204)
 async def handle_health(request): return web.Response(text="OK")
 
-# ============= НОВЫЙ ОБРАБОТЧИК ДЛЯ СКАЧИВАНИЯ ФАЙЛОВ (API) =============
+# ============= СКАЧИВАНИЕ ФАЙЛОВ (API) =============
 async def handle_download(request):
     # 1. Берем токен из URL
     token = request.query.get('webToken')
@@ -231,7 +237,7 @@ app.router.add_get("/static/icon-512.png", handle_icon512_png)
 app.router.add_get("/static/screenshot1.png", handle_screenshot)
 app.router.add_get("/.well-known/assetlinks.json", handle_assetlinks)
 
-# РЕГИСТРАЦИЯ НОВОГО РОУТА ДЛЯ СКАЧИВАНИЯ
+# РОУТ ДЛЯ СКАЧИВАНИЯ
 app.router.add_get("/api/download/{filename:.*}", handle_download)
 
 # ============= MAIN =============
@@ -242,7 +248,7 @@ async def main():
     await asyncio.to_thread(init_pool)
     
     if os.getenv("RUN_MIGRATIONS", "true").lower() == "true":
-        logging.info("⏳ Запуск миграций БД...")
+        logging.info("⏳ Запуск миграций БД и проверки папок...")
         await asyncio.to_thread(run_migrations)
     else:
         logging.info("⏳ Миграции пропущены (RUN_MIGRATIONS=false)")

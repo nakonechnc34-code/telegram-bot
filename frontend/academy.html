@@ -3,1106 +3,354 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Табель · Wokker</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23F5F5F7'/%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%23007AFF' stroke-width='8'/%3E%3Cpath d='M25 50 A 25 25 0 0 0 75 50' fill='none' stroke='%23007AFF' stroke-width='12' stroke-linecap='round'/%3E%3C/svg%3E">
+<title>Wokker · Академия</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23F8F5F2'/%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%231C1C1E' stroke-width='6'/%3E%3Cpath d='M25 50 A 25 25 0 0 0 75 50' fill='none' stroke='%231C1C1E' stroke-width='10' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#F5F5F7">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<meta name="theme-color" content="#F8F5F2">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #F7F8FA; --card-bg: #FFFFFF; --text-main: #111827; --text-muted: #6B7280;
-    --accent: #007AFF; --accent-soft: #EFF6FF; 
-    --green: #10B981; --green-soft: #ECFDF5; --green-text: #047857;
-    --amber: #F59E0B; --amber-soft: #FFFBEB; --amber-text: #B45309;
-    --red: #EF4444; --red-soft: #FEF2F2; --red-text: #B91C1C;
-    --border: #E5E7EB; --font: 'Inter', sans-serif; --radius: 20px; --sidebar: #FFFFFF; 
+    --bg: #F8F5F2; --card-bg: #FFFFFF; --text-main: #1C1C1E; --text-muted: #8E8E93;
+    --accent: #1C1C1E; --accent-soft: #F0EAE1; --pink: #FF007F; --orange: #FF7A00;
+    --green: #E8F5E9; --green-text: #2E7D32;
+    --red: #FFEBEE; --red-text: #C62828;
+    --shadow: 0 12px 36px rgba(0, 0, 0, 0.04);
+    --radius: 32px; --radius-sm: 20px;
   }
-  
   * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
-  body { font-family: var(--font); background: var(--bg); color: var(--text-main); height: 100vh; display: flex; overflow: hidden; font-size: 14px; }
+  body { font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text-main); min-height: 100vh; padding-bottom: 40px; -webkit-font-smoothing: antialiased; }
+  button { font-family: inherit; border: none; background: none; cursor: pointer; outline: none; }
 
-  /* ЭКРАН ВХОДА */
-  #login-screen { position: fixed; inset: 0; background: var(--bg); display: none; align-items: center; justify-content: center; padding: 24px; z-index: 1000; }
-  .login-card { background: #fff; border-radius: var(--radius); padding: 40px 32px; box-shadow: 0 10px 40px rgba(0,0,0,0.08); width: 100%; max-width: 400px; text-align: center; animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
-  .login-logo { width: 72px; height: 72px; border-radius: 20px; background: var(--accent-soft); margin: 0 auto 24px; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 800; color: var(--accent); }
-  .login-title { font-size: 26px; font-weight: 800; margin-bottom: 8px; letter-spacing: -1px; color: var(--text-main); }
-  .login-sub { font-size: 15px; color: var(--text-muted); margin-bottom: 32px; font-weight: 500; }
-  .login-input { width: 100%; border: 1px solid #E5E5EA; border-radius: 14px; padding: 16px; font-size: 16px; background: #FAFAFA; color: var(--text-main); font-weight: 600; margin-bottom: 16px; text-align: center; transition: all 0.3s; font-family: var(--font); outline: none; }
-  .login-input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
-  .login-btn { width: 100%; background: var(--text-main); color: #fff; border-radius: 14px; padding: 18px; font-size: 16px; font-weight: 600; margin-top: 8px; border: none; cursor: pointer; transition: opacity 0.2s; font-family: var(--font); }
-  .login-btn:hover { opacity: 0.9; }
-  .login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .login-error { color: var(--red); font-size: 14px; font-weight: 500; min-height: 20px; margin-top: 16px; }
+  .header { background: #fff; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.06); position: sticky; top: 0; z-index: 20; box-shadow: 0 2px 10px rgba(0,0,0,0.02); }
+  .logo { font-size: 20px; font-weight: 800; display: flex; align-items: center; gap: 10px; }
+  .btn-close { background: #F2F2F7; padding: 10px 20px; border-radius: 100px; font-weight: 600; color: var(--text-main); text-decoration: none; font-size: 13px; display: inline-block; }
 
-  /* ИНТЕРФЕЙС */
-  .layout { display: none; width: 100%; height: 100vh; }
-  
-  .sidebar { width: 260px; background: var(--sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; padding: 24px 20px; z-index: 10; }
-  .sidebar-logo { font-size: 20px; font-weight: 800; display: flex; align-items: center; gap: 10px; padding: 0 8px 32px; color: var(--text-main); letter-spacing: -0.5px; }
-  .nav-menu { display: flex; flex-direction: column; gap: 8px; flex: 1; }
-  .tab { background: transparent; border: none; padding: 14px 16px; text-align: left; font-weight: 600; font-size: 15px; color: var(--text-muted); border-radius: 12px; cursor: pointer; transition: all 0.2s; }
-  .tab:hover { background: #F3F4F6; color: var(--text-main); }
-  .tab.active { background: var(--accent-soft); color: var(--accent); }
-  
-  .logout-btn { background: transparent; border: 1px solid var(--border); color: var(--text-muted); padding: 12px; border-radius: 12px; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.2s; margin-top: auto; }
-  .logout-btn:hover { background: #F3F4F6; color: var(--red); border-color: #FECACA; }
+  .content { padding: 24px 20px; max-width: 800px; margin: 0 auto; }
+  .page-header { text-align: center; margin-bottom: 32px; }
+  .page-title { font-size: 36px; font-weight: 800; letter-spacing: -1.5px; color: var(--text-main); margin-bottom: 8px; }
+  .page-sub { font-size: 16px; color: var(--text-muted); font-weight: 500; }
 
-  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-  
-  .topbar { background: var(--card-bg); padding: 20px 32px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px; flex-shrink: 0; }
-  .left-controls { display: flex; align-items: center; gap: 24px; }
-  .view-toggle { display: flex; background: #F3F4F6; border-radius: 100px; padding: 4px; }
-  .view-toggle button { background: none; border: none; padding: 8px 20px; border-radius: 100px; font-weight: 600; font-size: 13px; color: var(--text-muted); cursor: pointer; transition: all 0.2s; }
-  .view-toggle button.active { background: #fff; color: var(--text-main); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-  
-  .month-selector { display: flex; align-items: center; }
-  .month-picker-input { background: #F3F4F6; border: 1px solid var(--border); padding: 10px 16px; border-radius: 12px; font-size: 15px; font-weight: 600; color: var(--text-main); font-family: var(--font); outline: none; cursor: pointer; transition: all 0.2s; }
-  .month-picker-input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
-  .month-title { font-size: 18px; font-weight: 800; color: var(--text-main); }
-  
-  .right-controls { display: flex; align-items: center; gap: 16px; }
-  .legend { display: flex; gap: 16px; font-size: 13px; color: var(--text-muted); font-weight: 500; }
-  .legend-item { display: flex; align-items: center; gap: 6px; }
-  .legend-color { width: 10px; height: 10px; border-radius: 50%; }
+  .course-card { background: #fff; border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); margin-bottom: 16px; cursor: pointer; display: flex; align-items: center; gap: 20px; transition: transform 0.2s; }
+  .course-card:active { transform: scale(0.98); }
+  .course-icon { width: 70px; height: 70px; border-radius: 24px; display: flex; align-items: center; justify-content: center; font-size: 32px; flex-shrink: 0; background: linear-gradient(135deg, var(--pink), var(--orange)); color: #fff; box-shadow: 0 8px 20px rgba(255, 0, 127, 0.2); }
+  .course-info { flex: 1; min-width: 0; }
+  .course-title { font-size: 20px; font-weight: 800; color: var(--text-main); margin-bottom: 6px; }
+  .course-desc { font-size: 14px; color: var(--text-muted); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .course-status { font-size: 12px; font-weight: 800; padding: 6px 12px; border-radius: 100px; display: inline-block; margin-top: 12px; }
+  .course-status.new { background: #F2F2F7; color: var(--text-muted); }
+  .course-status.in_progress { background: var(--accent-soft); color: var(--text-main); }
+  .course-status.completed { background: var(--green); color: var(--green-text); }
 
-  .content { padding: 24px 32px; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-  .section { display: none; height: 100%; width: 100%; overflow-y: auto; }
-  .section.active { display: flex; flex-direction: column; }
-  
-  /* ТАБЛИЦА */
-  .table-scroll { background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.03); position: relative; width: 100%; border: 1px solid var(--border); overflow: auto; margin-bottom: 24px; }
-  table { border-collapse: separate; border-spacing: 0; width: 100%; table-layout: fixed; }
-  th { position: sticky; top: 0; background: #F9FAFB; z-index: 10; font-weight: 600; color: var(--text-muted); font-size: 12px; padding: 16px 4px; border-bottom: 1px solid var(--border); text-align: center; }
-  th.weekend { color: var(--red); background: #FEF2F2; }
-  
-  th.sticky-col, td.sticky-col { position: sticky; left: 0; background: var(--card-bg); z-index: 5; text-align: left; border-right: 1px solid var(--border); padding: 16px 20px; white-space: normal; word-break: break-word; line-height: 1.4; width: 240px; min-width: 240px; max-width: 240px; }
-  thead th.sticky-col { z-index: 15; background: #F9FAFB; font-size: 12px; }
-  
-  .emp-name { font-weight: 600; font-size: 15px; color: var(--text-main); cursor: pointer; transition: color 0.2s; display: inline-block; }
-  .emp-name:hover { color: var(--accent); text-decoration: underline; }
+  .lesson-card { background: #fff; border-radius: var(--radius-sm); padding: 24px; box-shadow: var(--shadow); margin-bottom: 20px; }
+  .lesson-title { font-size: 22px; font-weight: 800; margin-bottom: 16px; }
+  .lesson-content { font-size: 16px; color: #333; line-height: 1.7; font-weight: 500; white-space: pre-wrap; }
 
-  .rest-header td { background: #F9FAFB !important; font-weight: 700; padding: 12px 20px; border-bottom: 1px solid var(--border); border-top: 1px solid var(--border); text-transform: uppercase; font-size: 12px; color: var(--text-muted); }
-  .rest-header td.sticky-col { background: #F9FAFB !important; color: var(--text-main); }
+  /* Стили для кнопок скачивания файлов в уроке */
+  .file-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--accent-soft); color: var(--text-main); padding: 10px 16px; border-radius: 12px; text-decoration: none; font-weight: 700; margin-top: 12px; cursor: pointer; transition: background 0.2s; border: 1px solid rgba(0,0,0,0.05); }
+  .file-btn:hover { background: #E5DED4; }
 
-  td { border-bottom: 1px solid var(--border); border-right: 1px solid #F3F4F6; vertical-align: middle; text-align: center; padding: 0; height: 52px; }
-  td.weekend { background: #FAFAFA; }
-  td:last-child { border-right: none; }
+  .test-question { background: #fff; border-radius: var(--radius-sm); padding: 24px; box-shadow: var(--shadow); margin-bottom: 20px; }
+  .test-q-text { font-size: 18px; font-weight: 800; margin-bottom: 20px; }
+  .test-option { display: flex; align-items: center; gap: 12px; padding: 16px; border: 1px solid #E5E5EA; border-radius: 16px; margin-bottom: 12px; cursor: pointer; transition: all 0.2s; font-weight: 600; font-size: 15px; }
+  .test-option:hover { background: #FAFAFA; }
+  .test-option input[type="radio"] { width: 20px; height: 20px; accent-color: var(--text-main); cursor: pointer; }
+  .test-option.selected { border-color: var(--text-main); background: var(--accent-soft); }
 
-  .cell-input { width: 100%; height: 100%; min-height: 52px; border: 2px solid transparent; text-align: center; font-weight: 600; font-size: 14px; background: transparent; transition: all 0.2s; outline: none; color: var(--text-main); }
-  .cell-input:hover { background: #F3F4F6; }
-  .cell-input:focus { background: #fff; border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); border-radius: 8px; z-index: 2; position: relative; }
-  .cell-input.status-vacation { background: var(--green-soft); color: var(--green-text); }
-  .cell-input.status-sick { background: var(--amber-soft); color: var(--amber-text); }
-  .cell-input.status-absent { background: var(--red-soft); color: var(--red-text); }
+  .btn-submit { width: 100%; background: var(--text-main); color: #fff; border-radius: var(--radius-sm); padding: 18px; font-size: 16px; font-weight: 700; margin-top: 12px; transition: transform 0.2s; }
+  .btn-submit:active { transform: scale(0.98); }
 
-  .col-total { font-weight: 700; background: #F9FAFB; width: 100px; font-size: 15px; color: var(--text-main); border-left: 1px solid var(--border); position: sticky; right: 0; z-index: 5; }
+  .result-screen { text-align: center; padding: 40px 20px; background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); }
+  .result-icon { font-size: 64px; margin-bottom: 20px; }
+  .result-score { font-size: 48px; font-weight: 800; margin-bottom: 12px; color: var(--green-text); }
+  .result-text { font-size: 18px; color: var(--text-muted); font-weight: 500; margin-bottom: 32px; }
 
-  /* ВЫПЛАТЫ */
-  .payout-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-shrink: 0; gap: 16px; flex-wrap: wrap; }
-  .payout-summary { display: flex; gap: 16px; flex-wrap: wrap; }
-  .summary-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 20px 24px; min-width: 160px; box-shadow: 0 4px 20px rgba(0,0,0,0.02); }
-  .summary-title { font-size: 12px; color: var(--text-muted); font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
-  .summary-value { font-size: 24px; font-weight: 800; color: var(--text-main); letter-spacing: -1px; }
-  .summary-value.green { color: var(--green-text); }
-  .summary-value.amber { color: var(--amber-text); }
-  .summary-value.blue { color: var(--accent); }
-  
-  .header-actions { display: flex; gap: 12px; }
-  .btn-action { background: var(--text-main); color: #fff; border: none; padding: 14px 20px; border-radius: 12px; font-weight: 600; font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: opacity 0.2s; }
-  .btn-action:hover { opacity: 0.9; }
-  .btn-action.green { background: var(--green); }
-  .btn-action.blue { background: var(--accent); }
-
-  .payout-layout { display: flex; flex-direction: column; gap: 24px; padding-bottom: 24px; }
-  
-  .payout-table th, .payout-table td { text-align: left; padding: 16px 24px; height: auto; border-right: none; }
-  .payout-table th { background: #F9FAFB; }
-  .payout-table tr:last-child td { border-bottom: none; }
-  .payout-table .right { text-align: right; }
-
-  /* КАРТОЧКИ МОДЕРАЦИИ */
-  .pending-card { background: #FFF9E6; border-radius: 16px; padding: 20px; margin-bottom: 16px; border: 1px solid rgba(255,149,0,0.25); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
-  .pending-info { flex: 1; min-width: 250px; }
-  .pending-title { font-size: 16px; font-weight: 800; margin-bottom: 4px; color: var(--text-main); }
-  .pending-meta { font-size: 12px; color: #C77700; font-weight: 600; margin-bottom: 8px; }
-  .pending-body { font-size: 14px; color: #6B5A2E; }
-  .pending-actions { display: flex; gap: 8px; }
-
-  /* МОДАЛЬНЫЕ ОКНА */
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
-  .modal-overlay.show { display: flex; animation: fadeIn 0.2s; }
-  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-
-  .modal-card { background: var(--card-bg); border-radius: var(--radius); width: 100%; max-width: 480px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-  .modal-header { padding: 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: #F9FAFB; }
-  .modal-title { font-size: 20px; font-weight: 700; }
-  .modal-close { background: #E5E7EB; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-main); transition: background 0.2s; }
-  .modal-close:hover { background: #D1D5DB; }
-  .modal-body { padding: 24px; max-height: calc(100vh - 150px); overflow-y: auto; }
-  
-  .form-group { margin-bottom: 20px; }
-  .form-label { display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
-  .form-input, .form-select, .form-textarea { width: 100%; border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; font-size: 15px; font-family: var(--font); background: #F9FAFB; color: var(--text-main); outline: none; transition: all 0.2s; }
-  .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
-  .form-textarea { resize: vertical; min-height: 100px; }
-  .btn-submit { width: 100%; background: var(--text-main); color: #fff; border-radius: 12px; padding: 16px; font-size: 16px; font-weight: 600; border: none; cursor: pointer; transition: opacity 0.2s; margin-top: 8px; }
-  .btn-submit:hover { opacity: 0.9; }
-
-  /* КАРТОЧКА СОТРУДНИКА */
-  .emp-card { background: var(--card-bg); border-radius: var(--radius); width: 100%; max-width: 600px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-  .emp-card-header { padding: 24px 24px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: flex-start; background: #F9FAFB; }
-  .emp-card-name { font-size: 22px; font-weight: 700; margin-bottom: 4px; letter-spacing: -0.5px; }
-  .emp-card-pos { font-size: 14px; color: var(--text-muted); font-weight: 500; }
-  .emp-card-body { padding: 24px; }
-  
-  .emp-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
-  .emp-stat-box { background: #F9FAFB; border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
-  .emp-stat-lbl { font-size: 12px; color: var(--text-muted); font-weight: 600; margin-bottom: 4px; }
-  .emp-stat-val { font-size: 18px; font-weight: 700; }
-  .emp-stat-val.highlight { color: var(--green-text); }
-  .emp-stat-val.amber { color: var(--amber-text); }
-  
-  .history-list { display: flex; flex-direction: column; gap: 12px; }
-  .history-item { border-left: 3px solid var(--border); padding-left: 12px; }
-  .history-item.accrual { border-left-color: var(--accent); }
-  .history-item.payout { border-left-color: var(--green); }
-  .history-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
-  .history-amount { font-weight: 700; font-size: 15px; }
-  .history-amount.accrual { color: var(--accent); }
-  .history-amount.payout { color: var(--green-text); }
-  .history-comment { font-size: 14px; color: var(--text-main); }
-
-  .toast { position: fixed; bottom: 32px; right: 32px; background: var(--text-main); color: #fff; padding: 14px 28px; border-radius: 100px; font-weight: 500; font-size: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); opacity: 0; transform: translateY(10px); transition: all 0.3s; pointer-events: none; z-index: 100; }
-  .toast.show { opacity: 1; transform: translateY(0); }
-  .loader { text-align: center; padding: 60px; color: var(--text-muted); font-weight: 500; font-size: 15px; }
-
-  @media (max-width: 1024px) {
-    .sidebar { width: 80px; padding: 24px 12px; }
-    .sidebar-logo { justify-content: center; padding: 0 0 24px; font-size: 16px; }
-    .sidebar-logo span { display: none; }
-    .tab { text-align: center; padding: 14px 0; font-size: 12px; }
-    .logout-btn { padding: 10px; font-size: 12px; }
-    .legend { display: none; }
-    .payout-summary { flex-direction: column; width: 100%; }
-    .summary-card { width: 100%; }
-    .payout-header { flex-direction: column; align-items: stretch; gap: 16px; }
-    .header-actions { flex-direction: column; width: 100%; }
-    .btn-action { width: 100%; justify-content: center; }
-  }
-
-  @media (max-width: 768px) {
-    body { flex-direction: column; overflow: auto; height: auto; min-height: 100vh; }
-    .layout { flex-direction: column; height: auto; }
-    .sidebar { width: 100%; flex-direction: row; padding: 12px; height: auto; border-right: none; border-bottom: 1px solid var(--border); justify-content: space-between; align-items: center; }
-    .sidebar-logo { padding: 0; font-size: 18px; }
-    .nav-menu { flex-direction: row; gap: 8px; flex: none; overflow-x: auto; }
-    .tab { padding: 8px 16px; font-size: 14px; white-space: nowrap; }
-    .logout-btn { margin-top: 0; padding: 8px 12px; }
-    .main { height: auto; flex: 1; overflow: visible; }
-    .topbar { padding: 16px; flex-direction: column; align-items: stretch; }
-    .left-controls { flex-direction: column; align-items: stretch; gap: 12px; }
-    .right-controls { justify-content: space-between; }
-    .content { padding: 16px; overflow: visible; }
-    .table-scroll { max-height: none; overflow-x: auto; }
-    table { width: max-content; min-width: 100%; }
-    th.sticky-col, td.sticky-col { width: 180px; min-width: 180px; max-width: 180px; padding: 12px; }
-    .col-total { position: static; }
-    .payout-table th, .payout-table td { padding: 12px 16px; }
-    .emp-stats-grid { grid-template-columns: 1fr; }
-  }
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--text-main); color: #fff; padding: 16px 28px; border-radius: 100px; font-size: 14px; font-weight: 700; z-index: 2000; opacity: 0; pointer-events: none; transition: all 0.3s; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.error { background: var(--red-text); }
 </style>
 </head>
 <body>
 
-<div id="login-screen">
-  <div class="login-card">
-    <div class="login-logo">W</div>
-    <div class="login-title">Табель</div>
-    <div class="login-sub">Вход в систему</div>
-    <input class="login-input" id="login-login" type="text" placeholder="Логин" maxlength="5" autocomplete="username" style="text-transform: lowercase;">
-    <input class="login-input" id="login-password" type="password" placeholder="Пароль" autocomplete="current-password">
-    <button class="login-btn" id="login-btn">Войти</button>
-    <div class="login-error" id="login-error"></div>
+<div class="header">
+  <div class="logo">🎓 Академия</div>
+  <a href="/" class="btn-close">← На портал</a>
+</div>
+
+<div class="content" id="app-content">
+  <div id="courses-view">
+    <div class="page-header">
+      <div class="page-title">Обучение</div>
+      <div class="page-sub">Прокачай свои навыки</div>
+    </div>
+    <div id="courses-list">
+      <div style="text-align:center; padding: 40px; color: var(--text-muted);">Загрузка курсов...</div>
+    </div>
+  </div>
+
+  <div id="course-view" style="display: none;">
+    <!-- Сюда рендерится конкретный курс -->
   </div>
 </div>
 
-<div class="layout" id="main-layout">
-  <aside class="sidebar">
-    <div class="sidebar-logo">Wokker <span style="color: var(--text-muted); font-weight: 500; margin-left: 4px;">| Табель</span></div>
-    <nav class="nav-menu">
-      <button class="tab active" data-sec="tab-sheet">Табель</button>
-      <button class="tab" data-sec="tab-payouts">Выплаты</button>
-      <button class="tab" data-sec="tab-reports">Отчёты</button>
-      <button class="tab" data-sec="tab-settings">Настройки</button>
-    </nav>
-    <button class="logout-btn" onclick="doLogout()">Выйти</button>
-  </aside>
-
-  <div class="main">
-    <div class="topbar" id="topbar-wrapper">
-      <div class="left-controls" id="left-controls-wrapper">
-        <div class="view-toggle" id="view-toggle-wrapper">
-          <button class="active" onclick="setViewMode('month')">Месяц</button>
-          <button onclick="setViewMode('week')">Неделя</button>
-        </div>
-        
-        <div class="month-selector" id="month-selector-wrapper">
-          <input type="month" id="month-picker" class="month-picker-input" onchange="changeMonthFromPicker(this.value)">
-        </div>
-
-        <div class="month-title" id="current-period-title" style="display: none;"></div>
-      </div>
-      
-      <div class="right-controls" id="right-controls-wrapper">
-        <div class="legend">
-          <div class="legend-item"><div class="legend-color" style="background:var(--green)"></div> Отпуск (В)</div>
-          <div class="legend-item"><div class="legend-color" style="background:var(--amber)"></div> Больничный (Б)</div>
-          <div class="legend-item"><div class="legend-color" style="background:var(--red)"></div> Прогул (Н)</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="content">
-      <div class="section active" id="tab-sheet">
-        <div class="table-scroll" id="matrix-container" style="height: 100%;">
-          <div class="loader">Загрузка данных...</div>
-        </div>
-      </div>
-
-      <div class="section" id="tab-payouts">
-        <!-- Контейнер для модерации (скрыт, если нет прав) -->
-        <div id="pending-accruals-container" style="display: none; margin-bottom: 24px;">
-          <h3 style="font-size: 16px; font-weight: 700; color: var(--amber-text); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-            <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--amber);"></span> На модерации
-          </h3>
-          <div id="pending-accruals-list"></div>
-        </div>
-
-        <div class="payout-header">
-          <div class="payout-summary">
-            <div class="summary-card">
-              <div class="summary-title">Начислено по табелю</div>
-              <div class="summary-value" id="sum-timesheet-accrued">0 ₽</div>
-            </div>
-            <div class="summary-card">
-              <div class="summary-title">Начислено доп.</div>
-              <div class="summary-value blue" id="sum-extra-accrued">0 ₽</div>
-            </div>
-            <div class="summary-card">
-              <div class="summary-title">Выплачено</div>
-              <div class="summary-value green" id="sum-paid">0 ₽</div>
-            </div>
-            <div class="summary-card">
-              <div class="summary-title">Остаток к выплате</div>
-              <div class="summary-value amber" id="sum-remaining">0 ₽</div>
-            </div>
-          </div>
-          <div class="header-actions">
-            <button class="btn-action blue" onclick="openAccrualModal()">+ Начислить</button>
-            <button class="btn-action green" onclick="openPayoutModal()">+ Выплатить</button>
-          </div>
-        </div>
-
-        <div class="payout-layout">
-          <div class="table-scroll">
-            <table class="payout-table">
-              <thead>
-                <tr>
-                  <th>Сотрудник</th>
-                  <th>Должность</th>
-                  <th class="right">По табелю</th>
-                  <th class="right" style="color:var(--accent);">Начислено доп.</th>
-                  <th class="right">Выплачено</th>
-                  <th class="right">Остаток</th>
-                </tr>
-              </thead>
-              <tbody id="payouts-list">
-                <tr><td colspan="6" class="loader">Загрузка...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <div class="section" id="tab-reports">
-        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; min-height: 400px; color: var(--text-muted); text-align: center;">
-          <svg style="width: 64px; height: 64px; margin-bottom: 24px; color: #D1D5DB;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-            <line x1="3" y1="9" x2="21" y2="9"></line>
-            <line x1="9" y1="21" x2="9" y2="9"></line>
-          </svg>
-          <div style="font-size: 20px; font-weight: 700; color: var(--text-main); margin-bottom: 8px;">Раздел в разработке</div>
-          <div style="font-size: 15px; max-width: 400px; line-height: 1.5;">Здесь скоро появятся новые дашборды и отчёты для бухгалтерии и HR.</div>
-        </div>
-      </div>
-
-      <div class="section" id="tab-settings">
-        <div style="padding: 32px; background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.03); max-width: 600px; margin: 0 auto; width: 100%; border: 1px solid var(--border);">
-          <div style="font-size: 22px; font-weight: 700; margin-bottom: 24px; letter-spacing: -0.5px;">Ставки по должностям</div>
-          <div id="settings-list">
-            <div class="loader">Загрузка...</div>
-          </div>
-          <button class="btn-submit" onclick="saveSettings()" style="margin-top: 32px;">Сохранить настройки</button>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- МОДАЛКА: КАРТОЧКА СОТРУДНИКА -->
-<div class="modal-overlay" id="emp-modal" onclick="if(event.target===this) closeEmpModal()">
-  <div class="emp-card">
-    <div class="emp-card-header">
-      <div>
-        <div class="emp-card-name" id="modal-emp-name">—</div>
-        <div class="emp-card-pos" id="modal-emp-pos">—</div>
-      </div>
-      <button class="modal-close" onclick="closeEmpModal()">✕</button>
-    </div>
-    <div class="emp-card-body" id="modal-emp-body-content">
-      <div class="loader">Загрузка...</div>
-    </div>
-  </div>
-</div>
-
-<!-- МОДАЛКА: ВЫПЛАТА -->
-<div class="modal-overlay" id="payout-modal" onclick="if(event.target===this) closePayoutModal()">
-  <div class="modal-card">
-    <div class="modal-header">
-      <div class="modal-title">Выплата</div>
-      <button class="modal-close" onclick="closePayoutModal()">✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label class="form-label">Сотрудник</label>
-        <select class="form-select" id="pay-user">
-          <option value="">Выберите сотрудника...</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Сумма (₽)</label>
-        <input type="number" class="form-input" id="pay-amount" placeholder="Например: 15000" min="1" step="100">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Комментарий (обязательно)</label>
-        <textarea class="form-textarea" id="pay-comment" placeholder="Например: Аванс"></textarea>
-      </div>
-      <div class="form-error" id="pay-error" style="color: var(--red); font-size: 13px; font-weight: 500; margin-bottom: 12px; display: none;"></div>
-      <button class="btn-submit" id="btn-save-payout" style="background: var(--green);" onclick="savePayout()">Сохранить</button>
-    </div>
-  </div>
-</div>
-
-<!-- МОДАЛКА: НАЧИСЛЕНИЕ -->
-<div class="modal-overlay" id="accrual-modal" onclick="if(event.target===this) closeAccrualModal()">
-  <div class="modal-card">
-    <div class="modal-header">
-      <div class="modal-title">Начисление</div>
-      <button class="modal-close" onclick="closeAccrualModal()">✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label class="form-label">Сотрудник</label>
-        <select class="form-select" id="acc-user">
-          <option value="">Выберите сотрудника...</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Сумма (₽)</label>
-        <input type="number" class="form-input" id="acc-amount" placeholder="Например: 5000" min="1" step="100">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Комментарий (обязательно)</label>
-        <textarea class="form-textarea" id="acc-comment" placeholder="Например: Премия"></textarea>
-      </div>
-      <div class="form-error" id="acc-error" style="color: var(--red); font-size: 13px; font-weight: 500; margin-bottom: 12px; display: none;"></div>
-      <button class="btn-submit" id="btn-save-accrual" style="background: var(--accent);" onclick="saveAccrual()">Сохранить</button>
-    </div>
-  </div>
-</div>
-
-<div class="toast" id="toast">Сохранено</div>
+<div class="toast" id="toast"></div>
 
 <script>
 const TOKEN_KEY = 'wokker_staff_token';
-const LOGIN_RE = /^[a-z]{3}\d{2}$/;
-
-let CURRENT_DATE = new Date();
-let CURRENT_MONTH = CURRENT_DATE.getMonth() + 1;
-let CURRENT_YEAR = CURRENT_DATE.getFullYear();
-let CURRENT_WEEK_START = getMonday(new Date());
-
-let VIEW_MODE = 'month';
-let EMPLOYEES_DATA = [];
-let SETTINGS_DATA = [];
-
 const $ = id => document.getElementById(id);
 const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
-function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
-function clearToken() { localStorage.removeItem(TOKEN_KEY); }
 
-// ================== АВТОРИЗАЦИЯ ==================
-function showLogin() {
-  $('main-layout').style.display = 'none';
-  $('login-screen').style.display = 'flex';
-  $('login-error').textContent = '';
-  $('login-login').value = '';
-  $('login-password').value = '';
+let _toastTimer = null;
+function showToast(text, type) {
+  const el = $('toast');
+  el.textContent = text;
+  el.classList.remove('error');
+  if (type === 'error') el.classList.add('error');
+  el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
 }
 
-function showApp() {
-  $('login-screen').style.display = 'none';
-  $('main-layout').style.display = 'flex';
+// ================== СКАЧИВАНИЕ ФАЙЛОВ С АВТОРИЗАЦИЕЙ ==================
+async function downloadProtectedFile(fileUrl) {
+    try {
+        const token = getToken();
+        if (!token) return showToast('Вы не авторизованы', 'error');
+
+        // Добавляем токен к URL
+        const urlWithToken = `${fileUrl}?webToken=${token}`;
+        
+        // Создаем временную ссылку для скачивания
+        const a = document.createElement('a');
+        a.href = urlWithToken;
+        // Имя файла берем из конца URL
+        a.download = fileUrl.split('/').pop() || 'document.pdf';
+        a.target = '_blank'; // На случай если сервер отдаст inline
+        
+        document.body.appendChild(a);
+        a.click(); // Кликаем
+        a.remove();
+        
+        showToast('Скачивание началось...');
+    } catch (e) {
+        showToast('Ошибка скачивания: ' + e.message, 'error');
+    }
 }
 
-$('login-login').addEventListener('input', e => {
-  e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5);
+// Перехватываем клики по ссылкам на /uploads/, чтобы скачать их с токеном
+document.addEventListener('click', function(e) {
+    const link = e.target.closest('a, .file-btn');
+    if (link && link.getAttribute('href') && link.getAttribute('href').includes('/uploads/')) {
+        e.preventDefault();
+        downloadProtectedFile(link.getAttribute('href'));
+    }
 });
 
-async function doLogin() {
-  const login = $('login-login').value.trim().toLowerCase();
-  const password = $('login-password').value;
-  const errEl = $('login-error');
-  errEl.textContent = '';
-
-  if (!LOGIN_RE.test(login)) { errEl.textContent = 'Логин: 3 латинские буквы + 2 цифры'; return; }
-  if (!password) { errEl.textContent = 'Введите пароль'; return; }
-
-  const btn = $('login-btn');
-  btn.disabled = true; btn.textContent = 'Проверяем…';
-
-  try {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ login, password }),
+// Функция для красивого вывода контента урока с кнопками скачивания
+function formatContent(content) {
+    if (!content) return '';
+    let safe = esc(content);
+    
+    // Ищем ссылки вида /uploads/....pdf и превращаем в кнопки
+    // Регулярное выражение ищет путь /uploads/... до пробела или конца строки
+    const fileRegex = /(\/uploads\/[^\s<]+)/g;
+    safe = safe.replace(fileRegex, (match) => {
+        const fileName = match.split('/').pop();
+        return `<br><a href="${match}" class="file-btn" target="_blank">📄 Скачать: ${fileName}</a>`;
     });
-
-    if (res.status === 401) { errEl.textContent = 'Неверный логин или пароль'; return; }
-    if (res.status === 403) { errEl.textContent = 'Аккаунт уволен или заблокирован'; return; }
-    if (!res.ok) { errEl.textContent = 'Ошибка сервера'; return; }
-
-    const data = await res.json();
-    if (!data.token) { errEl.textContent = 'Ошибка получения токена'; return; }
-
-    setToken(data.token);
-    showApp();
-    updatePeriodTitle();
-    await loadMatrix();
-
-  } catch (e) {
-    if (e.message === 'forbidden') {
-      alert('У вас нет доступа к табелю. Сейчас вы будете перенаправлены на главную.');
-      window.location.href = '/';
-      return;
-    }
-    if (e.message !== 'unauthorized') {
-      $('matrix-container').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
-    }
-  } finally {
-    btn.disabled = false; btn.textContent = 'Войти';
-  }
-} // <--- ДОБАВЛЕНА ЗАКРЫВАЮЩАЯ СКОБКА
-
-function doLogout() {
-  if (!confirm('Выйти из аккаунта?')) return;
-  clearToken();
-  showLogin();
+    
+    return safe;
 }
+// =======================================================================
 
-$('login-btn').addEventListener('click', doLogin);
-$('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
-$('login-login').addEventListener('keydown', e => { if (e.key === 'Enter') $('login-password').focus(); });
-
-// ================== API ==================
 async function api(path, body) {
   const payload = { webToken: getToken() };
   if (body && typeof body === 'object') Object.assign(payload, body);
-  
   const res = await fetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  
-  if (res.status === 401) { clearToken(); showLogin(); throw new Error('unauthorized'); }
+  if (res.status === 401) { window.location.href = '/'; throw new Error('unauthorized'); }
   if (!res.ok) {
-    let msg = 'Ошибка на сервере';
-    try { 
-        const j = await res.json(); 
-        msg = j.detail || j.error || msg; 
-    } catch (e) {
-        msg = `Ошибка сервера (код ${res.status})`;
-    }
+    let msg = 'error';
+    try { const j = await res.json(); msg = j.error || msg; } catch (e) {}
     throw new Error(msg);
   }
   return res.json();
 }
 
-function toast(text) {
-  const el = $('toast');
-  el.textContent = text;
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 2500);
-}
+let CURRENT_COURSE = null;
 
-// ================== НАВИГАЦИЯ ==================
-document.querySelectorAll('.tab').forEach(t => {
-  t.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-    t.classList.add('active');
-    $(t.dataset.sec).classList.add('active');
-    
-    if (t.dataset.sec === 'tab-settings' || t.dataset.sec === 'tab-reports') {
-      $('left-controls-wrapper').style.display = 'none';
-      $('right-controls-wrapper').style.display = 'none';
-    } else {
-      $('left-controls-wrapper').style.display = 'flex';
-      $('right-controls-wrapper').style.display = 'flex';
-    }
-    
-    if (t.dataset.sec === 'tab-sheet') loadMatrix();
-    if (t.dataset.sec === 'tab-payouts') loadPayouts();
-    if (t.dataset.sec === 'tab-settings') loadSettings();
-  });
-});
-
-// ================== ДАТЫ ==================
-function getMonday(d) {
-  d = new Date(d);
-  var day = d.getDay(), diff = d.getDate() - day + (day == 0 ? -6 : 1);
-  return new Date(d.setDate(diff));
-}
-function formatDate(d) {
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-}
-function formatDateShort(d) {
-  const pad = n => String(n).padStart(2, '0');
-  return `${pad(d.getDate())}.${pad(d.getMonth()+1)}`;
-}
-function getPeriodDates() {
-  if (VIEW_MODE === 'month') {
-    const start = new Date(CURRENT_YEAR, CURRENT_MONTH - 1, 1);
-    const end = new Date(CURRENT_YEAR, CURRENT_MONTH, 0);
-    return { start, end };
-  } else {
-    const start = new Date(CURRENT_WEEK_START);
-    const end = new Date(CURRENT_WEEK_START.getTime() + 6 * 86400000);
-    return { start, end };
-  }
-}
-function updatePeriodTitle() {
-  const { start, end } = getPeriodDates();
-  if (VIEW_MODE === 'month') {
-    $('month-selector-wrapper').style.display = 'block';
-    $('current-period-title').style.display = 'none';
-    $('month-picker').value = `${CURRENT_YEAR}-${String(CURRENT_MONTH).padStart(2, '0')}`;
-  } else {
-    $('month-selector-wrapper').style.display = 'none';
-    $('current-period-title').style.display = 'block';
-    $('current-period-title').textContent = `${formatDateShort(start)} — ${formatDateShort(end)}`;
-  }
-}
-
-function changeMonthFromPicker(val) {
-  if (!val) return;
-  const parts = val.split('-');
-  CURRENT_YEAR = parseInt(parts[0]);
-  CURRENT_MONTH = parseInt(parts[1]);
-  updatePeriodTitle();
-  
-  const activeSec = document.querySelector('.section.active').id;
-  if (activeSec === 'tab-sheet') loadMatrix();
-  if (activeSec === 'tab-payouts') loadPayouts();
-}
-
-function setViewMode(mode) {
-  VIEW_MODE = mode;
-  document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.view-toggle button')[mode === 'month' ? 0 : 1].classList.add('active');
-  if (mode === 'week') CURRENT_WEEK_START = getMonday(new Date(CURRENT_YEAR, CURRENT_MONTH - 1, 15));
-  else { CURRENT_MONTH = CURRENT_WEEK_START.getMonth() + 1; CURRENT_YEAR = CURRENT_WEEK_START.getFullYear(); }
-  updatePeriodTitle();
-  
-  const activeSec = document.querySelector('.section.active').id;
-  if (activeSec === 'tab-sheet') loadMatrix();
-  if (activeSec === 'tab-payouts') loadPayouts();
-}
-
-// ================== ТАБЕЛЬ ==================
-async function loadMatrix() {
-  $('matrix-container').innerHTML = '<div class="loader">Загрузка табеля...</div>';
-  const { start, end } = getPeriodDates();
-  const dateFrom = formatDate(start);
-  const dateTo = formatDate(end);
-
+async function loadCourses() {
   try {
-    const res = await api('/api/timesheet/matrix', { date_from: dateFrom, date_to: dateTo });
-    EMPLOYEES_DATA = res.employees || [];
-    renderMatrix();
-  } catch (e) {
-    if (e.message === 'forbidden') {
-      alert('У вас нет доступа к табелю. Сейчас вы будете перенаправлены на главную.');
-      window.location.href = '/';
+    const res = await api('/api/academy/courses', {});
+    const courses = res.courses || [];
+    
+    if (!courses.length) {
+      $('courses-list').innerHTML = '<div style="text-align:center; padding: 40px; color: var(--text-muted);">Курсов пока нет</div>';
       return;
     }
-    if (e.message !== 'unauthorized') {
-      $('matrix-container').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
-    }
-  }
-}
 
-function getCellDisplayValue(c) {
-  if (c.s === 'vacation') return 'В';
-  if (c.s === 'sick') return 'Б';
-  if (c.s === 'absent') return 'Н';
-  return c.h || '';
-}
+    $('courses-list').innerHTML = courses.map(c => {
+      let statusHtml = '<div class="course-status new">Не начат</div>';
+      if (c.status === 'in_progress') statusHtml = '<div class="course-status in_progress">В процессе</div>';
+      if (c.status === 'completed') statusHtml = `<div class="course-status completed">Пройден (${c.score}%)</div>`;
 
-function renderMatrix() {
-  if (!EMPLOYEES_DATA.length) {
-    $('matrix-container').innerHTML = '<div class="loader">Нет сотрудников для отображения</div>';
-    return;
-  }
-  const { start, end } = getPeriodDates();
-  const grouped = {};
-  EMPLOYEES_DATA.forEach(emp => {
-    const rest = emp.restaurant_name || 'Без ресторана';
-    if (!grouped[rest]) grouped[rest] = [];
-    grouped[rest].push(emp);
-  });
-
-  let thead = `<thead><tr><th class="sticky-col">Сотрудник</th>`;
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const dayOfWeek = d.getDay();
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    thead += `<th class="${isWeekend ? 'weekend' : ''}">${d.getDate()}<br><span style="font-size:10px;font-weight:500;">${['Вс','Пн','Вт','Ср','Чт','Пт','Сб'][dayOfWeek]}</span></th>`;
-  }
-  let dayCount = 0;
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) dayCount++;
-  thead += `<th class="col-total">Итого</th></tr></thead>`;
-
-  let tbody = '<tbody>';
-  for (const [restName, employees] of Object.entries(grouped)) {
-    tbody += `<tr class="rest-header"><td class="sticky-col">${esc(restName)}</td><td colspan="${dayCount + 1}"></td></tr>`;
-    employees.forEach(emp => {
-      tbody += `<tr data-uid="${emp.user_id}">
-        <td class="sticky-col">
-          <span class="emp-name" onclick="openEmpModal(${emp.user_id})">${esc(emp.full_name)}</span>
-        </td>`;
-        
-      let totalHours = 0;
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const dayOfWeek = d.getDay();
-        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-        const dayNum = d.getDate();
-        const cellData = emp.data[dayNum] || { h: '', s: 'work' };
-        
-        if (cellData.s === 'work') totalHours += parseFloat(cellData.h || 0);
-        else if (cellData.s === 'vacation' || cellData.s === 'sick') totalHours += 8;
-
-        let statusClass = '';
-        if (cellData.s === 'vacation') statusClass = 'status-vacation';
-        else if (cellData.s === 'sick') statusClass = 'status-sick';
-        else if (cellData.s === 'absent') statusClass = 'status-absent';
-
-        tbody += `<td class="${isWeekend ? 'weekend' : ''}">
-          <input type="text" class="cell-input ${statusClass}" 
-                 data-uid="${emp.user_id}" data-day="${dayNum}"
-                 value="${getCellDisplayValue(cellData)}"
-                 title="В = отпуск, Б = больничный, Н = прогул"
-                 onchange="saveCellDirect(this)"
-                 onfocus="this.select()"
-                 onkeydown="if(event.key==='Enter') this.blur()">
-        </td>`;
-      }
-      tbody += `<td class="col-total total-hours">${totalHours}</td></tr>`;
-    });
-  }
-  tbody += '</tbody>';
-  $('matrix-container').innerHTML = `<table>${thead}${tbody}</table>`;
-}
-
-async function saveCellDirect(inp) {
-  const uid = parseInt(inp.dataset.uid);
-  const day = parseInt(inp.dataset.day);
-  let val = inp.value.trim().toUpperCase();
-  let hours = 0;
-  let status = 'work';
-
-  if (val === 'В') { status = 'vacation'; hours = 8; inp.value = 'В'; }
-  else if (val === 'Б') { status = 'sick'; hours = 8; inp.value = 'Б'; }
-  else if (val === 'Н') { status = 'absent'; hours = 0; inp.value = 'Н'; }
-  else if (val === '') { status = 'work'; hours = 0; inp.value = ''; }
-  else { status = 'work'; hours = parseFloat(val.replace(',', '.')) || 0; inp.value = hours || ''; }
-
-  inp.classList.remove('status-vacation', 'status-sick', 'status-absent');
-  if (status === 'vacation') inp.classList.add('status-vacation');
-  else if (status === 'sick') inp.classList.add('status-sick');
-  else if (status === 'absent') inp.classList.add('status-absent');
-
-  const { start } = getPeriodDates();
-  const targetDate = new Date(start.getFullYear(), start.getMonth(), day);
-  if (day < start.getDate()) targetDate.setMonth(targetDate.getMonth() + 1);
-  const dateStr = formatDate(targetDate);
-
-  try {
-    await api('/api/timesheet/save_cell', { user_id: uid, work_date: dateStr, hours: hours, status: status });
-    const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
-    if (emp) {
-      emp.data[day] = { h: hours, s: status };
-      let totalHours = 0;
-      for (const key in emp.data) {
-        const c = emp.data[key];
-        if (c.s === 'work') totalHours += parseFloat(c.h || 0);
-        else if (c.s === 'vacation' || c.s === 'sick') totalHours += 8;
-      }
-      const row = inp.closest('tr');
-      if (row) {
-        const totalCell = row.querySelector('.total-hours');
-        if (totalCell) totalCell.textContent = totalHours;
-      }
-    }
-    toast('Сохранено');
-  } catch (err) {
-    if (err.message !== 'unauthorized') alert('Ошибка сохранения: ' + err.message);
-    const emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
-    if (emp && emp.data[day]) inp.value = getCellDisplayValue(emp.data[day]);
-  }
-}
-
-// ================== ВЫПЛАТЫ ==================
-async function loadPayouts() {
-  $('payouts-list').innerHTML = '<tr><td colspan="6" class="loader">Загрузка...</td></tr>';
-  const pendingBox = $('pending-accruals-container');
-  const pendingList = $('pending-accruals-list');
-  
-  const { start, end } = getPeriodDates();
-  const dateFrom = formatDate(start);
-  const dateTo = formatDate(end);
-
-  try {
-    const res = await api('/api/payments/list', { date_from: dateFrom, date_to: dateTo });
-    const employees = res.employees || [];
-    const pending = res.pending || [];
-    const isHr = res.is_hr_or_super || false;
-    
-    // Отрисовка модерации
-    if (isHr && pending.length > 0) {
-      pendingBox.style.display = 'block';
-      pendingList.innerHTML = pending.map(p => `
-        <div class="pending-card">
-          <div class="pending-info">
-            <div class="pending-title">${esc(p.full_name)} — ${(parseFloat(p.amount) || 0).toLocaleString('ru-RU')} ₽</div>
-            <div class="pending-meta">Предложил: ${esc(p.proposed_by_name || '—')} · ${fmtDate(p.payment_date)}</div>
-            <div class="pending-body">${esc(p.comment)}</div>
-          </div>
-          <div class="pending-actions">
-            <button class="btn-action green small" style="padding: 8px 16px; font-size: 13px;" onclick="approveAccrual(${p.id})">Согласовать</button>
-            <button class="btn-action" style="padding: 8px 16px; font-size: 13px; background: var(--red);" onclick="rejectAccrual(${p.id})">Отклонить</button>
+      return `
+        <div class="course-card" onclick="openCourse(${c.id})">
+          <div class="course-icon">${esc(c.icon || '📚')}</div>
+          <div class="course-info">
+            <div class="course-title">${esc(c.title)}</div>
+            <div class="course-desc">${esc(c.description || '')}</div>
+            ${statusHtml}
           </div>
         </div>
-      `).join('');
-    } else {
-      pendingBox.style.display = 'none';
-    }
-
-    // Наполняем селекты
-    const paySelect = $('pay-user');
-    const accSelect = $('acc-user');
-    paySelect.innerHTML = '<option value="">Выберите сотрудника...</option>';
-    accSelect.innerHTML = '<option value="">Выберите сотрудника...</option>';
-    
-    employees.forEach(e => {
-      const opt = `<option value="${e.user_id}">${esc(e.full_name)} (Остаток: ${e.remaining.toLocaleString('ru-RU')} ₽)</option>`;
-      paySelect.innerHTML += opt;
-      accSelect.innerHTML += opt;
-    });
-
-    // Считаем итоги
-    let totalTimesheet = 0;
-    let totalExtra = 0;
-    let totalPaid = 0;
-    let totalRemaining = 0;
-
-    if (!employees.length) {
-      $('payouts-list').innerHTML = '<tr><td colspan="6" class="loader">Нет данных</td></tr>';
-    } else {
-      $('payouts-list').innerHTML = employees.map(e => {
-        totalTimesheet += e.timesheet_accrued;
-        totalExtra += e.extra_accrued;
-        totalPaid += e.paid;
-        totalRemaining += e.remaining;
-
-        return `
-          <tr>
-            <td><b class="emp-name" onclick="openEmpModal(${e.user_id})">${esc(e.full_name)}</b></td>
-            <td style="color:var(--text-muted);">${esc(e.position || '—')}</td>
-            <td class="right">${e.timesheet_accrued.toLocaleString('ru-RU')} ₽</td>
-            <td class="right" style="color:var(--accent); font-weight:600;">${e.extra_accrued > 0 ? '+' : ''}${e.extra_accrued.toLocaleString('ru-RU')} ₽</td>
-            <td class="right" style="color:var(--green-text); font-weight:600;">${e.paid.toLocaleString('ru-RU')} ₽</td>
-            <td class="right" style="font-weight:700; color:${e.remaining > 0 ? 'var(--amber-text)' : 'var(--text-main)'};">${e.remaining.toLocaleString('ru-RU')} ₽</td>
-          </tr>
-        `;
-      }).join('');
-    }
-
-    $('sum-timesheet-accrued').textContent = `${totalTimesheet.toLocaleString('ru-RU')} ₽`;
-    $('sum-extra-accrued').textContent = `${totalExtra.toLocaleString('ru-RU')} ₽`;
-    $('sum-paid').textContent = `${totalPaid.toLocaleString('ru-RU')} ₽`;
-    $('sum-remaining').textContent = `${totalRemaining.toLocaleString('ru-RU')} ₽`;
-
+      `;
+    }).join('');
   } catch (e) {
-    if (e.message !== 'unauthorized') {
-      $('payouts-list').innerHTML = `<tr><td colspan="6" class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</td></tr>`;
-    }
+    $('courses-list').innerHTML = `<div style="text-align:center; padding: 40px; color: var(--red-text);">Ошибка загрузки</div>`;
   }
 }
 
-// Модерация начислений
-async function approveAccrual(id) {
-  if (!confirm('Согласовать это начисление?')) return;
-  try {
-    await api('/api/accruals/approve', { id });
-    toast('Начисление одобрено');
-    await loadPayouts();
-  } catch (e) { toast(e.message, 'error'); }
-}
-
-async function rejectAccrual(id) {
-  if (!confirm('Отклонить начисление? Оно будет удалено.')) return;
-  try {
-    await api('/api/accruals/reject', { id });
-    toast('Начисление отклонено');
-    await loadPayouts();
-  } catch (e) { toast(e.message, 'error'); }
-}
-
-// Модалки выплат и начислений
-function openPayoutModal() {
-  $('pay-user').value = ''; $('pay-amount').value = ''; $('pay-comment').value = '';
-  $('pay-error').style.display = 'none'; $('payout-modal').classList.add('show');
-}
-function closePayoutModal() { $('payout-modal').classList.remove('show'); }
-
-async function savePayout() {
-  const userId = $('pay-user').value;
-  const amount = parseFloat($('pay-amount').value);
-  const comment = $('pay-comment').value.trim();
-  const errEl = $('pay-error');
-  if (!userId) { errEl.textContent = 'Выберите сотрудника'; errEl.style.display = 'block'; return; }
-  if (!amount || amount <= 0) { errEl.textContent = 'Укажите сумму'; errEl.style.display = 'block'; return; }
-  if (!comment) { errEl.textContent = 'Комментарий обязателен'; errEl.style.display = 'block'; return; }
-  errEl.style.display = 'none';
-  const btn = $('btn-save-payout'); btn.disabled = true; btn.textContent = '...';
-  
-  const today = new Date();
-  const dateStr = formatDate(today);
+async function openCourse(courseId) {
+  $('courses-view').style.display = 'none';
+  $('course-view').style.display = 'block';
+  $('course-view').innerHTML = '<div style="text-align:center; padding: 40px; color: var(--text-muted);">Загрузка курса...</div>';
+  window.scrollTo(0, 0);
 
   try {
-    await api('/api/payments/add', { user_id: parseInt(userId), amount, comment, payment_date: dateStr });
-    closePayoutModal(); toast('Выплата добавлена'); await loadPayouts();
-  } catch (e) {
-    if (e.message !== 'unauthorized') { errEl.textContent = 'Ошибка: ' + e.message; errEl.style.display = 'block'; }
-  } finally { btn.disabled = false; btn.textContent = 'Сохранить'; }
-}
-
-function openAccrualModal() {
-  $('acc-user').value = ''; $('acc-amount').value = ''; $('acc-comment').value = '';
-  $('acc-error').style.display = 'none'; $('accrual-modal').classList.add('show');
-}
-function closeAccrualModal() { $('accrual-modal').classList.remove('show'); }
-
-async function saveAccrual() {
-  const userId = $('acc-user').value;
-  const amount = parseFloat($('acc-amount').value);
-  const comment = $('acc-comment').value.trim();
-  const errEl = $('acc-error');
-  if (!userId) { errEl.textContent = 'Выберите сотрудника'; errEl.style.display = 'block'; return; }
-  if (!amount || amount <= 0) { errEl.textContent = 'Укажите сумму'; errEl.style.display = 'block'; return; }
-  if (!comment) { errEl.textContent = 'Комментарий обязателен'; errEl.style.display = 'block'; return; }
-  errEl.style.display = 'none';
-  const btn = $('btn-save-accrual'); btn.disabled = true; btn.textContent = '...';
-  
-  const today = new Date();
-  const dateStr = formatDate(today);
-
-  try {
-    const res = await api('/api/accruals/add', { user_id: parseInt(userId), amount, comment, payment_date: dateStr });
-    closeAccrualModal();
-    if (res.status === 'pending') {
-        toast('Отправлено на модерацию HR');
-    } else {
-        toast('Начисление добавлено');
-    }
-    await loadPayouts();
-  } catch (e) {
-    if (e.message !== 'unauthorized') { errEl.textContent = 'Ошибка: ' + e.message; errEl.style.display = 'block'; }
-  } finally { btn.disabled = false; btn.textContent = 'Сохранить'; }
-}
-
-// ================== КАРТОЧКА СОТРУДНИКА ==================
-async function openEmpModal(uid) {
-  $('emp-modal').classList.add('show');
-  $('modal-emp-name').textContent = 'Загрузка...';
-  $('modal-emp-pos').textContent = '';
-  $('modal-emp-body-content').innerHTML = '<div class="loader">Загрузка данных...</div>';
-
-  const { start, end } = getPeriodDates();
-  const dateFrom = formatDate(start);
-  const dateTo = formatDate(end);
-
-  try {
-    const res = await api('/api/payments/employee', { user_id: uid, date_from: dateFrom, date_to: dateTo });
+    const res = await api('/api/academy/course', { course_id: courseId });
+    CURRENT_COURSE = res.course;
     
-    let emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
-    if (!emp) {
-        const selectOption = document.querySelector(`#pay-user option[value="${uid}"]`);
-        if (selectOption) {
-            $('modal-emp-name').textContent = selectOption.textContent.split(' (')[0];
-        } else {
-            $('modal-emp-name').textContent = 'Сотрудник';
-        }
-    } else {
-        $('modal-emp-name').textContent = emp.full_name;
-        $('modal-emp-pos').textContent = emp.position || '—';
-    }
-
-    const formatMoney = (v) => (v || 0).toLocaleString('ru-RU') + ' ₽';
-
-    let historyHtml = '';
-    if (!res.history || !res.history.length) {
-        historyHtml = '<div style="text-align:center; color:var(--text-muted); font-size:14px; padding: 20px 0;">Операций за этот период нет</div>';
-    } else {
-        historyHtml = res.history.map(h => {
-            const isAccrual = h.record_type === 'accrual';
-            const prefix = isAccrual ? '+' : '';
-            const cls = isAccrual ? 'accrual' : 'payout';
-            
-            let statusTag = '';
-            if (h.status === 'pending') {
-                statusTag = ' <span class="tag amber" style="font-size:10px; padding:2px 6px;">На модерации</span>';
-            } else if (h.status === 'rejected') {
-                statusTag = ' <span class="tag red" style="font-size:10px; padding:2px 6px;">Отклонено</span>';
-            }
-            
-            const styleText = h.status === 'rejected' ? 'text-decoration: line-through; opacity: 0.6;' : '';
-            const typeLbl = isAccrual ? 'Начисление' : 'Выплата';
-            
-            let authorLbl = h.created_by_name || 'Система';
-            if (h.status === 'pending') authorLbl = 'Предложил: ' + (h.proposed_by_name || authorLbl);
-            if (h.status === 'approved' && h.approved_by_name) authorLbl = 'Одобрил: ' + h.approved_by_name;
-
-            return `
-                <div class="history-item ${cls}" style="${styleText}">
-                    <div class="history-meta">
-                        <span>${typeLbl} · ${fmtDate(h.payment_date)}${statusTag}</span>
-                        <span>${esc(authorLbl)}</span>
-                    </div>
-                    <div class="history-amount ${cls}">${prefix}${formatMoney(h.amount)}</div>
-                    <div class="history-comment">${esc(h.comment)}</div>
-                </div>
-            `;
-        }).join('');
-    }
-
-    $('modal-emp-body-content').innerHTML = `
-        <div class="emp-stats-grid">
-            <div class="emp-stat-box">
-                <div class="emp-stat-lbl">По табелю (${res.total_hours} ч)</div>
-                <div class="emp-stat-val">${formatMoney(res.timesheet_accrued)}</div>
-            </div>
-            <div class="emp-stat-box">
-                <div class="emp-stat-lbl">Доп. начисления</div>
-                <div class="emp-stat-val" style="color:var(--accent);">${formatMoney(res.extra_accrued)}</div>
-            </div>
-            <div class="emp-stat-box">
-                <div class="emp-stat-lbl">Выплачено</div>
-                <div class="emp-stat-val highlight">${formatMoney(res.paid)}</div>
-            </div>
-            <div class="emp-stat-box">
-                <div class="emp-stat-lbl">Остаток к выплате</div>
-                <div class="emp-stat-val amber">${formatMoney(res.remaining)}</div>
-            </div>
-        </div>
-
-        <h4 style="font-size: 15px; font-weight: 700; margin-bottom: 12px; color: var(--text-main);">История операций</h4>
-        <div class="history-list">${historyHtml}</div>
-    `;
-
-  } catch (e) {
-    $('modal-emp-body-content').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
-  }
-}
-
-function closeEmpModal() { $('emp-modal').classList.remove('show'); }
-
-function fmtDate(iso) {
-  if (!iso) return '—';
-  try {
-    const d = new Date(iso);
-    const pad = n => String(n).padStart(2, '0');
-    return `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`;
-  } catch (e) { return iso; }
-}
-
-// ================== НАСТРОЙКИ ==================
-async function loadSettings() {
-  $('settings-list').innerHTML = '<div class="loader">Загрузка...</div>';
-  try {
-    const res = await api('/api/timesheet/settings', {});
-    SETTINGS_DATA = res.settings || [];
-    if (!SETTINGS_DATA.length) {
-      $('settings-list').innerHTML = '<div class="loader">У вас нет прав для просмотра настроек, либо нет доступных должностей.</div>';
-      return;
-    }
-    $('settings-list').innerHTML = SETTINGS_DATA.map(s => `
-      <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--border);">
-        <span style="font-weight: 500; font-size: 15px;">${esc(s.position_name)}</span>
-        <input type="number" class="setting-input" data-pos="${esc(s.position_name)}" value="${s.rate}" min="0" step="10" placeholder="0 ₽" style="width: 140px; text-align: right; padding: 12px 16px; border: 1px solid var(--border); border-radius: 12px; font-size: 15px; font-weight: 600; outline: none; background: #F9FAFB;">
+    // ИЗМЕНЕНО: Используем formatContent вместо esc для того, чтобы ссылки на файлы стали кнопками
+    const lessonsHtml = res.lessons.map(l => `
+      <div class="lesson-card">
+        <div class="lesson-title">${esc(l.title)}</div>
+        <div class="lesson-content">${formatContent(l.content)}</div>
       </div>
     `).join('');
-  } catch (e) {
-    if (e.message !== 'unauthorized') {
-      $('settings-list').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
+
+    const hasTests = res.tests && res.tests.length > 0;
+    let testHtml = '';
+    
+    if (hasTests) {
+      testHtml = `
+        <div style="margin-top: 40px; margin-bottom: 20px;">
+          <h2 style="font-size: 24px; font-weight: 800;">Проверка знаний</h2>
+          <p style="color: var(--text-muted); margin-top: 8px;">Ответьте на вопросы, чтобы завершить курс.</p>
+        </div>
+        <div id="test-container">
+          ${res.tests.map((t, idx) => `
+            <div class="test-question">
+              <div class="test-q-text">${idx + 1}. ${esc(t.question)}</div>
+              <div class="test-options" data-qid="${t.id}">
+                ${t.options.map((opt, oIdx) => `
+                  <label class="test-option">
+                    <input type="radio" name="q_${t.id}" value="${oIdx}" onchange="selectOption(this)">
+                    <span>${esc(opt)}</span>
+                  </label>
+                `).join('')}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+        <button class="btn-submit" onclick="submitTest(${courseId})">Завершить и проверить</button>
+      `;
+    } else {
+      testHtml = `
+        <div class="result-screen" style="margin-top: 40px;">
+          <div class="result-icon">🎉</div>
+          <div class="result-score" style="color: var(--green-text);">Курс изучен</div>
+          <div class="result-text">В этом курсе нет теста.</div>
+          <button class="btn-submit" onclick="backToCourses()">Вернуться к курсам</button>
+        </div>
+      `;
     }
+
+    $('course-view').innerHTML = `
+      <button class="btn-close" onclick="backToCourses()" style="margin-bottom: 24px;">← К списку курсов</button>
+      <div class="page-header" style="text-align: left; margin-bottom: 24px;">
+        <div class="page-title" style="font-size: 32px;">${esc(res.course.title)}</div>
+      </div>
+      ${lessonsHtml}
+      ${testHtml}
+    `;
+  } catch (e) {
+    $('course-view').innerHTML = `<div style="text-align:center; padding: 40px; color: var(--red-text);">Ошибка загрузки курса: ${esc(e.message)}</div>`;
   }
 }
 
-async function saveSettings() {
-  const inputs = document.querySelectorAll('.setting-input');
-  if (!inputs.length) return;
+function backToCourses() {
+  $('course-view').style.display = 'none';
+  $('courses-view').style.display = 'block';
+  window.scrollTo(0, 0);
+  loadCourses();
+}
+
+function selectOption(input) {
+  const parent = input.closest('.test-options');
+  parent.querySelectorAll('.test-option').forEach(el => el.classList.remove('selected'));
+  input.closest('.test-option').classList.add('selected');
+}
+
+async function submitTest(courseId) {
+  const answers = {};
+  const questions = document.querySelectorAll('.test-options');
+  let allAnswered = true;
+
+  questions.forEach(q => {
+    const qid = q.dataset.qid;
+    const selected = q.querySelector('input[type="radio"]:checked');
+    if (selected) {
+      answers[qid] = parseInt(selected.value);
+    } else {
+      allAnswered = false;
+    }
+  });
+
+  if (!allAnswered) {
+    showToast('Ответьте на все вопросы', 'error');
+    return;
+  }
+
   const btn = document.querySelector('.btn-submit');
   btn.disabled = true;
-  btn.textContent = 'Сохранение...';
+  btn.textContent = 'Проверяем...';
+
   try {
-    for (const inp of inputs) {
-      const posName = inp.dataset.pos;
-      const rate = parseFloat(inp.value) || 0;
-      await api('/api/timesheet/settings/save', { position_name: posName, rate });
+    const res = await api('/api/academy/submit-test', { course_id: courseId, answers });
+    
+    if (res.passed) {
+      $('course-view').innerHTML = `
+        <div class="result-screen" style="margin-top: 40px;">
+          <div class="result-icon">🏆</div>
+          <div class="result-score">${res.score}%</div>
+          <div class="result-text">Поздравляем! Вы успешно прошли курс.</div>
+          <button class="btn-submit" onclick="backToCourses()">Вернуться к курсам</button>
+        </div>
+      `;
+    } else {
+      $('course-view').innerHTML = `
+        <div class="result-screen" style="margin-top: 40px;">
+          <div class="result-icon">😔</div>
+          <div class="result-score" style="color: var(--red-text);">${res.score}%</div>
+          <div class="result-text">К сожалению, вы не набрали проходной балл (нужно 80%).</div>
+          <button class="btn-submit" onclick="openCourse(${courseId})">Попробовать снова</button>
+        </div>
+      `;
     }
-    toast('Настройки сохранены');
   } catch (e) {
-    if (e.message !== 'unauthorized') alert('Ошибка сохранения: ' + e.message);
-  } finally {
+    showToast('Ошибка отправки: ' + e.message, 'error');
     btn.disabled = false;
-    btn.textContent = 'Сохранить настройки';
+    btn.textContent = 'Завершить и проверить';
   }
 }
 
-// ================== ИНИЦИАЛИЗАЦИЯ ==================
 (async function init() {
-  if (!getToken()) { showLogin(); return; }
-  try {
-    showApp();
-    updatePeriodTitle();
-    await loadMatrix();
-  } catch (e) {}
+  if (!getToken()) { window.location.href = '/'; return; }
+  await loadCourses();
 })();
 </script>
 </body>

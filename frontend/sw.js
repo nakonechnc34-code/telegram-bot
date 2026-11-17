@@ -1,117 +1,53 @@
-const CACHE_NAME = 'wokker-cache-v6'; // ВАЖНО: подняли версию
-const ASSETS_TO_CACHE = [
-  '/',
-  '/admin',
-  '/academy',
-  '/timesheet',
-  '/manifest.json',
-  '/static/icon-192.svg',
-  '/static/icon-512.svg'
+const CACHE_NAME = 'wokker-cache-v2'; // Обновили версию кэша
+const ASSETS = [
+    '/',
+    '/index.html',
+    '/admin.html',
+    '/timesheet.html',
+    '/academy.html',
+    '/manifest.json',
+    '/icon-192.svg',
+    '/icon-512.svg'
+    // добавьте сюда css/js если нужно
 ];
 
-let authToken = null;
-
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SET_TOKEN') {
-    authToken = event.data.token;
-  }
-});
-
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS_TO_CACHE))
-  );
+    self.skipWaiting();
+    event.waitUntil(
+        caches.open(CACHE_NAME).then((cache) => {
+            return cache.addAll(ASSETS);
+        })
+    );
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) return caches.delete(cacheName);
+    event.waitUntil(
+        caches.keys().then((cacheNames) => {
+            return Promise.all(
+                cacheNames.map((cache) => {
+                    if (cache !== CACHE_NAME) {
+                        return caches.delete(cache);
+                    }
+                })
+            );
         })
-      );
-    }).then(() => self.clients.claim())
-  );
+    );
+    self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
+    const url = new URL(event.request.url);
 
-  if (url.pathname.startsWith('/uploads/') && authToken) {
-    const newHeaders = new Headers(event.request.headers);
-    newHeaders.set('X-Token', authToken);
-    const newRequest = new Request(event.request, { headers: newHeaders });
-    event.respondWith(fetch(newRequest));
-    return;
-  }
-
-  // Добавлена проверка на навигацию (mode === 'navigate'), чтобы не кэшировать редиректы
-  if (event.request.method === 'POST' || event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          if (event.request.method === 'GET' && response.status === 200) {
-             const responseClone = response.clone();
-             caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
-          }
-          return response;
-        })
-        .catch(() => caches.match(event.request))
-    );
-    return;
-  }
-
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) return cachedResponse;
-      
-      return fetch(event.request).then((response) => {
-        if (!response || response.status !== 200 || response.type !== 'basic') return response;
-        const responseToCache = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
-        return response;
-      });
-    })
-  );
-});
-
-self.addEventListener('push', function(event) {
-  let data = { title: 'Wokker', body: 'У вас новое уведомление!', url: '/' };
-  
-  if (event.data) {
-    try {
-      data = event.data.json();
-    } catch (e) {
-      data = { title: 'Wokker', body: event.data.text(), url: '/' };
+    // ГЛАВНОЕ ИСПРАВЛЕНИЕ: Игнорируем запросы к API и файлам (PDF)
+    // Пусть браузер делает эти запросы напрямую к серверу
+    if (url.pathname.startsWith('/uploads/') || url.pathname.startsWith('/api/')) {
+        return; 
     }
-  }
 
-  const options = {
-    body: data.body,
-    icon: '/static/icon-192.svg', 
-    badge: '/static/icon-192.svg',
-    vibrate: [100, 50, 100],
-    data: { url: data.url || '/' }
-  };
-
-  event.waitUntil(
-    self.registration.showNotification(data.title, options)
-  );
-});
-
-self.addEventListener('notificationclick', function(event) {
-  event.notification.close();
-  const urlToOpen = event.notification.data.url || '/';
-  
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-      for (let i = 0; i < clientList.length; i++) {
-        const client = clientList[i];
-        if (client.url === urlToOpen && 'focus' in client) return client.focus();
-      }
-      if (clients.openWindow) return clients.openWindow(urlToOpen);
-    })
-  );
+    // Для остальных запросов (страницы, картинки) работает кэш
+    event.respondWith(
+        caches.match(event.request).then((response) => {
+            return response || fetch(event.request);
+        })
+    );
 });

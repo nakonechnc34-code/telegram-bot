@@ -3,7 +3,7 @@ from psycopg2.extras import RealDictCursor
 from db import get_conn, _run
 from utils.auth_helpers import get_auth_user, denied, _is_hr_or_super, _is_tu, _sync_user_has_perm
 import calendar
-from datetime import datetime, date
+from datetime import datetime, date, time
 import io
 import traceback
 import logging
@@ -109,7 +109,6 @@ def _sync_timesheet_matrix(user_id, date_from, date_to):
                 e["data"] = data_map[e["user_id"]]
             return employees
 
-# ИСПРАВЛЕНО: этот роут и был причиной 404
 @routes.post('/api/timesheet/matrix')
 async def handle_timesheet_matrix(request):
     user, err = await get_auth_user(request)
@@ -190,16 +189,16 @@ def _sync_import_attendance(user_id, rows, default_rest_key=None):
             
             for row in rows:
                 try:
-                    date_str = _parse_date(row[0])
-                    personnel_number = str(row[1]).strip()
-                    raw_val = str(row[2]).strip().upper()
+                    date_str = row[0]
+                    personnel_number = row[1]
+                    raw_val = row[2]
 
                     if not date_str or not personnel_number:
                         continue 
                         
                     target_user = users_map.get(personnel_number)
                     if not target_user:
-                        errors.append(f"Сотрудник с таб. номером '{personnel_number}' не найден")
+                        errors.append(f"Сотрудник с таб. номером '{personnel_number}' не найден в БД")
                         continue
                         
                     hours = 0
@@ -209,8 +208,15 @@ def _sync_import_attendance(user_id, rows, default_rest_key=None):
                         status = {'В': 'vacation', 'Б': 'sick', 'Н': 'absent'}[raw_val]
                         hours = 8 if status in ('vacation', 'sick') else 0
                     else:
-                        try: hours = float(raw_val.replace(',', '.'))
-                        except: continue
+                        # Обработка формата "13:08" или "5:50"
+                        try: 
+                            if ':' in raw_val:
+                                parts = raw_val.split(':')
+                                hours = float(parts[0]) + float(parts[1])/60.0
+                            else:
+                                hours = float(raw_val.replace(',', '.'))
+                        except: 
+                            continue
                         
                     r_key = default_rest_key or target_user["restaurant_key"]
                     
@@ -233,7 +239,59 @@ def _parse_excel_rows(file_data):
     wb = load_workbook(filename=io.BytesIO(file_data), data_only=True)
     ws = wb.active
     rows = list(ws.iter_rows(values_only=True))
-    return rows[1:] if len(rows) > 1 else []
+    
+    # 1. Ищем строку с заголовками (где есть слово "Табельный номер")
+    header_idx = -1
+    for i, row in enumerate(rows):
+        if any(cell and "табельный номер" in str(cell).lower() for cell in row):
+            header_idx = i
+            break
+            
+    if header_idx == -1:
+        raise Exception("Не найдена строка с заголовками (Табельный номер)")
+        
+    headers = rows[header_idx]
+    pers_num_col = -1
+    date_cols = {} # Индекс колонки -> дата (ГГГГ-ММ-ДД)
+    
+    # 2. Разбираем заголовки: ищем колонку с таб. номером и колонки с датами
+    for col_idx, cell_val in enumerate(headers):
+        if not cell_val: continue
+        val_str = str(cell_val).strip().lower()
+        if "табельный номер" in val_str:
+            pers_num_col = col_idx
+        else:
+            date_str = _parse_date(cell_val)
+            if date_str:
+                date_cols[col_idx] = date_str
+                
+    if pers_num_col == -1:
+        raise Exception("Колонка 'Табельный номер' не найдена")
+        
+    # 3. Проходим по строкам с данными и формируем плоский список
+    parsed_data = []
+    for row in rows[header_idx+1:]:
+        # Пропускаем пустые строки
+        if not row or len(row) <= pers_num_col or not row[pers_num_col]: continue
+        
+        pers_num = str(row[pers_num_col]).strip()
+        
+        for col_idx, date_str in date_cols.items():
+            if col_idx < len(row) and row[col_idx] is not None:
+                cell_val = row[col_idx]
+                
+                # Обработка формата времени из Excel (13:08 или datetime.time)
+                if isinstance(cell_val, time):
+                    raw_val = f"{cell_val.hour}:{cell_val.minute:02d}"
+                elif isinstance(cell_val, (float, int)):
+                    raw_val = str(cell_val)
+                else:
+                    raw_val = str(cell_val).strip()
+                    
+                if not raw_val or raw_val.upper() == 'NONE': continue
+                parsed_data.append((date_str, pers_num, raw_val.upper()))
+                
+    return parsed_data
 
 @routes.post('/api/timesheet/import_attendance')
 async def handle_import_attendance(request):

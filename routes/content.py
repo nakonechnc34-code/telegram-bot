@@ -540,7 +540,7 @@ async def handle_staff_certification_submit(request):
     return web.json_response(result)
 
 # ============= ЗАГРУЗКА ФАЙЛОВ =============
-# Вспомогательный класс, чтобы get_admin_user смог прочитать токен из URL (multipart/form-data не передает JSON)
+# Вспомогательный класс, чтобы get_admin_user смог прочитать токен из URL или FormData
 class DummyRequest:
     def __init__(self, original_request, token):
         self._original = original_request
@@ -555,24 +555,14 @@ class DummyRequest:
 
 @routes.post('/api/admin/upload')
 async def handle_admin_upload(request):
-    # 1. Берем токен из URL (мы передаем его как ?webToken=...)
+    # 1. Пытаемся взять токен из URL
     token = request.query.get('webToken')
     if not token:
-        # На всякий случай проверяем заголовок
         auth_header = request.headers.get('Authorization')
         if auth_header and auth_header.startswith('Bearer '):
             token = auth_header.split(' ')[1]
             
-    if not token:
-        return web.json_response({"error": "No token provided"}, status=401)
-        
-    # 2. Проверяем права (передаем фейковый запрос, где json() возвращает токен)
-    dummy_req = DummyRequest(request, token)
-    admin, err = await get_admin_user(dummy_req)
-    if err: 
-        return denied(err)
-    
-    # 3. Читаем файл
+    # 2. Читаем multipart-данные (файл и токен из формы)
     reader = await request.multipart()
     file_data = None
     original_name = "file.pdf"
@@ -580,11 +570,25 @@ async def handle_admin_upload(request):
     while True:
         part = await reader.next()
         if part is None: break
-        if part.name == 'file':
+        
+        # Если токен пришел в скрытом поле формы
+        if part.name == 'webToken':
+            token = await part.text()
+            
+        # Если это сам файл
+        elif part.name == 'file':
             original_name = part.filename
             file_data = await part.read()
-            break
             
+    if not token:
+        return web.json_response({"error": "No token provided"}, status=401)
+        
+    # 3. Проверяем права через фейковый запрос
+    dummy_req = DummyRequest(request, token)
+    admin, err = await get_admin_user(dummy_req)
+    if err: 
+        return denied(err)
+        
     if not file_data:
         return web.json_response({"error": "Файл не загружен"}, status=400)
         
@@ -601,7 +605,7 @@ async def handle_admin_upload(request):
     with open(filepath, 'wb') as f:
         f.write(file_data)
         
-    # 5. Возвращаем путь, который сохранится в БД
+    # 5. Возвращаем путь для сохранения в БД
     file_url = f"/uploads/{unique_filename}"
     
     return web.json_response({

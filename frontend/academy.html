@@ -45,7 +45,7 @@
   .lesson-title { font-size: 22px; font-weight: 800; margin-bottom: 16px; }
   .lesson-content { font-size: 16px; color: #333; line-height: 1.7; font-weight: 500; white-space: pre-wrap; }
 
-  /* Стили для кнопок скачивания файлов в уроке */
+  /* Стили для кнопок скачивания файлов */
   .file-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--accent-soft); color: var(--text-main); padding: 10px 16px; border-radius: 12px; text-decoration: none; font-weight: 700; margin-top: 12px; cursor: pointer; transition: background 0.2s; border: 1px solid rgba(0,0,0,0.05); }
   .file-btn:hover { background: #E5DED4; }
 
@@ -112,40 +112,19 @@ function showToast(text, type) {
   _toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
 }
 
-// ================== СКАЧИВАНИЕ ФАЙЛОВ С АВТОРИЗАЦИЕЙ ==================
-async function downloadProtectedFile(fileUrl) {
-    try {
-        const token = getToken();
-        if (!token) return showToast('Вы не авторизованы', 'error');
-
-        // Добавляем токен к URL
-        const urlWithToken = `${fileUrl}?webToken=${token}`;
-        
-        // Создаем временную ссылку для скачивания
-        const a = document.createElement('a');
-        a.href = urlWithToken;
-        // Имя файла берем из конца URL
-        a.download = fileUrl.split('/').pop() || 'document.pdf';
-        a.target = '_blank'; // На случай если сервер отдаст inline
-        
-        document.body.appendChild(a);
-        a.click(); // Кликаем
-        a.remove();
-        
-        showToast('Скачивание началось...');
-    } catch (e) {
-        showToast('Ошибка скачивания: ' + e.message, 'error');
+// ================== СКАЧИВАНИЕ ФАЙЛОВ ==================
+function downloadProtectedFile(fileUrl) {
+    const token = getToken();
+    if (!token) {
+        showToast('Вы не авторизованы', 'error');
+        return;
     }
+    
+    // Просто открываем файл в новой вкладке, добавляя токен в URL.
+    // Бэкенд проверит токен и отдаст файл. Safari корректно откроет PDF.
+    const urlWithToken = `${fileUrl}?webToken=${token}`;
+    window.open(urlWithToken, '_blank');
 }
-
-// Перехватываем клики по ссылкам на /uploads/, чтобы скачать их с токеном
-document.addEventListener('click', function(e) {
-    const link = e.target.closest('a, .file-btn');
-    if (link && link.getAttribute('href') && link.getAttribute('href').includes('/uploads/')) {
-        e.preventDefault();
-        downloadProtectedFile(link.getAttribute('href'));
-    }
-});
 
 // Функция для красивого вывода контента урока с кнопками скачивания
 function formatContent(content) {
@@ -153,16 +132,15 @@ function formatContent(content) {
     let safe = esc(content);
     
     // Ищем ссылки вида /uploads/....pdf и превращаем в кнопки
-    // Регулярное выражение ищет путь /uploads/... до пробела или конца строки
     const fileRegex = /(\/uploads\/[^\s<]+)/g;
     safe = safe.replace(fileRegex, (match) => {
         const fileName = match.split('/').pop();
-        return `<br><a href="${match}" class="file-btn" target="_blank">📄 Скачать: ${fileName}</a>`;
+        return `<br><a href="javascript:void(0)" onclick="downloadProtectedFile('${match}')" class="file-btn">📄 Скачать: ${fileName}</a>`;
     });
     
     return safe;
 }
-// =======================================================================
+// =========================================================
 
 async function api(path, body) {
   const payload = { webToken: getToken() };
@@ -224,7 +202,6 @@ async function openCourse(courseId) {
     const res = await api('/api/academy/course', { course_id: courseId });
     CURRENT_COURSE = res.course;
     
-    // ИЗМЕНЕНО: Используем formatContent вместо esc для того, чтобы ссылки на файлы стали кнопками
     const lessonsHtml = res.lessons.map(l => `
       <div class="lesson-card">
         <div class="lesson-title">${esc(l.title)}</div>

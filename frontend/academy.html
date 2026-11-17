@@ -120,22 +120,25 @@ function downloadProtectedFile(fileUrl) {
         return;
     }
     
-    // Просто открываем файл в новой вкладке, добавляя токен в URL.
-    // Бэкенд проверит токен и отдаст файл. Safari корректно откроет PDF.
+    // Открываем файл с токеном через новый API
     const urlWithToken = `${fileUrl}?webToken=${token}`;
     window.open(urlWithToken, '_blank');
 }
 
-// Функция для красивого вывода контента урока с кнопками скачивания
+// Функция для красивого вывода контента урока
 function formatContent(content) {
     if (!content) return '';
     let safe = esc(content);
     
-    // Ищем ссылки вида /uploads/....pdf и превращаем в кнопки
+    // Ищем ссылки. Если админ вставил /uploads/file.pdf, мы меняем это на /api/download/file.pdf
     const fileRegex = /(\/uploads\/[^\s<]+)/g;
     safe = safe.replace(fileRegex, (match) => {
+        // Извлекаем имя файла
         const fileName = match.split('/').pop();
-        return `<br><a href="javascript:void(0)" onclick="downloadProtectedFile('${match}')" class="file-btn">📄 Скачать: ${fileName}</a>`;
+        // Меняем путь на новый API
+        const apiUrl = '/api/download/' + fileName;
+        
+        return `<br><a href="javascript:void(0)" onclick="downloadProtectedFile('${apiUrl}')" class="file-btn">📄 Скачать: ${fileName}</a>`;
     });
     
     return safe;

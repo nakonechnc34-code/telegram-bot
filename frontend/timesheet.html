@@ -978,8 +978,16 @@ async function saveCellDirect(inp) {
   else { status = 'work'; hours = parseFloat(val.replace(',', '.')) || 0; inp.value = hours || ''; }
 
   const { start } = getPeriodDates();
-  const targetDate = new Date(start.getFullYear(), start.getMonth(), day);
-  if (day < start.getDate()) targetDate.setMonth(targetDate.getMonth() + 1);
+  const targetDate = new Date(start);
+  targetDate.setDate(day);
+  
+  // Исправленная логика перехода через месяц при недельном виде
+  if (VIEW_MODE === 'week' && day < start.getDate()) {
+      targetDate.setMonth(targetDate.getMonth() + 1);
+  } else if (VIEW_MODE === 'week' && day > start.getDate() + 6) {
+      targetDate.setMonth(targetDate.getMonth() - 1);
+  }
+  
   const dateStr = formatDate(targetDate);
 
   try {
@@ -991,11 +999,30 @@ async function saveCellDirect(inp) {
         restaurant_key: targetRestKey 
     });
     toast('Сохранено');
-    await loadMatrix();
+    
+    // Локальный пересчет итогов без перезагрузки всей таблицы
+    updateRowTotal(inp.closest('tr')); 
+    
   } catch (err) {
     if (err.message !== 'unauthorized' && err.message !== 'forbidden') alert('Ошибка сохранения: ' + err.message);
-    await loadMatrix(); 
+    await loadMatrix(); // При ошибке откатываем изменения к серверному состоянию
   }
+}
+
+// Вспомогательная функция для локального пересчета часов в строке
+function updateRowTotal(row) {
+    let total = 0;
+    const inputs = row.querySelectorAll('.cell-input');
+    inputs.forEach(i => {
+        const val = i.value.trim().toUpperCase();
+        if (val === 'В' || val === 'Б') total += 8;
+        else if (val !== 'Н' && val !== '') {
+            const num = parseFloat(val.replace(',', '.'));
+            if (!isNaN(num)) total += num;
+        }
+    });
+    const totalCell = row.querySelector('.total-hours');
+    if (totalCell) totalCell.textContent = total;
 }
 
 // ================== ВЫПЛАТЫ ==================

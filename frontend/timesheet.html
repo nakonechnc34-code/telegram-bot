@@ -952,7 +952,8 @@ function renderMatrix() {
                  onkeydown="if(event.key==='Enter') this.blur()">
         </td>`;
       }
-      tbody += `<td class="col-total total-hours">${totalHours}</td></tr>`;
+      // ОКРУГЛЯЕМ ИТОГ ПРИ ОТРИСОВКЕ
+      tbody += `<td class="col-total total-hours">${parseFloat(totalHours.toFixed(2))}</td></tr>`;
     });
   }
   tbody += '</tbody>';
@@ -975,7 +976,13 @@ async function saveCellDirect(inp) {
   else if (val === 'Б') { status = 'sick'; hours = 8; inp.value = 'Б'; }
   else if (val === 'Н') { status = 'absent'; hours = 0; inp.value = 'Н'; }
   else if (val === '') { status = 'work'; hours = 0; inp.value = ''; }
-  else { status = 'work'; hours = parseFloat(val.replace(',', '.')) || 0; inp.value = hours || ''; }
+  else { 
+      status = 'work'; 
+      hours = parseFloat(val.replace(',', '.')) || 0; 
+      // Округляем ручной ввод до 2 знаков
+      hours = parseFloat(hours.toFixed(2));
+      inp.value = hours || ''; 
+  }
 
   const { start } = getPeriodDates();
   const targetDate = new Date(start);
@@ -1022,7 +1029,8 @@ function updateRowTotal(row) {
         }
     });
     const totalCell = row.querySelector('.total-hours');
-    if (totalCell) totalCell.textContent = total;
+    // ОКРУГЛЯЕМ ИТОГ ПОСЛЕ ВВОДА
+    if (totalCell) totalCell.textContent = parseFloat(total.toFixed(2));
 }
 
 // ================== ВЫПЛАТЫ ==================

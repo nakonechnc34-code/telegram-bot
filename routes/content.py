@@ -1,3 +1,5 @@
+import os
+import uuid
 from aiohttp import web
 from psycopg2.extras import RealDictCursor, Json
 from psycopg2 import sql
@@ -536,3 +538,46 @@ async def handle_staff_certification_submit(request):
 
     result = await _run(_sync)
     return web.json_response(result)
+
+# ============= ЗАГРУЗКА ФАЙЛОВ =============
+@routes.post('/api/admin/upload')
+async def handle_admin_upload(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    
+    reader = await request.multipart()
+    file_data = None
+    original_name = "file.pdf"
+    
+    while True:
+        part = await reader.next()
+        if part is None: break
+        if part.name == 'file':
+            original_name = part.filename
+            file_data = await part.read()
+            break
+            
+    if not file_data:
+        return web.json_response({"error": "Файл не загружен"}, status=400)
+        
+    # Генерируем уникальное имя, чтобы файлы не перезаписывали друг друга
+    ext = os.path.splitext(original_name)[1]
+    unique_filename = f"{uuid.uuid4().hex}{ext}"
+    
+    # Создаем папку uploads, если ее нет (в корне проекта)
+    upload_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads")
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    filepath = os.path.join(upload_dir, unique_filename)
+    
+    with open(filepath, 'wb') as f:
+        f.write(file_data)
+        
+    # Возвращаем путь, который сохранится в БД
+    file_url = f"/uploads/{unique_filename}"
+    
+    return web.json_response({
+        "ok": True,
+        "file_url": file_url,
+        "file_name": original_name
+    })

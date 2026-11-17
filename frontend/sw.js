@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wokker-cache-v2'; // Обновили версию кэша
+const CACHE_NAME = 'wokker-cache-v3'; // Обновили версию!
 const ASSETS = [
     '/',
     '/index.html',
@@ -6,9 +6,8 @@ const ASSETS = [
     '/timesheet.html',
     '/academy.html',
     '/manifest.json',
-    '/icon-192.svg',
-    '/icon-512.svg'
-    // добавьте сюда css/js если нужно
+    '/static/icon-192.svg',
+    '/static/icon-512.svg'
 ];
 
 self.addEventListener('install', (event) => {

@@ -75,12 +75,23 @@
   
   /* ТАБЛИЦА */
   .table-scroll { background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.03); position: relative; width: 100%; border: 1px solid var(--border); overflow: auto; margin-bottom: 24px; }
-  table { border-collapse: separate; border-spacing: 0; width: 100%; table-layout: fixed; }
+  
+  /* ИСПРАВЛЕНИЕ: width: max-content заставляет таблицу растягиваться под содержимое */
+  table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; table-layout: fixed; }
+  
   th { position: sticky; top: 0; background: #F9FAFB; z-index: 10; font-weight: 600; color: var(--text-muted); font-size: 12px; padding: 16px 4px; border-bottom: 1px solid var(--border); text-align: center; }
   th.weekend { color: var(--red); background: #FEF2F2; }
   
   th.sticky-col, td.sticky-col { position: sticky; left: 0; background: var(--card-bg); z-index: 5; text-align: left; border-right: 1px solid var(--border); padding: 16px 20px; white-space: normal; word-break: break-word; line-height: 1.4; width: 240px; min-width: 240px; max-width: 240px; }
   thead th.sticky-col { z-index: 15; background: #F9FAFB; font-size: 12px; }
+
+  /* ИСПРАВЛЕНИЕ: Жестко задаем ширину для колонок с днями */
+  th:not(.sticky-col):not(.col-total), td:not(.sticky-col):not(.col-total) {
+      width: 48px;
+      min-width: 48px;
+      max-width: 48px;
+      padding: 0;
+  }
   
   .emp-name { font-weight: 600; font-size: 15px; color: var(--text-main); cursor: pointer; transition: color 0.2s; display: inline-block; }
   .emp-name:hover { color: var(--accent); text-decoration: underline; }
@@ -94,7 +105,7 @@
   td:last-child { border-right: none; }
 
   /* ЯЧЕЙКА */
-  .cell-display { width: 100%; height: 100%; min-height: 52px; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.2s; color: var(--text-main); border: 2px solid transparent; }
+  .cell-display { width: 100%; height: 100%; min-height: 52px; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; cursor: pointer; transition: all 0.2s; color: var(--text-main); border: 2px solid transparent; overflow: hidden; white-space: nowrap; }
   .cell-display:hover { background: #F3F4F6; }
   .cell-display.status-vacation { background: var(--green-soft); color: var(--green-text); }
   .cell-display.status-sick { background: var(--amber-soft); color: var(--amber-text); }
@@ -102,7 +113,7 @@
   .cell-display.cross-rest { background: var(--purple-soft) !important; color: var(--purple-text) !important; border-color: var(--purple) !important; font-weight: 800; }
   .cell-display.cell-occupied-other { background: repeating-linear-gradient(45deg, #FAFAFA, #FAFAFA 10px, #F3F4F6 10px, #F3F4F6 20px) !important; cursor: not-allowed; border: none; }
 
-  .col-total { font-weight: 700; background: #F9FAFB; width: 100px; font-size: 15px; color: var(--text-main); border-left: 1px solid var(--border); position: sticky; right: 0; z-index: 5; }
+  .col-total { font-weight: 700; background: #F9FAFB; width: 100px; min-width: 100px; font-size: 15px; color: var(--text-main); border-left: 1px solid var(--border); position: sticky; right: 0; z-index: 5; }
 
   /* ВЫПЛАТЫ */
   .payout-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-shrink: 0; gap: 16px; flex-wrap: wrap; }
@@ -212,7 +223,6 @@
     .right-controls { justify-content: space-between; }
     .content { padding: 16px; overflow: visible; }
     .table-scroll { max-height: none; overflow-x: auto; }
-    table { width: max-content; min-width: 100%; }
     th.sticky-col, td.sticky-col { width: 180px; min-width: 180px; max-width: 180px; padding: 12px; }
     .col-total { position: static; }
     .payout-table th, .payout-table td { padding: 12px 16px; }

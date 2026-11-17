@@ -13,7 +13,6 @@
 <meta name="apple-mobile-web-app-title" content="Wokker">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  /* ... (все стили оставляем без изменений) ... */
   :root {
     --bg: #F8F5F2; --card-bg: #FFFFFF; --text-main: #1C1C1E; --text-muted: #8E8E93;
     --accent: #1C1C1E; --accent-soft: #F0EAE1; --gold: #D4C4B7; 
@@ -385,7 +384,6 @@ async function api(path, body) {
   }
   
   const data = await res.json();
-  // Защита от бага бэкенда (200 OK с ошибкой внутри)
   if (data.error === 'forbidden' || data.error === 'fired') {
       clearToken();
       showLogin();
@@ -1171,7 +1169,6 @@ function drawStandardsList() {
           ${s.number ? `<div class="std-number">${esc(s.number)}</div>` : ''}
           <div class="std-group-tag">${esc(s.group_name || 'Общее')}</div>
           <div class="std-title">${esc(s.title)}</div>
-          <!-- Исправлено: добавлена проверка на null для s.body -->
           <div class="std-snippet">${esc((s.body || '').replace(/<[^>]*>?/gm, ''))}</div>
         </div>
       </div>
@@ -1179,28 +1176,33 @@ function drawStandardsList() {
   }).join('');
 }
 
+// ИСПРАВЛЕННАЯ ФУНКЦИЯ СКАЧИВАНИЯ ФАЙЛА
 async function downloadFile(url, filename) {
   try {
     showToast('Скачивание началось...');
-    const cleanUrl = url.split('?')[0];
-    const response = await fetch(cleanUrl, {
-        headers: { 'X-Token': getToken() }
-    });
     
-    if (!response.ok) throw new Error('Network response was not ok');
+    // Извлекаем имя файла из старого пути (/uploads/...)
+    const fileName = url.split('/').pop();
+    
+    // Стучимся на новый API с токеном в URL
+    const apiUrl = `/api/download/${fileName}?webToken=${getToken()}`;
+    
+    const response = await fetch(apiUrl);
+    if (!response.ok) throw new Error(`Ошибка сервера (код ${response.status})`);
+    
     const blob = await response.blob();
     const blobUrl = window.URL.createObjectURL(blob);
     
     const a = document.createElement('a');
     a.style.display = 'none';
     a.href = blobUrl;
-    a.download = filename || 'file';
+    a.download = filename || fileName || 'file';
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(blobUrl);
     document.body.removeChild(a);
   } catch (e) {
-    showToast('Ошибка при скачивании', 'error');
+    showToast('Ошибка при скачивании: ' + e.message, 'error');
   }
 }
 
@@ -1230,7 +1232,6 @@ function showStandardDetail(id) {
     `;
     contentHtml = `<div class="std-content-card">${tableHtml}</div>`;
   } else {
-    // HTML уже санитизирован на бэкенде (bleach), поэтому вставляем как есть
     contentHtml = `<div class="std-content-card"><div class="std-detail-text">${s.body || ''}</div></div>`;
   }
 

@@ -191,9 +191,10 @@ def _sync_import_attendance(user_id, rows, default_rest_key=None):
             """)
             users_map = {str(u["personnel_number"]).strip(): u for u in cur.fetchall()}
             
-            # Загружаем рестораны для сопоставления по имени
+            # Загружаем рестораны
             cur.execute("SELECT key, name FROM restaurants")
-            rest_map = {r["name"].strip().lower(): r["key"] for r in cur.fetchall()}
+            restaurants = cur.fetchall()
+            rest_map = {r["name"].strip().lower(): r["key"] for r in restaurants}
             
             for row in rows:
                 try:
@@ -229,11 +230,19 @@ def _sync_import_attendance(user_id, rows, default_rest_key=None):
                     # ОКРУГЛЯЕМ ЧАСЫ
                     hours = round(hours, 2)
                         
-                    # ОПРЕДЕЛЯЕМ РЕСТОРАН
+                    # ОПРЕДЕЛЯЕМ РЕСТОРАН (с умным поиском)
                     r_key = None
                     if rest_name:
-                        # Ищем ресторан по имени из Excel (приводим к нижнему регистру для надежности)
-                        r_key = rest_map.get(rest_name.strip().lower())
+                        clean_rest_name = rest_name.strip().lower()
+                        # 1. Ищем точное совпадение
+                        r_key = rest_map.get(clean_rest_name)
+                        
+                        # 2. Если точного нет, ищем частичное (например, "Белая дача" в "Мега Белая дача")
+                        if not r_key:
+                            for db_name, db_key in rest_map.items():
+                                if clean_rest_name in db_name or db_name in clean_rest_name:
+                                    r_key = db_key
+                                    break
                     
                     # Если в файле нет ресторана или он не найден в БД, берем дефолтный или основной
                     if not r_key:
@@ -290,15 +299,31 @@ def _parse_excel_rows(file_data):
         raise Exception("Колонка 'Табельный номер' не найдена")
         
     parsed_data = []
+    current_pers_num = None # Запоминаем последний табельный номер (для объединенных ячеек)
+    
     for row in rows[header_idx+1:]:
-        if not row or len(row) <= pers_num_col or not row[pers_num_col]: continue
+        if not row: continue
         
-        pers_num = str(row[pers_num_col]).strip()
+        # Если в строке есть табельный номер — обновляем его
+        if len(row) > pers_num_col and row[pers_num_col]:
+            current_pers_num = str(row[pers_num_col]).strip()
+        
+        # Если номера нет и мы его еще не встречали, пропускаем
+        if not current_pers_num: 
+            continue
+            
         rest_name = ""
-        
         # Читаем название подразделения
         if rest_col != -1 and rest_col < len(row) and row[rest_col]:
             rest_name = str(row[rest_col]).strip()
+        
+        # Проверяем, есть ли вообще данные в строке (часы)
+        has_data = False
+        for col_idx in date_cols.keys():
+            if col_idx < len(row) and row[col_idx] is not None:
+                has_data = True
+                break
+        if not has_data: continue
         
         for col_idx, date_str in date_cols.items():
             if col_idx < len(row) and row[col_idx] is not None:
@@ -312,7 +337,8 @@ def _parse_excel_rows(file_data):
                     raw_val = str(cell_val).strip()
                     
                 if not raw_val or raw_val.upper() == 'NONE': continue
-                parsed_data.append((date_str, pers_num, raw_val.upper(), rest_name))
+                # Передаем в список: (дата, табельный номер, часы, ресторан)
+                parsed_data.append((date_str, current_pers_num, raw_val.upper(), rest_name))
                 
     return parsed_data
 

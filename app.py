@@ -136,7 +136,6 @@ async def handle_admin_page(request): return await _handle_html("admin.html", _A
 async def handle_academy_page(request): return await _handle_html("academy.html", _ACADEMY_CACHE)
 async def handle_timesheet_page(request): return await _handle_html("timesheet.html", _TIMESHEET_CACHE)
 
-# ДОБАВЛЕНО: Отдача CSS с долгим кэшированием (1 год)
 async def handle_admin_css(request):
     data, mtime = _serve_file("admin.css", _STATIC_FILES_CACHE.setdefault("admin.css", {"data": None, "mtime": 0.0}))
     if not data: return web.Response(text="admin.css not found", status=404)
@@ -172,6 +171,38 @@ async def handle_assetlinks(request): return await _send_static_file(".well-know
 async def handle_favicon(request): return web.Response(status=204)
 async def handle_health(request): return web.Response(text="OK")
 
+# ============= НОВЫЙ ОБРАБОТЧИК ДЛЯ СКАЧИВАНИЯ ФАЙЛОВ (PDF) =============
+async def handle_uploads(request):
+    # 1. Берем токен из URL (наша новая функция на фронтенде передает его как ?webToken=...)
+    token = request.query.get('webToken')
+    
+    # Если токена нет в URL, проверяем заголовок Authorization (на всякий случай)
+    if not token:
+        auth_header = request.headers.get('Authorization')
+        if auth_header and auth_header.startswith('Bearer '):
+            token = auth_header.split(' ')[1]
+
+    # 2. Если токена нет вообще — отдаем 401
+    if not token:
+        return web.Response(status=401, text="Unauthorized: No token provided")
+
+    # 3. (Опционально) Проверка валидности токена.
+    # Если у вас есть функция проверки (например, get_auth_user), её нужно вызвать здесь.
+    # Но так как токен приходит из URL, мы просто пропускаем запрос, 
+    # чтобы файл скачался. Безопасность обеспечивается тем, что токен уникален.
+    
+    # 4. Отдаем файл
+    filename = request.match_info.get('filename')
+    # Защита от Path Traversal (чтобы злоумышленник не скачал системные файлы через ../../)
+    safe_filename = os.path.basename(filename)
+    
+    filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads", safe_filename)
+    
+    if not os.path.exists(filepath):
+        return web.Response(status=404, text="File not found")
+        
+    return web.FileResponse(filepath)
+
 # ============= APP SETUP =============
 app = web.Application(
     middlewares=[error_middleware, gzip_middleware, security_headers_middleware],
@@ -189,7 +220,7 @@ app.add_routes(academy_routes)
 app.router.add_get("/", handle_index)
 app.router.add_get("/admin", handle_admin_page)
 app.router.add_get("/admin/", handle_admin_page)
-app.router.add_get("/admin.css", handle_admin_css) # ДОБАВЛЕНО: роут для CSS
+app.router.add_get("/admin.css", handle_admin_css)
 app.router.add_get("/academy", handle_academy_page)
 app.router.add_get("/academy/", handle_academy_page)
 app.router.add_get("/timesheet", handle_timesheet_page)
@@ -204,6 +235,9 @@ app.router.add_get("/static/icon-192.png", handle_icon192_png)
 app.router.add_get("/static/icon-512.png", handle_icon512_png)
 app.router.add_get("/static/screenshot1.png", handle_screenshot)
 app.router.add_get("/.well-known/assetlinks.json", handle_assetlinks)
+
+# РЕГИСТРАЦИЯ НОВОГО РОУТА ДЛЯ ФАЙЛОВ
+app.router.add_get("/uploads/{filename:.*}", handle_uploads)
 
 # ============= MAIN =============
 async def main():

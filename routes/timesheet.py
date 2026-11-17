@@ -131,6 +131,9 @@ async def handle_timesheet_matrix(request):
     return web.json_response({"employees": employees})
 
 def _sync_save_cell(user_id, target_uid, work_date, hours, status, restaurant_key=None):
+    # ОКРУГЛЯЕМ ЧАСЫ ДО 2 ЗНАКОВ ПЕРЕД СОХРАНЕНИЕМ
+    hours = round(hours, 2)
+    
     with get_conn() as conn:
         with conn.cursor() as cur:
             if hours <= 0 and status == 'work':
@@ -180,6 +183,7 @@ def _sync_import_attendance(user_id, rows, default_rest_key=None):
     
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Загружаем сотрудников
             cur.execute("""
                 SELECT user_id, login, personnel_number, restaurant_key 
                 FROM users 
@@ -187,18 +191,23 @@ def _sync_import_attendance(user_id, rows, default_rest_key=None):
             """)
             users_map = {str(u["personnel_number"]).strip(): u for u in cur.fetchall()}
             
+            # Загружаем рестораны для сопоставления по имени
+            cur.execute("SELECT key, name FROM restaurants")
+            rest_map = {r["name"].strip().lower(): r["key"] for r in cur.fetchall()}
+            
             for row in rows:
                 try:
                     date_str = row[0]
                     personnel_number = row[1]
                     raw_val = row[2]
+                    rest_name = row[3] if len(row) > 3 else None
 
                     if not date_str or not personnel_number:
                         continue 
                         
                     target_user = users_map.get(personnel_number)
                     if not target_user:
-                        errors.append(f"Сотрудник с таб. номером '{personnel_number}' не найден в БД")
+                        errors.append(f"Сотрудник с таб. номером '{personnel_number}' не найден")
                         continue
                         
                     hours = 0
@@ -208,7 +217,6 @@ def _sync_import_attendance(user_id, rows, default_rest_key=None):
                         status = {'В': 'vacation', 'Б': 'sick', 'Н': 'absent'}[raw_val]
                         hours = 8 if status in ('vacation', 'sick') else 0
                     else:
-                        # Обработка формата "13:08" или "5:50"
                         try: 
                             if ':' in raw_val:
                                 parts = raw_val.split(':')
@@ -217,8 +225,19 @@ def _sync_import_attendance(user_id, rows, default_rest_key=None):
                                 hours = float(raw_val.replace(',', '.'))
                         except: 
                             continue
+                    
+                    # ОКРУГЛЯЕМ ЧАСЫ
+                    hours = round(hours, 2)
                         
-                    r_key = default_rest_key or target_user["restaurant_key"]
+                    # ОПРЕДЕЛЯЕМ РЕСТОРАН
+                    r_key = None
+                    if rest_name:
+                        # Ищем ресторан по имени из Excel (приводим к нижнему регистру для надежности)
+                        r_key = rest_map.get(rest_name.strip().lower())
+                    
+                    # Если в файле нет ресторана или он не найден в БД, берем дефолтный или основной
+                    if not r_key:
+                        r_key = default_rest_key or target_user["restaurant_key"]
                     
                     if hours <= 0 and status == 'work':
                         cur.execute("DELETE FROM timesheet_records WHERE user_id = %s AND work_date = %s", (target_user["user_id"], date_str))
@@ -240,7 +259,6 @@ def _parse_excel_rows(file_data):
     ws = wb.active
     rows = list(ws.iter_rows(values_only=True))
     
-    # 1. Ищем строку с заголовками (где есть слово "Табельный номер")
     header_idx = -1
     for i, row in enumerate(rows):
         if any(cell and "табельный номер" in str(cell).lower() for cell in row):
@@ -252,14 +270,17 @@ def _parse_excel_rows(file_data):
         
     headers = rows[header_idx]
     pers_num_col = -1
-    date_cols = {} # Индекс колонки -> дата (ГГГГ-ММ-ДД)
+    rest_col = -1
+    date_cols = {} 
     
-    # 2. Разбираем заголовки: ищем колонку с таб. номером и колонки с датами
     for col_idx, cell_val in enumerate(headers):
         if not cell_val: continue
         val_str = str(cell_val).strip().lower()
+        
         if "табельный номер" in val_str:
             pers_num_col = col_idx
+        elif "подразделение" in val_str or "ресторан" in val_str:
+            rest_col = col_idx
         else:
             date_str = _parse_date(cell_val)
             if date_str:
@@ -268,19 +289,21 @@ def _parse_excel_rows(file_data):
     if pers_num_col == -1:
         raise Exception("Колонка 'Табельный номер' не найдена")
         
-    # 3. Проходим по строкам с данными и формируем плоский список
     parsed_data = []
     for row in rows[header_idx+1:]:
-        # Пропускаем пустые строки
         if not row or len(row) <= pers_num_col or not row[pers_num_col]: continue
         
         pers_num = str(row[pers_num_col]).strip()
+        rest_name = ""
+        
+        # Читаем название подразделения
+        if rest_col != -1 and rest_col < len(row) and row[rest_col]:
+            rest_name = str(row[rest_col]).strip()
         
         for col_idx, date_str in date_cols.items():
             if col_idx < len(row) and row[col_idx] is not None:
                 cell_val = row[col_idx]
                 
-                # Обработка формата времени из Excel (13:08 или datetime.time)
                 if isinstance(cell_val, time):
                     raw_val = f"{cell_val.hour}:{cell_val.minute:02d}"
                 elif isinstance(cell_val, (float, int)):
@@ -289,7 +312,7 @@ def _parse_excel_rows(file_data):
                     raw_val = str(cell_val).strip()
                     
                 if not raw_val or raw_val.upper() == 'NONE': continue
-                parsed_data.append((date_str, pers_num, raw_val.upper()))
+                parsed_data.append((date_str, pers_num, raw_val.upper(), rest_name))
                 
     return parsed_data
 

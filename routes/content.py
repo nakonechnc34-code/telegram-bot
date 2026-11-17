@@ -540,11 +540,39 @@ async def handle_staff_certification_submit(request):
     return web.json_response(result)
 
 # ============= ЗАГРУЗКА ФАЙЛОВ =============
+# Вспомогательный класс, чтобы get_admin_user смог прочитать токен из URL (multipart/form-data не передает JSON)
+class DummyRequest:
+    def __init__(self, original_request, token):
+        self._original = original_request
+        self._token = token
+
+    def __getattr__(self, name):
+        # Делегируем все остальные атрибуты (query, headers и т.д.) оригинальному запросу
+        return getattr(self._original, name)
+
+    async def json(self):
+        return {"webToken": self._token}
+
 @routes.post('/api/admin/upload')
 async def handle_admin_upload(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    # 1. Берем токен из URL (мы передаем его как ?webToken=...)
+    token = request.query.get('webToken')
+    if not token:
+        # На всякий случай проверяем заголовок
+        auth_header = request.headers.get('Authorization')
+        if auth_header and auth_header.startswith('Bearer '):
+            token = auth_header.split(' ')[1]
+            
+    if not token:
+        return web.json_response({"error": "No token provided"}, status=401)
+        
+    # 2. Проверяем права (передаем фейковый запрос, где json() возвращает токен)
+    dummy_req = DummyRequest(request, token)
+    admin, err = await get_admin_user(dummy_req)
+    if err: 
+        return denied(err)
     
+    # 3. Читаем файл
     reader = await request.multipart()
     file_data = None
     original_name = "file.pdf"
@@ -560,7 +588,7 @@ async def handle_admin_upload(request):
     if not file_data:
         return web.json_response({"error": "Файл не загружен"}, status=400)
         
-    # Генерируем уникальное имя, чтобы файлы не перезаписывали друг друга
+    # 4. Сохраняем файл с уникальным именем
     ext = os.path.splitext(original_name)[1]
     unique_filename = f"{uuid.uuid4().hex}{ext}"
     
@@ -573,7 +601,7 @@ async def handle_admin_upload(request):
     with open(filepath, 'wb') as f:
         f.write(file_data)
         
-    # Возвращаем путь, который сохранится в БД
+    # 5. Возвращаем путь, который сохранится в БД
     file_url = f"/uploads/{unique_filename}"
     
     return web.json_response({

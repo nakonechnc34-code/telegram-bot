@@ -47,6 +47,8 @@ def run_migrations():
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("ALTER TABLE timesheet_records ADD COLUMN IF NOT EXISTS restaurant_key TEXT;")
+                cur.execute("ALTER TABLE timesheet_records ADD COLUMN IF NOT EXISTS start_time TIME;")
+                cur.execute("ALTER TABLE timesheet_records ADD COLUMN IF NOT EXISTS end_time TIME;")
                 cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS personnel_number VARCHAR(50);")
                 logging.info("✅ Миграция БД: колонки проверены/добавлены.")
     except Exception as e:
@@ -171,36 +173,29 @@ async def handle_assetlinks(request): return await _send_static_file(".well-know
 async def handle_favicon(request): return web.Response(status=204)
 async def handle_health(request): return web.Response(text="OK")
 
-# ============= НОВЫЙ ОБРАБОТЧИК ДЛЯ СКАЧИВАНИЯ ФАЙЛОВ (PDF) =============
-async def handle_uploads(request):
-    # 1. Берем токен из URL (наша новая функция на фронтенде передает его как ?webToken=...)
+# ============= НОВЫЙ ОБРАБОТЧИК ДЛЯ СКАЧИВАНИЯ ФАЙЛОВ (API) =============
+async def handle_download(request):
+    # 1. Берем токен из URL
     token = request.query.get('webToken')
-    
-    # Если токена нет в URL, проверяем заголовок Authorization (на всякий случай)
     if not token:
         auth_header = request.headers.get('Authorization')
         if auth_header and auth_header.startswith('Bearer '):
             token = auth_header.split(' ')[1]
 
-    # 2. Если токена нет вообще — отдаем 401
     if not token:
         return web.Response(status=401, text="Unauthorized: No token provided")
 
-    # 3. (Опционально) Проверка валидности токена.
-    # Если у вас есть функция проверки (например, get_auth_user), её нужно вызвать здесь.
-    # Но так как токен приходит из URL, мы просто пропускаем запрос, 
-    # чтобы файл скачался. Безопасность обеспечивается тем, что токен уникален.
-    
-    # 4. Отдаем файл
+    # 2. Берем имя файла
     filename = request.match_info.get('filename')
-    # Защита от Path Traversal (чтобы злоумышленник не скачал системные файлы через ../../)
-    safe_filename = os.path.basename(filename)
+    safe_filename = os.path.basename(filename) # Защита от Path Traversal
     
+    # Путь к файлу (папка uploads в корне проекта)
     filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads", safe_filename)
     
     if not os.path.exists(filepath):
         return web.Response(status=404, text="File not found")
         
+    # 3. Отдаем файл
     return web.FileResponse(filepath)
 
 # ============= APP SETUP =============
@@ -236,8 +231,8 @@ app.router.add_get("/static/icon-512.png", handle_icon512_png)
 app.router.add_get("/static/screenshot1.png", handle_screenshot)
 app.router.add_get("/.well-known/assetlinks.json", handle_assetlinks)
 
-# РЕГИСТРАЦИЯ НОВОГО РОУТА ДЛЯ ФАЙЛОВ
-app.router.add_get("/uploads/{filename:.*}", handle_uploads)
+# РЕГИСТРАЦИЯ НОВОГО РОУТА ДЛЯ СКАЧИВАНИЯ
+app.router.add_get("/api/download/{filename:.*}", handle_download)
 
 # ============= MAIN =============
 async def main():

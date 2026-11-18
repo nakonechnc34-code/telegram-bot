@@ -1,10 +1,9 @@
-const CACHE_NAME = 'wokker-cache-v3'; // Обновили версию!
+const CACHE_NAME = 'wokker-cache-v4'; // Подняли версию, чтобы обновить кэш
 const ASSETS = [
-    '/',
-    '/index.html',
-    '/admin.html',
-    '/timesheet.html',
-    '/academy.html',
+    '/',              // Главная (index.html)
+    '/admin',         // Админка (admin.html)
+    '/timesheet',     // Табель
+    '/academy',       // Академия
     '/manifest.json',
     '/static/icon-192.svg',
     '/static/icon-512.svg'
@@ -37,13 +36,11 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
 
-    // ГЛАВНОЕ ИСПРАВЛЕНИЕ: Игнорируем запросы к API и файлам (PDF)
-    // Пусть браузер делает эти запросы напрямую к серверу
+    // Игнорируем API и скачивание файлов, чтобы не ломать авторизацию
     if (url.pathname.startsWith('/uploads/') || url.pathname.startsWith('/api/')) {
         return; 
     }
 
-    // Для остальных запросов (страницы, картинки) работает кэш
     event.respondWith(
         caches.match(event.request).then((response) => {
             return response || fetch(event.request);

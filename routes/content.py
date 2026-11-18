@@ -601,11 +601,12 @@ async def handle_admin_upload(request):
     if not file_data:
         return web.json_response({"error": "Файл не загружен"}, status=400)
         
-    # 4. Сохраняем файл
+    # 4. Сохраняем файл (в /data/uploads или локально)
     ext = os.path.splitext(original_name)[1]
     unique_filename = f"{uuid.uuid4().hex}{ext}"
     
-    upload_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads")
+    base_dir = "/data" if os.path.exists("/data") else os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    upload_dir = os.path.join(base_dir, "uploads")
     os.makedirs(upload_dir, exist_ok=True)
     
     filepath = os.path.join(upload_dir, unique_filename)

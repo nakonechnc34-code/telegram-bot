@@ -44,10 +44,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 def run_migrations():
     """Автоматически добавляет нужные колонки в БД при старте и создает папку uploads"""
     try:
-        # АВТОМАТИЧЕСКОЕ СОЗДАНИЕ ПАПКИ UPLOADS
-        upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+        # Определяем базовую папку для файлов (постоянное хранилище или локальная)
+        base_dir = "/data" if os.path.exists("/data") else os.path.dirname(os.path.abspath(__file__))
+        upload_dir = os.path.join(base_dir, "uploads")
+        
         os.makedirs(upload_dir, exist_ok=True)
-        logging.info(f"✅ Папка uploads проверена: {upload_dir}")
+        logging.info(f"✅ Папка для загрузок проверена/создана: {upload_dir}")
 
         # МИГРАЦИИ БД
         with get_conn() as conn:
@@ -195,8 +197,9 @@ async def handle_download(request):
     filename = request.match_info.get('filename')
     safe_filename = os.path.basename(filename) # Защита от Path Traversal
     
-    # Путь к файлу (папка uploads в корне проекта)
-    filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads", safe_filename)
+    # Ищем файл в постоянном хранилище (/data) или локальной папке
+    base_dir = "/data" if os.path.exists("/data") else os.path.dirname(os.path.abspath(__file__))
+    filepath = os.path.join(base_dir, "uploads", safe_filename)
     
     if not os.path.exists(filepath):
         return web.Response(status=404, text="File not found")

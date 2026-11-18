@@ -5,13 +5,14 @@ meta:
     version: '3.11'
 
 build:
-  requirements: requirements.txt
+  # Правильное название параметра — requirementsPath
+  requirementsPath: requirements.txt
 
 run:
-  # Подключаем постоянное хранилище (диск)
+  # Подключаем постоянное хранилище (диск) для файлов
   persistenceMount: /data
   
-  # Порт, на котором работает aiohttp
+  # Порт, на котором работает aiohttp (в вашем app.py установлен 8080)
   containerPort: 8080
   
   # Команда запуска

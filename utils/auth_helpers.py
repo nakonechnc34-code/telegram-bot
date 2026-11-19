@@ -120,19 +120,30 @@ def _sync_get_tu_rests(user_id):
             return [r[0] for r in cur.fetchall()]
 
 async def get_auth_user(request):
+    # 1. Сначала ищем в query params
     token = request.query.get("token") or request.query.get("webToken")
+    
+    # 2. Потом ищем в заголовках (для multipart/form-data и X-Token)
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header.split(" ", 1)[1]
+        if not token:
+            token = request.headers.get("X-Token") or ""
+    
+    # 3. Если нет token — пытаемся из JSON body
     if not token:
         try:
             body = await request.json()
             token = body.get("webToken") or ""
         except Exception:
             token = ""
-            
+
     if not token: return None, 401
-    
+
     user_id = await _run(_sync_get_session_user, token)
     if not user_id: return None, 401
-    
+
     user = await _run(_sync_get_user, user_id)
     if not user: return None, 401
     if user.get("is_fired"): return None, "fired"

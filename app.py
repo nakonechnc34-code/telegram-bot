@@ -54,11 +54,29 @@ def run_migrations():
         # МИГРАЦИИ БД
         with get_conn() as conn:
             with conn.cursor() as cur:
+                # Колонки табеля
                 cur.execute("ALTER TABLE timesheet_records ADD COLUMN IF NOT EXISTS restaurant_key TEXT;")
                 cur.execute("ALTER TABLE timesheet_records ADD COLUMN IF NOT EXISTS start_time TIME;")
                 cur.execute("ALTER TABLE timesheet_records ADD COLUMN IF NOT EXISTS end_time TIME;")
+                # Колонка сотрудников
                 cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS personnel_number VARCHAR(50);")
-                logging.info("✅ Миграция БД: колонки проверены/добавлены.")
+                # Таблица выплат (если ещё не создана)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS payments (
+                        id SERIAL PRIMARY KEY,
+                        user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,
+                        amount NUMERIC(10,2) NOT NULL,
+                        comment TEXT NOT NULL,
+                        payment_date DATE DEFAULT CURRENT_DATE,
+                        created_at TIMESTAMPTZ DEFAULT NOW(),
+                        created_by BIGINT,
+                        record_type TEXT DEFAULT 'payout',
+                        status TEXT DEFAULT 'approved',
+                        proposed_by_name TEXT,
+                        approved_by_name TEXT
+                    )
+                """)
+                logging.info("✅ Миграция БД: колонки и таблицы проверены/добавлены.")
     except Exception as e:
         logging.error(f"❌ Ошибка миграции/создания папок: {e}")
 
@@ -196,14 +214,22 @@ async def handle_download(request):
     # 2. Берем имя файла
     filename = request.match_info.get('filename')
     safe_filename = os.path.basename(filename) # Защита от Path Traversal
-    
+
     # Ищем файл в постоянном хранилище (/data) или локальной папке
     base_dir = "/data" if os.path.exists("/data") else os.path.dirname(os.path.abspath(__file__))
-    filepath = os.path.join(base_dir, "uploads", safe_filename)
-    
+    upload_dir = os.path.join(base_dir, "uploads")
+    filepath = os.path.join(upload_dir, safe_filename)
+
+    # ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: реальный путь должен быть внутри upload_dir
+    real_upload_dir = os.path.realpath(upload_dir)
+    real_filepath = os.path.realpath(filepath)
+    if not real_filepath.startswith(real_upload_dir + os.sep):
+        logging.warning(f"Path traversal attempt: {filename}")
+        return web.Response(status=403, text="Forbidden")
+
     if not os.path.exists(filepath):
         return web.Response(status=404, text="File not found")
-        
+
     # 3. Отдаем файл
     return web.FileResponse(filepath)
 

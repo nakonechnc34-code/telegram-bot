@@ -5,34 +5,10 @@ from db import get_conn, _run
 from utils.auth_helpers import get_admin_user, denied, require_perm, _sync_user_has_perm, _is_tu, _sync_get_tu_rests
 from utils.security import hash_password
 from routes.medbooks import compute_medbook_status, _sync_get_medbook_refs
+from utils.common import safe_int, safe_float, generate_login_for
 import random
 
 routes = web.RouteTableDef()
-
-TRANSLIT = {"а":"a","б":"b","в":"v","г":"g","д":"d","е":"e","ё":"e","ж":"zh","з":"z","и":"i","й":"y","к":"k","л":"l","м":"m","н":"n","о":"o","п":"p","р":"r","с":"s","т":"t","у":"u","ф":"f","х":"h","ц":"ts","ч":"ch","ш":"sh","щ":"sch","ъ":"","ы":"y","ь":"","э":"e","ю":"yu","я":"ya"}
-
-def _generate_login_for(full_name, existing_logins):
-    parts = (full_name or "").strip().split()
-    surname = (parts[0] if parts else "").lower()
-    letters = ""
-    for ch in surname:
-        if len(letters) >= 3: break
-        t = TRANSLIT.get(ch)
-        if t: letters += t
-    while len(letters) < 3:
-        letters += random.choice("abcdefghijklmnopqrstuvwxyz")
-    letters = letters[:3]
-    digits = list(range(10, 100))
-    random.shuffle(digits)
-    for d in digits:
-        candidate = f"{letters}{d}"
-        if candidate not in existing_logins: return candidate
-    for _ in range(500):
-        rl = "".join(random.choice("abcdefghijklmnopqrstuvwxyz") for _ in range(3))
-        d = random.randint(10, 99)
-        candidate = f"{rl}{d}"
-        if candidate not in existing_logins: return candidate
-    raise RuntimeError("Не удалось сгенерировать логин")
 
 def validate_user_create_data(body):
     if not isinstance(body, dict): return None, "invalid_json"
@@ -116,7 +92,7 @@ async def handle_admin_users(request):
 
 def _sync_create_user(data, existing_logins, admin_id=None):
     full_name = data["full_name"]
-    login = _generate_login_for(full_name, existing_logins)
+    login = generate_login_for(full_name, existing_logins)
     restaurant_key = data.get("restaurant_key") or ""
     if restaurant_key:
         with get_conn() as conn:

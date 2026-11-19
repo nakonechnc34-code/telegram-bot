@@ -7,10 +7,22 @@ from datetime import datetime, timezone as _tz
 from aiohttp import web
 from psycopg2.extras import RealDictCursor
 from db import get_conn, _run
-from config import SESSION_TTL_DAYS, SESSION_CACHE_TTL
+from config import SESSION_TTL_DAYS, SESSION_CACHE_TTL, MAX_SESSION_CACHE_SIZE
 
 _session_cache = {}
 _session_cache_lock = threading.Lock()
+
+def _cleanup_session_cache():
+    """Простая очистка кэша: если размер превышен, удаляем самые старые записи."""
+    now = time.time()
+    with _session_cache_lock:
+        if len(_session_cache) > MAX_SESSION_CACHE_SIZE:
+            # Сортируем по времени и удаляем половину самых старых
+            sorted_items = sorted(_session_cache.items(), key=lambda x: x[1][1])
+            to_remove = sorted_items[:len(sorted_items) // 2]
+            for token, _ in to_remove:
+                _session_cache.pop(token, None)
+            logging.debug(f"🧹 Session cache cleaned: {len(_session_cache)} entries left")
 
 def _sync_get_user(user_id):
     with get_conn() as conn:
@@ -45,10 +57,16 @@ def _sync_get_session_user(token):
                     return None
             
             cur.execute("UPDATE web_sessions SET last_used_at = NOW() WHERE token = %s AND (last_used_at IS NULL OR last_used_at < NOW() - INTERVAL '1 hour')", (token,))
-            
+
             with _session_cache_lock:
                 _session_cache[token] = (uid, now)
             return uid
+
+    # Вызываем очистку каждые ~100 запросов (через time.time() % 100 == 0)
+    if int(now * 10) % 100 == 0:
+        _cleanup_session_cache()
+
+    return None
 
 def _sync_create_session(user_id):
     token = secrets.token_urlsafe(32)

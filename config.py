@@ -23,10 +23,22 @@ if not ADMIN_PASSWORD:
     raise ValueError("КРИТИЧЕСКАЯ ОШИБКА: Переменная окружения ADMIN_PASSWORD не задана!")
 
 APP_ENV = os.getenv("ENV", "development").lower()
+SENTRY_DSN = os.getenv("SENTRY_DSN")  # Optional: https://sentry.io/dsn
 LOGIN_RE = re.compile(r"^[a-z]{3}\d{2}$")
 SESSION_TTL_DAYS = 30
 SESSION_CACHE_TTL = int(os.getenv("SESSION_CACHE_TTL", "300"))  # секунд, по умолчанию 5 мин
 MAX_SESSION_CACHE_SIZE = int(os.getenv("MAX_SESSION_CACHE_SIZE", "5000"))  # макс. записей
+
+# Rate limiting
+API_RATE_LIMIT_PER_MINUTE = int(os.getenv("API_RATE_LIMIT_PER_MINUTE", "100"))  # запросов в минуту
+LOGIN_RATE_LIMIT_PER_MINUTE = int(os.getenv("LOGIN_RATE_LIMIT_PER_MINUTE", "5"))  # попыток входа в минуту
+LOGIN_RATE_WINDOW = 60  # окно в секундах
+
+# Cache TTL (in seconds)
+CACHE_TTL_RESTAURANTS = int(os.getenv("CACHE_TTL_RESTAURANTS", "300"))  # 5 мин
+CACHE_TTL_MEDBOOK_REF = int(os.getenv("CACHE_TTL_MEDBOOK_REF", "3600"))  # 1 час
+CACHE_TTL_FAQ = int(os.getenv("CACHE_TTL_FAQ", "3600"))  # 1 час
+CACHE_TTL_NEWS = int(os.getenv("CACHE_TTL_NEWS", "60"))  # 1 мин
 
 ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.csv'}
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}

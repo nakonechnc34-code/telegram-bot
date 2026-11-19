@@ -4,8 +4,9 @@ from aiohttp import web
 from psycopg2.extras import RealDictCursor, Json
 from psycopg2 import sql
 from db import get_conn, _run
-from utils.auth_helpers import get_admin_user, get_auth_user, denied, require_perm, _sync_user_has_perm
+from utils.auth_helpers import get_auth_user, denied, require_perm, _sync_user_has_perm
 from utils.security import sanitize_html
+from middleware.auth import require_admin, require_perm as require_perm_decor
 import logging
 
 routes = web.RouteTableDef()
@@ -21,9 +22,9 @@ def _check_can_publish(admin):
     return admin["is_super_admin"] or (admin.get("position") or "").strip().upper() == "HR"
 
 @routes.post('/api/admin/news')
+@require_admin
 async def handle_admin_news_list(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     def _sync():
         with get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -33,9 +34,9 @@ async def handle_admin_news_list(request):
     return web.json_response({"news": await _run(_sync)})
 
 @routes.post('/api/admin/news/add')
+@require_admin
 async def handle_admin_news_add(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     can_publish = _check_can_publish(admin)
     can_suggest = _sync_user_has_perm(admin, "news_suggest") or _sync_user_has_perm(admin, "news_write")
     if not (can_publish or can_suggest): return web.json_response({"error": "forbidden"}, status=403)

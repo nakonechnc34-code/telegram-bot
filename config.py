@@ -25,7 +25,8 @@ if not ADMIN_PASSWORD:
 APP_ENV = os.getenv("ENV", "development").lower()
 LOGIN_RE = re.compile(r"^[a-z]{3}\d{2}$")
 SESSION_TTL_DAYS = 30
-SESSION_CACHE_TTL = 30  # секунд
+SESSION_CACHE_TTL = int(os.getenv("SESSION_CACHE_TTL", "300"))  # секунд, по умолчанию 5 мин
+MAX_SESSION_CACHE_SIZE = int(os.getenv("MAX_SESSION_CACHE_SIZE", "5000"))  # макс. записей
 
 ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.csv'}
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}

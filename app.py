@@ -168,14 +168,12 @@ async def request_logging_middleware(request, handler):
     start = time.time()
     try:
         response = await handler(request)
-        return response
-    finally:
         duration = time.time() - start
         method = request.method
         path = request.path
         # Пропускаем статику
         if path.startswith('/static/') or path in ('/favicon.ico', '/.well-known/assetlinks.json'):
-            return
+            return response
         user_id = request.get('user', {}).get('user_id', '-') if 'user' in request else '-'
         status = response.status if hasattr(response, 'status') else '?'
         logging.info(
@@ -187,6 +185,11 @@ async def request_logging_middleware(request, handler):
             duration,
             user_id
         )
+        return response
+    except Exception as e:
+        duration = time.time() - start
+        logging.error("Unhandled %s %s: %s", request.method, request.path, str(e)[:100])
+        return web.json_response({"error": "internal"}, status=500)
 
 # ============= STATIC FILE SERVING =============
 _INDEX_CACHE = {"data": None, "mtime": 0.0}

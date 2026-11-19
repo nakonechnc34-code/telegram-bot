@@ -4,7 +4,7 @@ from aiohttp import web
 from psycopg2.extras import RealDictCursor, Json
 from psycopg2 import sql
 from db import get_conn, _run
-from utils.auth_helpers import get_auth_user, denied, require_perm, _sync_user_has_perm
+from utils.auth_helpers import get_auth_user, get_admin_user, denied, require_perm, _sync_user_has_perm
 from utils.security import sanitize_html
 from middleware.auth import require_admin, require_perm as require_perm_decor
 import logging
@@ -76,9 +76,9 @@ async def handle_admin_news_add(request):
     return web.json_response({"ok": True, "status": status, "news": news_row})
 
 @routes.post('/api/admin/standards')
+@require_admin
 async def handle_admin_standards(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     def _sync():
         with get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -87,9 +87,9 @@ async def handle_admin_standards(request):
     return web.json_response({"standards": await _run(_sync)})
 
 @routes.post('/api/admin/standard/add')
+@require_admin
 async def handle_admin_standard_add(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     can_publish = _check_can_publish(admin)
     can_suggest = _sync_user_has_perm(admin, "standards_edit")
     if not (can_publish or can_suggest): return web.json_response({"error": "forbidden"}, status=403)
@@ -125,9 +125,9 @@ async def handle_admin_standard_add(request):
     return web.json_response({"ok": True, "status": status, "standard": std_row})
 
 @routes.post('/api/admin/certification')
+@require_admin
 async def handle_admin_certification_list(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     def _sync():
         with get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -136,9 +136,9 @@ async def handle_admin_certification_list(request):
     return web.json_response({"questions": await _run(_sync)})
 
 @routes.post('/api/admin/certification/add')
+@require_admin
 async def handle_admin_certification_add(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     perm_err = require_perm(admin, "certification_edit")
     if perm_err: return perm_err
     try: body = await request.json()
@@ -159,9 +159,9 @@ async def handle_admin_certification_add(request):
     return web.json_response({"ok": True})
 
 @routes.post('/api/admin/faq')
+@require_admin
 async def handle_admin_faq(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     def _sync():
         with get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -170,9 +170,9 @@ async def handle_admin_faq(request):
     return web.json_response({"faq": await _run(_sync)})
 
 @routes.post('/api/admin/faq/add')
+@require_admin
 async def handle_admin_faq_add(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     perm_err = require_perm(admin, "faq_edit")
     if perm_err: return perm_err
     try: body = await request.json()
@@ -188,9 +188,9 @@ async def handle_admin_faq_add(request):
     return web.json_response({"ok": True})
 
 @routes.post('/api/admin/positions')
+@require_admin
 async def handle_admin_positions(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     def _sync():
         with get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -199,9 +199,9 @@ async def handle_admin_positions(request):
     return web.json_response({"positions": await _run(_sync)})
 
 @routes.post('/api/admin/position/add')
+@require_admin
 async def handle_admin_position_add(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     perm_err = require_perm(admin, "positions_edit")
     if perm_err: return perm_err
     try: body = await request.json()
@@ -220,9 +220,9 @@ async def handle_admin_position_add(request):
     return web.json_response({"ok": True})
 
 @routes.post('/api/admin/questions')
+@require_admin
 async def handle_admin_questions(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     def _sync():
         with get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -231,9 +231,9 @@ async def handle_admin_questions(request):
     return web.json_response({"questions": await _run(_sync)})
 
 @routes.post('/api/admin/question/reply')
+@require_admin
 async def handle_admin_question_reply(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     perm_err = require_perm(admin, "questions_reply")
     if perm_err: return perm_err
     try: body = await request.json()
@@ -264,9 +264,9 @@ async def handle_questions_staff(request):
     return web.json_response({"ok": True})
 
 @routes.post('/api/admin/news/update')
+@require_admin
 async def handle_admin_news_update(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     perm_err = require_perm(admin, "news_edit")
     if perm_err: return perm_err
     try: body = await request.json()
@@ -294,9 +294,9 @@ async def handle_admin_news_update(request):
     return web.json_response({"ok": True})
 
 @routes.post('/api/admin/news/delete')
+@require_admin
 async def handle_admin_news_delete(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     perm_err = require_perm(admin, "news_edit")
     if perm_err: return perm_err
     try: body = await request.json()
@@ -311,9 +311,9 @@ async def handle_admin_news_delete(request):
     return web.json_response({"ok": True})
 
 @routes.post('/api/admin/news/approve')
+@require_admin
 async def handle_admin_news_approve(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     if not _check_can_publish(admin): return web.json_response({"error": "forbidden"}, status=403)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)

@@ -4,6 +4,7 @@ import logging
 import gzip
 import traceback
 import json
+import time
 from datetime import datetime, date
 from decimal import Decimal
 from email.utils import formatdate
@@ -11,6 +12,21 @@ from aiohttp import web
 
 import config
 from db import init_pool, close_pool, get_conn
+from middleware.cache import clear_cache
+
+# ============= START TIME =============
+START_TIME = time.time()
+
+# ============= SENTRY INIT =============
+if config.SENTRY_DSN:
+    import sentry_sdk
+    sentry_sdk.init(
+        dsn=config.SENTRY_DSN,
+        traces_sample_rate=0.1,
+        environment=config.APP_ENV,
+        release=f"app@1.2.0",
+    )
+    logging.info("📡 Sentry initialized")
 
 # ============= JSON SERIALIZER FIX =============
 def _json_default(obj):
@@ -47,7 +63,7 @@ def run_migrations():
         # Определяем базовую папку для файлов (постоянное хранилище или локальная)
         base_dir = "/data" if os.path.exists("/data") else os.path.dirname(os.path.abspath(__file__))
         upload_dir = os.path.join(base_dir, "uploads")
-        
+
         os.makedirs(upload_dir, exist_ok=True)
         logging.info(f"✅ Папка для загрузок проверена/создана: {upload_dir}")
 
@@ -76,11 +92,20 @@ def run_migrations():
                         approved_by_name TEXT
                     )
                 """)
-                logging.info("✅ Миграция БД: колонки и таблицы проверены/добавлены.")
+                # Индексы БД (для производительности)
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_web_sessions_token ON web_sessions(token);")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_users_login ON users(LOWER(login));")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_timesheet_records_date ON timesheet_records(user_id, work_date);")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_news_status ON news(status);")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_standards_status ON standards(status);")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_payments_date ON payments(payment_date, status);")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_payments_user_date ON payments(user_id, payment_date);")
+                logging.info("✅ Миграция БД: колонки, таблицы и индексы проверены/добавлены.")
     except Exception as e:
         logging.error(f"❌ Ошибка миграции/создания папок: {e}")
 
 # ============= MIDDLEWARES =============
+
 @web.middleware
 async def error_middleware(request, handler):
     try:
@@ -100,7 +125,7 @@ async def gzip_middleware(request, handler):
     body = getattr(response, "body", None)
     if (body is not None and len(body) > 500 and "gzip" in request.headers.get("Accept-Encoding", "")
             and not response.headers.get("Content-Encoding") and response.content_type in _GZIP_TYPES):
-        
+
         body_bytes = body.encode('utf-8') if isinstance(body, str) else body
         try:
             compressed = gzip.compress(body_bytes, compresslevel=6)
@@ -121,15 +146,47 @@ async def security_headers_middleware(request, handler):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # Обновлённый CSP
     csp = (
         "default-src 'self'; script-src 'self' 'unsafe-inline'; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data: https://images.unsplash.com; "
-        "connect-src 'self' https://fonts.googleapis.com; frame-ancestors 'none';"
+        "connect-src 'self' https://fonts.googleapis.com; "
+        "frame-ancestors 'none'; child-src 'none';"
     )
     response.headers["Content-Security-Policy"] = csp
+    # Cache-Control для HTML (чтобы не кэшировался)
+    if response.content_type == "text/html":
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
     return response
+
+@web.middleware
+async def request_logging_middleware(request, handler):
+    """Middleware: логирует каждый HTTP запрос."""
+    start = time.time()
+    try:
+        response = await handler(request)
+        return response
+    finally:
+        duration = time.time() - start
+        method = request.method
+        path = request.path
+        # Пропускаем статику
+        if path.startswith('/static/') or path in ('/favicon.ico', '/.well-known/assetlinks.json'):
+            return
+        user_id = request.get('user', {}).get('user_id', '-') if 'user' in request else '-'
+        status = response.status if hasattr(response, 'status') else '?'
+        logging.info(
+            "%s %-8s %-40s %d %.3fs user=%s",
+            request.remote or '-',
+            method,
+            path,
+            status,
+            duration,
+            user_id
+        )
 
 # ============= STATIC FILE SERVING =============
 _INDEX_CACHE = {"data": None, "mtime": 0.0}
@@ -153,8 +210,8 @@ async def _handle_html(name, cache):
     data, mtime = _serve_file(name, cache)
     if not data: return web.Response(text=f"frontend/{name} not found", status=404)
     return web.Response(
-        body=data, 
-        content_type="text/html", 
+        body=data,
+        content_type="text/html",
         charset="utf-8",
         headers={"Last-Modified": formatdate(mtime, usegmt=True)}
     )
@@ -168,8 +225,8 @@ async def handle_admin_css(request):
     data, mtime = _serve_file("admin.css", _STATIC_FILES_CACHE.setdefault("admin.css", {"data": None, "mtime": 0.0}))
     if not data: return web.Response(text="admin.css not found", status=404)
     return web.Response(
-        body=data, 
-        content_type="text/css", 
+        body=data,
+        content_type="text/css",
         charset="utf-8",
         headers={
             "Cache-Control": "public, max-age=31536000",
@@ -195,9 +252,27 @@ async def handle_icon192_png(request): return await _send_static_file("icon-192.
 async def handle_icon512_png(request): return await _send_static_file("icon-512.png", "image/png")
 async def handle_screenshot(request): return await _send_static_file("screenshot1.png", "image/png")
 async def handle_assetlinks(request): return await _send_static_file(".well-known/assetlinks.json", "application/json")
-
 async def handle_favicon(request): return web.Response(status=204)
-async def handle_health(request): return web.Response(text="OK")
+
+# ============= HEALTH CHECK =============
+async def handle_health(request):
+    """Health check с проверкой БД."""
+    db_status = "ok"
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+    except Exception as e:
+        db_status = f"error: {str(e)[:100]}"
+
+    status = "healthy" if db_status == "ok" else "degraded"
+    return web.json_response({
+        "status": status,
+        "database": db_status,
+        "uptime": round(time.time() - START_TIME, 1),
+        "version": "1.2.0",
+        "env": config.APP_ENV
+    })
 
 # ============= СКАЧИВАНИЕ ФАЙЛОВ (API) =============
 async def handle_download(request):
@@ -235,7 +310,12 @@ async def handle_download(request):
 
 # ============= APP SETUP =============
 app = web.Application(
-    middlewares=[error_middleware, gzip_middleware, security_headers_middleware],
+    middlewares=[
+        error_middleware,
+        request_logging_middleware,
+        gzip_middleware,
+        security_headers_middleware,
+    ],
     client_max_size=20 * 1024 * 1024,
 )
 
@@ -272,10 +352,10 @@ app.router.add_get("/api/download/{filename:.*}", handle_download)
 # ============= MAIN =============
 async def main():
     port = int(os.getenv("PORT", 8080))
-    
+
     logging.info("⏳ Инициализация пула БД...")
     await asyncio.to_thread(init_pool)
-    
+
     if os.getenv("RUN_MIGRATIONS", "true").lower() == "true":
         logging.info("⏳ Запуск миграций БД и проверки папок...")
         await asyncio.to_thread(run_migrations)
@@ -286,7 +366,7 @@ async def main():
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    
+
     logging.info(f"✅ Server on port {port}")
     logging.info(f"👤 Admin: {config.ADMIN_LOGIN}")
 

@@ -66,10 +66,33 @@ ALLOWED_ATTRS = {
     '*': ['class']
 }
 
+def _sanitize_href(url):
+    """Проверяет что href начинается с http/https/mailto:, а не javascript: или data:."""
+    if not url:
+        return None
+    url = url.strip().lower()
+    allowed_prefixes = ('http://', 'https://', 'mailto:', 'tel:', '#')
+    if any(url.startswith(p) for p in allowed_prefixes):
+        return url
+    return None
+
 def sanitize_html(html_str):
     if not html_str:
         return ""
-    return bleach.clean(html_str, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS, strip=True)
+    cleaned = bleach.clean(html_str, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS, strip=True)
+    # Дополнительная защита: убираем href с опасными схемами
+    # bleach может пропустить javascript: URL, если он зашифрован
+    if '<a ' in cleaned:
+        import re
+        # Найдем все href атрибуты и проверим их
+        cleaned = re.sub(
+            r'(href\s*=\s*["\'])([^"\']*)(["\'])',
+            lambda m: f'{m.group(1)}{_sanitize_href(m.group(2)) or "javascript:void(0)"}{m.group(3)}'
+            if m.group(2).strip() else f'{m.group(1)}javascript:void(0){m.group(3)}',
+            cleaned,
+            flags=re.IGNORECASE
+        )
+    return cleaned
 
 # ============= JSON СЕРИАЛИЗАТОР =============
 from datetime import datetime, date

@@ -5,3 +5,7 @@ pywebpush==1.14.0
 py-vapid==1.9.1
 bleach==6.1.0
 openpyxl==3.1.2
+
+# Development (опционально)
+sentry-sdk==2.19.0  # Optional: error tracking
+pytest==8.3.3       # Optional: testing

@@ -3,7 +3,6 @@ import uuid
 from aiohttp import web
 from psycopg2.extras import RealDictCursor, Json
 from psycopg2 import sql
-from multidict import CIMultiDict
 from db import get_conn, _run
 from utils.auth_helpers import get_admin_user, get_auth_user, denied, require_perm, _sync_user_has_perm
 from utils.security import sanitize_html
@@ -539,82 +538,3 @@ async def handle_staff_certification_submit(request):
 
     result = await _run(_sync)
     return web.json_response(result)
-
-# ============= ЗАГРУЗКА ФАЙЛОВ =============
-class DummyRequest:
-    def __init__(self, original_request, token):
-        self._original = original_request
-        self._token = token
-        # Принудительно вписываем токен во все возможные заголовки
-        self.headers = CIMultiDict(original_request.headers)
-        self.headers['X-Token'] = token
-        self.headers['Authorization'] = f'Bearer {token}'
-        self.query = original_request.query
-        self.match_info = original_request.match_info
-
-    async def json(self):
-        return {"webToken": self._token}
-        
-    async def post(self):
-        return {"webToken": self._token}
-
-    def __getattr__(self, name):
-        return getattr(self._original, name)
-
-@routes.post('/api/admin/upload')
-async def handle_admin_upload(request):
-    # 1. Ищем токен везде, где только можно
-    token = request.query.get('webToken')
-    
-    if not token:
-        auth_header = request.headers.get('Authorization')
-        if auth_header and auth_header.startswith('Bearer '):
-            token = auth_header.split(' ')[1]
-        elif request.headers.get('X-Token'):
-            token = request.headers.get('X-Token')
-            
-    # 2. Читаем multipart-данные
-    reader = await request.multipart()
-    file_data = None
-    original_name = "file.pdf"
-    
-    while True:
-        part = await reader.next()
-        if part is None: break
-        
-        if part.name == 'webToken' and not token:
-            token = await part.text()
-            
-        elif part.name == 'file':
-            original_name = part.filename
-            file_data = await part.read()
-            
-    if not token:
-        return web.json_response({"error": "No token provided"}, status=401)
-        
-    # 3. Проверяем права
-    dummy_req = DummyRequest(request, token)
-    admin, err = await get_admin_user(dummy_req)
-    if err: 
-        return denied(err)
-        
-    if not file_data:
-        return web.json_response({"error": "Файл не загружен"}, status=400)
-        
-    # 4. Сохраняем файл (в /data/uploads или локально)
-    ext = os.path.splitext(original_name)[1]
-    unique_filename = f"{uuid.uuid4().hex}{ext}"
-    
-    base_dir = "/data" if os.path.exists("/data") else os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    upload_dir = os.path.join(base_dir, "uploads")
-    os.makedirs(upload_dir, exist_ok=True)
-    
-    filepath = os.path.join(upload_dir, unique_filename)
-    with open(filepath, 'wb') as f:
-        f.write(file_data)
-        
-    return web.json_response({
-        "ok": True,
-        "file_url": f"/uploads/{unique_filename}",
-        "file_name": original_name
-    })

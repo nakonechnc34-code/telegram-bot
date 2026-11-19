@@ -17,6 +17,7 @@ from routes.medbooks import (
     compute_medbook_status, entry_status, _mb_items, _sync_get_medbook_refs
 )
 from routes.users import _sync_dashboard_stats
+from utils.common import safe_int
 
 try:
     from pywebpush import webpush, WebPushException
@@ -25,10 +26,6 @@ except ImportError:
     WebPushException = Exception
 
 routes = web.RouteTableDef()
-
-def _safe_int(val, default=0):
-    try: return int(val)
-    except: return default
 
 def _medbook_missing_count(medbook, doctors, tests, vaccines):
     items = _mb_items(medbook, doctors, tests, vaccines)
@@ -229,6 +226,7 @@ async def handle_admin_restaurant_update(request):
     key = body.get("key") or ""
     updates = body.get("updates") or {}
     allowed = {"name", "address", "phone", "hours", "org", "lat", "lon"}
+
     def _sync():
         with get_conn() as conn:
             with conn.cursor() as cur:
@@ -236,6 +234,11 @@ async def handle_admin_restaurant_update(request):
                     if k in allowed:
                         query = sql.SQL("UPDATE restaurants SET {} = %s WHERE key = %s").format(sql.Identifier(k))
                         cur.execute(query, (v, key))
+                # Audit log
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)",
+                            (admin["user_id"], "restaurant_update", "restaurant", key, f"fields={','.join(updates.keys())}"))
     await _run(_sync)
     return web.json_response({"ok": True})
 

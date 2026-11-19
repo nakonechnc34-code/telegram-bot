@@ -327,9 +327,9 @@ async def handle_admin_news_approve(request):
     return web.json_response({"ok": True})
 
 @routes.post('/api/admin/news/reject')
+@require_admin
 async def handle_admin_news_reject(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     if not _check_can_publish(admin): return web.json_response({"error": "forbidden"}, status=403)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
@@ -343,9 +343,9 @@ async def handle_admin_news_reject(request):
     return web.json_response({"ok": True})
 
 @routes.post('/api/admin/standard/update')
+@require_admin
 async def handle_admin_standard_update(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     perm_err = require_perm(admin, "standards_edit")
     if perm_err: return perm_err
     try: body = await request.json()
@@ -376,9 +376,9 @@ async def handle_admin_standard_update(request):
     return web.json_response({"ok": True})
 
 @routes.post('/api/admin/standard/delete')
+@require_admin
 async def handle_admin_standard_delete(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     perm_err = require_perm(admin, "standards_edit")
     if perm_err: return perm_err
     try: body = await request.json()
@@ -393,9 +393,9 @@ async def handle_admin_standard_delete(request):
     return web.json_response({"ok": True})
 
 @routes.post('/api/admin/standard/approve')
+@require_admin
 async def handle_admin_standard_approve(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     if not _check_can_publish(admin): return web.json_response({"error": "forbidden"}, status=403)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
@@ -409,9 +409,9 @@ async def handle_admin_standard_approve(request):
     return web.json_response({"ok": True})
 
 @routes.post('/api/admin/standard/reject')
+@require_admin
 async def handle_admin_standard_reject(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     if not _check_can_publish(admin): return web.json_response({"error": "forbidden"}, status=403)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
@@ -425,9 +425,9 @@ async def handle_admin_standard_reject(request):
     return web.json_response({"ok": True})
 
 @routes.post('/api/admin/faq/update')
+@require_admin
 async def handle_admin_faq_update(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     perm_err = require_perm(admin, "faq_edit")
     if perm_err: return perm_err
     try: body = await request.json()
@@ -448,9 +448,9 @@ async def handle_admin_faq_update(request):
     return web.json_response({"ok": True})
 
 @routes.post('/api/admin/faq/delete')
+@require_admin
 async def handle_admin_faq_delete(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     perm_err = require_perm(admin, "faq_edit")
     if perm_err: return perm_err
     try: body = await request.json()
@@ -465,9 +465,9 @@ async def handle_admin_faq_delete(request):
     return web.json_response({"ok": True})
 
 @routes.post('/api/admin/position/archive')
+@require_admin
 async def handle_admin_position_archive(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     perm_err = require_perm(admin, "positions_edit")
     if perm_err: return perm_err
     try: body = await request.json()
@@ -482,9 +482,9 @@ async def handle_admin_position_archive(request):
     return web.json_response({"ok": True})
 
 @routes.post('/api/admin/certification/delete')
+@require_admin
 async def handle_admin_certification_delete(request):
-    admin, err = await get_admin_user(request)
-    if err: return denied(err)
+    admin = request['user']
     perm_err = require_perm(admin, "certification_edit")
     if perm_err: return perm_err
     try: body = await request.json()

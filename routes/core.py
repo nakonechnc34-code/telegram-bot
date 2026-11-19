@@ -7,7 +7,8 @@ from psycopg2.extras import RealDictCursor, Json
 from psycopg2 import sql
 from db import get_conn, _run
 from config import (
-    ALLOWED_EXTENSIONS, IMAGE_EXTENSIONS, ENABLE_PUSH, VAPID_PRIVATE_KEY, VAPID_CLAIMS, PERM_KEYS
+    ALLOWED_EXTENSIONS, IMAGE_EXTENSIONS, ENABLE_PUSH, VAPID_PRIVATE_KEY, VAPID_CLAIMS, PERM_KEYS,
+    CACHE_TTL_RESTAURANTS, CACHE_TTL_MEDBOOK_REF, CACHE_TTL_NEWS
 )
 from utils.auth_helpers import (
     get_admin_user, get_auth_user, denied, require_perm, _is_hr_or_super, _is_tu, _sync_get_tu_rests, _sync_user_has_perm
@@ -18,6 +19,7 @@ from routes.medbooks import (
 )
 from routes.users import _sync_dashboard_stats
 from utils.common import safe_int
+from middleware.cache import get_cached, set_cached, clear_cache
 
 try:
     from pywebpush import webpush, WebPushException
@@ -164,16 +166,27 @@ async def handle_bootstrap(request):
     })
 
 def _sync_restaurants():
+    cached = get_cached("restaurants_all")
+    if cached is not None:
+        return cached
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT r.*, u.full_name AS territory_manager_name FROM restaurants r LEFT JOIN users u ON r.territory_manager_id = u.user_id ORDER BY r.sort, r.name")
-            return [dict(r) for r in cur.fetchall()]
+            result = [dict(r) for r in cur.fetchall()]
+    set_cached("restaurants_all", result, CACHE_TTL_RESTAURANTS)
+    return result
 
 def _sync_restaurants_by_tu(user_id):
+    cache_key = f"restaurants_tu_{user_id}"
+    cached = get_cached(cache_key)
+    if cached is not None:
+        return cached
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT r.*, u.full_name AS territory_manager_name FROM restaurants r LEFT JOIN users u ON r.territory_manager_id = u.user_id WHERE r.territory_manager_id = %s ORDER BY r.sort, r.name", (user_id,))
-            return [dict(r) for r in cur.fetchall()]
+            result = [dict(r) for r in cur.fetchall()]
+    set_cached(cache_key, result, CACHE_TTL_RESTAURANTS)
+    return result
 
 def _sync_tu_candidates():
     with get_conn() as conn:
@@ -213,6 +226,8 @@ async def handle_admin_restaurant_add(request):
                 cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin["user_id"], "restaurant_create", "restaurant", key, f"name={name}"))
     res = await _run(_sync)
     if res == "duplicate": return web.json_response({"error": "duplicate"}, status=409)
+    # Очищаем кэш ресторанов
+    clear_cache("restaurants_all")
     return web.json_response({"ok": True})
 
 @routes.post('/api/admin/restaurant/update')
@@ -381,7 +396,34 @@ async def handle_admin_change_password(request):
 
 @routes.post('/api/admin/upload')
 async def handle_admin_upload(request):
-    admin, err = await get_admin_user(request)
+    # При multipart/form-data нет JSON body — берём токен из headers или query
+    token = request.query.get('webToken') or request.headers.get('X-Token')
+    if not token and request.headers.get('Authorization', '').startswith('Bearer '):
+        token = request.headers['Authorization'].split(' ', 1)[1]
+
+    if not token:
+        return web.json_response({"error": "Unauthorized: No token provided"}, status=401)
+
+    # Создаём временный request-объект с токеном для get_admin_user
+    from multidict import CIMultiDict
+    headers = CIMultiDict(request.headers)
+    headers['Authorization'] = f'Bearer {token}'
+
+    class TokenRequest:
+        def __init__(self, orig, tok):
+            self._orig = orig
+            self._token = tok
+            self.headers = CIMultiDict(orig.headers)
+            self.headers['Authorization'] = f'Bearer {tok}'
+            self.query = orig.query
+            self.match_info = orig.match_info
+        async def json(self):
+            return {"webToken": self._token}
+        def __getattr__(self, name):
+            return getattr(self._orig, name)
+
+    auth_req = TokenRequest(request, token)
+    admin, err = await get_admin_user(auth_req)
     if err: return denied(err)
     
     try:

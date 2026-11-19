@@ -263,49 +263,130 @@ const PAGE_LOADERS = {
 // ═══ Dashboard ═══
 async function loadDashboard() {
   $('page-content').innerHTML = `
-    <div class="b-card b-card--stat">
-      <div class="b-card__label">Активных</div>
-      <div class="b-card__value b-card__value--green" id="stat-active"><div class="skeleton" style="height:32px;width:60%;border-radius:8px;background:rgba(255,255,255,0.05);"></div></div>
-      <div class="b-card__meta"><span class="b-card__dot b-card__dot--up"></span> +3 за неделю</div>
-    </div>
-    <div class="b-card b-card--stat">
-      <div class="b-card__label">На модерации</div>
-      <div class="b-card__value b-card__value--amber" id="stat-pending"><div class="skeleton" style="height:32px;width:60%;border-radius:8px;background:rgba(255,255,255,0.05);"></div></div>
-      <div class="b-card__meta"><span class="b-card__dot b-card__dot--warn"></span> Ожидают проверки</div>
-    </div>
-    <div class="b-card b-card--stat">
-      <div class="b-card__label">Медкнижки</div>
-      <div class="b-card__value b-card__value--accent" id="stat-medbooks"><div class="skeleton" style="height:32px;width:60%;border-radius:8px;background:rgba(255,255,255,0.05);"></div></div>
-      <div class="b-card__meta"><span class="b-card__dot b-card__dot--down"></span> Требуют внимания</div>
-    </div>
-    <div class="b-card b-card--stat">
-      <div class="b-card__label">К выплате</div>
-      <div class="b-card__value b-card__value--blue" id="stat-payments">₽0</div>
-      <div class="b-card__meta"><span class="b-card__dot b-card__dot--up"></span> Текущий период</div>
-    </div>
-    <div class="b-card b-card--wide">
-      <div class="b-card__label" style="margin-bottom:16px;">Последняя активность</div>
-      <div class="activity" id="dash-activity">
-        <div class="activity__item"><div class="activity__icon activity__icon--green">👤</div><div><div class="activity__text"><strong>HR</strong> создала сотрудника — <strong>Иванов А.</strong></div><div class="activity__time">14 мин назад</div></div></div>
-        <div class="activity__item"><div class="activity__icon activity__icon--accent">📰</div><div><div class="activity__text"><strong>Смирнов В.</strong> предложил новость</div><div class="activity__time">1 час назад</div></div></div>
-        <div class="activity__item"><div class="activity__icon activity__icon--blue">📋</div><div><div class="activity__text"><strong>Табель за октябрь</strong> подписан — 4 ресторана</div><div class="activity__time">2 часа назад</div></div></div>
+    <!-- Stat Cards Row -->
+    <div class="b-card b-card--stat stat--green">
+      <div class="b-card__label">
+        <div class="b-card__icon b-card__icon--green">👥</div>
+        Сотрудники
+      </div>
+      <div class="b-card__value b-card__value--green" id="stat-active">
+        <div class="skeleton" style="height:28px;width:50px;border-radius:8px;background:rgba(255,255,255,0.05);"></div>
+      </div>
+      <div class="b-card__meta">
+        <span class="b-card__trend b-card__trend--up">↑ +3</span>
+        <span>за неделю</span>
       </div>
     </div>
+    
+    <div class="b-card b-card--stat stat--amber">
+      <div class="b-card__label">
+        <div class="b-card__icon b-card__icon--amber">📝</div>
+        На модерации
+      </div>
+      <div class="b-card__value b-card__value--amber" id="stat-pending">
+        <div class="skeleton" style="height:28px;width:50px;border-radius:8px;background:rgba(255,255,255,0.05);"></div>
+      </div>
+      <div class="b-card__meta">
+        <span class="b-card__trend b-card__trend--warn">⏳</span>
+        <span>Ожидают проверки</span>
+      </div>
+    </div>
+    
+    <div class="b-card b-card--stat stat--purple">
+      <div class="b-card__label">
+        <div class="b-card__icon b-card__icon--purple">📖</div>
+        Медкнижки
+      </div>
+      <div class="b-card__value b-card__value--purple" id="stat-medbooks">
+        <div class="skeleton" style="height:28px;width:50px;border-radius:8px;background:rgba(255,255,255,0.05);"></div>
+      </div>
+      <div class="b-card__meta">
+        <span class="b-card__trend b-card__trend--down">!</span>
+        <span>Требуют внимания</span>
+      </div>
+    </div>
+    
+    <div class="b-card b-card--stat stat--blue">
+      <div class="b-card__label">
+        <div class="b-card__icon b-card__icon--blue">💰</div>
+        К выплате
+      </div>
+      <div class="b-card__value b-card__value--blue" id="stat-payments">₽0</div>
+      <div class="b-card__meta">
+        <span class="b-card__trend b-card__trend--up">↑</span>
+        <span>Текущий период</span>
+      </div>
+    </div>
+
+    <!-- Activity + New Hires -->
+    <div class="b-card b-card--wide">
+      <div class="b-card__header">
+        <div class="b-card__header-title">Последняя активность</div>
+        <div class="b-card__header-action" onclick="navigate('news')">Все события →</div>
+      </div>
+      <div class="activity" id="dash-activity">
+        <div class="activity__item">
+          <div class="activity__icon activity__icon--green">👤</div>
+          <div class="activity__content">
+            <div class="activity__text"><strong>HR</strong> создала сотрудника — <strong>Иванов А.</strong></div>
+            <div class="activity__time">14 мин назад</div>
+          </div>
+        </div>
+        <div class="activity__item">
+          <div class="activity__icon activity__icon--accent">📰</div>
+          <div class="activity__content">
+            <div class="activity__text"><strong>Смирнов В.</strong> предложил новость — <strong>Новые стандарты подачи</strong></div>
+            <div class="activity__time">1 час назад</div>
+          </div>
+        </div>
+        <div class="activity__item">
+          <div class="activity__icon activity__icon--blue">📋</div>
+          <div class="activity__content">
+            <div class="activity__text"><strong>Табель за ноябрь</strong> подписан — <strong>4 ресторана</strong></div>
+            <div class="activity__time">2 часа назад</div>
+          </div>
+        </div>
+        <div class="activity__item">
+          <div class="activity__icon activity__icon--purple">🎓</div>
+          <div class="activity__content">
+            <div class="activity__text"><strong>Петрова М.</strong> прошла сертификацию — <strong>Санитария</strong></div>
+            <div class="activity__time">3 часа назад</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="b-card b-card--tall">
-      <div class="b-card__label" style="margin-bottom:16px;">Новые сотрудники</div>
+      <div class="b-card__header">
+        <div class="b-card__header-title">Новые сотрудники</div>
+        <div class="b-card__header-action" onclick="navigate('users')">Все сотрудники →</div>
+      </div>
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>Имя</th><th>Статус</th></tr></thead>
           <tbody id="dash-users-table">
-            <tr><td><div class="name"><div class="avatar" style="background:linear-gradient(135deg,#ff4444,#ff6b35)">И</div>Иванов А.</div></td><td><span class="tag tag--green">Активен</span></td></tr>
-            <tr><td><div class="name"><div class="avatar" style="background:linear-gradient(135deg,#3b82f6,#22c55e)">П</div>Петрова М.</div></td><td><span class="tag tag--green">Активен</span></td></tr>
-            <tr><td><div class="name"><div class="avatar" style="background:linear-gradient(135deg,#a855f7,#3b82f6)">К</div>Козлов Д.</div></td><td><span class="tag tag--amber">Испыт.</span></td></tr>
+            <tr>
+              <td><div class="name-cell"><div class="avatar" style="background:linear-gradient(135deg,#ef4444,#f97316)">И</div>Иванов А.</div></td>
+              <td><span class="tag tag--green">Активен</span></td>
+            </tr>
+            <tr>
+              <td><div class="name-cell"><div class="avatar" style="background:linear-gradient(135deg,#3b82f6,#22c55e)">П</div>Петрова М.</div></td>
+              <td><span class="tag tag--green">Активен</span></td>
+            </tr>
+            <tr>
+              <td><div class="name-cell"><div class="avatar" style="background:linear-gradient(135deg,#a855f7,#3b82f6)">К</div>Козлов Д.</div></td>
+              <td><span class="tag tag--amber">Испыт.</span></td>
+            </tr>
+            <tr>
+              <td><div class="name-cell"><div class="avatar" style="background:linear-gradient(135deg,#ec4899,#a855f7)">С</div>Сидорова Е.</div></td>
+              <td><span class="tag tag--green">Активен</span></td>
+            </tr>
           </tbody>
         </table>
       </div>
     </div>
   `;
-  
+
   try {
     const data = await cachedApi('/api/admin/dashboard/summary', {}, 10000);
     const stats = data.stats || {};
@@ -321,47 +402,90 @@ async function loadDashboard() {
 async function loadUsers() {
   $('page-content').innerHTML = `
     <div class="b-card b-card--wide">
-      <div class="b-card__label" style="margin-bottom:16px;">Сотрудники</div>
+      <div class="b-card__header">
+        <div class="b-card__header-title">Сотрудники</div>
+        <span style="font-size:12px;color:var(--text-tertiary);font-weight:600;" id="users-count">Загрузка...</span>
+      </div>
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>Сотрудник</th><th>Позиция</th><th>Ресторан</th><th>Статус</th></tr></thead>
           <tbody id="users-table">
-            <tr><td colspan="4" style="text-align:center;color:var(--text-muted);">Загрузка...</td></tr>
+            <tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">
+              <div class="loading">Загрузка...</div>
+            </td></tr>
           </tbody>
         </table>
       </div>
     </div>
   `;
-  
+
   try {
     const data = await cachedApi('/api/admin/users', { search: '', fired: false });
     const users = data.users || [];
     const tbody = $('users-table');
-    tbody.innerHTML = users.map(u => `
-      <tr>
-        <td><div class="name"><div class="avatar" style="background:linear-gradient(135deg,#3b82f6,#a855f7)">${(u.full_name || '?').charAt(0)}</div>${esc(u.full_name)}</div></td>
-        <td>${esc(u.position || '—')}</td>
-        <td>${esc(u.restaurant_name || '—')}</td>
-        <td><span class="tag ${u.is_fired ? 'tag--amber' : 'tag--green'}">${u.is_fired ? 'Уволен' : 'Активен'}</span></td>
-      </tr>
-    `).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);">Нет сотрудников</td></tr>';
+    if ($('users-count')) $('users-count').textContent = users.length + ' сотрудников';
+    tbody.innerHTML = users.map(u => {
+      const gradients = [
+        'linear-gradient(135deg,#ef4444,#f97316)',
+        'linear-gradient(135deg,#3b82f6,#22c55e)',
+        'linear-gradient(135deg,#a855f7,#3b82f6)',
+        'linear-gradient(135deg,#ec4899,#a855f7)',
+        'linear-gradient(135deg,#06b6d4,#3b82f6)',
+      ];
+      const grad = gradients[Math.abs(hashCode(u.full_name || '')) % gradients.length];
+      return `
+        <tr>
+          <td><div class="name-cell"><div class="avatar" style="background:${grad}">${(u.full_name || '?').charAt(0).toUpperCase()}</div>${esc(u.full_name || '—')}</div></td>
+          <td class="position">${esc(u.position || '—')}</td>
+          <td class="restaurant">${esc(u.restaurant_name || '—')}</td>
+          <td><span class="tag ${u.is_fired ? 'tag--amber' : 'tag--green'}">${u.is_fired ? 'Уволен' : 'Активен'}</span></td>
+        </tr>
+      `;
+    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет сотрудников</td></tr>';
   } catch (e) {
-    $('users-table').innerHTML = `<tr><td colspan="4" class="empty">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('users-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
+}
+
+function hashCode(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return hash;
 }
 
 // ═══ Medbooks ═══
 async function loadMedbooks() {
   $('page-content').innerHTML = `
     <div class="b-card b-card--wide">
-      <div class="b-card__label" style="margin-bottom:16px;">Медкнижки</div>
+      <div class="b-card__header">
+        <div class="b-card__header-title">Медкнижки</div>
+        <div class="b-card__header-action">Экспорт →</div>
+      </div>
       <div class="table-wrap">
         <table class="t">
-          <thead><tr><th>Сотрудник</th><th>Позиция</th><th>Статус</th></tr></thead>
-          <tbody>
-            <tr><td><div class="name">Иванова М.</div></td><td>Повар</td><td><span class="tag tag--amber">Истекает через 12 дней</span></td></tr>
-            <tr><td><div class="name">Петров С.</div></td><td>Официант</td><td><span class="tag tag--green">OK</span></td></tr>
-            <tr><td><div class="name">Сидорова А.</div></td><td>Кассир</td><td><span class="tag tag--blue">Заполняется</span></td></tr>
+          <thead><tr><th>Сотрудник</th><th>Позиция</th><th>Ресторан</th><th>Статус</th></tr></thead>
+          <tbody id="medbooks-table">
+            <tr>
+              <td><div class="name-cell"><div class="avatar" style="background:linear-gradient(135deg,#ef4444,#f97316)">И</div>Иванова М.</div></td>
+              <td class="position">Повар</td>
+              <td class="restaurant">Wokker Центральный</td>
+              <td><span class="tag tag--amber">Истекает через 12 дней</span></td>
+            </tr>
+            <tr>
+              <td><div class="name-cell"><div class="avatar" style="background:linear-gradient(135deg,#3b82f6,#22c55e)">П</div>Петров С.</div></td>
+              <td class="position">Официант</td>
+              <td class="restaurant">Wokker Северный</td>
+              <td><span class="tag tag--green">OK</span></td>
+            </tr>
+            <tr>
+              <td><div class="name-cell"><div class="avatar" style="background:linear-gradient(135deg,#a855f7,#3b82f6)">С</div>Сидорова А.</div></td>
+              <td class="position">Кассир</td>
+              <td class="restaurant">Wokker Центральный</td>
+              <td><span class="tag tag--blue">Заполняется</span></td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -373,19 +497,33 @@ async function loadMedbooks() {
 async function loadNews() {
   $('page-content').innerHTML = `
     <div class="b-card b-card--wide">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <div class="b-card__label" style="margin:0;">Новости</div>
-        <span style="font-size:11px;color:var(--text-muted);font-weight:600;">5 элементов</span>
+      <div class="b-card__header">
+        <div class="b-card__header-title">Новости</div>
+        <div class="b-card__header-action">+ Создать →</div>
       </div>
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>Тип</th><th>Заголовок</th><th>Автор</th><th>Дата</th><th></th></tr></thead>
-          <tbody>
+          <tbody id="news-table">
             <tr>
               <td><span class="tag tag--blue">Новость</span></td>
-              <td style="color:var(--text);font-weight:600;">Новые стандарты подачи блюд</td>
+              <td style="font-weight:600;color:var(--text);">Новые стандарты подачи блюд</td>
               <td>Смирнов В.</td>
-              <td>18.11.2026</td>
+              <td style="color:var(--text-tertiary);">18.11.2026</td>
+              <td><button class="btn btn--ghost" style="padding:6px 14px;font-size:12px;">✓ Принять</button></td>
+            </tr>
+            <tr>
+              <td><span class="tag tag--purple">Объявление</span></td>
+              <td style="font-weight:600;color:var(--text);">Изменения в графике декабря</td>
+              <td>HR-отдел</td>
+              <td style="color:var(--text-tertiary);">17.11.2026</td>
+              <td><button class="btn btn--ghost" style="padding:6px 14px;font-size:12px;">✓ Принять</button></td>
+            </tr>
+            <tr>
+              <td><span class="tag tag--green">Событие</span></td>
+              <td style="font-weight:600;color:var(--text);">Корпоратив по итогам года</td>
+              <td>Администрация</td>
+              <td style="color:var(--text-tertiary);">15.11.2026</td>
               <td><button class="btn btn--ghost" style="padding:6px 14px;font-size:12px;">✓ Принять</button></td>
             </tr>
           </tbody>
@@ -399,13 +537,34 @@ async function loadNews() {
 async function loadStandards() {
   $('page-content').innerHTML = `
     <div class="b-card b-card--wide">
-      <div class="b-card__label" style="margin-bottom:16px;">Стандарты</div>
+      <div class="b-card__header">
+        <div class="b-card__header-title">Стандарты</div>
+        <div class="b-card__header-action">+ Добавить →</div>
+      </div>
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>Заголовок</th><th>Группа</th><th>Статус</th></tr></thead>
-          <tbody>
-            <tr><td style="color:var(--text);font-weight:600;">Пищевая безопасность</td><td>Общее</td><td><span class="tag tag--green">Опубликован</span></td></tr>
-            <tr><td style="color:var(--text);font-weight:600;">Работа на кассе</td><td>Касса</td><td><span class="tag tag--green">Опубликован</span></td></tr>
+          <tbody id="standards-table">
+            <tr>
+              <td style="font-weight:600;color:var(--text);">Пищевая безопасность</td>
+              <td><span class="tag tag--purple">Общее</span></td>
+              <td><span class="tag tag--green">Опубликован</span></td>
+            </tr>
+            <tr>
+              <td style="font-weight:600;color:var(--text);">Работа на кассе</td>
+              <td><span class="tag tag--blue">Касса</span></td>
+              <td><span class="tag tag--green">Опубликован</span></td>
+            </tr>
+            <tr>
+              <td style="font-weight:600;color:var(--text);">Сервис гостей</td>
+              <td><span class="tag tag--purple">Общее</span></td>
+              <td><span class="tag tag--green">Опубликован</span></td>
+            </tr>
+            <tr>
+              <td style="font-weight:600;color:var(--text);">Приготовлениеwok-блюд</td>
+              <td><span class="tag tag--amber">Кухня</span></td>
+              <td><span class="tag tag--amber">Черновик</span></td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -417,13 +576,29 @@ async function loadStandards() {
 async function loadFaq() {
   $('page-content').innerHTML = `
     <div class="b-card b-card--wide">
-      <div class="b-card__label" style="margin-bottom:16px;">FAQ</div>
+      <div class="b-card__header">
+        <div class="b-card__header-title">FAQ</div>
+        <div class="b-card__header-action">+ Добавить →</div>
+      </div>
       <div class="table-wrap">
         <table class="t">
-          <thead><tr><th>Вопрос</th><th>Категория</th></tr></thead>
-          <tbody>
-            <tr><td style="color:var(--text);font-weight:600;">Как заполнить медкнижку?</td><td>Медкнижки</td></tr>
-            <tr><td style="color:var(--text);font-weight:600;">Как поставить табель?</td><td>Табель</td></tr>
+          <thead><tr><th>Вопрос</th><th>Категория</th><th>Ответ</th></tr></thead>
+          <tbody id="faq-table">
+            <tr>
+              <td style="font-weight:600;color:var(--text);">Как заполнить медкнижку?</td>
+              <td><span class="tag tag--blue">Медкнижки</span></td>
+              <td style="color:var(--text-secondary);">Перейдите в раздел медкнижек...</td>
+            </tr>
+            <tr>
+              <td style="font-weight:600;color:var(--text);">Как поставить табель?</td>
+              <td><span class="tag tag--purple">Табель</span></td>
+              <td style="color:var(--text-secondary);">Откройте табель за нужный месяц...</td>
+            </tr>
+            <tr>
+              <td style="font-weight:600;color:var(--text);">Как отправить заявку на выплату?</td>
+              <td><span class="tag tag--green">Выплаты</span></td>
+              <td style="color:var(--text-secondary);">Перейдите в раздел выплат...</td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -435,13 +610,29 @@ async function loadFaq() {
 async function loadRestaurants() {
   $('page-content').innerHTML = `
     <div class="b-card b-card--wide">
-      <div class="b-card__label" style="margin-bottom:16px;">Рестораны</div>
+      <div class="b-card__header">
+        <div class="b-card__header-title">Рестораны</div>
+        <div class="b-card__header-action">+ Добавить →</div>
+      </div>
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>Название</th><th>Адрес</th><th>Статус</th></tr></thead>
-          <tbody>
-            <tr><td style="color:var(--text);font-weight:600;">Wokker Центральный</td><td>ул. Ленина, 1</td><td><span class="tag tag--green">Открыт</span></td></tr>
-            <tr><td style="color:var(--text);font-weight:600;">Wokker Северный</td><td>пр. Мира, 15</td><td><span class="tag tag--green">Открыт</span></td></tr>
+          <tbody id="restaurants-table">
+            <tr>
+              <td style="font-weight:600;color:var(--text);">Wokker Центральный</td>
+              <td class="restaurant">ул. Ленина, 1</td>
+              <td><span class="tag tag--green">Открыт</span></td>
+            </tr>
+            <tr>
+              <td style="font-weight:600;color:var(--text);">Wokker Северный</td>
+              <td class="restaurant">пр. Мира, 15</td>
+              <td><span class="tag tag--green">Открыт</span></td>
+            </tr>
+            <tr>
+              <td style="font-weight:600;color:var(--text);">Wokker Южный</td>
+              <td class="restaurant">ул. Гагарина, 42</td>
+              <td><span class="tag tag--amber">Ремонт</span></td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -477,3 +668,15 @@ if (getToken()) {
 } else {
   showLogin();
 }
+
+// ═══ Card mouse tracking for glow effect ═══
+document.addEventListener('mousemove', e => {
+  const cards = document.querySelectorAll('.b-card');
+  cards.forEach(card => {
+    const rect = card.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    card.style.setProperty('--mx', x + '%');
+    card.style.setProperty('--my', y + '%');
+  });
+});

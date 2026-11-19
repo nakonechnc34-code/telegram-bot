@@ -9,16 +9,9 @@ import traceback
 import logging
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from utils.common import safe_int, safe_float
 
 routes = web.RouteTableDef()
-
-def _safe_int(val, default=0):
-    try: return int(val)
-    except: return default
-
-def _safe_float(val, default=0.0):
-    try: return float(val)
-    except: return default
 
 def _require_timesheet_access(user):
     if not _sync_user_has_perm(user, "timesheet_access"):
@@ -709,6 +702,16 @@ async def handle_payments_list(request):
     date_to = body.get("date_to")
     if not date_from or not date_to:
         return web.json_response({"error": "invalid_dates"}, status=400)
+
+    # Валидация что даты реалистичны и date_from <= date_to
+    try:
+        from datetime import datetime as _dt
+        df = _dt.strptime(date_from[:10], "%Y-%m-%d")
+        dt_val = _dt.strptime(date_to[:10], "%Y-%m-%d")
+        if df > dt_val:
+            return web.json_response({"error": "date_from_must_be_before_date_to"}, status=400)
+    except (ValueError, TypeError):
+        return web.json_response({"error": "invalid_date_format"}, status=400)
 
     def _sync():
         _ensure_payments_table()

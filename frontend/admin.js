@@ -211,8 +211,8 @@ $('logout-btn')?.addEventListener('click', async () => {
 
 // ═══ Navigation ═══
 const PAGE_TITLES = {
-  dashboard: 'Дашборд', users: 'Сотрудники', timesheet: 'Табель', medbooks: 'Медкнижки',
-  payments: 'Выплаты', news: 'Новости', standards: 'Стандарты', academy: 'Академия', faq: 'FAQ',
+  dashboard: 'Дашборд', users: 'Сотрудники', medbooks: 'Медкнижки',
+  news: 'Новости', standards: 'Стандарты', academy: 'Академия', faq: 'FAQ',
   restaurants: 'Рестораны', settings: 'Настройки',
 };
 
@@ -249,9 +249,7 @@ document.querySelectorAll('.nav-item').forEach(item => {
 const PAGE_LOADERS = {
   dashboard: loadDashboard,
   users: loadUsers,
-  timesheet: () => { $('page-content').innerHTML = '<div class="b-card b-card--wide"><div class="b-card__label">Табель</div><div class="b-card__meta">Раздел в разработке</div></div>'; },
   medbooks: loadMedbooks,
-  payments: () => { $('page-content').innerHTML = '<div class="b-card b-card--wide"><div class="b-card__label">Выплаты</div><div class="b-card__meta">Раздел в разработке</div></div>'; },
   news: loadNews,
   standards: loadStandards,
   academy: () => { $('page-content').innerHTML = '<div class="b-card b-card--wide"><div class="b-card__label">Академия</div><div class="b-card__meta">Раздел в разработке</div></div>'; },

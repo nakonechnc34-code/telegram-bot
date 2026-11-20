@@ -131,9 +131,10 @@ body::before {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  position: sticky;
+  position: fixed;
   top: 0;
-  height: 100vh;
+  left: 0;
+  bottom: 0;
   z-index: 100;
   overflow-y: auto;
   scrollbar-width: none;
@@ -269,7 +270,7 @@ body::before {
 .sidebar-overlay.show { display: block; }
 
 /* ─── Main ─── */
-.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; margin-left: 260px; }
 .content { padding: 32px 40px; flex: 1; }
 
 /* ─── Topbar ─── */
@@ -684,6 +685,7 @@ body.dash-active .topbar-icon-btn { background: rgba(255,255,255,0.05); color: #
 .dash-stat-card.accent .ds-value { color: var(--accent); }
 
 .dash-section-title { font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 16px; }
+.dash-chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 
 .dash-chart-card { background: #272c35; border-radius: 16px; padding: 24px; grid-column: 1 / 2; }
 .dash-bar-chart { display: flex; align-items: flex-end; gap: 16px; height: 200px; margin-top: 24px; }
@@ -809,17 +811,17 @@ body.dash-active .topbar-icon-btn { background: rgba(255,255,255,0.05); color: #
    SKELETON LOADER
    ═══════════════════════════════════════════ */
 @keyframes skeleton-pulse {
-  0% { background-color: rgba(255,255,255,0.05); }
-  50% { background-color: rgba(255,255,255,0.15); }
-  100% { background-color: rgba(255,255,255,0.05); }
+  0% { background-color: rgba(255,255,255,0.04); }
+  50% { background-color: rgba(255,255,255,0.10); }
+  100% { background-color: rgba(255,255,255,0.04); }
 }
 .skeleton {
   animation: skeleton-pulse 1.5s infinite ease-in-out;
   border-radius: 8px;
 }
-.skeleton-text { height: 16px; margin-bottom: 8px; }
+.skeleton-text { height: 14px; margin-bottom: 8px; }
 .skeleton-avatar { width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; }
-.skeleton-stat { height: 36px; width: 60%; border-radius: 8px; margin-top: 4px; }
+.skeleton-stat { height: 32px; width: 60%; border-radius: 8px; margin-top: 4px; }
 
 /* ═══════════════════════════════════════════
    PENDING CARDS
@@ -1201,8 +1203,10 @@ body.dash-active .topbar-icon-btn { background: rgba(255,255,255,0.05); color: #
     padding-top: max(24px, env(safe-area-inset-top));
   }
   .sidebar.open { transform: translateX(0); }
+  .sidebar-overlay { z-index: 150; }
+  .sidebar-overlay.show { display: block; }
   .hamburger { display: inline-flex; }
-  .main { width: 100%; }
+  .main { margin-left: 0; width: 100%; }
   .topbar { padding: 16px 20px; padding-top: max(16px, env(safe-area-inset-top)); }
   .topbar-search { display: none; }
   .topbar-title { text-align: left; font-size: 18px; }

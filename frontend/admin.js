@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════
-   WOKKER ADMIN — BENTO EDITION (FIXED)
+   WOKKER ADMIN — NEUMORPHIC DASHBOARD
    ═══════════════════════════════════════════ */
 
 const TOKEN_KEY = 'wokker_admin_token';
@@ -29,17 +29,6 @@ async function cachedApi(path, body, ttl = 30000) {
     return data;
 }
 function clearCache() { _cache = {}; }
-
-function cleanHTML(html) {
-    if (!html) return '';
-    let clean = String(html);
-    clean = clean.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
-    clean = clean.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '');
-    clean = clean.replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, '');
-    clean = clean.replace(/href\s*=\s*["']?\s*javascript:/gi, 'href="#"');
-    clean = clean.replace(/\s*(class|id)="[^"]*"/gi, '');
-    return clean.trim();
-}
 
 function toast(text, type) {
   const el = document.createElement('div');
@@ -90,25 +79,6 @@ async function api(path, body) {
     clearToken(); showLogin(); throw new Error(data.error);
   }
   return data;
-}
-
-async function uploadFile(file) {
-    const formData = new FormData();
-    formData.append('file', file);
-    try {
-        const res = await fetch('/api/admin/upload', {
-            method: 'POST',
-            headers: { 'X-Token': getToken() },
-            body: formData
-        });
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error || 'Upload failed');
-        }
-        return await res.json();
-    } catch (e) {
-        throw new Error('Ошибка сети при загрузке файла');
-    }
 }
 
 // ═══ Mobile Sidebar ═══
@@ -312,51 +282,107 @@ async function refreshCounters() {
   } catch (e) {}
 }
 
+// ═══ Avatar Gradients ═══
+const GRADIENTS = [
+  'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+  'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+  'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+  'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+  'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+];
+
+function getAvatarGradient(index) {
+  return GRADIENTS[index % GRADIENTS.length];
+}
+
 // ═══ DASHBOARD ═══
 async function loadDashboard() {
   $('page-content').innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;">
-      <div class="b-card b-card--stat">
-        <div class="b-card__label"><div class="b-card__icon b-card__icon--green">👥</div>Сотрудники</div>
-        <div class="b-card__value b-card__value--green" id="stat-active"><div class="skeleton skeleton-stat"></div></div>
-        <div class="b-card__meta"><span class="b-card__trend b-card__trend--up">↑ +3</span><span>за неделю</span></div>
+    <div class="stats-grid">
+      <div class="neu-card neu-card--stat">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div class="neu-card__icon-wrapper neu-card__icon-wrapper--purple">👥</div>
+          <div class="neu-card__trend neu-card__trend--up">↑ +3</div>
+        </div>
+        <div class="neu-card__value" id="stat-active">
+          <div class="skeleton skeleton-stat"></div>
+        </div>
+        <div class="neu-card__label">Активные сотрудники</div>
       </div>
-      <div class="b-card b-card--stat">
-        <div class="b-card__label"><div class="b-card__icon b-card__icon--amber">📝</div>На модерации</div>
-        <div class="b-card__value b-card__value--amber" id="stat-pending"><div class="skeleton skeleton-stat"></div></div>
-        <div class="b-card__meta"><span class="b-card__trend b-card__trend--warn">⏳</span><span>Ожидают проверки</span></div>
+
+      <div class="neu-card neu-card--stat">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div class="neu-card__icon-wrapper neu-card__icon-wrapper--blue">📝</div>
+          <div class="neu-card__trend neu-card__trend--warn">⏳</div>
+        </div>
+        <div class="neu-card__value" id="stat-pending">
+          <div class="skeleton skeleton-stat"></div>
+        </div>
+        <div class="neu-card__label">На модерации</div>
       </div>
-      <div class="b-card b-card--stat">
-        <div class="b-card__label"><div class="b-card__icon b-card__icon--purple">📖</div>Медкнижки</div>
-        <div class="b-card__value b-card__value--purple" id="stat-medbooks"><div class="skeleton skeleton-stat"></div></div>
-        <div class="b-card__meta"><span class="b-card__trend b-card__trend--down">!</span><span>Требуют внимания</span></div>
+
+      <div class="neu-card neu-card--stat">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div class="neu-card__icon-wrapper neu-card__icon-wrapper--pink">📖</div>
+          <div class="neu-card__trend neu-card__trend--down">!</div>
+        </div>
+        <div class="neu-card__value" id="stat-medbooks">
+          <div class="skeleton skeleton-stat"></div>
+        </div>
+        <div class="neu-card__label">Медкнижки требуют внимания</div>
       </div>
-      <div class="b-card b-card--stat">
-        <div class="b-card__label"><div class="b-card__icon b-card__icon--blue">❓</div>Вопросы</div>
-        <div class="b-card__value b-card__value--blue" id="stat-questions"><div class="skeleton skeleton-stat"></div></div>
-        <div class="b-card__meta"><span class="b-card__trend b-card__trend--warn">открытых</span></div>
+
+      <div class="neu-card neu-card--stat">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div class="neu-card__icon-wrapper neu-card__icon-wrapper--green">❓</div>
+          <div class="neu-card__trend neu-card__trend--warn">открытых</div>
+        </div>
+        <div class="neu-card__value" id="stat-questions">
+          <div class="skeleton skeleton-stat"></div>
+        </div>
+        <div class="neu-card__label">Вопросы от сотрудников</div>
       </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-top:16px;">
-      <div class="b-card b-card--wide">
-        <div class="b-card__header">
-          <div class="b-card__header-title">Последняя активность</div>
-          <div class="b-card__header-action" onclick="navigate('news')">Все события →</div>
+    <div class="grid-2">
+      <div class="neu-card">
+        <div class="neu-card__header">
+          <div class="neu-card__header-title">Последняя активность</div>
+          <div class="neu-card__header-action" onclick="navigate('news')">Все события →</div>
         </div>
         <div class="activity" id="dash-activity">
-          <div class="activity__item"><div class="activity__icon activity__icon--green">👤</div><div class="activity__content"><div class="activity__text"><strong>HR</strong> создала сотрудника</div><div class="activity__time">только что</div></div></div>
-          <div class="activity__item"><div class="activity__icon activity__icon--accent">📰</div><div class="activity__content"><div class="activity__text"><strong>Смирнов В.</strong> предложил новость</div><div class="activity__time">1 час назад</div></div></div>
-          <div class="activity__item"><div class="activity__icon activity__icon--blue">📋</div><div class="activity__content"><div class="activity__text"><strong>Табель</strong> обновлён</div><div class="activity__time">2 часа назад</div></div></div>
+          <div class="activity__item">
+            <div class="activity__icon activity__icon--green">👤</div>
+            <div class="activity__content">
+              <div class="activity__text"><strong>HR</strong> создала сотрудника</div>
+              <div class="activity__time">только что</div>
+            </div>
+          </div>
+          <div class="activity__item">
+            <div class="activity__icon activity__icon--accent">📰</div>
+            <div class="activity__content">
+              <div class="activity__text"><strong>Смирнов В.</strong> предложил новость</div>
+              <div class="activity__time">1 час назад</div>
+            </div>
+          </div>
+          <div class="activity__item">
+            <div class="activity__icon activity__icon--blue">📋</div>
+            <div class="activity__content">
+              <div class="activity__text"><strong>Табель</strong> обновлён</div>
+              <div class="activity__time">2 часа назад</div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="b-card b-card--tall">
-        <div class="b-card__header">
-          <div class="b-card__header-title">Новые сотрудники</div>
-          <div class="b-card__header-action" onclick="navigate('users')">Все →</div>
+      <div class="neu-card">
+        <div class="neu-card__header">
+          <div class="neu-card__header-title">Новые сотрудники</div>
+          <div class="neu-card__header-action" onclick="navigate('users')">Все →</div>
         </div>
-        <div id="dash-new-users"><div class="loading">Загрузка...</div></div>
+        <div id="dash-new-users">
+          <div class="loading">Загрузка...</div>
+        </div>
       </div>
     </div>
   `;
@@ -371,8 +397,17 @@ async function loadDashboard() {
     if ($('dash-new-users')) {
       const users = (data.users || []).slice(0, 5);
       $('dash-new-users').innerHTML = users.map((u, i) => {
-        const gradients = ['linear-gradient(135deg,#ef4444,#f97316)','linear-gradient(135deg,#3b82f6,#22c55e)','linear-gradient(135deg,#a855f7,#3b82f6)','linear-gradient(135deg,#ec4899,#a855f7)','linear-gradient(135deg,#06b6d4,#3b82f6)'];
-        return `<div class="activity__item"><div class="avatar" style="background:${gradients[i%5]};width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600;">${(u.full_name||'?').charAt(0)}</div><div class="activity__content"><div class="activity__text">${esc(u.full_name||'—')}</div><div class="activity__time">${esc(u.position||'')}</div></div></div>`;
+        return `
+          <div class="activity__item">
+            <div class="avatar" style="background:${getAvatarGradient(i)};width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:700;flex-shrink:0;">
+              ${(u.full_name||'?').charAt(0)}
+            </div>
+            <div class="activity__content">
+              <div class="activity__text">${esc(u.full_name||'—')}</div>
+              <div class="activity__time">${esc(u.position||'')}</div>
+            </div>
+          </div>
+        `;
       }).join('') || '<div class="loading">Нет новых</div>';
     }
   } catch (e) {
@@ -383,15 +418,28 @@ async function loadDashboard() {
 // ═══ USERS ═══
 async function loadUsers() {
   $('page-content').innerHTML = `
-    <div class="b-card b-card--wide">
-      <div class="b-card__header">
-        <div class="b-card__header-title">Сотрудники</div>
-        <span style="font-size:12px;color:var(--text-tertiary);font-weight:600;" id="users-count">Загрузка...</span>
+    <div class="neu-card">
+      <div class="neu-card__header">
+        <div class="neu-card__header-title">Сотрудники</div>
+        <span style="font-size:12px;color:var(--text-terc);font-weight:700;" id="users-count">Загрузка...</span>
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead><tr><th>Сотрудник</th><th>Позиция</th><th>Ресторан</th><th>Статус</th></tr></thead>
-          <tbody id="users-table"><tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
+          <thead>
+            <tr>
+              <th>Сотрудник</th>
+              <th>Позиция</th>
+              <th>Ресторан</th>
+              <th>Статус</th>
+            </tr>
+          </thead>
+          <tbody id="users-table">
+            <tr>
+              <td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">
+                <div class="loading">Загрузка...</div>
+              </td>
+            </tr>
+          </tbody>
         </table>
       </div>
     </div>
@@ -402,28 +450,58 @@ async function loadUsers() {
     const users = data.users || [];
     $('users-count').textContent = users.length + ' сотрудников';
     const tbody = $('users-table');
-    const gradients = ['linear-gradient(135deg,#ef4444,#f97316)','linear-gradient(135deg,#3b82f6,#22c55e)','linear-gradient(135deg,#a855f7,#3b82f6)','linear-gradient(135deg,#ec4899,#a855f7)','linear-gradient(135deg,#06b6d4,#3b82f6)'];
     tbody.innerHTML = users.map((u, i) => {
-      const grad = gradients[i % gradients.length];
-      return `<tr><td><div class="name-cell"><div class="avatar" style="background:${grad}">${(u.full_name||'?').charAt(0).toUpperCase()}</div>${esc(u.full_name||'—')}</div></td><td class="position">${esc(u.position||'—')}</td><td class="restaurant">${esc(u.restaurant_name||'—')}</td><td><span class="tag ${u.is_fired ? 'tag--amber' : 'tag--green'}">${u.is_fired ? 'Уволен' : 'Активен'}</span></td></tr>`;
-    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет сотрудников</td></tr>';
+      const grad = getAvatarGradient(i);
+      return `
+        <tr>
+          <td>
+            <div class="name-cell">
+              <div class="avatar" style="background:${grad}">
+                ${(u.full_name||'?').charAt(0).toUpperCase()}
+              </div>
+              ${esc(u.full_name||'—')}
+            </div>
+          </td>
+          <td>${esc(u.position||'—')}</td>
+          <td>${esc(u.restaurant_name||'—')}</td>
+          <td>
+            <span class="tag ${u.is_fired ? 'tag--amber' : 'tag--green'}">
+              ${u.is_fired ? 'Уволен' : 'Активен'}
+            </span>
+          </td>
+        </tr>
+      `;
+    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Нет сотрудников</td></tr>';
   } catch (e) {
-    $('users-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('users-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
 }
 
 // ═══ MEDBOOKS ═══
 async function loadMedbooks() {
   $('page-content').innerHTML = `
-    <div class="b-card b-card--wide">
-      <div class="b-card__header">
-        <div class="b-card__header-title">Медкнижки</div>
-        <span style="font-size:12px;color:var(--text-tertiary);font-weight:600;" id="mb-count">Загрузка...</span>
+    <div class="neu-card">
+      <div class="neu-card__header">
+        <div class="neu-card__header-title">Медкнижки</div>
+        <span style="font-size:12px;color:var(--text-terc);font-weight:700;" id="mb-count">Загрузка...</span>
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead><tr><th>Сотрудник</th><th>Позиция</th><th>Ресторан</th><th>Статус</th></tr></thead>
-          <tbody id="medbooks-table"><tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
+          <thead>
+            <tr>
+              <th>Сотрудник</th>
+              <th>Позиция</th>
+              <th>Ресторан</th>
+              <th>Статус</th>
+            </tr>
+          </thead>
+          <tbody id="medbooks-table">
+            <tr>
+              <td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">
+                <div class="loading">Загрузка...</div>
+              </td>
+            </tr>
+          </tbody>
         </table>
       </div>
     </div>
@@ -434,30 +512,59 @@ async function loadMedbooks() {
     const users = data.users || [];
     $('mb-count').textContent = users.length + ' сотрудников';
     const tbody = $('medbooks-table');
-    const gradients = ['linear-gradient(135deg,#ef4444,#f97316)','linear-gradient(135deg,#3b82f6,#22c55e)','linear-gradient(135deg,#a855f7,#3b82f6)'];
     tbody.innerHTML = users.map((u, i) => {
-      const grad = gradients[i % gradients.length];
+      const grad = getAvatarGradient(i);
       const statusTag = u.medbook_status === 'ok' ? 'tag--green' : u.medbook_status === 'expiring' ? 'tag--amber' : 'tag--pink';
       const statusText = u.medbook_status === 'ok' ? 'OK' : u.medbook_status === 'expiring' ? 'Истекает' : 'Не заполнена';
-      return `<tr><td><div class="name-cell"><div class="avatar" style="background:${grad}">${(u.full_name||'?').charAt(0).toUpperCase()}</div>${esc(u.full_name||'—')}</div></td><td class="position">${esc(u.position||'—')}</td><td class="restaurant">${esc(u.restaurant_name||'—')}</td><td><span class="tag ${statusTag}">${statusText}</span></td></tr>`;
-    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет сотрудников</td></tr>';
+      return `
+        <tr>
+          <td>
+            <div class="name-cell">
+              <div class="avatar" style="background:${grad}">
+                ${(u.full_name||'?').charAt(0).toUpperCase()}
+              </div>
+              ${esc(u.full_name||'—')}
+            </div>
+          </td>
+          <td>${esc(u.position||'—')}</td>
+          <td>${esc(u.restaurant_name||'—')}</td>
+          <td>
+            <span class="tag ${statusTag}">${statusText}</span>
+          </td>
+        </tr>
+      `;
+    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Нет сотрудников</td></tr>';
   } catch (e) {
-    $('medbooks-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('medbooks-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
 }
 
 // ═══ NEWS ═══
 async function loadNews() {
   $('page-content').innerHTML = `
-    <div class="b-card b-card--wide">
-      <div class="b-card__header">
-        <div class="b-card__header-title">Новости</div>
-        <span style="font-size:12px;color:var(--text-tertiary);font-weight:600;" id="news-count">Загрузка...</span>
+    <div class="neu-card">
+      <div class="neu-card__header">
+        <div class="neu-card__header-title">Новости</div>
+        <span style="font-size:12px;color:var(--text-terc);font-weight:700;" id="news-count">Загрузка...</span>
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead><tr><th>Тип</th><th>Заголовок</th><th>Автор</th><th>Дата</th><th>Статус</th></tr></thead>
-          <tbody id="news-table"><tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
+          <thead>
+            <tr>
+              <th>Тип</th>
+              <th>Заголовок</th>
+              <th>Автор</th>
+              <th>Дата</th>
+              <th>Статус</th>
+            </tr>
+          </thead>
+          <tbody id="news-table">
+            <tr>
+              <td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;">
+                <div class="loading">Загрузка...</div>
+              </td>
+            </tr>
+          </tbody>
         </table>
       </div>
     </div>
@@ -470,27 +577,47 @@ async function loadNews() {
     const tbody = $('news-table');
     tbody.innerHTML = news.map(n => {
       const levelTag = n.level === 'announcement' ? 'tag--purple' : n.level === 'event' ? 'tag--green' : 'tag--blue';
-      const statusTag = n.status === 'published' ? 'tag--green' : n.status === 'scheduled' ? 'tag--amber' : 'tag--amber';
+      const statusTag = n.status === 'published' ? 'tag--green' : 'tag--amber';
       const statusText = n.status === 'published' ? 'Опубликована' : n.status === 'scheduled' ? 'Запланирована' : 'На модерации';
-      return `<tr><td><span class="tag ${levelTag}">${n.level || 'normal'}</span></td><td style="font-weight:600;color:var(--text);">${esc(n.title||'—')}</td><td>${esc(n.proposed_by||'—')}</td><td style="color:var(--text-tertiary);">${fmtDate(n.created_at)}</td><td><span class="tag ${statusTag}">${statusText}</span></td></tr>`;
-    }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет новостей</td></tr>';
+      return `
+        <tr>
+          <td><span class="tag ${levelTag}">${n.level || 'normal'}</span></td>
+          <td style="font-weight:600;color:var(--text);">${esc(n.title||'—')}</td>
+          <td>${esc(n.proposed_by||'—')}</td>
+          <td style="color:var(--text-terc);">${fmtDate(n.created_at)}</td>
+          <td><span class="tag ${statusTag}">${statusText}</span></td>
+        </tr>
+      `;
+    }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;">Нет новостей</td></tr>';
   } catch (e) {
-    $('news-table').innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('news-table').innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
 }
 
 // ═══ STANDARDS ═══
 async function loadStandards() {
   $('page-content').innerHTML = `
-    <div class="b-card b-card--wide">
-      <div class="b-card__header">
-        <div class="b-card__header-title">Стандарты</div>
-        <span style="font-size:12px;color:var(--text-tertiary);font-weight:600;" id="std-count">Загрузка...</span>
+    <div class="neu-card">
+      <div class="neu-card__header">
+        <div class="neu-card__header-title">Стандарты</div>
+        <span style="font-size:12px;color:var(--text-terc);font-weight:700;" id="std-count">Загрузка...</span>
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead><tr><th>Заголовок</th><th>Группа</th><th>Статус</th></tr></thead>
-          <tbody id="standards-table"><tr><td colspan="3" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
+          <thead>
+            <tr>
+              <th>Заголовок</th>
+              <th>Группа</th>
+              <th>Статус</th>
+            </tr>
+          </thead>
+          <tbody id="standards-table">
+            <tr>
+              <td colspan="3" style="text-align:center;color:var(--text-terc);padding:40px;">
+                <div class="loading">Загрузка...</div>
+              </td>
+            </tr>
+          </tbody>
         </table>
       </div>
     </div>
@@ -504,25 +631,43 @@ async function loadStandards() {
     tbody.innerHTML = standards.map(s => {
       const statusTag = s.status === 'published' ? 'tag--green' : 'tag--amber';
       const statusText = s.status === 'published' ? 'Опубликован' : 'На модерации';
-      return `<tr><td style="font-weight:600;color:var(--text);">${esc(s.title||'—')}</td><td><span class="tag tag--purple">${esc(s.group_name||'Общее')}</span></td><td><span class="tag ${statusTag}">${statusText}</span></td></tr>`;
-    }).join('') || '<tr><td colspan="3" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет стандартов</td></tr>';
+      return `
+        <tr>
+          <td style="font-weight:600;color:var(--text);">${esc(s.title||'—')}</td>
+          <td><span class="tag tag--purple">${esc(s.group_name||'Общее')}</span></td>
+          <td><span class="tag ${statusTag}">${statusText}</span></td>
+        </tr>
+      `;
+    }).join('') || '<tr><td colspan="3" style="text-align:center;color:var(--text-terc);padding:40px;">Нет стандартов</td></tr>';
   } catch (e) {
-    $('standards-table').innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('standards-table').innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
 }
 
 // ═══ FAQ ═══
 async function loadFaq() {
   $('page-content').innerHTML = `
-    <div class="b-card b-card--wide">
-      <div class="b-card__header">
-        <div class="b-card__header-title">FAQ</div>
-        <span style="font-size:12px;color:var(--text-tertiary);font-weight:600;" id="faq-count">Загрузка...</span>
+    <div class="neu-card">
+      <div class="neu-card__header">
+        <div class="neu-card__header-title">FAQ</div>
+        <span style="font-size:12px;color:var(--text-terc);font-weight:700;" id="faq-count">Загрузка...</span>
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead><tr><th>Вопрос</th><th>Категория</th><th>Ответ</th></tr></thead>
-          <tbody id="faq-table"><tr><td colspan="3" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
+          <thead>
+            <tr>
+              <th>Вопрос</th>
+              <th>Категория</th>
+              <th>Ответ</th>
+            </tr>
+          </thead>
+          <tbody id="faq-table">
+            <tr>
+              <td colspan="3" style="text-align:center;color:var(--text-terc);padding:40px;">
+                <div class="loading">Загрузка...</div>
+              </td>
+            </tr>
+          </tbody>
         </table>
       </div>
     </div>
@@ -533,24 +678,43 @@ async function loadFaq() {
     const items = data.faq || [];
     $('faq-count').textContent = items.length + ' вопросов';
     const tbody = $('faq-table');
-    tbody.innerHTML = items.map(f => `<tr><td style="font-weight:600;color:var(--text);">${esc(f.question||'—')}</td><td><span class="tag tag--blue">${esc(f.category||'—')}</span></td><td style="color:var(--text-secondary);">${esc(f.answer||'—')}</td></tr>`).join('') || '<tr><td colspan="3" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет вопросов</td></tr>';
+    tbody.innerHTML = items.map(f => `
+      <tr>
+        <td style="font-weight:600;color:var(--text);">${esc(f.question||'—')}</td>
+        <td><span class="tag tag--blue">${esc(f.category||'—')}</span></td>
+        <td style="color:var(--text-sec);">${esc(f.answer||'—')}</td>
+      </tr>
+    `).join('') || '<tr><td colspan="3" style="text-align:center;color:var(--text-terc);padding:40px;">Нет вопросов</td></tr>';
   } catch (e) {
-    $('faq-table').innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('faq-table').innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
 }
 
 // ═══ RESTAURANTS ═══
 async function loadRestaurants() {
   $('page-content').innerHTML = `
-    <div class="b-card b-card--wide">
-      <div class="b-card__header">
-        <div class="b-card__header-title">Рестораны</div>
-        <span style="font-size:12px;color:var(--text-tertiary);font-weight:600;" id="rest-count">Загрузка...</span>
+    <div class="neu-card">
+      <div class="neu-card__header">
+        <div class="neu-card__header-title">Рестораны</div>
+        <span style="font-size:12px;color:var(--text-terc);font-weight:700;" id="rest-count">Загрузка...</span>
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead><tr><th>Название</th><th>Адрес</th><th>ТУ</th><th>Статус</th></tr></thead>
-          <tbody id="restaurants-table"><tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
+          <thead>
+            <tr>
+              <th>Название</th>
+              <th>Адрес</th>
+              <th>ТУ</th>
+              <th>Статус</th>
+            </tr>
+          </thead>
+          <tbody id="restaurants-table">
+            <tr>
+              <td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">
+                <div class="loading">Загрузка...</div>
+              </td>
+            </tr>
+          </tbody>
         </table>
       </div>
     </div>
@@ -564,25 +728,43 @@ async function loadRestaurants() {
     tbody.innerHTML = restaurants.map(r => {
       const statusTag = r.force_status === 'open' ? 'tag--green' : 'tag--amber';
       const statusText = r.force_status === 'open' ? 'Открыт' : r.force_status || 'Открыт';
-      return `<tr><td style="font-weight:600;color:var(--text);">${esc(r.name||'—')}</td><td class="restaurant">${esc(r.address||'—')}</td><td>${esc(r.territory_manager_name||'—')}</td><td><span class="tag ${statusTag}">${statusText}</span></td></tr>`;
-    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет ресторанов</td></tr>';
+      return `
+        <tr>
+          <td style="font-weight:600;color:var(--text);">${esc(r.name||'—')}</td>
+          <td class="restaurant">${esc(r.address||'—')}</td>
+          <td>${esc(r.territory_manager_name||'—')}</td>
+          <td><span class="tag ${statusTag}">${statusText}</span></td>
+        </tr>
+      `;
+    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Нет ресторанов</td></tr>';
   } catch (e) {
-    $('restaurants-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('restaurants-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
 }
 
 // ═══ CERTIFICATION ═══
 async function loadCertification() {
   $('page-content').innerHTML = `
-    <div class="b-card b-card--wide">
-      <div class="b-card__header">
-        <div class="b-card__header-title">Сертификация</div>
-        <span style="font-size:12px;color:var(--text-tertiary);font-weight:600;" id="cert-count">Загрузка...</span>
+    <div class="neu-card">
+      <div class="neu-card__header">
+        <div class="neu-card__header-title">Сертификация</div>
+        <span style="font-size:12px;color:var(--text-terc);font-weight:700;" id="cert-count">Загрузка...</span>
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead><tr><th>Вопрос</th><th>Правильный ответ</th></tr></thead>
-          <tbody id="cert-table"><tr><td colspan="2" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
+          <thead>
+            <tr>
+              <th>Вопрос</th>
+              <th>Правильный ответ</th>
+            </tr>
+          </thead>
+          <tbody id="cert-table">
+            <tr>
+              <td colspan="2" style="text-align:center;color:var(--text-terc);padding:40px;">
+                <div class="loading">Загрузка...</div>
+              </td>
+            </tr>
+          </tbody>
         </table>
       </div>
     </div>
@@ -595,25 +777,42 @@ async function loadCertification() {
     const tbody = $('cert-table');
     tbody.innerHTML = questions.map(q => {
       const correct = {a:'A',b:'B',c:'C',d:'D'};
-      return `<tr><td style="color:var(--text);">${esc(q.question||'—')}</td><td><span class="tag tag--green">${correct[q.correct_option?.toLowerCase()]||'—'}</span></td></tr>`;
-    }).join('') || '<tr><td colspan="2" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет вопросов</td></tr>';
+      return `
+        <tr>
+          <td style="color:var(--text);">${esc(q.question||'—')}</td>
+          <td><span class="tag tag--green">${correct[q.correct_option?.toLowerCase()]||'—'}</span></td>
+        </tr>
+      `;
+    }).join('') || '<tr><td colspan="2" style="text-align:center;color:var(--text-terc);padding:40px;">Нет вопросов</td></tr>';
   } catch (e) {
-    $('cert-table').innerHTML = `<tr><td colspan="2" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('cert-table').innerHTML = `<tr><td colspan="2" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
 }
 
 // ═══ POSITIONS ═══
 async function loadPositions() {
   $('page-content').innerHTML = `
-    <div class="b-card b-card--wide">
-      <div class="b-card__header">
-        <div class="b-card__header-title">Должности</div>
-        <span style="font-size:12px;color:var(--text-tertiary);font-weight:600;" id="pos-count">Загрузка...</span>
+    <div class="neu-card">
+      <div class="neu-card__header">
+        <div class="neu-card__header-title">Должности</div>
+        <span style="font-size:12px;color:var(--text-terc);font-weight:700;" id="pos-count">Загрузка...</span>
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead><tr><th>Название</th><th>Ставка</th><th>Статус</th></tr></thead>
-          <tbody id="positions-table"><tr><td colspan="3" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
+          <thead>
+            <tr>
+              <th>Название</th>
+              <th>Ставка</th>
+              <th>Статус</th>
+            </tr>
+          </thead>
+          <tbody id="positions-table">
+            <tr>
+              <td colspan="3" style="text-align:center;color:var(--text-terc);padding:40px;">
+                <div class="loading">Загрузка...</div>
+              </td>
+            </tr>
+          </tbody>
         </table>
       </div>
     </div>
@@ -627,25 +826,44 @@ async function loadPositions() {
     tbody.innerHTML = positions.map(p => {
       const statusTag = p.is_archived ? 'tag--amber' : 'tag--green';
       const statusText = p.is_archived ? 'Архив' : 'Активна';
-      return `<tr><td style="font-weight:600;color:var(--text);">${esc(p.name||'—')}</td><td>${p.rate!=null ? '₽'+p.rate : '—'}</td><td><span class="tag ${statusTag}">${statusText}</span></td></tr>`;
-    }).join('') || '<tr><td colspan="3" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет должностей</td></tr>';
+      return `
+        <tr>
+          <td style="font-weight:600;color:var(--text);">${esc(p.name||'—')}</td>
+          <td>${p.rate!=null ? '₽'+p.rate : '—'}</td>
+          <td><span class="tag ${statusTag}">${statusText}</span></td>
+        </tr>
+      `;
+    }).join('') || '<tr><td colspan="3" style="text-align:center;color:var(--text-terc);padding:40px;">Нет должностей</td></tr>';
   } catch (e) {
-    $('positions-table').innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('positions-table').innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
 }
 
 // ═══ QUESTIONS ═══
 async function loadQuestions() {
   $('page-content').innerHTML = `
-    <div class="b-card b-card--wide">
-      <div class="b-card__header">
-        <div class="b-card__header-title">Вопросы от сотрудников</div>
-        <span style="font-size:12px;color:var(--text-tertiary);font-weight:600;" id="q-count-page">Загрузка...</span>
+    <div class="neu-card">
+      <div class="neu-card__header">
+        <div class="neu-card__header-title">Вопросы от сотрудников</div>
+        <span style="font-size:12px;color:var(--text-terc);font-weight:700;" id="q-count-page">Загрузка...</span>
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead><tr><th>От</th><th>Вопрос</th><th>Дата</th><th>Ответ</th></tr></thead>
-          <tbody id="questions-table"><tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
+          <thead>
+            <tr>
+              <th>От</th>
+              <th>Вопрос</th>
+              <th>Дата</th>
+              <th>Ответ</th>
+            </tr>
+          </thead>
+          <tbody id="questions-table">
+            <tr>
+              <td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">
+                <div class="loading">Загрузка...</div>
+              </td>
+            </tr>
+          </tbody>
         </table>
       </div>
     </div>
@@ -659,24 +877,44 @@ async function loadQuestions() {
     tbody.innerHTML = questions.map(q => {
       const statusTag = q.replied ? 'tag--green' : 'tag--amber';
       const statusText = q.replied ? 'Ответен' : 'Ожидает';
-      return `<tr><td>${esc(q.full_name||'—')}</td><td style="color:var(--text);">${esc(q.text||'—')}</td><td style="color:var(--text-tertiary);">${fmtDate(q.created_at)}</td><td><span class="tag ${statusTag}">${statusText}</span></td></tr>`;
-    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет вопросов</td></tr>';
+      return `
+        <tr>
+          <td>${esc(q.full_name||'—')}</td>
+          <td style="color:var(--text);">${esc(q.text||'—')}</td>
+          <td style="color:var(--text-terc);">${fmtDate(q.created_at)}</td>
+          <td><span class="tag ${statusTag}">${statusText}</span></td>
+        </tr>
+      `;
+    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Нет вопросов</td></tr>';
   } catch (e) {
-    $('questions-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('questions-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
 }
 
 // ═══ ADMINS ═══
 async function loadAdmins() {
   $('page-content').innerHTML = `
-    <div class="b-card b-card--wide">
-      <div class="b-card__header">
-        <div class="b-card__header-title">Администраторы</div>
+    <div class="neu-card">
+      <div class="neu-card__header">
+        <div class="neu-card__header-title">Администраторы</div>
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead><tr><th>Логин</th><th>Имя</th><th>Позиция</th><th>Роль</th></tr></thead>
-          <tbody id="admins-table"><tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
+          <thead>
+            <tr>
+              <th>Логин</th>
+              <th>Имя</th>
+              <th>Позиция</th>
+              <th>Роль</th>
+            </tr>
+          </thead>
+          <tbody id="admins-table">
+            <tr>
+              <td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">
+                <div class="loading">Загрузка...</div>
+              </td>
+            </tr>
+          </tbody>
         </table>
       </div>
     </div>
@@ -689,24 +927,47 @@ async function loadAdmins() {
     tbody.innerHTML = admins.map(a => {
       const role = a.is_super_admin ? 'tag--purple' : 'tag--blue';
       const roleText = a.is_super_admin ? 'Супер-админ' : 'Админ';
-      return `<tr><td style="font-weight:600;">${esc(a.login||'—')}</td><td>${esc(a.full_name||'—')}</td><td>${esc(a.position||'—')}</td><td><span class="tag ${role}">${roleText}</span></td></tr>`;
-    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет админов</td></tr>';
+      return `
+        <tr>
+          <td style="font-weight:600;">${esc(a.login||'—')}</td>
+          <td>${esc(a.full_name||'—')}</td>
+          <td>${esc(a.position||'—')}</td>
+          <td><span class="tag ${role}">${roleText}</span></td>
+        </tr>
+      `;
+    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Нет админов</td></tr>';
   } catch (e) {
-    $('admins-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('admins-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
 }
 
 // ═══ REPORTS ═══
 async function loadReports() {
   $('page-content').innerHTML = `
-    <div class="b-card b-card--wide">
-      <div class="b-card__header">
-        <div class="b-card__header-title">Отчёты по персоналу</div>
+    <div class="neu-card">
+      <div class="neu-card__header">
+        <div class="neu-card__header-title">Отчёты по персоналу</div>
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead><tr><th>Всего</th><th>Активных</th><th>Уволено</th><th>Новые (7д)</th><th>Вопросы</th><th>Новости на модерации</th><th>Стандарты на модерации</th></tr></thead>
-          <tbody id="reports-body"><tr><td colspan="7" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
+          <thead>
+            <tr>
+              <th>Всего</th>
+              <th>Активных</th>
+              <th>Уволено</th>
+              <th>Новые (7д)</th>
+              <th>Вопросы</th>
+              <th>Новости на модерации</th>
+              <th>Стандарты на модерации</th>
+            </tr>
+          </thead>
+          <tbody id="reports-body">
+            <tr>
+              <td colspan="7" style="text-align:center;color:var(--text-terc);padding:40px;">
+                <div class="loading">Загрузка...</div>
+              </td>
+            </tr>
+          </tbody>
         </table>
       </div>
     </div>
@@ -715,23 +976,46 @@ async function loadReports() {
   try {
     const data = await cachedApi('/api/admin/reports', {});
     const r = data.report || {};
-    $('reports-body').innerHTML = `<tr><td style="font-weight:700;font-size:18px;">${r.total||0}</td><td style="font-weight:700;color:var(--green);font-size:18px;">${r.active||0}</td><td style="font-weight:700;color:var(--amber);font-size:18px;">${r.fired||0}</td><td>${r.new7||0}</td><td>${r.questions_open||0}</td><td>${r.news_pending||0}</td><td>${r.standards_pending||0}</td></tr>`;
+    $('reports-body').innerHTML = `
+      <tr>
+        <td style="font-weight:700;font-size:18px;">${r.total||0}</td>
+        <td style="font-weight:700;color:var(--green);font-size:18px;">${r.active||0}</td>
+        <td style="font-weight:700;color:var(--amber);font-size:18px;">${r.fired||0}</td>
+        <td>${r.new7||0}</td>
+        <td>${r.questions_open||0}</td>
+        <td>${r.news_pending||0}</td>
+        <td>${r.standards_pending||0}</td>
+      </tr>
+    `;
   } catch (e) {
-    $('reports-body').innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('reports-body').innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
 }
 
 // ═══ AUDIT ═══
 async function loadAudit() {
   $('page-content').innerHTML = `
-    <div class="b-card b-card--wide">
-      <div class="b-card__header">
-        <div class="b-card__header-title">История действий</div>
+    <div class="neu-card">
+      <div class="neu-card__header">
+        <div class="neu-card__header-title">История действий</div>
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead><tr><th>Дата</th><th>Админ</th><th>Действие</th><th>Объект</th></tr></thead>
-          <tbody id="audit-table"><tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
+          <thead>
+            <tr>
+              <th>Дата</th>
+              <th>Админ</th>
+              <th>Действие</th>
+              <th>Объект</th>
+            </tr>
+          </thead>
+          <tbody id="audit-table">
+            <tr>
+              <td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">
+                <div class="loading">Загрузка...</div>
+              </td>
+            </tr>
+          </tbody>
         </table>
       </div>
     </div>
@@ -741,20 +1025,34 @@ async function loadAudit() {
     const data = await cachedApi('/api/admin/audit', {});
     const logs = data.audit || [];
     const tbody = $('audit-table');
-    tbody.innerHTML = logs.slice(0, 50).map(a => {
-      return `<tr><td style="color:var(--text-tertiary);font-size:12px;">${fmtDate(a.created_at, true)}</td><td>${esc(a.admin_full_name||'—')}</td><td><span class="tag tag--purple">${esc(a.action||'—')}</span></td><td style="color:var(--text-secondary);">${esc(a.details||'—')}</td></tr>`;
-    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет записей</td></tr>';
+    tbody.innerHTML = logs.slice(0, 50).map(a => `
+      <tr>
+        <td style="color:var(--text-terc);font-size:12px;">${fmtDate(a.created_at, true)}</td>
+        <td>${esc(a.admin_full_name||'—')}</td>
+        <td><span class="tag tag--purple">${esc(a.action||'—')}</span></td>
+        <td style="color:var(--text-secondary);">${esc(a.details||'—')}</td>
+      </tr>
+    `).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Нет записей</td></tr>';
   } catch (e) {
-    $('audit-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('audit-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
 }
 
 // ═══ Page Loaders Registry ═══
 const PAGE_LOADERS = {
-  dashboard: loadDashboard, users: loadUsers, medbooks: loadMedbooks,
-  news: loadNews, standards: loadStandards, certification: loadCertification,
-  faq: loadFaq, restaurants: loadRestaurants, positions: loadPositions,
-  questions: loadQuestions, admins: loadAdmins, reports: loadReports, audit: loadAudit,
+  dashboard: loadDashboard,
+  users: loadUsers,
+  medbooks: loadMedbooks,
+  news: loadNews,
+  standards: loadStandards,
+  certification: loadCertification,
+  faq: loadFaq,
+  restaurants: loadRestaurants,
+  positions: loadPositions,
+  questions: loadQuestions,
+  admins: loadAdmins,
+  reports: loadReports,
+  audit: loadAudit,
 };
 
 // ═══ Init ═══
@@ -763,15 +1061,3 @@ if (getToken()) {
 } else {
   showLogin();
 }
-
-// ═══ Card mouse tracking for glow effect ═══
-document.addEventListener('mousemove', e => {
-  const cards = document.querySelectorAll('.b-card');
-  cards.forEach(card => {
-    const rect = card.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    card.style.setProperty('--mx', x + '%');
-    card.style.setProperty('--my', y + '%');
-  });
-});

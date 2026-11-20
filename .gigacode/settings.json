@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(powershell *)"
+      "Bash(powershell *)",
+      "Bash(python *)",
+      "Bash(pip install *)",
+      "Bash(del *)"
     ]
-  }
+  },
+  "$version": 3
 }

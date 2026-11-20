@@ -232,7 +232,7 @@ async def handle_admin_css(request):
         content_type="text/css",
         charset="utf-8",
         headers={
-            "Cache-Control": "public, max-age=31536000",
+            "Cache-Control": "public, max-age=3600",
             "Last-Modified": formatdate(mtime, usegmt=True)
         }
     )
@@ -344,9 +344,6 @@ app.router.add_get("/manifest.json", handle_manifest)
 app.router.add_get("/sw.js", handle_sw)
 app.router.add_get("/static/icon-192.svg", handle_icon192)
 app.router.add_get("/static/icon-512.svg", handle_icon512)
-app.router.add_get("/static/icon-192.png", handle_icon192_png)
-app.router.add_get("/static/icon-512.png", handle_icon512_png)
-app.router.add_get("/static/screenshot1.png", handle_screenshot)
 app.router.add_get("/.well-known/assetlinks.json", handle_assetlinks)
 
 # РОУТ ДЛЯ СКАЧИВАНИЯ

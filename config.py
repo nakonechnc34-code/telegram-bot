@@ -2,6 +2,13 @@ import os
 import logging
 import re
 
+# Load .env file if present
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 # ============= SECURITY & ENV SETTINGS =============

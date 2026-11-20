@@ -4,7 +4,8 @@
       "Bash(powershell *)",
       "Bash(python *)",
       "Bash(pip install *)",
-      "Bash(del *)"
+      "Bash(del *)",
+      "Bash(node *)"
     ]
   },
   "$version": 3

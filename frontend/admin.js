@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════
-   WOKKER ADMIN — BENTO EDITION JS
+   WOKKER ADMIN — BENTO EDITION (FIXED)
    ═══════════════════════════════════════════ */
 
 const TOKEN_KEY = 'wokker_admin_token';
@@ -115,8 +115,8 @@ async function uploadFile(file) {
 const burger = document.getElementById('hamburger');
 const overlay = document.getElementById('overlay');
 
-function openSidebar() { document.getElementById('sidebar').classList.add('sidebar--open'); overlay.classList.add('overlay--show'); }
-function closeSidebar() { document.getElementById('sidebar').classList.remove('sidebar--open'); overlay.classList.remove('overlay--show'); }
+function openSidebar() { document.getElementById('sidebar').classList.add('sidebar--open'); overlay.classList.add('overlay--show'); document.body.style.overflow = 'hidden'; }
+function closeSidebar() { document.getElementById('sidebar').classList.remove('sidebar--open'); overlay.classList.remove('overlay--show'); document.body.style.overflow = ''; }
 
 if (burger) burger.addEventListener('click', openSidebar);
 if (overlay) overlay.addEventListener('click', closeSidebar);
@@ -131,10 +131,51 @@ function hasPerm(perm) {
   return !!(ME.permissions && ME.permissions[perm]);
 }
 
+// ═══ Modal ═══
+function openModal(title, bodyHtml, footerHtml, opts) {
+  opts = opts || {};
+  $('modal-title').textContent = title;
+  $('modal-body').innerHTML = bodyHtml;
+  $('modal-footer').innerHTML = footerHtml || '';
+  $('modal-box').className = 'modal' + (opts.wide ? ' wide' : '');
+  $('modal-overlay').classList.add('show');
+}
+function closeModal() { $('modal-overlay').classList.remove('show'); }
+$('modal-close')?.addEventListener('click', closeModal);
+$('modal-overlay')?.addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && $('modal-overlay')?.classList.contains('show')) closeModal();
+});
+
+// ═══ Change Password ═══
+$('change-password-btn')?.addEventListener('click', () => {
+  openModal('Сменить пароль', `
+    <div class="form-group"><label>Текущий пароль</label><input class="form-input" id="cp-old" type="password"></div>
+    <div class="form-group"><label>Новый пароль</label><input class="form-input" id="cp-new" type="password"><div class="form-hint">Минимум 8 символов</div></div>
+    <div class="form-group"><label>Повторите</label><input class="form-input" id="cp-new2" type="password"></div>
+    <div class="form-hint error" id="cp-error"></div>
+  `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="cp-save">Сохранить</button>`);
+  $('cp-save')?.addEventListener('click', async () => {
+    const errEl = $('cp-error');
+    errEl.textContent = '';
+    if (!$('cp-old')?.value) { errEl.textContent = 'Введите текущий пароль'; return; }
+    if (!$('cp-new')?.value || $('cp-new').value.length < 8) { errEl.textContent = 'Новый минимум 8 символов'; return; }
+    if ($('cp-new').value !== $('cp-new2')?.value) { errEl.textContent = 'Пароли не совпадают'; return; }
+    try {
+      await api('/api/admin/change-password', { old_password: $('cp-old').value, new_password: $('cp-new').value });
+      toast('Пароль изменён', 'success'); closeModal();
+    } catch (e) {
+      if (e.message === 'wrong_password') errEl.textContent = 'Текущий пароль неверный';
+      else if (e.message === 'password_too_short') errEl.textContent = 'Минимум 8 символов';
+      else errEl.textContent = 'Ошибка: ' + e.message;
+    }
+  });
+});
+
 // ═══ Login ═══
 function showLogin() {
-  document.getElementById('app').style.display = 'none';
-  document.getElementById('login-screen').style.display = 'flex';
+  $('app').style.display = 'none';
+  $('login-screen').style.display = 'flex';
   $('login-error').textContent = '';
   $('login-login').value = '';
   $('login-password').value = '';
@@ -142,11 +183,11 @@ function showLogin() {
 }
 
 function showApp() {
-  document.getElementById('app').style.display = 'block';
-  document.getElementById('login-screen').style.display = 'none';
+  $('app').style.display = 'block';
+  $('login-screen').style.display = 'none';
 }
 
-$('login-login').addEventListener('input', e => {
+$('login-login')?.addEventListener('input', e => {
   e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5);
 });
 
@@ -180,9 +221,9 @@ async function doLogin() {
   }
 }
 
-$('login-btn').addEventListener('click', doLogin);
-$('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
-$('login-login').addEventListener('keydown', e => { if (e.key === 'Enter') $('login-password').focus(); });
+$('login-btn')?.addEventListener('click', doLogin);
+$('login-password')?.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+$('login-login')?.addEventListener('keydown', e => { if (e.key === 'Enter') $('login-password')?.focus(); });
 
 async function checkAdminAndLoad() {
   try {
@@ -191,6 +232,10 @@ async function checkAdminAndLoad() {
     $('admin-name').textContent = ME.full_name || '—';
     $('admin-login').textContent = '@' + (ME.login || '');
     $('admin-role').textContent = ME.is_super_admin ? 'Супер-админ' : ME.is_hr ? 'HR' : 'Админ';
+    $('admin-role').className = 'badge-role ' + (ME.is_super_admin ? 'super' : ME.is_hr ? 'hr' : 'regular');
+    $('nav-admins').style.display = ME.is_super_admin ? 'block' : 'none';
+    const avatarEl = $('topbar-avatar');
+    if (avatarEl && ME.full_name) avatarEl.textContent = ME.full_name.charAt(0).toUpperCase();
     showApp();
     if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
         navigator.serviceWorker.controller.postMessage({ type: 'SET_TOKEN', token: getToken() });
@@ -212,8 +257,9 @@ $('logout-btn')?.addEventListener('click', async () => {
 // ═══ Navigation ═══
 const PAGE_TITLES = {
   dashboard: 'Дашборд', users: 'Сотрудники', medbooks: 'Медкнижки',
-  news: 'Новости', standards: 'Стандарты', academy: 'Академия', faq: 'FAQ',
-  restaurants: 'Рестораны', settings: 'Настройки',
+  news: 'Новости', standards: 'Стандарты', certification: 'Сертификация', faq: 'FAQ',
+  restaurants: 'Рестораны', positions: 'Должности', questions: 'Вопросы',
+  admins: 'Администраторы', reports: 'Отчёты', audit: 'История',
 };
 
 function navigate(page) {
@@ -221,9 +267,8 @@ function navigate(page) {
     item.classList.toggle('nav-item--active', item.dataset.page === page);
   });
   $('page-title').textContent = PAGE_TITLES[page] || page;
-  $('page-date').textContent = new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
   $('page-content').innerHTML = '<div class="loading">Загрузка...</div>';
-  
+
   const loader = PAGE_LOADERS[page];
   if (loader) {
     loader()
@@ -245,142 +290,73 @@ document.querySelectorAll('.nav-item').forEach(item => {
   });
 });
 
-// ═══ Page Loaders ═══
-const PAGE_LOADERS = {
-  dashboard: loadDashboard,
-  users: loadUsers,
-  medbooks: loadMedbooks,
-  news: loadNews,
-  standards: loadStandards,
-  academy: () => { $('page-content').innerHTML = '<div class="b-card b-card--wide"><div class="b-card__label">Академия</div><div class="b-card__meta">Раздел в разработке</div></div>'; },
-  faq: loadFaq,
-  restaurants: loadRestaurants,
-  settings: loadSettings,
-};
+// ═══ Refresh Counters ═══
+async function refreshCounters() {
+  try {
+    const q = await api('/api/admin/questions', {});
+    const open = (q.questions || []).filter(x => !x.replied).length;
+    const qEl = $('q-count');
+    if (qEl) { if (open > 0) { qEl.textContent = open; qEl.style.display = 'inline-block'; } else qEl.style.display = 'none'; }
+  } catch (e) {}
+  try {
+    const n = await api('/api/admin/news', {});
+    const pending = (n.news || []).filter(x => x.status === 'pending').length;
+    const nEl = $('news-pending-count');
+    if (nEl) { if (pending > 0 && canPublish()) { nEl.textContent = pending; nEl.style.display = 'inline-block'; } else nEl.style.display = 'none'; }
+  } catch (e) {}
+  try {
+    const s = await api('/api/admin/standards', {});
+    const pending = (s.standards || []).filter(x => x.status === 'pending').length;
+    const sEl = $('standards-pending-count');
+    if (sEl) { if (pending > 0 && canPublish()) { sEl.textContent = pending; sEl.style.display = 'inline-block'; } else sEl.style.display = 'none'; }
+  } catch (e) {}
+}
 
-// ═══ Dashboard ═══
+// ═══ DASHBOARD ═══
 async function loadDashboard() {
   $('page-content').innerHTML = `
-    <!-- Stat Cards Row -->
-    <div class="b-card b-card--stat stat--green">
-      <div class="b-card__label">
-        <div class="b-card__icon b-card__icon--green">👥</div>
-        Сотрудники
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;">
+      <div class="b-card b-card--stat">
+        <div class="b-card__label"><div class="b-card__icon b-card__icon--green">👥</div>Сотрудники</div>
+        <div class="b-card__value b-card__value--green" id="stat-active"><div class="skeleton skeleton-stat"></div></div>
+        <div class="b-card__meta"><span class="b-card__trend b-card__trend--up">↑ +3</span><span>за неделю</span></div>
       </div>
-      <div class="b-card__value b-card__value--green" id="stat-active">
-        <div class="skeleton" style="height:28px;width:50px;border-radius:8px;background:rgba(255,255,255,0.05);"></div>
+      <div class="b-card b-card--stat">
+        <div class="b-card__label"><div class="b-card__icon b-card__icon--amber">📝</div>На модерации</div>
+        <div class="b-card__value b-card__value--amber" id="stat-pending"><div class="skeleton skeleton-stat"></div></div>
+        <div class="b-card__meta"><span class="b-card__trend b-card__trend--warn">⏳</span><span>Ожидают проверки</span></div>
       </div>
-      <div class="b-card__meta">
-        <span class="b-card__trend b-card__trend--up">↑ +3</span>
-        <span>за неделю</span>
+      <div class="b-card b-card--stat">
+        <div class="b-card__label"><div class="b-card__icon b-card__icon--purple">📖</div>Медкнижки</div>
+        <div class="b-card__value b-card__value--purple" id="stat-medbooks"><div class="skeleton skeleton-stat"></div></div>
+        <div class="b-card__meta"><span class="b-card__trend b-card__trend--down">!</span><span>Требуют внимания</span></div>
       </div>
-    </div>
-    
-    <div class="b-card b-card--stat stat--amber">
-      <div class="b-card__label">
-        <div class="b-card__icon b-card__icon--amber">📝</div>
-        На модерации
-      </div>
-      <div class="b-card__value b-card__value--amber" id="stat-pending">
-        <div class="skeleton" style="height:28px;width:50px;border-radius:8px;background:rgba(255,255,255,0.05);"></div>
-      </div>
-      <div class="b-card__meta">
-        <span class="b-card__trend b-card__trend--warn">⏳</span>
-        <span>Ожидают проверки</span>
-      </div>
-    </div>
-    
-    <div class="b-card b-card--stat stat--purple">
-      <div class="b-card__label">
-        <div class="b-card__icon b-card__icon--purple">📖</div>
-        Медкнижки
-      </div>
-      <div class="b-card__value b-card__value--purple" id="stat-medbooks">
-        <div class="skeleton" style="height:28px;width:50px;border-radius:8px;background:rgba(255,255,255,0.05);"></div>
-      </div>
-      <div class="b-card__meta">
-        <span class="b-card__trend b-card__trend--down">!</span>
-        <span>Требуют внимания</span>
-      </div>
-    </div>
-    
-    <div class="b-card b-card--stat stat--blue">
-      <div class="b-card__label">
-        <div class="b-card__icon b-card__icon--blue">💰</div>
-        К выплате
-      </div>
-      <div class="b-card__value b-card__value--blue" id="stat-payments">₽0</div>
-      <div class="b-card__meta">
-        <span class="b-card__trend b-card__trend--up">↑</span>
-        <span>Текущий период</span>
+      <div class="b-card b-card--stat">
+        <div class="b-card__label"><div class="b-card__icon b-card__icon--blue">❓</div>Вопросы</div>
+        <div class="b-card__value b-card__value--blue" id="stat-questions"><div class="skeleton skeleton-stat"></div></div>
+        <div class="b-card__meta"><span class="b-card__trend b-card__trend--warn">открытых</span></div>
       </div>
     </div>
 
-    <!-- Activity + New Hires -->
-    <div class="b-card b-card--wide">
-      <div class="b-card__header">
-        <div class="b-card__header-title">Последняя активность</div>
-        <div class="b-card__header-action" onclick="navigate('news')">Все события →</div>
-      </div>
-      <div class="activity" id="dash-activity">
-        <div class="activity__item">
-          <div class="activity__icon activity__icon--green">👤</div>
-          <div class="activity__content">
-            <div class="activity__text"><strong>HR</strong> создала сотрудника — <strong>Иванов А.</strong></div>
-            <div class="activity__time">14 мин назад</div>
-          </div>
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-top:16px;">
+      <div class="b-card b-card--wide">
+        <div class="b-card__header">
+          <div class="b-card__header-title">Последняя активность</div>
+          <div class="b-card__header-action" onclick="navigate('news')">Все события →</div>
         </div>
-        <div class="activity__item">
-          <div class="activity__icon activity__icon--accent">📰</div>
-          <div class="activity__content">
-            <div class="activity__text"><strong>Смирнов В.</strong> предложил новость — <strong>Новые стандарты подачи</strong></div>
-            <div class="activity__time">1 час назад</div>
-          </div>
-        </div>
-        <div class="activity__item">
-          <div class="activity__icon activity__icon--blue">📋</div>
-          <div class="activity__content">
-            <div class="activity__text"><strong>Табель за ноябрь</strong> подписан — <strong>4 ресторана</strong></div>
-            <div class="activity__time">2 часа назад</div>
-          </div>
-        </div>
-        <div class="activity__item">
-          <div class="activity__icon activity__icon--purple">🎓</div>
-          <div class="activity__content">
-            <div class="activity__text"><strong>Петрова М.</strong> прошла сертификацию — <strong>Санитария</strong></div>
-            <div class="activity__time">3 часа назад</div>
-          </div>
+        <div class="activity" id="dash-activity">
+          <div class="activity__item"><div class="activity__icon activity__icon--green">👤</div><div class="activity__content"><div class="activity__text"><strong>HR</strong> создала сотрудника</div><div class="activity__time">только что</div></div></div>
+          <div class="activity__item"><div class="activity__icon activity__icon--accent">📰</div><div class="activity__content"><div class="activity__text"><strong>Смирнов В.</strong> предложил новость</div><div class="activity__time">1 час назад</div></div></div>
+          <div class="activity__item"><div class="activity__icon activity__icon--blue">📋</div><div class="activity__content"><div class="activity__text"><strong>Табель</strong> обновлён</div><div class="activity__time">2 часа назад</div></div></div>
         </div>
       </div>
-    </div>
 
-    <div class="b-card b-card--tall">
-      <div class="b-card__header">
-        <div class="b-card__header-title">Новые сотрудники</div>
-        <div class="b-card__header-action" onclick="navigate('users')">Все сотрудники →</div>
-      </div>
-      <div class="table-wrap">
-        <table class="t">
-          <thead><tr><th>Имя</th><th>Статус</th></tr></thead>
-          <tbody id="dash-users-table">
-            <tr>
-              <td><div class="name-cell"><div class="avatar" style="background:linear-gradient(135deg,#ef4444,#f97316)">И</div>Иванов А.</div></td>
-              <td><span class="tag tag--green">Активен</span></td>
-            </tr>
-            <tr>
-              <td><div class="name-cell"><div class="avatar" style="background:linear-gradient(135deg,#3b82f6,#22c55e)">П</div>Петрова М.</div></td>
-              <td><span class="tag tag--green">Активен</span></td>
-            </tr>
-            <tr>
-              <td><div class="name-cell"><div class="avatar" style="background:linear-gradient(135deg,#a855f7,#3b82f6)">К</div>Козлов Д.</div></td>
-              <td><span class="tag tag--amber">Испыт.</span></td>
-            </tr>
-            <tr>
-              <td><div class="name-cell"><div class="avatar" style="background:linear-gradient(135deg,#ec4899,#a855f7)">С</div>Сидорова Е.</div></td>
-              <td><span class="tag tag--green">Активен</span></td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="b-card b-card--tall">
+        <div class="b-card__header">
+          <div class="b-card__header-title">Новые сотрудники</div>
+          <div class="b-card__header-action" onclick="navigate('users')">Все →</div>
+        </div>
+        <div id="dash-new-users"><div class="loading">Загрузка...</div></div>
       </div>
     </div>
   `;
@@ -391,12 +367,20 @@ async function loadDashboard() {
     if ($('stat-active')) $('stat-active').textContent = stats.active || 0;
     if ($('stat-pending')) $('stat-pending').textContent = (stats.news_pending || 0) + (stats.standards_pending || 0);
     if ($('stat-medbooks')) $('stat-medbooks').textContent = stats.medbooks_alert || 0;
+    if ($('stat-questions')) $('stat-questions').textContent = stats.questions_open || 0;
+    if ($('dash-new-users')) {
+      const users = (data.users || []).slice(0, 5);
+      $('dash-new-users').innerHTML = users.map((u, i) => {
+        const gradients = ['linear-gradient(135deg,#ef4444,#f97316)','linear-gradient(135deg,#3b82f6,#22c55e)','linear-gradient(135deg,#a855f7,#3b82f6)','linear-gradient(135deg,#ec4899,#a855f7)','linear-gradient(135deg,#06b6d4,#3b82f6)'];
+        return `<div class="activity__item"><div class="avatar" style="background:${gradients[i%5]};width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600;">${(u.full_name||'?').charAt(0)}</div><div class="activity__content"><div class="activity__text">${esc(u.full_name||'—')}</div><div class="activity__time">${esc(u.position||'')}</div></div></div>`;
+      }).join('') || '<div class="loading">Нет новых</div>';
+    }
   } catch (e) {
     console.error('Dashboard error:', e);
   }
 }
 
-// ═══ Users ═══
+// ═══ USERS ═══
 async function loadUsers() {
   $('page-content').innerHTML = `
     <div class="b-card b-card--wide">
@@ -407,11 +391,7 @@ async function loadUsers() {
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>Сотрудник</th><th>Позиция</th><th>Ресторан</th><th>Статус</th></tr></thead>
-          <tbody id="users-table">
-            <tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">
-              <div class="loading">Загрузка...</div>
-            </td></tr>
-          </tbody>
+          <tbody id="users-table"><tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
         </table>
       </div>
     </div>
@@ -420,154 +400,115 @@ async function loadUsers() {
   try {
     const data = await cachedApi('/api/admin/users', { search: '', fired: false });
     const users = data.users || [];
+    $('users-count').textContent = users.length + ' сотрудников';
     const tbody = $('users-table');
-    if ($('users-count')) $('users-count').textContent = users.length + ' сотрудников';
-    tbody.innerHTML = users.map(u => {
-      const gradients = [
-        'linear-gradient(135deg,#ef4444,#f97316)',
-        'linear-gradient(135deg,#3b82f6,#22c55e)',
-        'linear-gradient(135deg,#a855f7,#3b82f6)',
-        'linear-gradient(135deg,#ec4899,#a855f7)',
-        'linear-gradient(135deg,#06b6d4,#3b82f6)',
-      ];
-      const grad = gradients[Math.abs(hashCode(u.full_name || '')) % gradients.length];
-      return `
-        <tr>
-          <td><div class="name-cell"><div class="avatar" style="background:${grad}">${(u.full_name || '?').charAt(0).toUpperCase()}</div>${esc(u.full_name || '—')}</div></td>
-          <td class="position">${esc(u.position || '—')}</td>
-          <td class="restaurant">${esc(u.restaurant_name || '—')}</td>
-          <td><span class="tag ${u.is_fired ? 'tag--amber' : 'tag--green'}">${u.is_fired ? 'Уволен' : 'Активен'}</span></td>
-        </tr>
-      `;
+    const gradients = ['linear-gradient(135deg,#ef4444,#f97316)','linear-gradient(135deg,#3b82f6,#22c55e)','linear-gradient(135deg,#a855f7,#3b82f6)','linear-gradient(135deg,#ec4899,#a855f7)','linear-gradient(135deg,#06b6d4,#3b82f6)'];
+    tbody.innerHTML = users.map((u, i) => {
+      const grad = gradients[i % gradients.length];
+      return `<tr><td><div class="name-cell"><div class="avatar" style="background:${grad}">${(u.full_name||'?').charAt(0).toUpperCase()}</div>${esc(u.full_name||'—')}</div></td><td class="position">${esc(u.position||'—')}</td><td class="restaurant">${esc(u.restaurant_name||'—')}</td><td><span class="tag ${u.is_fired ? 'tag--amber' : 'tag--green'}">${u.is_fired ? 'Уволен' : 'Активен'}</span></td></tr>`;
     }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет сотрудников</td></tr>';
   } catch (e) {
     $('users-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
 }
 
-function hashCode(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash) + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return hash;
-}
-
-// ═══ Medbooks ═══
+// ═══ MEDBOOKS ═══
 async function loadMedbooks() {
   $('page-content').innerHTML = `
     <div class="b-card b-card--wide">
       <div class="b-card__header">
         <div class="b-card__header-title">Медкнижки</div>
-        <div class="b-card__header-action">Экспорт →</div>
+        <span style="font-size:12px;color:var(--text-tertiary);font-weight:600;" id="mb-count">Загрузка...</span>
       </div>
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>Сотрудник</th><th>Позиция</th><th>Ресторан</th><th>Статус</th></tr></thead>
-          <tbody id="medbooks-table">
-            <tr>
-              <td><div class="name-cell"><div class="avatar" style="background:linear-gradient(135deg,#ef4444,#f97316)">И</div>Иванова М.</div></td>
-              <td class="position">Повар</td>
-              <td class="restaurant">Wokker Центральный</td>
-              <td><span class="tag tag--amber">Истекает через 12 дней</span></td>
-            </tr>
-            <tr>
-              <td><div class="name-cell"><div class="avatar" style="background:linear-gradient(135deg,#3b82f6,#22c55e)">П</div>Петров С.</div></td>
-              <td class="position">Официант</td>
-              <td class="restaurant">Wokker Северный</td>
-              <td><span class="tag tag--green">OK</span></td>
-            </tr>
-            <tr>
-              <td><div class="name-cell"><div class="avatar" style="background:linear-gradient(135deg,#a855f7,#3b82f6)">С</div>Сидорова А.</div></td>
-              <td class="position">Кассир</td>
-              <td class="restaurant">Wokker Центральный</td>
-              <td><span class="tag tag--blue">Заполняется</span></td>
-            </tr>
-          </tbody>
+          <tbody id="medbooks-table"><tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
         </table>
       </div>
     </div>
   `;
+
+  try {
+    const data = await cachedApi('/api/admin/medbooks', {});
+    const users = data.users || [];
+    $('mb-count').textContent = users.length + ' сотрудников';
+    const tbody = $('medbooks-table');
+    const gradients = ['linear-gradient(135deg,#ef4444,#f97316)','linear-gradient(135deg,#3b82f6,#22c55e)','linear-gradient(135deg,#a855f7,#3b82f6)'];
+    tbody.innerHTML = users.map((u, i) => {
+      const grad = gradients[i % gradients.length];
+      const statusTag = u.medbook_status === 'ok' ? 'tag--green' : u.medbook_status === 'expiring' ? 'tag--amber' : 'tag--pink';
+      const statusText = u.medbook_status === 'ok' ? 'OK' : u.medbook_status === 'expiring' ? 'Истекает' : 'Не заполнена';
+      return `<tr><td><div class="name-cell"><div class="avatar" style="background:${grad}">${(u.full_name||'?').charAt(0).toUpperCase()}</div>${esc(u.full_name||'—')}</div></td><td class="position">${esc(u.position||'—')}</td><td class="restaurant">${esc(u.restaurant_name||'—')}</td><td><span class="tag ${statusTag}">${statusText}</span></td></tr>`;
+    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет сотрудников</td></tr>';
+  } catch (e) {
+    $('medbooks-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+  }
 }
 
-// ═══ News ═══
+// ═══ NEWS ═══
 async function loadNews() {
   $('page-content').innerHTML = `
     <div class="b-card b-card--wide">
       <div class="b-card__header">
         <div class="b-card__header-title">Новости</div>
-        <div class="b-card__header-action">+ Создать →</div>
+        <span style="font-size:12px;color:var(--text-tertiary);font-weight:600;" id="news-count">Загрузка...</span>
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead><tr><th>Тип</th><th>Заголовок</th><th>Автор</th><th>Дата</th><th></th></tr></thead>
-          <tbody id="news-table">
-            <tr>
-              <td><span class="tag tag--blue">Новость</span></td>
-              <td style="font-weight:600;color:var(--text);">Новые стандарты подачи блюд</td>
-              <td>Смирнов В.</td>
-              <td style="color:var(--text-tertiary);">18.11.2026</td>
-              <td><button class="btn btn--ghost" style="padding:6px 14px;font-size:12px;">✓ Принять</button></td>
-            </tr>
-            <tr>
-              <td><span class="tag tag--purple">Объявление</span></td>
-              <td style="font-weight:600;color:var(--text);">Изменения в графике декабря</td>
-              <td>HR-отдел</td>
-              <td style="color:var(--text-tertiary);">17.11.2026</td>
-              <td><button class="btn btn--ghost" style="padding:6px 14px;font-size:12px;">✓ Принять</button></td>
-            </tr>
-            <tr>
-              <td><span class="tag tag--green">Событие</span></td>
-              <td style="font-weight:600;color:var(--text);">Корпоратив по итогам года</td>
-              <td>Администрация</td>
-              <td style="color:var(--text-tertiary);">15.11.2026</td>
-              <td><button class="btn btn--ghost" style="padding:6px 14px;font-size:12px;">✓ Принять</button></td>
-            </tr>
-          </tbody>
+          <thead><tr><th>Тип</th><th>Заголовок</th><th>Автор</th><th>Дата</th><th>Статус</th></tr></thead>
+          <tbody id="news-table"><tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
         </table>
       </div>
     </div>
   `;
+
+  try {
+    const data = await cachedApi('/api/admin/news', {});
+    const news = data.news || [];
+    $('news-count').textContent = news.length + ' новостей';
+    const tbody = $('news-table');
+    tbody.innerHTML = news.map(n => {
+      const levelTag = n.level === 'announcement' ? 'tag--purple' : n.level === 'event' ? 'tag--green' : 'tag--blue';
+      const statusTag = n.status === 'published' ? 'tag--green' : n.status === 'scheduled' ? 'tag--amber' : 'tag--amber';
+      const statusText = n.status === 'published' ? 'Опубликована' : n.status === 'scheduled' ? 'Запланирована' : 'На модерации';
+      return `<tr><td><span class="tag ${levelTag}">${n.level || 'normal'}</span></td><td style="font-weight:600;color:var(--text);">${esc(n.title||'—')}</td><td>${esc(n.proposed_by||'—')}</td><td style="color:var(--text-tertiary);">${fmtDate(n.created_at)}</td><td><span class="tag ${statusTag}">${statusText}</span></td></tr>`;
+    }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет новостей</td></tr>';
+  } catch (e) {
+    $('news-table').innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+  }
 }
 
-// ═══ Standards ═══
+// ═══ STANDARDS ═══
 async function loadStandards() {
   $('page-content').innerHTML = `
     <div class="b-card b-card--wide">
       <div class="b-card__header">
         <div class="b-card__header-title">Стандарты</div>
-        <div class="b-card__header-action">+ Добавить →</div>
+        <span style="font-size:12px;color:var(--text-tertiary);font-weight:600;" id="std-count">Загрузка...</span>
       </div>
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>Заголовок</th><th>Группа</th><th>Статус</th></tr></thead>
-          <tbody id="standards-table">
-            <tr>
-              <td style="font-weight:600;color:var(--text);">Пищевая безопасность</td>
-              <td><span class="tag tag--purple">Общее</span></td>
-              <td><span class="tag tag--green">Опубликован</span></td>
-            </tr>
-            <tr>
-              <td style="font-weight:600;color:var(--text);">Работа на кассе</td>
-              <td><span class="tag tag--blue">Касса</span></td>
-              <td><span class="tag tag--green">Опубликован</span></td>
-            </tr>
-            <tr>
-              <td style="font-weight:600;color:var(--text);">Сервис гостей</td>
-              <td><span class="tag tag--purple">Общее</span></td>
-              <td><span class="tag tag--green">Опубликован</span></td>
-            </tr>
-            <tr>
-              <td style="font-weight:600;color:var(--text);">Приготовлениеwok-блюд</td>
-              <td><span class="tag tag--amber">Кухня</span></td>
-              <td><span class="tag tag--amber">Черновик</span></td>
-            </tr>
-          </tbody>
+          <tbody id="standards-table"><tr><td colspan="3" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
         </table>
       </div>
     </div>
   `;
+
+  try {
+    const data = await cachedApi('/api/admin/standards', {});
+    const standards = data.standards || [];
+    $('std-count').textContent = standards.length + ' стандартов';
+    const tbody = $('standards-table');
+    tbody.innerHTML = standards.map(s => {
+      const statusTag = s.status === 'published' ? 'tag--green' : 'tag--amber';
+      const statusText = s.status === 'published' ? 'Опубликован' : 'На модерации';
+      return `<tr><td style="font-weight:600;color:var(--text);">${esc(s.title||'—')}</td><td><span class="tag tag--purple">${esc(s.group_name||'Общее')}</span></td><td><span class="tag ${statusTag}">${statusText}</span></td></tr>`;
+    }).join('') || '<tr><td colspan="3" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет стандартов</td></tr>';
+  } catch (e) {
+    $('standards-table').innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+  }
 }
 
 // ═══ FAQ ═══
@@ -576,89 +517,245 @@ async function loadFaq() {
     <div class="b-card b-card--wide">
       <div class="b-card__header">
         <div class="b-card__header-title">FAQ</div>
-        <div class="b-card__header-action">+ Добавить →</div>
+        <span style="font-size:12px;color:var(--text-tertiary);font-weight:600;" id="faq-count">Загрузка...</span>
       </div>
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>Вопрос</th><th>Категория</th><th>Ответ</th></tr></thead>
-          <tbody id="faq-table">
-            <tr>
-              <td style="font-weight:600;color:var(--text);">Как заполнить медкнижку?</td>
-              <td><span class="tag tag--blue">Медкнижки</span></td>
-              <td style="color:var(--text-secondary);">Перейдите в раздел медкнижек...</td>
-            </tr>
-            <tr>
-              <td style="font-weight:600;color:var(--text);">Как поставить табель?</td>
-              <td><span class="tag tag--purple">Табель</span></td>
-              <td style="color:var(--text-secondary);">Откройте табель за нужный месяц...</td>
-            </tr>
-            <tr>
-              <td style="font-weight:600;color:var(--text);">Как отправить заявку на выплату?</td>
-              <td><span class="tag tag--green">Выплаты</span></td>
-              <td style="color:var(--text-secondary);">Перейдите в раздел выплат...</td>
-            </tr>
-          </tbody>
+          <tbody id="faq-table"><tr><td colspan="3" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
         </table>
       </div>
     </div>
   `;
+
+  try {
+    const data = await cachedApi('/api/admin/faq', {});
+    const items = data.faq || [];
+    $('faq-count').textContent = items.length + ' вопросов';
+    const tbody = $('faq-table');
+    tbody.innerHTML = items.map(f => `<tr><td style="font-weight:600;color:var(--text);">${esc(f.question||'—')}</td><td><span class="tag tag--blue">${esc(f.category||'—')}</span></td><td style="color:var(--text-secondary);">${esc(f.answer||'—')}</td></tr>`).join('') || '<tr><td colspan="3" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет вопросов</td></tr>';
+  } catch (e) {
+    $('faq-table').innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+  }
 }
 
-// ═══ Restaurants ═══
+// ═══ RESTAURANTS ═══
 async function loadRestaurants() {
   $('page-content').innerHTML = `
     <div class="b-card b-card--wide">
       <div class="b-card__header">
         <div class="b-card__header-title">Рестораны</div>
-        <div class="b-card__header-action">+ Добавить →</div>
+        <span style="font-size:12px;color:var(--text-tertiary);font-weight:600;" id="rest-count">Загрузка...</span>
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead><tr><th>Название</th><th>Адрес</th><th>Статус</th></tr></thead>
-          <tbody id="restaurants-table">
-            <tr>
-              <td style="font-weight:600;color:var(--text);">Wokker Центральный</td>
-              <td class="restaurant">ул. Ленина, 1</td>
-              <td><span class="tag tag--green">Открыт</span></td>
-            </tr>
-            <tr>
-              <td style="font-weight:600;color:var(--text);">Wokker Северный</td>
-              <td class="restaurant">пр. Мира, 15</td>
-              <td><span class="tag tag--green">Открыт</span></td>
-            </tr>
-            <tr>
-              <td style="font-weight:600;color:var(--text);">Wokker Южный</td>
-              <td class="restaurant">ул. Гагарина, 42</td>
-              <td><span class="tag tag--amber">Ремонт</span></td>
-            </tr>
-          </tbody>
+          <thead><tr><th>Название</th><th>Адрес</th><th>ТУ</th><th>Статус</th></tr></thead>
+          <tbody id="restaurants-table"><tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
         </table>
       </div>
     </div>
   `;
+
+  try {
+    const data = await cachedApi('/api/admin/restaurants', {});
+    const restaurants = data.restaurants || [];
+    $('rest-count').textContent = restaurants.length + ' ресторанов';
+    const tbody = $('restaurants-table');
+    tbody.innerHTML = restaurants.map(r => {
+      const statusTag = r.force_status === 'open' ? 'tag--green' : 'tag--amber';
+      const statusText = r.force_status === 'open' ? 'Открыт' : r.force_status || 'Открыт';
+      return `<tr><td style="font-weight:600;color:var(--text);">${esc(r.name||'—')}</td><td class="restaurant">${esc(r.address||'—')}</td><td>${esc(r.territory_manager_name||'—')}</td><td><span class="tag ${statusTag}">${statusText}</span></td></tr>`;
+    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет ресторанов</td></tr>';
+  } catch (e) {
+    $('restaurants-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+  }
 }
 
-// ═══ Settings ═══
-async function loadSettings() {
+// ═══ CERTIFICATION ═══
+async function loadCertification() {
   $('page-content').innerHTML = `
     <div class="b-card b-card--wide">
-      <div class="b-card__label" style="margin-bottom:16px;">Настройки</div>
-      <div style="color:var(--text-dim);font-size:14px;line-height:1.6;">
-        <p>Здесь будут настройки системы, управления сотрудниками и интеграции.</p>
+      <div class="b-card__header">
+        <div class="b-card__header-title">Сертификация</div>
+        <span style="font-size:12px;color:var(--text-tertiary);font-weight:600;" id="cert-count">Загрузка...</span>
+      </div>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Вопрос</th><th>Правильный ответ</th></tr></thead>
+          <tbody id="cert-table"><tr><td colspan="2" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
+        </table>
       </div>
     </div>
   `;
+
+  try {
+    const data = await cachedApi('/api/admin/certification', {});
+    const questions = data.questions || [];
+    $('cert-count').textContent = questions.length + ' вопросов';
+    const tbody = $('cert-table');
+    tbody.innerHTML = questions.map(q => {
+      const correct = {a:'A',b:'B',c:'C',d:'D'};
+      return `<tr><td style="color:var(--text);">${esc(q.question||'—')}</td><td><span class="tag tag--green">${correct[q.correct_option?.toLowerCase()]||'—'}</span></td></tr>`;
+    }).join('') || '<tr><td colspan="2" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет вопросов</td></tr>';
+  } catch (e) {
+    $('cert-table').innerHTML = `<tr><td colspan="2" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+  }
 }
 
-// ═══ Counters ═══
-async function refreshCounters() {
+// ═══ POSITIONS ═══
+async function loadPositions() {
+  $('page-content').innerHTML = `
+    <div class="b-card b-card--wide">
+      <div class="b-card__header">
+        <div class="b-card__header-title">Должности</div>
+        <span style="font-size:12px;color:var(--text-tertiary);font-weight:600;" id="pos-count">Загрузка...</span>
+      </div>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Название</th><th>Ставка</th><th>Статус</th></tr></thead>
+          <tbody id="positions-table"><tr><td colspan="3" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
   try {
-    const n = await cachedApi('/api/admin/news', {});
-    const pending = (n.news || []).filter(x => x.status === 'pending').length;
-    const nEl = $('news-pending-count');
-    if (nEl) { if (pending > 0 && canPublish()) { nEl.textContent = pending; nEl.style.display = 'inline-block'; } else nEl.style.display = 'none'; }
-  } catch (e) {}
+    const data = await cachedApi('/api/admin/positions', {});
+    const positions = data.positions || [];
+    $('pos-count').textContent = positions.length + ' должностей';
+    const tbody = $('positions-table');
+    tbody.innerHTML = positions.map(p => {
+      const statusTag = p.is_archived ? 'tag--amber' : 'tag--green';
+      const statusText = p.is_archived ? 'Архив' : 'Активна';
+      return `<tr><td style="font-weight:600;color:var(--text);">${esc(p.name||'—')}</td><td>${p.rate!=null ? '₽'+p.rate : '—'}</td><td><span class="tag ${statusTag}">${statusText}</span></td></tr>`;
+    }).join('') || '<tr><td colspan="3" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет должностей</td></tr>';
+  } catch (e) {
+    $('positions-table').innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+  }
 }
+
+// ═══ QUESTIONS ═══
+async function loadQuestions() {
+  $('page-content').innerHTML = `
+    <div class="b-card b-card--wide">
+      <div class="b-card__header">
+        <div class="b-card__header-title">Вопросы от сотрудников</div>
+        <span style="font-size:12px;color:var(--text-tertiary);font-weight:600;" id="q-count-page">Загрузка...</span>
+      </div>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>От</th><th>Вопрос</th><th>Дата</th><th>Ответ</th></tr></thead>
+          <tbody id="questions-table"><tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  try {
+    const data = await cachedApi('/api/admin/questions', {});
+    const questions = data.questions || [];
+    $('q-count-page').textContent = questions.length + ' вопросов';
+    const tbody = $('questions-table');
+    tbody.innerHTML = questions.map(q => {
+      const statusTag = q.replied ? 'tag--green' : 'tag--amber';
+      const statusText = q.replied ? 'Ответен' : 'Ожидает';
+      return `<tr><td>${esc(q.full_name||'—')}</td><td style="color:var(--text);">${esc(q.text||'—')}</td><td style="color:var(--text-tertiary);">${fmtDate(q.created_at)}</td><td><span class="tag ${statusTag}">${statusText}</span></td></tr>`;
+    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет вопросов</td></tr>';
+  } catch (e) {
+    $('questions-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+  }
+}
+
+// ═══ ADMINS ═══
+async function loadAdmins() {
+  $('page-content').innerHTML = `
+    <div class="b-card b-card--wide">
+      <div class="b-card__header">
+        <div class="b-card__header-title">Администраторы</div>
+      </div>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Логин</th><th>Имя</th><th>Позиция</th><th>Роль</th></tr></thead>
+          <tbody id="admins-table"><tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  try {
+    const data = await cachedApi('/api/admin/admins', {});
+    const admins = data.admins || [];
+    const tbody = $('admins-table');
+    tbody.innerHTML = admins.map(a => {
+      const role = a.is_super_admin ? 'tag--purple' : 'tag--blue';
+      const roleText = a.is_super_admin ? 'Супер-админ' : 'Админ';
+      return `<tr><td style="font-weight:600;">${esc(a.login||'—')}</td><td>${esc(a.full_name||'—')}</td><td>${esc(a.position||'—')}</td><td><span class="tag ${role}">${roleText}</span></td></tr>`;
+    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет админов</td></tr>';
+  } catch (e) {
+    $('admins-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+  }
+}
+
+// ═══ REPORTS ═══
+async function loadReports() {
+  $('page-content').innerHTML = `
+    <div class="b-card b-card--wide">
+      <div class="b-card__header">
+        <div class="b-card__header-title">Отчёты по персоналу</div>
+      </div>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Всего</th><th>Активных</th><th>Уволено</th><th>Новые (7д)</th><th>Вопросы</th><th>Новости на модерации</th><th>Стандарты на модерации</th></tr></thead>
+          <tbody id="reports-body"><tr><td colspan="7" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  try {
+    const data = await cachedApi('/api/admin/reports', {});
+    const r = data.report || {};
+    $('reports-body').innerHTML = `<tr><td style="font-weight:700;font-size:18px;">${r.total||0}</td><td style="font-weight:700;color:var(--green);font-size:18px;">${r.active||0}</td><td style="font-weight:700;color:var(--amber);font-size:18px;">${r.fired||0}</td><td>${r.new7||0}</td><td>${r.questions_open||0}</td><td>${r.news_pending||0}</td><td>${r.standards_pending||0}</td></tr>`;
+  } catch (e) {
+    $('reports-body').innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+  }
+}
+
+// ═══ AUDIT ═══
+async function loadAudit() {
+  $('page-content').innerHTML = `
+    <div class="b-card b-card--wide">
+      <div class="b-card__header">
+        <div class="b-card__header-title">История действий</div>
+      </div>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Дата</th><th>Админ</th><th>Действие</th><th>Объект</th></tr></thead>
+          <tbody id="audit-table"><tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  try {
+    const data = await cachedApi('/api/admin/audit', {});
+    const logs = data.audit || [];
+    const tbody = $('audit-table');
+    tbody.innerHTML = logs.slice(0, 50).map(a => {
+      return `<tr><td style="color:var(--text-tertiary);font-size:12px;">${fmtDate(a.created_at, true)}</td><td>${esc(a.admin_full_name||'—')}</td><td><span class="tag tag--purple">${esc(a.action||'—')}</span></td><td style="color:var(--text-secondary);">${esc(a.details||'—')}</td></tr>`;
+    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Нет записей</td></tr>';
+  } catch (e) {
+    $('audit-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+  }
+}
+
+// ═══ Page Loaders Registry ═══
+const PAGE_LOADERS = {
+  dashboard: loadDashboard, users: loadUsers, medbooks: loadMedbooks,
+  news: loadNews, standards: loadStandards, certification: loadCertification,
+  faq: loadFaq, restaurants: loadRestaurants, positions: loadPositions,
+  questions: loadQuestions, admins: loadAdmins, reports: loadReports, audit: loadAudit,
+};
 
 // ═══ Init ═══
 if (getToken()) {

@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════
-   WOKKER ADMIN — NEUMORPHIC DASHBOARD
+   WOKKER ADMIN — NEUMORPHIC DASHBOARD (FULL CRUD)
    ═══════════════════════════════════════════ */
 
 const TOKEN_KEY = 'wokker_admin_token';
@@ -74,11 +74,26 @@ async function api(path, body) {
     } catch (e) {}
     throw new Error(msg);
   }
-  const data = await res.json();
-  if (data && (data.error === 'forbidden' || data.error === 'fired' || data.error === 'unauthorized')) {
-    clearToken(); showLogin(); throw new Error(data.error);
-  }
-  return data;
+  return res.json();
+}
+
+async function uploadFile(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+        const res = await fetch('/api/admin/upload', {
+            method: 'POST',
+            headers: { 'X-Token': getToken() },
+            body: formData
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Upload failed');
+        }
+        return await res.json();
+    } catch (e) {
+        throw new Error('Ошибка сети при загрузке файла');
+    }
 }
 
 // ═══ Mobile Sidebar ═══
@@ -304,53 +319,41 @@ async function loadDashboard() {
           <div class="neu-card__icon-wrapper neu-card__icon-wrapper--purple">👥</div>
           <div class="neu-card__trend neu-card__trend--up">↑ +3</div>
         </div>
-        <div class="neu-card__value" id="stat-active">
-          <div class="skeleton skeleton-stat"></div>
-        </div>
+        <div class="neu-card__value" id="stat-active"><div class="skeleton skeleton-stat"></div></div>
         <div class="neu-card__label">Активные сотрудники</div>
       </div>
-
       <div class="neu-card neu-card--stat">
         <div style="display:flex;align-items:center;justify-content:space-between;">
           <div class="neu-card__icon-wrapper neu-card__icon-wrapper--blue">📝</div>
           <div class="neu-card__trend neu-card__trend--warn">⏳</div>
         </div>
-        <div class="neu-card__value" id="stat-pending">
-          <div class="skeleton skeleton-stat"></div>
-        </div>
+        <div class="neu-card__value" id="stat-pending"><div class="skeleton skeleton-stat"></div></div>
         <div class="neu-card__label">На модерации</div>
       </div>
-
       <div class="neu-card neu-card--stat">
         <div style="display:flex;align-items:center;justify-content:space-between;">
           <div class="neu-card__icon-wrapper neu-card__icon-wrapper--pink">📖</div>
           <div class="neu-card__trend neu-card__trend--down">!</div>
         </div>
-        <div class="neu-card__value" id="stat-medbooks">
-          <div class="skeleton skeleton-stat"></div>
-        </div>
+        <div class="neu-card__value" id="stat-medbooks"><div class="skeleton skeleton-stat"></div></div>
         <div class="neu-card__label">Медкнижки требуют внимания</div>
       </div>
-
       <div class="neu-card neu-card--stat">
         <div style="display:flex;align-items:center;justify-content:space-between;">
           <div class="neu-card__icon-wrapper neu-card__icon-wrapper--green">❓</div>
           <div class="neu-card__trend neu-card__trend--warn">открытых</div>
         </div>
-        <div class="neu-card__value" id="stat-questions">
-          <div class="skeleton skeleton-stat"></div>
-        </div>
+        <div class="neu-card__value" id="stat-questions"><div class="skeleton skeleton-stat"></div></div>
         <div class="neu-card__label">Вопросы от сотрудников</div>
       </div>
     </div>
-
     <div class="grid-2">
       <div class="neu-card">
         <div class="neu-card__header">
           <div class="neu-card__header-title">Последняя активность</div>
           <div class="neu-card__header-action" onclick="navigate('news')">Все события →</div>
         </div>
-        <div class="activity" id="dash-activity">
+        <div class="activity">
           <div class="activity__item">
             <div class="activity__icon activity__icon--green">👤</div>
             <div class="activity__content">
@@ -374,19 +377,15 @@ async function loadDashboard() {
           </div>
         </div>
       </div>
-
       <div class="neu-card">
         <div class="neu-card__header">
           <div class="neu-card__header-title">Новые сотрудники</div>
           <div class="neu-card__header-action" onclick="navigate('users')">Все →</div>
         </div>
-        <div id="dash-new-users">
-          <div class="loading">Загрузка...</div>
-        </div>
+        <div id="dash-new-users"><div class="loading">Загрузка...</div></div>
       </div>
     </div>
   `;
-
   try {
     const data = await cachedApi('/api/admin/dashboard/summary', {}, 10000);
     const stats = data.stats || {};
@@ -396,85 +395,140 @@ async function loadDashboard() {
     if ($('stat-questions')) $('stat-questions').textContent = stats.questions_open || 0;
     if ($('dash-new-users')) {
       const users = (data.users || []).slice(0, 5);
-      $('dash-new-users').innerHTML = users.map((u, i) => {
-        return `
-          <div class="activity__item">
-            <div class="avatar" style="background:${getAvatarGradient(i)};width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:700;flex-shrink:0;">
-              ${(u.full_name||'?').charAt(0)}
-            </div>
-            <div class="activity__content">
-              <div class="activity__text">${esc(u.full_name||'—')}</div>
-              <div class="activity__time">${esc(u.position||'')}</div>
-            </div>
+      $('dash-new-users').innerHTML = users.map((u, i) => `
+        <div class="activity__item">
+          <div class="avatar" style="background:${getAvatarGradient(i)};width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:700;flex-shrink:0;">${(u.full_name||'?').charAt(0)}</div>
+          <div class="activity__content">
+            <div class="activity__text">${esc(u.full_name||'—')}</div>
+            <div class="activity__time">${esc(u.position||'')}</div>
           </div>
-        `;
-      }).join('') || '<div class="loading">Нет новых</div>';
+        </div>
+      `).join('') || '<div class="loading">Нет новых</div>';
     }
-  } catch (e) {
-    console.error('Dashboard error:', e);
-  }
+  } catch (e) { console.error('Dashboard error:', e); }
 }
 
-// ═══ USERS ═══
+// ═══ USERS (FULL CRUD) ═══
 async function loadUsers() {
   $('page-content').innerHTML = `
     <div class="neu-card">
       <div class="neu-card__header">
         <div class="neu-card__header-title">Сотрудники</div>
-        <span style="font-size:12px;color:var(--text-terc);font-weight:700;" id="users-count">Загрузка...</span>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn--primary" onclick="openAddUser()">+ Добавить</button>
+        </div>
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead>
-            <tr>
-              <th>Сотрудник</th>
-              <th>Позиция</th>
-              <th>Ресторан</th>
-              <th>Статус</th>
-            </tr>
-          </thead>
-          <tbody id="users-table">
-            <tr>
-              <td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">
-                <div class="loading">Загрузка...</div>
-              </td>
-            </tr>
-          </tbody>
+          <thead><tr><th>Сотрудник</th><th>Позиция</th><th>Ресторан</th><th>Статус</th><th>Действия</th></tr></thead>
+          <tbody id="users-table"><tr><td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
         </table>
       </div>
     </div>
   `;
-
   try {
     const data = await cachedApi('/api/admin/users', { search: '', fired: false });
     const users = data.users || [];
-    $('users-count').textContent = users.length + ' сотрудников';
     const tbody = $('users-table');
-    tbody.innerHTML = users.map((u, i) => {
-      const grad = getAvatarGradient(i);
-      return `
-        <tr>
-          <td>
-            <div class="name-cell">
-              <div class="avatar" style="background:${grad}">
-                ${(u.full_name||'?').charAt(0).toUpperCase()}
-              </div>
-              ${esc(u.full_name||'—')}
-            </div>
-          </td>
-          <td>${esc(u.position||'—')}</td>
-          <td>${esc(u.restaurant_name||'—')}</td>
-          <td>
-            <span class="tag ${u.is_fired ? 'tag--amber' : 'tag--green'}">
-              ${u.is_fired ? 'Уволен' : 'Активен'}
-            </span>
-          </td>
-        </tr>
-      `;
-    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Нет сотрудников</td></tr>';
+    tbody.innerHTML = users.map((u, i) => `
+      <tr>
+        <td><div class="name-cell"><div class="avatar" style="background:${getAvatarGradient(i)}">${(u.full_name||'?').charAt(0).toUpperCase()}</div>${esc(u.full_name||'—')}</div></td>
+        <td>${esc(u.position||'—')}</td>
+        <td>${esc(u.restaurant_name||'—')}</td>
+        <td><span class="tag ${u.is_fired ? 'tag--amber' : 'tag--green'}">${u.is_fired ? 'Уволен' : 'Активен'}</span></td>
+        <td style="display:flex;gap:4px;">
+          ${!u.is_fired && hasPerm('users_edit') ? `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="openEditUser(${u.user_id})">✏️</button>` : ''}
+          ${!u.is_fired && !u.is_super_admin && hasPerm('users_fire') ? `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--pink);" onclick="fireUser(${u.user_id},'${esc(u.full_name||'')}')" ${u.is_admin && !isSuperAdmin() ? 'disabled' : ''}>🔥</button>` : ''}
+          ${u.is_fired && hasPerm('users_fire') ? `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--green);" onclick="restoreUser(${u.user_id})">♻️</button>` : ''}
+        </td>
+      </tr>
+    `).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;">Нет сотрудников</td></tr>';
   } catch (e) {
-    $('users-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('users-table').innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
+}
+
+async function openAddUser() {
+  // Получаем рестораны для select
+  let restaurants = [];
+  try {
+    const rData = await api('/api/admin/restaurants', {});
+    restaurants = rData.restaurants || [];
+  } catch(e) {}
+  openModal('Добавить сотрудника', `
+    <div class="form-group"><label>ФИО</label><input class="form-input" id="user-full-name"></div>
+    <div class="form-group"><label>Пароль</label><input class="form-input" id="user-password" type="password"></div>
+    <div class="form-group"><label>Телефон</label><input class="form-input" id="user-phone"></div>
+    <div class="form-group"><label>Должность</label><input class="form-input" id="user-position"></div>
+    <div class="form-group"><label>Ресторан</label><select class="form-input" id="user-restaurant">${restaurants.map(r => `<option value="${esc(r.key)}">${esc(r.name)}</option>`).join('')}</select></div>
+    <div class="form-hint" id="user-error"></div>
+  `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="user-save">Создать</button>`);
+  $('user-save').addEventListener('click', async () => {
+    const errEl = $('user-error');
+    errEl.textContent = '';
+    const fn = $('user-full-name').value.trim();
+    const pw = $('user-password').value;
+    if (!fn || !pw) { errEl.textContent = 'Заполните ФИО и пароль'; return; }
+    try {
+      await api('/api/admin/user/create', {
+        full_name: fn, password: pw, phone: $('user-phone').value.trim(),
+        position: $('user-position').value.trim(), restaurant_key: $('user-restaurant').value
+      });
+      toast('Сотрудник создан', 'success'); closeModal(); navigate('users');
+    } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+  });
+}
+
+async function openEditUser(uid) {
+  let user, restaurants;
+  try {
+    const uData = await api('/api/admin/user/get', { user_id: uid });
+    user = uData.user;
+    const rData = await api('/api/admin/restaurants', {});
+    restaurants = rData.restaurants || [];
+  } catch (e) { toast('Ошибка: ' + e.message, 'error'); return; }
+  openModal('Редактировать: ' + (user.full_name||''), `
+    <div class="form-group"><label>ФИО</label><input class="form-input" id="ed-full-name" value="${esc(user.full_name||'')}"></div>
+    <div class="form-group"><label>Телефон</label><input class="form-input" id="ed-phone" value="${esc(user.phone||'')}"></div>
+    <div class="form-group"><label>Должность</label><input class="form-input" id="ed-position" value="${esc(user.position||'')}"></div>
+    <div class="form-group"><label>Ресторан</label><select class="form-input" id="ed-restaurant">${restaurants.map(r => `<option value="${esc(r.key)}" ${r.key === user.restaurant_key ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></div>
+    <div class="form-group"><label>Новый пароль (оставьте пустым если не нужно менять)</label><input class="form-input" id="ed-password" type="password"></div>
+    <div class="form-hint" id="ed-error"></div>
+  `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="ed-save">Сохранить</button>`);
+  $('ed-save').addEventListener('click', async () => {
+    const errEl = $('ed-error');
+    errEl.textContent = '';
+    const updates = {};
+    const fn = $('ed-full-name').value.trim();
+    if (fn) updates.full_name = fn;
+    const phone = $('ed-phone').value.trim();
+    if (phone) updates.phone = phone;
+    const pos = $('ed-position').value.trim();
+    if (pos) updates.position = pos;
+    updates.restaurant_key = $('ed-restaurant').value;
+    const pw = $('ed-password').value;
+    if (pw) updates.password = pw;
+    try {
+      await api('/api/admin/user/update', { user_id: uid, updates });
+      toast('Сохранено', 'success'); closeModal(); navigate('users');
+    } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+  });
+}
+
+async function fireUser(uid, name) {
+  if (!confirm(`Уволить ${name}?`)) return;
+  try {
+    await api('/api/admin/user/fire', { user_id: uid });
+    toast('Сотрудник уволен', 'success'); navigate('users');
+  } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+}
+
+async function restoreUser(uid) {
+  if (!confirm('Восстановить сотрудника?')) return;
+  try {
+    await api('/api/admin/user/restore', { user_id: uid });
+    toast('Сотрудник восстановлен', 'success'); navigate('users');
+  } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
 }
 
 // ═══ MEDBOOKS ═══
@@ -483,415 +537,604 @@ async function loadMedbooks() {
     <div class="neu-card">
       <div class="neu-card__header">
         <div class="neu-card__header-title">Медкнижки</div>
-        <span style="font-size:12px;color:var(--text-terc);font-weight:700;" id="mb-count">Загрузка...</span>
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead>
-            <tr>
-              <th>Сотрудник</th>
-              <th>Позиция</th>
-              <th>Ресторан</th>
-              <th>Статус</th>
-            </tr>
-          </thead>
-          <tbody id="medbooks-table">
-            <tr>
-              <td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">
-                <div class="loading">Загрузка...</div>
-              </td>
-            </tr>
-          </tbody>
+          <thead><tr><th>Сотрудник</th><th>Позиция</th><th>Ресторан</th><th>Статус</th><th>Действия</th></tr></thead>
+          <tbody id="medbooks-table"><tr><td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
         </table>
       </div>
     </div>
   `;
-
   try {
     const data = await cachedApi('/api/admin/medbooks', {});
     const users = data.users || [];
-    $('mb-count').textContent = users.length + ' сотрудников';
     const tbody = $('medbooks-table');
     tbody.innerHTML = users.map((u, i) => {
-      const grad = getAvatarGradient(i);
       const statusTag = u.medbook_status === 'ok' ? 'tag--green' : u.medbook_status === 'expiring' ? 'tag--amber' : 'tag--pink';
       const statusText = u.medbook_status === 'ok' ? 'OK' : u.medbook_status === 'expiring' ? 'Истекает' : 'Не заполнена';
       return `
         <tr>
-          <td>
-            <div class="name-cell">
-              <div class="avatar" style="background:${grad}">
-                ${(u.full_name||'?').charAt(0).toUpperCase()}
-              </div>
-              ${esc(u.full_name||'—')}
-            </div>
-          </td>
+          <td><div class="name-cell"><div class="avatar" style="background:${getAvatarGradient(i)}">${(u.full_name||'?').charAt(0).toUpperCase()}</div>${esc(u.full_name||'—')}</div></td>
           <td>${esc(u.position||'—')}</td>
           <td>${esc(u.restaurant_name||'—')}</td>
-          <td>
-            <span class="tag ${statusTag}">${statusText}</span>
-          </td>
+          <td><span class="tag ${statusTag}">${statusText}</span></td>
+          <td><button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="openEditMedbook(${u.user_id})">✏️</button></td>
         </tr>
       `;
-    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Нет сотрудников</td></tr>';
+    }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;">Нет сотрудников</td></tr>';
   } catch (e) {
-    $('medbooks-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('medbooks-table').innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
 }
 
-// ═══ NEWS ═══
+async function openEditMedbook(uid) {
+  let user, medbook, doctors = [], tests = [], vaccines = [];
+  try {
+    const d = await api('/api/admin/medbook/get', { user_id: uid });
+    user = d.user; medbook = d.medbook || {}; doctors = d.doctors || []; tests = d.tests || []; vaccines = d.vaccines || [];
+  } catch (e) { toast('Ошибка: ' + e.message, 'error'); return; }
+  openModal('Медкнижка: ' + (user.full_name||''), `
+    <div style="margin-bottom:16px;"><strong>${esc(user.full_name||'—')}</strong> — ${esc(user.position||'')}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+      <div>
+        <h4 style="margin-bottom:8px;color:var(--purple);">Врачи</h4>
+        ${doctors.map(d => `<div class="form-group"><label>${esc(d.name)}</label><input class="form-input med-date" data-type="doctor" data-id="${d.id}" value="${(medbook.doctors||{})[d.id]||''}" placeholder="ДД.ММ.ГГГГ"></div>`).join('')}
+      </div>
+      <div>
+        <h4 style="margin-bottom:8px;color:var(--blue);">Анализы</h4>
+        ${tests.map(t => `<div class="form-group"><label>${esc(t.name)}</label><input class="form-input med-date" data-type="test" data-id="${t.id}" value="${(medbook.tests||{})[t.id]||''}" placeholder="ДД.ММ.ГГГГ"></div>`).join('')}
+      </div>
+      <div>
+        <h4 style="margin-bottom:8px;color:var(--green);">Прививки</h4>
+        ${vaccines.map(v => `<div class="form-group"><label>${esc(v.name)}</label><input class="form-input med-date" data-type="vaccine" data-id="${v.id}" value="${(medbook.vaccines||{})[v.id]||''}" placeholder="ДД.ММ.ГГГГ"></div>`).join('')}
+      </div>
+    </div>
+    <div class="form-hint" id="med-error"></div>
+  `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="med-save">Сохранить</button>`);
+  $('med-save').addEventListener('click', async () => {
+    const errEl = $('med-error');
+    errEl.textContent = '';
+    const mb = { doctors: {}, tests: {}, vaccines: {} };
+    document.querySelectorAll('.med-date').forEach(inp => {
+      const type = inp.dataset.type, id = inp.dataset.id, val = inp.value.trim();
+      if (val) { if (!mb[type]) mb[type] = {}; mb[type][id] = val; }
+    });
+    try {
+      await api('/api/admin/medbook/save', { user_id: uid, medbook: mb });
+      toast('Медкнижка сохранена', 'success'); closeModal(); navigate('medbooks');
+    } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+  });
+}
+
+// ═══ NEWS (FULL CRUD) ═══
 async function loadNews() {
   $('page-content').innerHTML = `
     <div class="neu-card">
       <div class="neu-card__header">
         <div class="neu-card__header-title">Новости</div>
-        <span style="font-size:12px;color:var(--text-terc);font-weight:700;" id="news-count">Загрузка...</span>
+        ${hasPerm('news_write') || hasPerm('news_suggest') ? `<button class="btn btn--primary" onclick="openAddNews()">+ Создать</button>` : ''}
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead>
-            <tr>
-              <th>Тип</th>
-              <th>Заголовок</th>
-              <th>Автор</th>
-              <th>Дата</th>
-              <th>Статус</th>
-            </tr>
-          </thead>
-          <tbody id="news-table">
-            <tr>
-              <td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;">
-                <div class="loading">Загрузка...</div>
-              </td>
-            </tr>
-          </tbody>
+          <thead><tr><th>Тип</th><th>Заголовок</th><th>Автор</th><th>Дата</th><th>Статус</th><th>Действия</th></tr></thead>
+          <tbody id="news-table"><tr><td colspan="6" style="text-align:center;color:var(--text-terc);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
         </table>
       </div>
     </div>
   `;
-
   try {
     const data = await cachedApi('/api/admin/news', {});
     const news = data.news || [];
-    $('news-count').textContent = news.length + ' новостей';
     const tbody = $('news-table');
     tbody.innerHTML = news.map(n => {
       const levelTag = n.level === 'announcement' ? 'tag--purple' : n.level === 'event' ? 'tag--green' : 'tag--blue';
-      const statusTag = n.status === 'published' ? 'tag--green' : 'tag--amber';
+      const statusTag = n.status === 'published' ? 'tag--green' : n.status === 'scheduled' ? 'tag--amber' : 'tag--amber';
       const statusText = n.status === 'published' ? 'Опубликована' : n.status === 'scheduled' ? 'Запланирована' : 'На модерации';
+      let actions = '';
+      if (n.status === 'pending' && canPublish()) {
+        actions += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--green);" onclick="approveNews(${n.id})">✓</button>`;
+        actions += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--pink);" onclick="rejectNews(${n.id})">✕</button>`;
+      }
+      if (hasPerm('news_edit')) {
+        actions += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="deleteNews(${n.id})">🗑️</button>`;
+      }
       return `
         <tr>
-          <td><span class="tag ${levelTag}">${n.level || 'normal'}</span></td>
-          <td style="font-weight:600;color:var(--text);">${esc(n.title||'—')}</td>
+          <td><span class="tag ${levelTag}">${n.level||'normal'}</span></td>
+          <td style="font-weight:600;color:var(--text);max-width:300px;overflow:hidden;text-overflow:ellipsis;">${esc(n.title||'—')}</td>
           <td>${esc(n.proposed_by||'—')}</td>
           <td style="color:var(--text-terc);">${fmtDate(n.created_at)}</td>
           <td><span class="tag ${statusTag}">${statusText}</span></td>
+          <td style="display:flex;gap:4px;">${actions}</td>
         </tr>
       `;
-    }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;">Нет новостей</td></tr>';
+    }).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-terc);padding:40px;">Нет новостей</td></tr>';
   } catch (e) {
-    $('news-table').innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('news-table').innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
 }
 
-// ═══ STANDARDS ═══
+async function openAddNews() {
+  openModal('Создать новость', `
+    <div class="form-group"><label>Заголовок</label><input class="form-input" id="news-title" maxlength="200"></div>
+    <div class="form-group"><label>Текст</label><textarea class="form-textarea" id="news-body" rows="6"></textarea></div>
+    <div class="form-group"><label>Уровень</label><select class="form-input" id="news-level"><option value="normal">Обычная</option><option value="announcement">Объявление</option><option value="event">Событие</option></select></div>
+    <div class="form-group"><label>Intent</label><select class="form-input" id="news-intent"><option value="suggest">Предложить</option><option value="publish" ${canPublish()?'selected':''}>Опубликовать</option></select></div>
+    <div class="form-hint" id="news-error"></div>
+  `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="news-save">Создать</button>`);
+  $('news-save').addEventListener('click', async () => {
+    const errEl = $('news-error');
+    errEl.textContent = '';
+    const title = $('news-title').value.trim();
+    const body = $('news-body').value.trim();
+    if (!title || !body) { errEl.textContent = 'Заполните заголовок и текст'; return; }
+    try {
+      await api('/api/admin/news/add', {
+        title, body,
+        level: $('news-level').value,
+        intent: $('news-intent').value,
+      });
+      toast('Новость создана', 'success'); closeModal(); navigate('news');
+    } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+  });
+}
+
+async function approveNews(id) {
+  try { await api('/api/admin/news/approve', { id }); toast('Одобрено', 'success'); navigate('news'); }
+  catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+}
+
+async function rejectNews(id) {
+  if (!confirm('Отклонить новость?')) return;
+  try { await api('/api/admin/news/reject', { id }); toast('Отклонено', 'success'); navigate('news'); }
+  catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+}
+
+async function deleteNews(id) {
+  if (!confirm('Удалить новость?')) return;
+  try { await api('/api/admin/news/delete', { id }); toast('Удалено', 'success'); navigate('news'); }
+  catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+}
+
+// ═══ STANDARDS (FULL CRUD) ═══
 async function loadStandards() {
   $('page-content').innerHTML = `
     <div class="neu-card">
       <div class="neu-card__header">
         <div class="neu-card__header-title">Стандарты</div>
-        <span style="font-size:12px;color:var(--text-terc);font-weight:700;" id="std-count">Загрузка...</span>
+        ${hasPerm('standards_edit') ? `<button class="btn btn--primary" onclick="openAddStandard()">+ Добавить</button>` : ''}
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead>
-            <tr>
-              <th>Заголовок</th>
-              <th>Группа</th>
-              <th>Статус</th>
-            </tr>
-          </thead>
-          <tbody id="standards-table">
-            <tr>
-              <td colspan="3" style="text-align:center;color:var(--text-terc);padding:40px;">
-                <div class="loading">Загрузка...</div>
-              </td>
-            </tr>
-          </tbody>
+          <thead><tr><th>Заголовок</th><th>Группа</th><th>Статус</th><th>Действия</th></tr></thead>
+          <tbody id="standards-table"><tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
         </table>
       </div>
     </div>
   `;
-
   try {
     const data = await cachedApi('/api/admin/standards', {});
     const standards = data.standards || [];
-    $('std-count').textContent = standards.length + ' стандартов';
     const tbody = $('standards-table');
     tbody.innerHTML = standards.map(s => {
       const statusTag = s.status === 'published' ? 'tag--green' : 'tag--amber';
       const statusText = s.status === 'published' ? 'Опубликован' : 'На модерации';
+      let actions = '';
+      if (s.status === 'pending' && canPublish()) {
+        actions += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--green);" onclick="approveStandard(${s.id})">✓</button>`;
+        actions += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--pink);" onclick="rejectStandard(${s.id})">✕</button>`;
+      }
+      if (hasPerm('standards_edit')) {
+        actions += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="deleteStandard(${s.id})">🗑️</button>`;
+      }
       return `
         <tr>
           <td style="font-weight:600;color:var(--text);">${esc(s.title||'—')}</td>
           <td><span class="tag tag--purple">${esc(s.group_name||'Общее')}</span></td>
           <td><span class="tag ${statusTag}">${statusText}</span></td>
+          <td style="display:flex;gap:4px;">${actions}</td>
         </tr>
       `;
-    }).join('') || '<tr><td colspan="3" style="text-align:center;color:var(--text-terc);padding:40px;">Нет стандартов</td></tr>';
+    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Нет стандартов</td></tr>';
   } catch (e) {
-    $('standards-table').innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('standards-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
 }
 
-// ═══ FAQ ═══
+async function openAddStandard() {
+  openModal('Добавить стандарт', `
+    <div class="form-group"><label>Заголовок</label><input class="form-input" id="std-title"></div>
+    <div class="form-group"><label>Текст</label><textarea class="form-textarea" id="std-body" rows="6"></textarea></div>
+    <div class="form-group"><label>Группа</label><select class="form-input" id="std-group"><option>Пищевая Безопасность</option><option>Касса</option><option>Горячий цех</option><option>Холодный цех</option><option>Общее</option></select></div>
+    <div class="form-hint" id="std-error"></div>
+  `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="std-save">Создать</button>`);
+  $('std-save').addEventListener('click', async () => {
+    const errEl = $('std-error');
+    errEl.textContent = '';
+    const title = $('std-title').value.trim();
+    const body = $('std-body').value.trim();
+    if (!title || !body) { errEl.textContent = 'Заполните все поля'; return; }
+    try {
+      await api('/api/admin/standard/add', { title, body, group_name: $('std-group').value });
+      toast('Стандарт создан', 'success'); closeModal(); navigate('standards');
+    } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+  });
+}
+
+async function approveStandard(id) {
+  try { await api('/api/admin/standard/approve', { id }); toast('Одобрено', 'success'); navigate('standards'); }
+  catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+}
+
+async function rejectStandard(id) {
+  if (!confirm('Отклонить стандарт?')) return;
+  try { await api('/api/admin/standard/reject', { id }); toast('Отклонено', 'success'); navigate('standards'); }
+  catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+}
+
+async function deleteStandard(id) {
+  if (!confirm('Удалить стандарт?')) return;
+  try { await api('/api/admin/standard/delete', { id }); toast('Удалено', 'success'); navigate('standards'); }
+  catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+}
+
+// ═══ FAQ (FULL CRUD) ═══
 async function loadFaq() {
   $('page-content').innerHTML = `
     <div class="neu-card">
       <div class="neu-card__header">
         <div class="neu-card__header-title">FAQ</div>
-        <span style="font-size:12px;color:var(--text-terc);font-weight:700;" id="faq-count">Загрузка...</span>
+        ${hasPerm('faq_edit') ? `<button class="btn btn--primary" onclick="openAddFaq()">+ Добавить</button>` : ''}
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead>
-            <tr>
-              <th>Вопрос</th>
-              <th>Категория</th>
-              <th>Ответ</th>
-            </tr>
-          </thead>
-          <tbody id="faq-table">
-            <tr>
-              <td colspan="3" style="text-align:center;color:var(--text-terc);padding:40px;">
-                <div class="loading">Загрузка...</div>
-              </td>
-            </tr>
-          </tbody>
+          <thead><tr><th>Вопрос</th><th>Категория</th><th>Ответ</th><th>Действия</th></tr></thead>
+          <tbody id="faq-table"><tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
         </table>
       </div>
     </div>
   `;
-
   try {
     const data = await cachedApi('/api/admin/faq', {});
     const items = data.faq || [];
-    $('faq-count').textContent = items.length + ' вопросов';
     const tbody = $('faq-table');
     tbody.innerHTML = items.map(f => `
       <tr>
-        <td style="font-weight:600;color:var(--text);">${esc(f.question||'—')}</td>
+        <td style="font-weight:600;color:var(--text);max-width:300px;">${esc(f.question||'—')}</td>
         <td><span class="tag tag--blue">${esc(f.category||'—')}</span></td>
-        <td style="color:var(--text-sec);">${esc(f.answer||'—')}</td>
+        <td style="color:var(--text-sec);max-width:300px;">${esc(f.answer||'—')}</td>
+        <td style="display:flex;gap:4px;">
+          ${hasPerm('faq_edit') ? `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="deleteFaq(${f.id})">🗑️</button>` : ''}
+        </td>
       </tr>
-    `).join('') || '<tr><td colspan="3" style="text-align:center;color:var(--text-terc);padding:40px;">Нет вопросов</td></tr>';
+    `).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Нет вопросов</td></tr>';
   } catch (e) {
-    $('faq-table').innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('faq-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
 }
 
-// ═══ RESTAURANTS ═══
+async function openAddFaq() {
+  openModal('Добавить FAQ', `
+    <div class="form-group"><label>Вопрос</label><input class="form-input" id="faq-question" maxlength="500"></div>
+    <div class="form-group"><label>Ответ</label><textarea class="form-textarea" id="faq-answer" rows="4" maxlength="2000"></textarea></div>
+    <div class="form-hint" id="faq-error"></div>
+  `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="faq-save">Добавить</button>`);
+  $('faq-save').addEventListener('click', async () => {
+    const errEl = $('faq-error');
+    errEl.textContent = '';
+    const q = $('faq-question').value.trim();
+    const a = $('faq-answer').value.trim();
+    if (!q || !a) { errEl.textContent = 'Заполните все поля'; return; }
+    try {
+      await api('/api/admin/faq/add', { question: q, answer: a });
+      toast('Добавлено', 'success'); closeModal(); navigate('faq');
+    } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+  });
+}
+
+async function deleteFaq(id) {
+  if (!confirm('Удалить FAQ?')) return;
+  try { await api('/api/admin/faq/delete', { id }); toast('Удалено', 'success'); navigate('faq'); }
+  catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+}
+
+// ═══ RESTAURANTS (FULL CRUD) ═══
 async function loadRestaurants() {
   $('page-content').innerHTML = `
     <div class="neu-card">
       <div class="neu-card__header">
         <div class="neu-card__header-title">Рестораны</div>
-        <span style="font-size:12px;color:var(--text-terc);font-weight:700;" id="rest-count">Загрузка...</span>
+        ${hasPerm('restaurant_create') ? `<button class="btn btn--primary" onclick="openAddRestaurant()">+ Добавить</button>` : ''}
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead>
-            <tr>
-              <th>Название</th>
-              <th>Адрес</th>
-              <th>ТУ</th>
-              <th>Статус</th>
-            </tr>
-          </thead>
-          <tbody id="restaurants-table">
-            <tr>
-              <td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">
-                <div class="loading">Загрузка...</div>
-              </td>
-            </tr>
-          </tbody>
+          <thead><tr><th>Название</th><th>Адрес</th><th>ТУ</th><th>Статус</th><th>Действия</th></tr></thead>
+          <tbody id="restaurants-table"><tr><td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
         </table>
       </div>
     </div>
   `;
-
   try {
     const data = await cachedApi('/api/admin/restaurants', {});
     const restaurants = data.restaurants || [];
-    $('rest-count').textContent = restaurants.length + ' ресторанов';
+    const tuCandidates = data.tu_candidates || [];
     const tbody = $('restaurants-table');
-    tbody.innerHTML = restaurants.map(r => {
+    tbody.innerHTML = restaurants.map((r, i) => {
       const statusTag = r.force_status === 'open' ? 'tag--green' : 'tag--amber';
       const statusText = r.force_status === 'open' ? 'Открыт' : r.force_status || 'Открыт';
+      let actions = '';
+      if (hasPerm('restaurant_edit')) {
+        actions += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="editRestaurant('${esc(r.key)}')">✏️</button>`;
+      }
+      if (hasPerm('restaurant_tu')) {
+        actions += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="assignTU('${esc(r.key)}')">👤</button>`;
+      }
       return `
         <tr>
           <td style="font-weight:600;color:var(--text);">${esc(r.name||'—')}</td>
-          <td class="restaurant">${esc(r.address||'—')}</td>
+          <td>${esc(r.address||'—')}</td>
           <td>${esc(r.territory_manager_name||'—')}</td>
           <td><span class="tag ${statusTag}">${statusText}</span></td>
+          <td style="display:flex;gap:4px;">${actions}</td>
         </tr>
       `;
-    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Нет ресторанов</td></tr>';
+    }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;">Нет ресторанов</td></tr>';
   } catch (e) {
-    $('restaurants-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('restaurants-table').innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
 }
 
-// ═══ CERTIFICATION ═══
+async function openAddRestaurant() {
+  openModal('Добавить ресторан', `
+    <div class="form-group"><label>Ключ (лат, без пробелов)</label><input class="form-input" id="rest-key" maxlength="50"></div>
+    <div class="form-group"><label>Название</label><input class="form-input" id="rest-name" maxlength="100"></div>
+    <div class="form-group"><label>Адрес</label><input class="form-input" id="rest-address"></div>
+    <div class="form-group"><label>Телефон</label><input class="form-input" id="rest-phone"></div>
+    <div class="form-hint" id="rest-error"></div>
+  `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="rest-save">Создать</button>`);
+  $('rest-save').addEventListener('click', async () => {
+    const errEl = $('rest-error');
+    errEl.textContent = '';
+    const key = $('rest-key').value.trim().toLowerCase().replace(/\s/g, '_');
+    const name = $('rest-name').value.trim();
+    if (!key || !name) { errEl.textContent = 'Заполните ключ и название'; return; }
+    try {
+      await api('/api/admin/restaurant/add', { key, name, address: $('rest-address').value, phone: $('rest-phone').value });
+      toast('Ресторан создан', 'success'); closeModal(); navigate('restaurants');
+    } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+  });
+}
+
+async function editRestaurant(key) {
+  let r;
+  try {
+    const data = await api('/api/admin/restaurants', {});
+    r = (data.restaurants || []).find(x => x.key === key);
+  } catch (e) { return; }
+  if (!r) return;
+  openModal('Редактировать: ' + r.name, `
+    <div class="form-group"><label>Название</label><input class="form-input" id="ed-rest-name" value="${esc(r.name)}"></div>
+    <div class="form-group"><label>Адрес</label><input class="form-input" id="ed-rest-address" value="${esc(r.address||'')}"></div>
+    <div class="form-group"><label>Телефон</label><input class="form-input" id="ed-rest-phone" value="${esc(r.phone||'')}"></div>
+    <div class="form-hint" id="ed-rest-error"></div>
+  `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="ed-rest-save">Сохранить</button>`);
+  $('ed-rest-save').addEventListener('click', async () => {
+    const errEl = $('ed-rest-error');
+    errEl.textContent = '';
+    try {
+      await api('/api/admin/restaurant/update', { key, updates: {
+        name: $('ed-rest-name').value.trim(),
+        address: $('ed-rest-address').value.trim(),
+        phone: $('ed-rest-phone').value.trim(),
+      }});
+      toast('Сохранено', 'success'); closeModal(); navigate('restaurants');
+    } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+  });
+}
+
+async function assignTU(key) {
+  let tuCandidates;
+  try {
+    const data = await api('/api/admin/restaurants', {});
+    tuCandidates = data.tu_candidates || [];
+  } catch (e) { return; }
+  openModal('Назначить ТУ', `
+    <div class="form-group"><label>Территориальный менеджер</label><select class="form-input" id="tu-select"><option value="">— Не назначен —</option>${tuCandidates.map(t => `<option value="${t.user_id}">${esc(t.full_name)}</option>`).join('')}</select></div>
+    <div class="form-hint" id="tu-error"></div>
+  `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="tu-save">Назначить</button>`);
+  $('tu-save').addEventListener('click', async () => {
+    const errEl = $('tu-error');
+    errEl.textContent = '';
+    const tu = $('tu-select').value;
+    try {
+      await api('/api/admin/restaurant/tu', { key, territory_manager_id: tu || null });
+      toast('ТУ назначен', 'success'); closeModal(); navigate('restaurants');
+    } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+  });
+}
+
+// ═══ CERTIFICATION (FULL CRUD) ═══
 async function loadCertification() {
   $('page-content').innerHTML = `
     <div class="neu-card">
       <div class="neu-card__header">
         <div class="neu-card__header-title">Сертификация</div>
-        <span style="font-size:12px;color:var(--text-terc);font-weight:700;" id="cert-count">Загрузка...</span>
+        ${hasPerm('certification_edit') ? `<button class="btn btn--primary" onclick="openAddCert()">+ Добавить вопрос</button>` : ''}
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead>
-            <tr>
-              <th>Вопрос</th>
-              <th>Правильный ответ</th>
-            </tr>
-          </thead>
-          <tbody id="cert-table">
-            <tr>
-              <td colspan="2" style="text-align:center;color:var(--text-terc);padding:40px;">
-                <div class="loading">Загрузка...</div>
-              </td>
-            </tr>
-          </tbody>
+          <thead><tr><th>Вопрос</th><th>Правильный ответ</th><th>Действия</th></tr></thead>
+          <tbody id="cert-table"><tr><td colspan="3" style="text-align:center;color:var(--text-terc);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
         </table>
       </div>
     </div>
   `;
-
   try {
     const data = await cachedApi('/api/admin/certification', {});
     const questions = data.questions || [];
-    $('cert-count').textContent = questions.length + ' вопросов';
     const tbody = $('cert-table');
     tbody.innerHTML = questions.map(q => {
       const correct = {a:'A',b:'B',c:'C',d:'D'};
       return `
         <tr>
-          <td style="color:var(--text);">${esc(q.question||'—')}</td>
+          <td style="color:var(--text);max-width:400px;">${esc(q.question||'—')}</td>
           <td><span class="tag tag--green">${correct[q.correct_option?.toLowerCase()]||'—'}</span></td>
+          <td>${hasPerm('certification_edit') ? `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--pink);" onclick="deleteCert(${q.id})">🗑️</button>` : ''}</td>
         </tr>
       `;
-    }).join('') || '<tr><td colspan="2" style="text-align:center;color:var(--text-terc);padding:40px;">Нет вопросов</td></tr>';
+    }).join('') || '<tr><td colspan="3" style="text-align:center;color:var(--text-terc);padding:40px;">Нет вопросов</td></tr>';
   } catch (e) {
-    $('cert-table').innerHTML = `<tr><td colspan="2" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('cert-table').innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
 }
 
-// ═══ POSITIONS ═══
+async function openAddCert() {
+  openModal('Добавить вопрос сертификации', `
+    <div class="form-group"><label>Вопрос</label><textarea class="form-textarea" id="cert-question" rows="3"></textarea></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="form-group"><label>Вариант A</label><input class="form-input" id="cert-a"></div>
+      <div class="form-group"><label>Вариант B</label><input class="form-input" id="cert-b"></div>
+      <div class="form-group"><label>Вариант C</label><input class="form-input" id="cert-c"></div>
+      <div class="form-group"><label>Вариант D</label><input class="form-input" id="cert-d"></div>
+    </div>
+    <div class="form-group"><label>Правильный ответ</label><select class="form-input" id="cert-correct"><option value="a">A</option><option value="b">B</option><option value="c">C</option><option value="d">D</option></select></div>
+    <div class="form-hint" id="cert-error"></div>
+  `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="cert-save">Добавить</button>`);
+  $('cert-save').addEventListener('click', async () => {
+    const errEl = $('cert-error');
+    errEl.textContent = '';
+    const q = $('cert-question').value.trim();
+    const a = $('cert-a').value.trim(), b = $('cert-b').value.trim(), c = $('cert-c').value.trim(), d = $('cert-d').value.trim();
+    if (!q || !a || !b || !c || !d) { errEl.textContent = 'Заполните все поля'; return; }
+    try {
+      await api('/api/admin/certification/add', { question: q, option_a: a, option_b: b, option_c: c, option_d: d, correct_option: $('cert-correct').value });
+      toast('Добавлено', 'success'); closeModal(); navigate('certification');
+    } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+  });
+}
+
+async function deleteCert(id) {
+  if (!confirm('Удалить вопрос?')) return;
+  try { await api('/api/admin/certification/delete', { id }); toast('Удалено', 'success'); navigate('certification'); }
+  catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+}
+
+// ═══ POSITIONS (FULL CRUD) ═══
 async function loadPositions() {
   $('page-content').innerHTML = `
     <div class="neu-card">
       <div class="neu-card__header">
         <div class="neu-card__header-title">Должности</div>
-        <span style="font-size:12px;color:var(--text-terc);font-weight:700;" id="pos-count">Загрузка...</span>
+        ${hasPerm('positions_edit') ? `<button class="btn btn--primary" onclick="openAddPosition()">+ Добавить</button>` : ''}
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead>
-            <tr>
-              <th>Название</th>
-              <th>Ставка</th>
-              <th>Статус</th>
-            </tr>
-          </thead>
-          <tbody id="positions-table">
-            <tr>
-              <td colspan="3" style="text-align:center;color:var(--text-terc);padding:40px;">
-                <div class="loading">Загрузка...</div>
-              </td>
-            </tr>
-          </tbody>
+          <thead><tr><th>Название</th><th>Ставка</th><th>Статус</th><th>Действия</th></tr></thead>
+          <tbody id="positions-table"><tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
         </table>
       </div>
     </div>
   `;
-
   try {
     const data = await cachedApi('/api/admin/positions', {});
     const positions = data.positions || [];
-    $('pos-count').textContent = positions.length + ' должностей';
     const tbody = $('positions-table');
-    tbody.innerHTML = positions.map(p => {
-      const statusTag = p.is_archived ? 'tag--amber' : 'tag--green';
-      const statusText = p.is_archived ? 'Архив' : 'Активна';
-      return `
-        <tr>
-          <td style="font-weight:600;color:var(--text);">${esc(p.name||'—')}</td>
-          <td>${p.rate!=null ? '₽'+p.rate : '—'}</td>
-          <td><span class="tag ${statusTag}">${statusText}</span></td>
-        </tr>
-      `;
-    }).join('') || '<tr><td colspan="3" style="text-align:center;color:var(--text-terc);padding:40px;">Нет должностей</td></tr>';
+    tbody.innerHTML = positions.map(p => `
+      <tr>
+        <td style="font-weight:600;color:var(--text);">${esc(p.name||'—')}</td>
+        <td>${p.rate!=null ? '₽'+p.rate : '—'}</td>
+        <td><span class="tag ${p.is_archived ? 'tag--amber' : 'tag--green'}">${p.is_archived ? 'Архив' : 'Активна'}</span></td>
+        <td>${hasPerm('positions_edit') && !p.is_archived ? `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--pink);" onclick="archivePosition(${p.id})">🗑️</button>` : ''}</td>
+      </tr>
+    `).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Нет должностей</td></tr>';
   } catch (e) {
-    $('positions-table').innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('positions-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
 }
 
-// ═══ QUESTIONS ═══
+async function openAddPosition() {
+  openModal('Добавить должность', `
+    <div class="form-group"><label>Название</label><input class="form-input" id="pos-name" maxlength="100"></div>
+    <div class="form-hint" id="pos-error"></div>
+  `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="pos-save">Добавить</button>`);
+  $('pos-save').addEventListener('click', async () => {
+    const errEl = $('pos-error');
+    errEl.textContent = '';
+    const name = $('pos-name').value.trim();
+    if (!name) { errEl.textContent = 'Введите название'; return; }
+    try {
+      await api('/api/admin/position/add', { name });
+      toast('Добавлено', 'success'); closeModal(); navigate('positions');
+    } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+  });
+}
+
+async function archivePosition(id) {
+  if (!confirm('Архивировать должность?')) return;
+  try { await api('/api/admin/position/archive', { id }); toast('Архивировано', 'success'); navigate('positions'); }
+  catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+}
+
+// ═══ QUESTIONS (ANSWER) ═══
 async function loadQuestions() {
   $('page-content').innerHTML = `
     <div class="neu-card">
       <div class="neu-card__header">
         <div class="neu-card__header-title">Вопросы от сотрудников</div>
-        <span style="font-size:12px;color:var(--text-terc);font-weight:700;" id="q-count-page">Загрузка...</span>
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead>
-            <tr>
-              <th>От</th>
-              <th>Вопрос</th>
-              <th>Дата</th>
-              <th>Ответ</th>
-            </tr>
-          </thead>
-          <tbody id="questions-table">
-            <tr>
-              <td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">
-                <div class="loading">Загрузка...</div>
-              </td>
-            </tr>
-          </tbody>
+          <thead><tr><th>От</th><th>Вопрос</th><th>Дата</th><th>Статус</th><th>Действия</th></tr></thead>
+          <tbody id="questions-table"><tr><td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
         </table>
       </div>
     </div>
   `;
-
   try {
     const data = await cachedApi('/api/admin/questions', {});
     const questions = data.questions || [];
-    $('q-count-page').textContent = questions.length + ' вопросов';
     const tbody = $('questions-table');
     tbody.innerHTML = questions.map(q => {
       const statusTag = q.replied ? 'tag--green' : 'tag--amber';
       const statusText = q.replied ? 'Ответен' : 'Ожидает';
+      let actions = '';
+      if (!q.replied && hasPerm('questions_reply')) {
+        actions += `<button class="btn btn--primary" style="padding:4px 8px;font-size:11px;" onclick="replyQuestion(${q.id})">Ответить</button>`;
+      }
       return `
         <tr>
           <td>${esc(q.full_name||'—')}</td>
           <td style="color:var(--text);">${esc(q.text||'—')}</td>
           <td style="color:var(--text-terc);">${fmtDate(q.created_at)}</td>
           <td><span class="tag ${statusTag}">${statusText}</span></td>
+          <td>${actions}</td>
         </tr>
       `;
-    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Нет вопросов</td></tr>';
+    }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;">Нет вопросов</td></tr>';
   } catch (e) {
-    $('questions-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('questions-table').innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
 }
 
-// ═══ ADMINS ═══
+async function replyQuestion(qid) {
+  openModal('Ответить на вопрос', `
+    <div class="form-group"><label>Ваш ответ</label><textarea class="form-textarea" id="reply-text" rows="4" maxlength="2000"></textarea></div>
+    <div class="form-hint" id="reply-error"></div>
+  `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="reply-save">Отправить</button>`);
+  $('reply-save').addEventListener('click', async () => {
+    const errEl = $('reply-error');
+    errEl.textContent = '';
+    const text = $('reply-text').value.trim();
+    if (!text) { errEl.textContent = 'Введите ответ'; return; }
+    try {
+      await api('/api/admin/question/reply', { id: qid, text });
+      toast('Ответ отправлен', 'success'); closeModal(); navigate('questions');
+    } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+  });
+}
+
+// ═══ ADMINS (PERMISSIONS) ═══
 async function loadAdmins() {
   $('page-content').innerHTML = `
     <div class="neu-card">
@@ -900,26 +1143,12 @@ async function loadAdmins() {
       </div>
       <div class="table-wrap">
         <table class="t">
-          <thead>
-            <tr>
-              <th>Логин</th>
-              <th>Имя</th>
-              <th>Позиция</th>
-              <th>Роль</th>
-            </tr>
-          </thead>
-          <tbody id="admins-table">
-            <tr>
-              <td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">
-                <div class="loading">Загрузка...</div>
-              </td>
-            </tr>
-          </tbody>
+          <thead><tr><th>Логин</th><th>Имя</th><th>Позиция</th><th>Роль</th><th>Действия</th></tr></thead>
+          <tbody id="admins-table"><tr><td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
         </table>
       </div>
     </div>
   `;
-
   try {
     const data = await cachedApi('/api/admin/admins', {});
     const admins = data.admins || [];
@@ -927,52 +1156,61 @@ async function loadAdmins() {
     tbody.innerHTML = admins.map(a => {
       const role = a.is_super_admin ? 'tag--purple' : 'tag--blue';
       const roleText = a.is_super_admin ? 'Супер-админ' : 'Админ';
+      let actions = '';
+      if (isSuperAdmin() && !a.is_super_admin) {
+        actions += `<button class="btn btn--primary" style="padding:4px 8px;font-size:11px;" onclick="openSetPerms(${a.user_id},'${esc(a.login||'')}')">🔑 Права</button>`;
+      }
       return `
         <tr>
           <td style="font-weight:600;">${esc(a.login||'—')}</td>
           <td>${esc(a.full_name||'—')}</td>
           <td>${esc(a.position||'—')}</td>
           <td><span class="tag ${role}">${roleText}</span></td>
+          <td>${actions}</td>
         </tr>
       `;
-    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Нет админов</td></tr>';
+    }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;">Нет админов</td></tr>';
   } catch (e) {
-    $('admins-table').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+    $('admins-table').innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
   }
+}
+
+async function openSetPerms(uid, login) {
+  openModal('Управление правами: ' + login, `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;" id="perm-checkboxes">
+      ${['users_create','users_edit','users_fire','medbook_edit','restaurant_create','restaurant_edit','restaurant_tu','news_write','news_edit','faq_edit','positions_edit','questions_reply','certification_edit'].map(p => `
+        <label style="display:flex;align-items:center;gap:8px;padding:8px;background:var(--bg-card);border-radius:8px;cursor:pointer;">
+          <input type="checkbox" value="${p}"> <span style="font-size:13px;">${p.replace(/_/g,' ')}</span>
+        </label>
+      `).join('')}
+    </div>
+    <div class="form-hint" id="perms-error"></div>
+  `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="perms-save">Сохранить</button>`);
+  $('perms-save').addEventListener('click', async () => {
+    const errEl = $('perms-error');
+    errEl.textContent = '';
+    const permissions = {};
+    $('perm-checkboxes').querySelectorAll('input:checked').forEach(cb => { permissions[cb.value] = true; });
+    try {
+      await api('/api/admin/set-permissions', { user_id: uid, permissions });
+      toast('Права обновлены', 'success'); closeModal(); navigate('admins');
+    } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+  });
 }
 
 // ═══ REPORTS ═══
 async function loadReports() {
   $('page-content').innerHTML = `
     <div class="neu-card">
-      <div class="neu-card__header">
-        <div class="neu-card__header-title">Отчёты по персоналу</div>
-      </div>
+      <div class="neu-card__header"><div class="neu-card__header-title">Отчёты по персоналу</div></div>
       <div class="table-wrap">
         <table class="t">
-          <thead>
-            <tr>
-              <th>Всего</th>
-              <th>Активных</th>
-              <th>Уволено</th>
-              <th>Новые (7д)</th>
-              <th>Вопросы</th>
-              <th>Новости на модерации</th>
-              <th>Стандарты на модерации</th>
-            </tr>
-          </thead>
-          <tbody id="reports-body">
-            <tr>
-              <td colspan="7" style="text-align:center;color:var(--text-terc);padding:40px;">
-                <div class="loading">Загрузка...</div>
-              </td>
-            </tr>
-          </tbody>
+          <thead><tr><th>Всего</th><th>Активных</th><th>Уволено</th><th>Новые (7д)</th><th>Вопросы</th><th>Новости на модерации</th><th>Стандарты на модерации</th></tr></thead>
+          <tbody id="reports-body"><tr><td colspan="7" style="text-align:center;color:var(--text-terc);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
         </table>
       </div>
     </div>
   `;
-
   try {
     const data = await cachedApi('/api/admin/reports', {});
     const r = data.report || {};
@@ -996,31 +1234,15 @@ async function loadReports() {
 async function loadAudit() {
   $('page-content').innerHTML = `
     <div class="neu-card">
-      <div class="neu-card__header">
-        <div class="neu-card__header-title">История действий</div>
-      </div>
+      <div class="neu-card__header"><div class="neu-card__header-title">История действий</div></div>
       <div class="table-wrap">
         <table class="t">
-          <thead>
-            <tr>
-              <th>Дата</th>
-              <th>Админ</th>
-              <th>Действие</th>
-              <th>Объект</th>
-            </tr>
-          </thead>
-          <tbody id="audit-table">
-            <tr>
-              <td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">
-                <div class="loading">Загрузка...</div>
-              </td>
-            </tr>
-          </tbody>
+          <thead><tr><th>Дата</th><th>Админ</th><th>Действие</th><th>Объект</th></tr></thead>
+          <tbody id="audit-table"><tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
         </table>
       </div>
     </div>
   `;
-
   try {
     const data = await cachedApi('/api/admin/audit', {});
     const logs = data.audit || [];
@@ -1030,7 +1252,7 @@ async function loadAudit() {
         <td style="color:var(--text-terc);font-size:12px;">${fmtDate(a.created_at, true)}</td>
         <td>${esc(a.admin_full_name||'—')}</td>
         <td><span class="tag tag--purple">${esc(a.action||'—')}</span></td>
-        <td style="color:var(--text-secondary);">${esc(a.details||'—')}</td>
+        <td style="color:var(--text-sec);">${esc(a.details||'—')}</td>
       </tr>
     `).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Нет записей</td></tr>';
   } catch (e) {

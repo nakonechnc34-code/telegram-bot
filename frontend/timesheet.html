@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Табель · Wokker</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23F5F5F7'/%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%23007AFF' stroke-width='8'/%3E%3Cpath d='M25 50 A 25 25 0 0 0 75 50' fill='none' stroke='%23007AFF' stroke-width='12' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23F5F5F7'/%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%23007AFF' stroke-width='8'/%3E%3Cpath d='M25 50 A 25 25 0 0 0 75 50' fill='none' stroke='%23007AFF' stroke-width='12' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#F5F5F7">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="[https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap](https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap)" rel="stylesheet">
 <style>
   :root {
     --bg: #F7F8FA; --card-bg: #FFFFFF; --text-main: #111827; --text-muted: #6B7280;
@@ -76,7 +76,6 @@
   /* ТАБЛИЦА */
   .table-scroll { background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.03); position: relative; width: 100%; border: 1px solid var(--border); overflow: auto; margin-bottom: 24px; }
   
-  /* ИСПРАВЛЕНИЕ: width: max-content заставляет таблицу растягиваться под содержимое */
   table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; table-layout: fixed; }
   
   th { position: sticky; top: 0; background: #F9FAFB; z-index: 10; font-weight: 600; color: var(--text-muted); font-size: 12px; padding: 16px 4px; border-bottom: 1px solid var(--border); text-align: center; }
@@ -85,7 +84,6 @@
   th.sticky-col, td.sticky-col { position: sticky; left: 0; background: var(--card-bg); z-index: 5; text-align: left; border-right: 1px solid var(--border); padding: 16px 20px; white-space: normal; word-break: break-word; line-height: 1.4; width: 240px; min-width: 240px; max-width: 240px; }
   thead th.sticky-col { z-index: 15; background: #F9FAFB; font-size: 12px; }
 
-  /* ИСПРАВЛЕНИЕ: Жестко задаем ширину для колонок с днями */
   th:not(.sticky-col):not(.col-total), td:not(.sticky-col):not(.col-total) {
       width: 48px;
       min-width: 48px;
@@ -283,447 +281,310 @@
             </select>
         </div>
 
-        <button class="btn-action" onclick="openImportModal()" style="background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); padding: 10px 16px;">
-            📥 Импорт явок
-        </button>
+        <button class="btn-action" onclick="openImportModal()" style="background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); padding: 10px 16px; border-radius: 12px; font-weight: 600; font-size: 13px; cursor: pointer;">📥 Импорт .xlsx</button>
       </div>
-      
-      <div class="right-controls" id="right-controls-wrapper">
+
+      <div class="right-controls">
         <div class="legend">
-          <div class="legend-item"><div class="legend-color" style="background:var(--green)"></div> Отпуск (В)</div>
-          <div class="legend-item"><div class="legend-color" style="background:var(--amber)"></div> Больничный (Б)</div>
-          <div class="legend-item"><div class="legend-color" style="background:var(--red)"></div> Прогул (Н)</div>
-          <div class="legend-item"><div class="legend-color" style="background:var(--purple)"></div> Другой ресторан</div>
+          <div class="legend-item"><div class="legend-color" style="background: var(--green);"></div> Отпуск</div>
+          <div class="legend-item"><div class="legend-color" style="background: var(--amber);"></div> Больничный</div>
+          <div class="legend-item"><div class="legend-color" style="background: var(--red);"></div> Прогул</div>
+          <div class="legend-item"><div class="legend-color" style="background: var(--purple);"></div> Выход в другой точке</div>
         </div>
       </div>
     </div>
 
     <div class="content">
       <div class="section active" id="tab-sheet">
-        <div class="table-scroll" id="matrix-container" style="height: 100%;">
-          <div class="loader">Загрузка данных...</div>
+        <div class="table-scroll" id="table-scroll">
+          <div id="sheet-container"><div class="loader">Загрузка...</div></div>
         </div>
       </div>
 
       <div class="section" id="tab-payouts">
-        <div id="pending-accruals-container" style="display: none; margin-bottom: 24px;">
-          <h3 style="font-size: 16px; font-weight: 700; color: var(--amber-text); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-            <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--amber);"></span> На модерации
-          </h3>
-          <div id="pending-accruals-list"></div>
-        </div>
-
         <div class="payout-header">
-          <div class="payout-summary">
-            <div class="summary-card">
-              <div class="summary-title">Начислено по табелю</div>
-              <div class="summary-value" id="sum-timesheet-accrued">0 ₽</div>
-            </div>
-            <div class="summary-card">
-              <div class="summary-title">Начислено доп.</div>
-              <div class="summary-value blue" id="sum-extra-accrued">0 ₽</div>
-            </div>
-            <div class="summary-card">
-              <div class="summary-title">Выплачено</div>
-              <div class="summary-value green" id="sum-paid">0 ₽</div>
-            </div>
-            <div class="summary-card">
-              <div class="summary-title">Остаток к выплате</div>
-              <div class="summary-value amber" id="sum-remaining">0 ₽</div>
-            </div>
-          </div>
+          <div class="payout-summary" id="payout-summary"></div>
           <div class="header-actions">
-            <button class="btn-action blue" onclick="openAccrualModal()">+ Начислить</button>
-            <button class="btn-action green" onclick="openPayoutModal()">+ Выплатить</button>
+            <button class="btn-action blue" onclick="openAccrualModal()">+ Начисление</button>
+            <button class="btn-action green" onclick="openPayoutModal()">+ Выплата</button>
           </div>
         </div>
-
         <div class="payout-layout">
+          <div id="pending-payments-container"></div>
           <div class="table-scroll">
-            <table class="payout-table">
-              <thead>
-                <tr>
-                  <th>Сотрудник</th>
-                  <th>Должность</th>
-                  <th class="right">По табелю</th>
-                  <th class="right" style="color:var(--accent);">Начислено доп.</th>
-                  <th class="right">Выплачено</th>
-                  <th class="right">Остаток</th>
-                </tr>
-              </thead>
-              <tbody id="payouts-list">
-                <tr><td colspan="6" class="loader">Загрузка...</td></tr>
-              </tbody>
-            </table>
+            <div id="payout-table-container"><div class="loader">Загрузка...</div></div>
           </div>
         </div>
       </div>
 
       <div class="section" id="tab-reports">
-        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; min-height: 400px; color: var(--text-muted); text-align: center;">
-          <svg style="width: 64px; height: 64px; margin-bottom: 24px; color: #D1D5DB;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-            <line x1="3" y1="9" x2="21" y2="9"></line>
-            <line x1="9" y1="21" x2="9" y2="9"></line>
-          </svg>
-          <div style="font-size: 20px; font-weight: 700; color: var(--text-main); margin-bottom: 8px;">Раздел в разработке</div>
-          <div style="font-size: 15px; max-width: 400px; line-height: 1.5;">Здесь скоро появятся новые дашборды и отчёты для бухгалтерии и HR.</div>
+        <div class="payout-header">
+          <div>
+            <h2 style="font-size: 20px; font-weight: 800; margin-bottom: 4px;">Сводка и отчёты</h2>
+            <p style="font-size: 13px; color: var(--text-muted);">Динамика начислений и выплат</p>
+          </div>
+          <div class="header-actions">
+            <button class="btn-action" onclick="downloadReportExcel()">📊 Скачать в Excel (.xlsx)</button>
+          </div>
         </div>
+        <div id="reports-container"><div class="loader">Загрузка...</div></div>
       </div>
 
       <div class="section" id="tab-settings">
-        <div style="padding: 32px; background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.03); max-width: 600px; margin: 0 auto; width: 100%; border: 1px solid var(--border);">
-          <div style="font-size: 22px; font-weight: 700; margin-bottom: 24px; letter-spacing: -0.5px;">Ставки по должностям</div>
-          <div id="settings-list">
-            <div class="loader">Загрузка...</div>
+        <div class="payout-header">
+          <div>
+            <h2 style="font-size: 20px; font-weight: 800; margin-bottom: 4px;">Настройки ставок</h2>
+            <p style="font-size: 13px; color: var(--text-muted);">Фиксированные оклады и часовые ставки сотрудников</p>
           </div>
-          <button class="btn-submit" onclick="saveSettings()" style="margin-top: 32px;">Сохранить настройки</button>
+        </div>
+        <div class="table-scroll">
+          <div id="settings-container"><div class="loader">Загрузка...</div></div>
         </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- МОДАЛКА: ИМПОРТ ЯВОК -->
-<div class="modal-overlay" id="import-modal" onclick="if(event.target===this) closeImportModal()">
+<!-- MODAL: ВЫБОР СМЕНЫ / СТАТУСА -->
+<div class="modal-overlay" id="shift-modal" onclick="closeModalOnBackdrop(event, 'shift-modal')">
   <div class="modal-card">
     <div class="modal-header">
-      <div class="modal-title">Импорт явок</div>
-      <button class="modal-close" onclick="closeImportModal()">✕</button>
+      <div>
+        <div class="modal-title" id="shift-modal-title">Редактирование дня</div>
+        <div style="font-size: 13px; color: var(--text-muted); margin-top: 2px;" id="shift-modal-sub">Иванов Иван • 12.11.2026</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('shift-modal')">×</button>
     </div>
     <div class="modal-body">
-      <div style="font-size: 14px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5;">
-        Загрузите Excel-файл (.xlsx) из системы учета.
-      </div>
       <div class="form-group">
-        <label class="form-label">Выберите файл</label>
-        <input type="file" id="import-file" class="form-input" accept=".xlsx, .xls" style="padding: 10px;">
-      </div>
-      <div class="form-error" id="import-error" style="color: var(--red); font-size: 13px; font-weight: 500; margin-bottom: 12px; display: none;"></div>
-      <button class="btn-submit" id="btn-import" style="background: var(--accent);" onclick="uploadAttendance()">Загрузить</button>
-    </div>
-  </div>
-</div>
-
-<!-- МОДАЛКА: РЕДАКТИРОВАНИЕ ДНЯ -->
-<div class="modal-overlay" id="day-modal" onclick="if(event.target===this) closeDayModal()">
-  <div class="modal-card">
-    <div class="modal-header">
-      <div class="modal-title" id="day-modal-title">Редактирование дня</div>
-      <button class="modal-close" onclick="closeDayModal()">✕</button>
-    </div>
-    <div class="modal-body">
-      <input type="hidden" id="day-uid">
-      <input type="hidden" id="day-date">
-      <input type="hidden" id="day-rest">
-      
-      <div id="day-time-fields">
-        <div style="display: flex; gap: 16px; margin-bottom: 20px;">
-          <div class="form-group" style="flex: 1; margin-bottom: 0;">
-            <label class="form-label">Приход</label>
-            <input type="time" class="form-input" id="day-start">
-          </div>
-          <div class="form-group" style="flex: 1; margin-bottom: 0;">
-            <label class="form-label">Уход</label>
-            <input type="time" class="form-input" id="day-end">
-          </div>
+        <label class="form-label">Выберите смену или статус</label>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px;" id="preset-shifts"></div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;" id="preset-statuses">
+          <button type="button" class="btn-action" style="padding: 10px; font-size: 13px; background: var(--green-soft); color: var(--green-text); border: 1px solid #A7F3D0;" onclick="applyPreset('vacation')">🏖 Отпуск</button>
+          <button type="button" class="btn-action" style="padding: 10px; font-size: 13px; background: var(--amber-soft); color: var(--amber-text); border: 1px solid #FDE68A;" onclick="applyPreset('sick')">🤒 Больничный</button>
+          <button type="button" class="btn-action" style="padding: 10px; font-size: 13px; background: var(--red-soft); color: var(--red-text); border: 1px solid #FECACA;" onclick="applyPreset('absent')">🚫 Прогул</button>
         </div>
       </div>
 
       <div class="form-group">
-        <label class="form-label">Статус</label>
-        <select class="form-select" id="day-status" onchange="toggleDayStatus()">
-          <option value="work">Рабочий день (считать часы)</option>
-          <option value="vacation">Отпуск (8 ч)</option>
-          <option value="sick">Больничный (8 ч)</option>
-          <option value="absent">Прогул (0 ч)</option>
-        </select>
+        <label class="form-label">Или укажите точное время (ЧЧ:ММ)</label>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <input type="text" id="shift-start" class="form-input" placeholder="09:00" style="text-align: center;" maxlength="5">
+          <span>—</span>
+          <input type="text" id="shift-end" class="form-input" placeholder="22:00" style="text-align: center;" maxlength="5">
+        </div>
       </div>
 
       <div class="form-group">
-          <label class="form-label">Итого часов</label>
-          <input type="text" class="form-input" id="day-calc-hours" readonly style="background: #E5E7EB; font-weight: bold;">
+        <label class="form-label">Заметка / Комментарий</label>
+        <input type="text" id="shift-comment" class="form-input" placeholder="Например: подмена или переработка">
       </div>
 
       <div style="display: flex; gap: 12px; margin-top: 24px;">
-        <button class="btn-submit" onclick="saveDay()" style="margin-top: 0;">Сохранить</button>
-        <button class="btn-submit" onclick="deleteDay()" style="margin-top: 0; background: var(--red); width: 60px;">🗑️</button>
+        <button type="button" class="btn-action" style="flex: 1; background: var(--red-soft); color: var(--red-text); justify-content: center;" onclick="clearShift()">Очистить</button>
+        <button type="button" class="btn-action" style="flex: 2; justify-content: center;" onclick="saveShiftFromModal()">Сохранить</button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- МОДАЛКА: КАРТОЧКА СОТРУДНИКА -->
-<div class="modal-overlay" id="emp-modal" onclick="if(event.target===this) closeEmpModal()">
+<!-- MODAL: ИМПОРТ .XLSX -->
+<div class="modal-overlay" id="import-modal" onclick="closeModalOnBackdrop(event, 'import-modal')">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="modal-title">Импорт табеля (.xlsx)</div>
+      <button class="modal-close" onclick="closeModal('import-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Выберите Excel файл</label>
+        <input type="file" id="import-file-input" class="form-input" accept=".xlsx" style="padding: 10px; background: #fff;">
+        <div style="font-size: 12px; color: var(--text-muted); margin-top: 6px; line-height: 1.4;">
+          Файл должен содержать столбцы: <b>ФИО сотрудника</b> (или <b>Логин</b>), а далее даты в формате ДД.ММ (например, 01.11) с указанием часов/смен (например, 9-22, 12, отпуск, больничный, прогул).
+        </div>
+      </div>
+      <div id="import-result" style="display: none; background: var(--green-soft); color: var(--green-text); padding: 12px; border-radius: 12px; margin-bottom: 16px; font-weight: 600;"></div>
+      <button type="button" class="btn-submit" id="import-submit-btn" onclick="submitImportFile()">Загрузить и импортировать</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: НАЧИСЛЕНИЕ -->
+<div class="modal-overlay" id="accrual-modal" onclick="closeModalOnBackdrop(event, 'accrual-modal')">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="modal-title">Новое начисление</div>
+      <button class="modal-close" onclick="closeModal('accrual-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <form id="accrual-form" onsubmit="submitAccrual(event)">
+        <div class="form-group">
+          <label class="form-label">Сотрудник</label>
+          <select class="form-select" id="accrual-emp" required></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Сумма начисления (₽)</label>
+          <input type="number" step="0.01" class="form-input" id="accrual-amount" required placeholder="Например: 3000">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Дата</label>
+          <input type="date" class="form-input" id="accrual-date" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Причина / Комментарий</label>
+          <textarea class="form-textarea" id="accrual-comment" required placeholder="Например: премия за смену"></textarea>
+        </div>
+        <button type="submit" class="btn-submit">Сохранить начисление</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ВЫПЛАТА -->
+<div class="modal-overlay" id="payout-modal" onclick="closeModalOnBackdrop(event, 'payout-modal')">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="modal-title">Новая выплата</div>
+      <button class="modal-close" onclick="closeModal('payout-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <form id="payout-form" onsubmit="submitPayout(event)">
+        <div class="form-group">
+          <label class="form-label">Сотрудник</label>
+          <select class="form-select" id="payout-emp" required></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Сумма выплаты (₽)</label>
+          <input type="number" step="0.01" class="form-input" id="payout-amount" required placeholder="Например: 5000">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Дата выплаты</label>
+          <input type="date" class="form-input" id="payout-date" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Комментарий</label>
+          <textarea class="form-textarea" id="payout-comment" required placeholder="Например: аванс или зарплата"></textarea>
+        </div>
+        <button type="submit" class="btn-submit">Сохранить выплату</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: КАРТОЧКА СОТРУДНИКА -->
+<div class="modal-overlay" id="emp-modal" onclick="closeModalOnBackdrop(event, 'emp-modal')">
   <div class="emp-card">
     <div class="emp-card-header">
       <div>
-        <div class="emp-card-name" id="modal-emp-name">—</div>
-        <div class="emp-card-pos" id="modal-emp-pos">—</div>
+        <div class="emp-card-name" id="emp-name"></div>
+        <div class="emp-card-pos" id="emp-pos"></div>
       </div>
-      <button class="modal-close" onclick="closeEmpModal()">✕</button>
+      <button class="modal-close" onclick="closeModal('emp-modal')">×</button>
     </div>
-    <div class="emp-card-body" id="modal-emp-body-content">
-      <div class="loader">Загрузка...</div>
-    </div>
-  </div>
-</div>
-
-<!-- МОДАЛКА: ВЫПЛАТА -->
-<div class="modal-overlay" id="payout-modal" onclick="if(event.target===this) closePayoutModal()">
-  <div class="modal-card">
-    <div class="modal-header">
-      <div class="modal-title">Выплата</div>
-      <button class="modal-close" onclick="closePayoutModal()">✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label class="form-label">Сотрудник</label>
-        <select class="form-select" id="pay-user">
-          <option value="">Выберите сотрудника...</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Дата выплаты</label>
-        <input type="date" class="form-input" id="pay-date">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Сумма (₽)</label>
-        <input type="number" class="form-input" id="pay-amount" placeholder="Например: 15000" min="1" step="100">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Комментарий (обязательно)</label>
-        <textarea class="form-textarea" id="pay-comment" placeholder="Например: Аванс"></textarea>
-      </div>
-      <div class="form-error" id="pay-error" style="color: var(--red); font-size: 13px; font-weight: 500; margin-bottom: 12px; display: none;"></div>
-      <button class="btn-submit" id="btn-save-payout" style="background: var(--green);" onclick="savePayout()">Сохранить</button>
+    <div class="emp-card-body">
+      <div class="emp-stats-grid" id="emp-stats"></div>
+      <div style="font-weight: 700; margin-bottom: 12px; font-size: 15px;">История операций</div>
+      <div class="history-list" id="emp-history"></div>
     </div>
   </div>
 </div>
 
-<!-- МОДАЛКА: НАЧИСЛЕНИЕ -->
-<div class="modal-overlay" id="accrual-modal" onclick="if(event.target===this) closeAccrualModal()">
-  <div class="modal-card">
-    <div class="modal-header">
-      <div class="modal-title">Начисление</div>
-      <button class="modal-close" onclick="closeAccrualModal()">✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label class="form-label">Сотрудник</label>
-        <select class="form-select" id="acc-user">
-          <option value="">Выберите сотрудника...</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Дата начисления</label>
-        <input type="date" class="form-input" id="acc-date">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Сумма (₽)</label>
-        <input type="number" class="form-input" id="acc-amount" placeholder="Например: 5000" min="1" step="100">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Комментарий (обязательно)</label>
-        <textarea class="form-textarea" id="acc-comment" placeholder="Например: Премия"></textarea>
-      </div>
-      <div class="form-error" id="acc-error" style="color: var(--red); font-size: 13px; font-weight: 500; margin-bottom: 12px; display: none;"></div>
-      <button class="btn-submit" id="btn-save-accrual" style="background: var(--accent);" onclick="saveAccrual()">Сохранить</button>
-    </div>
-  </div>
-</div>
-
-<div class="toast" id="toast">Сохранено</div>
+<div class="toast" id="toast"></div>
 
 <script>
 const TOKEN_KEY = 'wokker_staff_token';
 const LOGIN_RE = /^[a-z]{3}\d{2}$/;
 
-let CURRENT_DATE = new Date();
-let CURRENT_MONTH = CURRENT_DATE.getMonth() + 1;
-let CURRENT_YEAR = CURRENT_DATE.getFullYear();
-let CURRENT_WEEK_START = getMonday(new Date());
+let CURRENT_YEAR = new Date().getFullYear();
+let CURRENT_MONTH = new Date().getMonth() + 1;
+let VIEW_MODE = 'month'; 
+let CURRENT_WEEK_DATE = new Date();
+let CURRENT_TAB = 'tab-sheet';
 
-let VIEW_MODE = 'month';
-let EMPLOYEES_DATA = [];
-let SETTINGS_DATA = [];
-let RESTAURANTS_LIST = [];
-let CURRENT_WORK_REST = ''; 
+let SHEET_DATA = null;
+let PAYOUTS_DATA = null;
+let SETTINGS_DATA = null;
+let CURRENT_WORK_REST = '';
 
-const $ = id => document.getElementById(id);
-const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let activeShiftUserId = null;
+let activeShiftDate = null;
 
 function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
 function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
 function clearToken() { localStorage.removeItem(TOKEN_KEY); }
 
-function getTodayStr() {
-    const today = new Date();
-    const pad = n => String(n).padStart(2, '0');
-    return `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
+function showToast(text) {
+  const el = document.getElementById('toast');
+  el.textContent = text;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2600);
 }
 
-// ================== АВТОРИЗАЦИЯ ==================
+async function api(path, body) {
+  const payload = { webToken: getToken() };
+  if (body) Object.assign(payload, body);
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (res.status === 401 || res.status === 403) {
+    clearToken();
+    showLogin();
+    throw new Error('unauthorized');
+  }
+  const j = await res.json();
+  if (j.error) throw new Error(j.error);
+  return j;
+}
+
 function showLogin() {
-  $('main-layout').style.display = 'none';
-  $('login-screen').style.display = 'flex';
-  $('login-error').textContent = '';
-  $('login-login').value = '';
-  $('login-password').value = '';
+  document.getElementById('main-layout').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+}
+function showMain() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('main-layout').style.display = 'flex';
 }
 
-function showApp() {
-  $('login-screen').style.display = 'none';
-  $('main-layout').style.display = 'flex';
-}
-
-$('login-login').addEventListener('input', e => {
+document.getElementById('login-login').addEventListener('input', e => {
   e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5);
 });
-
-async function doLogin() {
-  const login = $('login-login').value.trim().toLowerCase();
-  const password = $('login-password').value;
-  const errEl = $('login-error');
+document.getElementById('login-btn').addEventListener('click', async () => {
+  const login = document.getElementById('login-login').value.trim().toLowerCase();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
   errEl.textContent = '';
-
   if (!LOGIN_RE.test(login)) { errEl.textContent = 'Логин: 3 латинские буквы + 2 цифры'; return; }
   if (!password) { errEl.textContent = 'Введите пароль'; return; }
-
-  const btn = $('login-btn');
+  const btn = document.getElementById('login-btn');
   btn.disabled = true; btn.textContent = 'Проверяем…';
-
   try {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ login, password }),
     });
-
-    if (res.status === 401) { errEl.textContent = 'Неверный логин или пароль'; return; }
-    if (res.status === 403) { errEl.textContent = 'Аккаунт уволен или заблокирован'; return; }
-    if (!res.ok) { errEl.textContent = 'Ошибка сервера'; return; }
-
     const data = await res.json();
-    if (!data.token) { errEl.textContent = 'Ошибка получения токена'; return; }
-
+    if (!res.ok || !data.token) {
+      errEl.textContent = data.error === 'fired' ? 'Аккаунт уволен' : 'Неверный логин или пароль';
+      return;
+    }
     setToken(data.token);
-    
-    const { start, end } = getPeriodDates();
-    try {
-        const matrixRes = await api('/api/timesheet/matrix', { date_from: formatDate(start), date_to: formatDate(end) });
-        EMPLOYEES_DATA = matrixRes.employees || [];
-        
-        showApp();
-        updatePeriodTitle();
-        await loadRestaurants(); 
-        renderMatrix();
-    } catch (apiErr) {
-        if (apiErr.message !== 'forbidden' && apiErr.message !== 'unauthorized') {
-            errEl.textContent = 'Ошибка загрузки: ' + apiErr.message;
-        }
-    }
-
+    await loadInitial();
   } catch (e) {
-    if (e.message !== 'unauthorized') {
-      errEl.textContent = 'Ошибка: ' + e.message;
-    }
+    errEl.textContent = 'Ошибка соединения';
   } finally {
-    btn.disabled = false; 
-    btn.textContent = 'Войти';
+    btn.disabled = false; btn.textContent = 'Войти';
   }
-}
+});
 
-function doLogout() {
-  if (!confirm('Выйти из аккаунта?')) return;
+async function doLogout() {
+  try { await api('/api/auth/logout'); } catch (e) {}
   clearToken();
   showLogin();
 }
 
-$('login-btn').addEventListener('click', doLogin);
-$('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
-$('login-login').addEventListener('keydown', e => { if (e.key === 'Enter') $('login-password').focus(); });
-
-// ================== API ==================
-async function api(path, body) {
-  const payload = { webToken: getToken() };
-  if (body && typeof body === 'object') Object.assign(payload, body);
-  
-  const res = await fetch(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  
-  if (res.status === 401) { clearToken(); showLogin(); throw new Error('unauthorized'); }
-  if (res.status === 403) {
-      clearToken();
-      alert('У вас нет прав доступа. Сейчас вы будете перенаправлены на главную страницу.');
-      window.location.href = '/';
-      throw new Error('forbidden');
-  }
-
-  if (!res.ok) {
-    let msg = 'Ошибка на сервере';
-    try { 
-        const j = await res.json(); 
-        msg = j.detail || j.error || msg; 
-    } catch (e) {
-        msg = `Ошибка сервера (код ${res.status})`;
-    }
-    throw new Error(msg);
-  }
-
-  const data = await res.json();
-  if (data.error === 'forbidden' || data.error === 'fired') {
-      clearToken(); showLogin(); throw new Error('forbidden');
-  }
-  return data;
-}
-
-function toast(text) {
-  const el = $('toast');
-  el.textContent = text;
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 2500);
-}
-
-// ================== НАВИГАЦИЯ ==================
-document.querySelectorAll('.tab').forEach(t => {
-  t.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-    t.classList.add('active');
-    $(t.dataset.sec).classList.add('active');
-    
-    if (t.dataset.sec === 'tab-settings' || t.dataset.sec === 'tab-reports') {
-      $('left-controls-wrapper').style.display = 'none';
-      $('right-controls-wrapper').style.display = 'none';
-    } else {
-      $('left-controls-wrapper').style.display = 'flex';
-      $('right-controls-wrapper').style.display = 'flex';
-    }
-
-    if (t.dataset.sec === 'tab-sheet') {
-        if (RESTAURANTS_LIST.length > 0) {
-            $('rest-select-wrapper').style.display = 'flex';
-        }
-    } else {
-        $('rest-select-wrapper').style.display = 'none';
-    }
-    
-    if (t.dataset.sec === 'tab-sheet') loadMatrix();
-    if (t.dataset.sec === 'tab-payouts') loadPayouts();
-    if (t.dataset.sec === 'tab-settings') loadSettings();
-  });
-});
-
-// ================== ДАТЫ ==================
-function getMonday(d) {
-  d = new Date(d);
-  var day = d.getDay(), diff = d.getDate() - day + (day == 0 ? -6 : 1);
-  return new Date(d.setDate(diff));
-}
 function formatDate(d) {
   const pad = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -732,815 +593,613 @@ function formatDateShort(d) {
   const pad = n => String(n).padStart(2, '0');
   return `${pad(d.getDate())}.${pad(d.getMonth()+1)}`;
 }
-function getPeriodDates() {
-  if (VIEW_MODE === 'month') {
-    const start = new Date(CURRENT_YEAR, CURRENT_MONTH - 1, 1);
-    const end = new Date(CURRENT_YEAR, CURRENT_MONTH, 0);
-    return { start, end };
-  } else {
-    const start = new Date(CURRENT_WEEK_START);
-    const end = new Date(CURRENT_WEEK_START.getTime() + 6 * 86400000);
-    return { start, end };
-  }
+function formatMoney(v) { return Math.round(v).toLocaleString('ru-RU') + ' ₽'; }
+
+function updateDatePickersUI() {
+  const pad = n => String(n).padStart(2, '0');
+  document.getElementById('month-picker').value = `${CURRENT_YEAR}-${pad(CURRENT_MONTH)}`;
+
+  const d = new Date(CURRENT_WEEK_DATE);
+  const day = d.getDay() || 7;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - day + 1);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  document.getElementById('week-range-text').textContent = `${formatDateShort(monday)} — ${formatDateShort(sunday)}`;
 }
-function updatePeriodTitle() {
-  const { start, end } = getPeriodDates();
-  if (VIEW_MODE === 'month') {
-    $('month-selector-wrapper').style.display = 'block';
-    $('current-period-title').style.display = 'none';
-    $('month-picker').value = `${CURRENT_YEAR}-${String(CURRENT_MONTH).padStart(2, '0')}`;
-  } else {
-    $('month-selector-wrapper').style.display = 'none';
-    $('current-period-title').style.display = 'flex'; 
-    $('week-range-text').textContent = `${formatDateShort(start)} — ${formatDateShort(end)}`;
-    $('week-jump-picker').value = formatDate(start);
-  }
+
+function setViewMode(mode) {
+  VIEW_MODE = mode;
+  const btns = document.querySelectorAll('.view-toggle button');
+  btns[0].classList.toggle('active', mode === 'month');
+  btns[1].classList.toggle('active', mode === 'week');
+
+  document.getElementById('month-selector-wrapper').style.display = mode === 'month' ? 'flex' : 'none';
+  document.getElementById('current-period-title').style.display = mode === 'week' ? 'flex' : 'none';
+
+  renderSheet();
 }
 
 function changeMonthFromPicker(val) {
   if (!val) return;
   const parts = val.split('-');
-  CURRENT_YEAR = parseInt(parts[0]);
-  CURRENT_MONTH = parseInt(parts[1]);
-  updatePeriodTitle();
-  
-  const activeSec = document.querySelector('.section.active').id;
-  if (activeSec === 'tab-sheet') loadMatrix();
-  if (activeSec === 'tab-payouts') loadPayouts();
-}
-
-function setViewMode(mode) {
-  VIEW_MODE = mode;
-  document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.view-toggle button')[mode === 'month' ? 0 : 1].classList.add('active');
-  
-  if (mode === 'week') {
-      CURRENT_WEEK_START = getMonday(new Date(CURRENT_YEAR, CURRENT_MONTH - 1, 15));
-  } else { 
-      CURRENT_MONTH = CURRENT_WEEK_START.getMonth() + 1; 
-      CURRENT_YEAR = CURRENT_WEEK_START.getFullYear(); 
+  if (parts.length === 2) {
+    CURRENT_YEAR = parseInt(parts[0]);
+    CURRENT_MONTH = parseInt(parts[1]);
+    loadSheet();
   }
-  
-  updatePeriodTitle();
-  
-  const activeSec = document.querySelector('.section.active').id;
-  if (activeSec === 'tab-sheet') loadMatrix();
-  if (activeSec === 'tab-payouts') loadPayouts();
 }
 
-function changeWeek(direction) {
-    CURRENT_WEEK_START.setDate(CURRENT_WEEK_START.getDate() + (direction * 7));
-    CURRENT_MONTH = CURRENT_WEEK_START.getMonth() + 1;
-    CURRENT_YEAR = CURRENT_WEEK_START.getFullYear();
-    updatePeriodTitle();
-    loadMatrix();
+function changeWeek(delta) {
+  CURRENT_WEEK_DATE.setDate(CURRENT_WEEK_DATE.getDate() + (delta * 7));
+  CURRENT_YEAR = CURRENT_WEEK_DATE.getFullYear();
+  CURRENT_MONTH = CURRENT_WEEK_DATE.getMonth() + 1;
+  updateDatePickersUI();
+  loadSheet();
 }
 
-function jumpToWeek(dateStr) {
-    if (!dateStr) return;
-    const [y, m, d] = dateStr.split('-').map(Number);
-    CURRENT_WEEK_START = getMonday(new Date(y, m - 1, d));
-    CURRENT_MONTH = CURRENT_WEEK_START.getMonth() + 1;
-    CURRENT_YEAR = CURRENT_WEEK_START.getFullYear();
-    updatePeriodTitle();
-    loadMatrix();
-}
-
-// ================== РЕСТОРАНЫ ==================
-async function loadRestaurants() {
-    try {
-        const res = await api('/api/timesheet/restaurants', {});
-        RESTAURANTS_LIST = res.restaurants || [];
-        
-        const select = $('work-restaurant-select');
-        select.innerHTML = '<option value="">По основному месту</option>';
-        
-        if (RESTAURANTS_LIST.length > 0) {
-            RESTAURANTS_LIST.forEach(r => {
-                select.innerHTML += `<option value="${r.key}">${esc(r.name)}</option>`;
-            });
-            CURRENT_WORK_REST = '';
-            if (document.querySelector('.section.active').id === 'tab-sheet') {
-                $('rest-select-wrapper').style.display = 'flex';
-            }
-        } else {
-            $('rest-select-wrapper').style.display = 'none';
-        }
-    } catch (e) {
-        console.error('Ошибка загрузки ресторанов', e);
-    }
+function jumpToWeek(val) {
+  if (!val) return;
+  const d = new Date(val + 'T00:00:00');
+  if (!isNaN(d.getTime())) {
+    CURRENT_WEEK_DATE = d;
+    CURRENT_YEAR = d.getFullYear();
+    CURRENT_MONTH = d.getMonth() + 1;
+    updateDatePickersUI();
+    loadSheet();
+  }
 }
 
 function changeWorkRestaurant(val) {
-    CURRENT_WORK_REST = val;
-    if(val) toast('Часы будут записаны в выбранный ресторан');
+  CURRENT_WORK_REST = val;
+  renderSheet();
 }
 
-// ================== ИМПОРТ ЯВОК ==================
-function openImportModal() {
-    $('import-file').value = '';
-    $('import-error').style.display = 'none';
-    $('import-modal').classList.add('show');
-}
-function closeImportModal() { $('import-modal').classList.remove('show'); }
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    btn.classList.add('active');
+    CURRENT_TAB = btn.dataset.sec;
+    document.getElementById(CURRENT_TAB).classList.add('active');
 
-async function uploadAttendance() {
-    const fileInput = $('import-file');
-    const file = fileInput.files[0];
-    const errEl = $('import-error');
-    const btn = $('btn-import');
+    const isSheet = CURRENT_TAB === 'tab-sheet';
+    const isPayouts = CURRENT_TAB === 'tab-payouts';
+    const isReports = CURRENT_TAB === 'tab-reports';
+    const isSettings = CURRENT_TAB === 'tab-settings';
 
-    if (!file) { 
-        errEl.textContent = 'Выберите файл для загрузки'; 
-        errEl.style.display = 'block'; 
-        return; 
-    }
+    document.getElementById('topbar-wrapper').style.display = (isSheet || isPayouts || isReports) ? 'flex' : 'none';
+    document.getElementById('left-controls-wrapper').style.display = (isSheet || isPayouts) ? 'flex' : 'none';
+    document.querySelector('.right-controls').style.display = isSheet ? 'flex' : 'none';
 
-    errEl.style.display = 'none';
-    btn.disabled = true; 
-    btn.textContent = 'Загрузка...';
-
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-        const url = `/api/timesheet/import_attendance?webToken=${getToken()}&restaurant_key=${CURRENT_WORK_REST || ''}`;
-        const res = await fetch(url, {
-            method: 'POST',
-            body: formData
-        });
-
-        if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            throw new Error(data.error || 'Ошибка сервера при загрузке');
-        }
-
-        const data = await res.json();
-        
-        let msg = `Успешно загружено строк: ${data.success_count}`;
-        if (data.errors && data.errors.length > 0) {
-            msg += `\n\nВнимание, есть ошибки:\n${data.errors.join('\n')}`;
-        }
-        
-        alert(msg);
-        closeImportModal();
-        await loadMatrix();
-        toast('Явки успешно загружены');
-
-    } catch (e) {
-        if (e.message !== 'forbidden' && e.message !== 'unauthorized') {
-            errEl.textContent = 'Ошибка: ' + e.message;
-            errEl.style.display = 'block';
-        }
-    } finally {
-        btn.disabled = false;
-        btn.textContent = 'Загрузить';
-    }
-}
-
-// ================== ТАБЕЛЬ ==================
-async function loadMatrix() {
-  $('matrix-container').innerHTML = '<div class="loader">Загрузка табеля...</div>';
-  const { start, end } = getPeriodDates();
-  const dateFrom = formatDate(start);
-  const dateTo = formatDate(end);
-
-  try {
-    const res = await api('/api/timesheet/matrix', { date_from: dateFrom, date_to: dateTo });
-    EMPLOYEES_DATA = res.employees || [];
-    renderMatrix();
-  } catch (e) {
-    if (e.message !== 'unauthorized' && e.message !== 'forbidden') {
-      $('matrix-container').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
-    }
-  }
-}
-
-function renderMatrix() {
-  if (!EMPLOYEES_DATA.length) {
-    $('matrix-container').innerHTML = '<div class="loader">Нет сотрудников для отображения</div>';
-    return;
-  }
-  const { start, end } = getPeriodDates();
-  const restNames = {};
-  RESTAURANTS_LIST.forEach(r => restNames[r.key] = r.name);
-
-  const grouped = {}; 
-
-  EMPLOYEES_DATA.forEach(emp => {
-    const mainRestName = emp.restaurant_name || 'Без ресторана';
-    const mainRestKey = emp.main_restaurant_key;
-    const crossRests = {}; 
-
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const dayNum = d.getDate();
-        const cellData = emp.data[dayNum];
-        if (cellData && (parseFloat(cellData.h) > 0 || cellData.s !== 'work')) {
-            const rk = cellData.rk || mainRestKey;
-            if (rk !== mainRestKey) {
-                crossRests[rk] = restNames[rk] || 'Другой ресторан';
-            }
-        }
-    }
-
-    if (!grouped[mainRestName]) grouped[mainRestName] = [];
-    grouped[mainRestName].push({ emp: emp, isMain: true, targetRestKey: mainRestKey });
-
-    for (const rk in crossRests) {
-        const rn = crossRests[rk];
-        if (!grouped[rn]) grouped[rn] = [];
-        grouped[rn].push({ emp: emp, isMain: false, targetRestKey: rk });
-    }
+    if (isSheet) loadSheet();
+    if (isPayouts) loadPayouts();
+    if (isReports) loadReports();
+    if (isSettings) loadSettings();
   });
+});
 
-  let thead = `<thead><tr><th class="sticky-col">Сотрудник</th>`;
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const dayOfWeek = d.getDay();
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    thead += `<th class="${isWeekend ? 'weekend' : ''}">${d.getDate()}<br><span style="font-size:10px;font-weight:500;">${['Вс','Пн','Вт','Ср','Чт','Пт','Сб'][dayOfWeek]}</span></th>`;
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+function closeModalOnBackdrop(e, id) { if (e.target.id === id) closeModal(id); }
+
+async function loadInitial() {
+  try {
+    updateDatePickersUI();
+    await loadRestaurants();
+    showMain();
+    loadSheet();
+  } catch (e) {
+    if (e.message !== 'unauthorized') {
+      showToast('Ошибка загрузки: ' + e.message);
+    }
   }
-  let dayCount = 0;
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) dayCount++;
-  thead += `<th class="col-total">Итого</th></tr></thead>`;
+}
 
-  let tbody = '<tbody>';
-  const sortedRests = Object.keys(grouped).sort();
+async function loadRestaurants() {
+  try {
+    const res = await api('/api/timesheet/restaurants');
+    const sel = document.getElementById('work-restaurant-select');
+    const wrap = document.getElementById('rest-select-wrapper');
+    const prevRest = CURRENT_WORK_REST;
+    sel.innerHTML = '<option value="">По основному месту</option>';
+    let hasPrev = false;
+    (res.restaurants || []).forEach(r => {
+      if (r.key === prevRest) hasPrev = true;
+      sel.innerHTML += `<option value="${r.key}">${r.name}</option>`;
+    });
+    CURRENT_WORK_REST = hasPrev ? prevRest : '';
+    sel.value = CURRENT_WORK_REST;
+    wrap.style.display = (res.restaurants && res.restaurants.length > 0) ? 'flex' : 'none';
+  } catch (e) {}
+}
 
-  for (const restName of sortedRests) {
-    const employees = grouped[restName];
-    tbody += `<tr class="rest-header"><td class="sticky-col">${esc(restName)}</td><td colspan="${dayCount + 1}"></td></tr>`;
+async function loadSheet() {
+  const cont = document.getElementById('sheet-container');
+  cont.innerHTML = '<div class="loader">Загрузка...</div>';
+  try {
+    SHEET_DATA = await api('/api/timesheet/sheet', { year: CURRENT_YEAR, month: CURRENT_MONTH });
+    renderSheet();
+  } catch (e) {
+    if (e.message !== 'unauthorized') {
+      cont.innerHTML = `<div class="loader">Ошибка: ${e.message}</div>`;
+    }
+  }
+}
 
-    employees.forEach(item => {
-      const emp = item.emp;
-      const isMain = item.isMain;
-      const targetRestKey = item.targetRestKey;
+function getDaysForView() {
+  if (VIEW_MODE === 'week') {
+    const d = new Date(CURRENT_WEEK_DATE);
+    const day = d.getDay() || 7;
+    const monday = new Date(d);
+    monday.setDate(d.getDate() - day + 1);
+    const days = [];
+    const weekDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+    for (let i = 0; i < 7; i++) {
+      const cur = new Date(monday);
+      cur.setDate(monday.getDate() + i);
+      const isWeekend = (cur.getDay() === 0 || cur.getDay() === 6);
+      days.push({
+        date: formatDate(cur),
+        dayName: weekDays[i],
+        dayNum: cur.getDate(),
+        isWeekend
+      });
+    }
+    return days;
+  } else {
+    const daysInMonth = new Date(CURRENT_YEAR, CURRENT_MONTH, 0).getDate();
+    const days = [];
+    const weekDays = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dt = new Date(CURRENT_YEAR, CURRENT_MONTH - 1, d);
+      const isWeekend = (dt.getDay() === 0 || dt.getDay() === 6);
+      days.push({
+        date: formatDate(dt),
+        dayName: weekDays[dt.getDay()],
+        dayNum: d,
+        isWeekend
+      });
+    }
+    return days;
+  }
+}
 
-      let label = `<span class="emp-name" onclick="openEmpModal(${emp.user_id})">${esc(emp.full_name)}</span>`;
-      if (!isMain) {
-         label += `<div class="emp-cross-tag">↳ из ${esc(emp.restaurant_name)}</div>`;
-      }
+function renderSheet() {
+  if (!SHEET_DATA) return;
+  const cont = document.getElementById('sheet-container');
+  const days = getDaysForView();
 
-      tbody += `<tr data-uid="${emp.user_id}" data-target-rest="${targetRestKey}">
-        <td class="sticky-col">${label}</td>`;
+  const headerDaysHtml = days.map(d => {
+    return `<th class="${d.isWeekend ? 'weekend' : ''}">
+      <div style="font-size: 10px; opacity: 0.7; margin-bottom: 2px;">${d.dayName}</div>
+      <div>${d.dayNum}</div>
+    </th>`;
+  }).join('');
+
+  const rowsHtml = [];
+  const groups = SHEET_DATA.groups || [];
+
+  for (const g of groups) {
+    rowsHtml.push(`
+      <tr class="rest-header">
+        <td class="sticky-col">${g.restaurant_name}</td>
+        ${days.map(d => `<td class="${d.isWeekend ? 'weekend' : ''}"></td>`).join('')}
+        <td class="col-total">Итого</td>
+      </tr>
+    `);
+
+    for (const emp of g.employees || []) {
+      const uid = emp.user_id;
+      const empRecords = (SHEET_DATA.records && SHEET_DATA.records[uid]) || {};
+      const crossDays = (SHEET_DATA.cross_days && SHEET_DATA.cross_days[uid]) || [];
 
       let totalHours = 0;
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const dayOfWeek = d.getDay();
-        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-        const dayNum = d.getDate();
-        const dayStr = formatDate(d);
-        
-        const cellData = emp.data[dayNum];
+      const tds = days.map(d => {
+        const rec = empRecords[d.date];
+        const isCross = crossDays.includes(d.date);
+        let dispText = '';
+        let cellClass = 'cell-display';
 
-        const cellRestKey = (cellData && cellData.rk) ? cellData.rk : emp.main_restaurant_key;
-        const belongsToTarget = cellRestKey === targetRestKey;
-
-        let val = '';
-        let status = 'work';
-        let cellClass = '';
-
-        if (belongsToTarget && cellData) {
-            if (cellData.s === 'vacation') val = 'В';
-            else if (cellData.s === 'sick') val = 'Б';
-            else if (cellData.s === 'absent') val = 'Н';
-            else val = cellData.h || '';
-
-            status = cellData.s || 'work';
-
-            if (status === 'vacation') cellClass = 'status-vacation';
-            else if (status === 'sick') cellClass = 'status-sick';
-            else if (status === 'absent') cellClass = 'status-absent';
-
-            if (!isMain && status === 'work') cellClass += ' cross-rest';
-
-            if (status === 'work') totalHours += parseFloat(cellData.h || 0);
-            else if (status === 'vacation' || status === 'sick') totalHours += 8;
-        } else if (!belongsToTarget && cellData) {
-            val = ''; 
-            cellClass = 'cell-occupied-other';
+        if (isCross) {
+          cellClass += ' cell-occupied-other';
+          dispText = '';
+        } else if (rec) {
+          if (rec.status === 'vacation') { dispText = '🏖'; cellClass += ' status-vacation'; }
+          else if (rec.status === 'sick') { dispText = '🤒'; cellClass += ' status-sick'; }
+          else if (rec.status === 'absent') { dispText = '🚫'; cellClass += ' status-absent'; }
+          else if (rec.hours > 0) {
+            dispText = parseFloat(rec.hours) + 'ч';
+            if (CURRENT_WORK_REST && rec.restaurant_key && rec.restaurant_key !== g.restaurant_key) {
+              cellClass += ' cross-rest';
+            }
+            totalHours += parseFloat(rec.hours);
+          }
         }
 
-        const st = cellData?.st || '';
-        const et = cellData?.et || '';
-        const jsonData = JSON.stringify({h: val, s: status, st: st, et: et}).replace(/"/g, '&quot;');
-        
-        if (belongsToTarget || !cellData) {
-            tbody += `<td class="${isWeekend ? 'weekend' : ''}">
-              <div class="cell-display ${cellClass}" 
-                   onclick="openDayModal(${emp.user_id}, '${dayStr}', '${targetRestKey}', ${jsonData})">
-                ${val}
-              </div>
-            </td>`;
-        } else {
-             tbody += `<td class="${isWeekend ? 'weekend' : ''}">
-              <div class="cell-display ${cellClass}" title="Смена в другом ресторане"></div>
-            </td>`;
-        }
-      }
-      tbody += `<td class="col-total total-hours">${parseFloat(totalHours.toFixed(2))}</td></tr>`;
-    });
+        const isDisabled = isCross;
+        const clickHandler = isDisabled ? '' : `onclick="openShiftModal(${uid}, '${d.date}')"`;
+        return `<td class="${d.isWeekend ? 'weekend' : ''}">
+          <div class="${cellClass}" ${clickHandler}>${dispText}</div>
+        </td>`;
+      }).join('');
+
+      const hasCrossTag = crossDays.some(cd => days.some(d => d.date === cd));
+      const crossTagHtml = hasCrossTag ? `<span class="emp-cross-tag">Выход в другой точке</span>` : '';
+
+      rowsHtml.push(`
+        <tr>
+          <td class="sticky-col">
+            <div class="emp-name" onclick="openEmpCard(${uid})">${emp.full_name}</div>
+            <div style="font-size: 12px; color: var(--text-muted);">${emp.position}</div>
+            ${crossTagHtml}
+          </td>
+          ${tds}
+          <td class="col-total">${totalHours > 0 ? totalHours + ' ч' : '—'}</td>
+        </tr>
+      `);
+    }
   }
-  tbody += '</tbody>';
-  $('matrix-container').innerHTML = `<table>${thead}${tbody}</table>`;
+
+  cont.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th class="sticky-col">Сотрудник</th>
+          ${headerDaysHtml}
+          <th class="col-total">Часы</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rowsHtml.join('')}
+      </tbody>
+    </table>
+  `;
 }
 
-// ================== РЕДАКТИРОВАНИЕ ДНЯ ==================
-function openDayModal(uid, dateStr, restKey, cellData) {
-    if (cellData && cellData.s === 'occupied') return;
-
-    $('day-uid').value = uid;
-    $('day-date').value = dateStr;
-    $('day-rest').value = restKey;
-    
-    $('day-status').value = cellData.s || 'work';
-    $('day-start').value = cellData.st || '';
-    $('day-end').value = cellData.et || '';
-    
-    const [y, m, d] = dateStr.split('-');
-    $('day-modal-title').textContent = `Редактирование: ${d}.${m}.${y}`;
-
-    toggleDayStatus(); 
-    calculateDayHours(); 
-    
-    $('day-modal').classList.add('show');
-}
-
-function closeDayModal() { $('day-modal').classList.remove('show'); }
-
-function toggleDayStatus() {
-    const status = $('day-status').value;
-    const fields = $('day-time-fields');
-    if (status === 'work') {
-        fields.style.display = 'flex';
-    } else {
-        fields.style.display = 'none';
+function getEmpInfo(uid) {
+  for (const g of SHEET_DATA.groups || []) {
+    for (const e of g.employees || []) {
+      if (e.user_id === uid) return { ...e, restaurant_key: g.restaurant_key };
     }
-    calculateDayHours();
+  }
+  return null;
 }
 
-function calculateDayHours() {
-    const status = $('day-status').value;
-    const start = $('day-start').value;
-    const end = $('day-end').value;
-    const calcInput = $('day-calc-hours');
+function openShiftModal(uid, dateStr) {
+  const emp = getEmpInfo(uid);
+  if (!emp) return;
 
-    if (status !== 'work') {
-        calcInput.value = status === 'absent' ? '0' : '8';
-        return;
-    }
+  activeShiftUserId = uid;
+  activeShiftDate = dateStr;
 
-    if (start && end) {
-        const sh = parseInt(start.split(':')[0]);
-        const sm = parseInt(start.split(':')[1]);
-        const eh = parseInt(end.split(':')[0]);
-        const em = parseInt(end.split(':')[1]);
-        
-        let startMins = sh * 60 + sm;
-        let endMins = eh * 60 + em;
-        
-        if (endMins < startMins) endMins += 24 * 60;
-        
-        const total = ((endMins - startMins) / 60).toFixed(2);
-        calcInput.value = total;
-    } else {
-        calcInput.value = '0';
-    }
+  const parts = dateStr.split('-');
+  const dtFormatted = `${parts[2]}.${parts[1]}.${parts[0]}`;
+  document.getElementById('shift-modal-title').textContent = 'Редактирование смены';
+  document.getElementById('shift-modal-sub').textContent = `${emp.full_name} • ${dtFormatted}`;
+
+  const presetsGrid = document.getElementById('preset-shifts');
+  presetsGrid.innerHTML = '';
+  const shifts = [
+    { start: '09:00', end: '22:00', label: '09–22 (13ч)' },
+    { start: '10:00', end: '23:00', label: '10–23 (13ч)' },
+    { start: '12:00', end: '00:00', label: '12–00 (12ч)' },
+  ];
+  shifts.forEach(s => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-action';
+    btn.style.cssText = 'padding: 10px 4px; font-size: 12px; justify-content: center; background: #F3F4F6; color: var(--text-main); border: 1px solid var(--border);';
+    btn.textContent = s.label;
+    btn.onclick = () => {
+      document.getElementById('shift-start').value = s.start;
+      document.getElementById('shift-end').value = s.end;
+      saveShiftFromModal();
+    };
+    presetsGrid.appendChild(btn);
+  });
+
+  const rec = (SHEET_DATA.records && SHEET_DATA.records[uid] && SHEET_DATA.records[uid][dateStr]) || null;
+  document.getElementById('shift-start').value = (rec && rec.start_time) ? rec.start_time.slice(0, 5) : '';
+  document.getElementById('shift-end').value = (rec && rec.end_time) ? rec.end_time.slice(0, 5) : '';
+  document.getElementById('shift-comment').value = (rec && rec.comment) ? rec.comment : '';
+
+  document.getElementById('shift-modal').classList.add('show');
 }
 
-$('day-start').addEventListener('input', calculateDayHours);
-$('day-end').addEventListener('input', calculateDayHours);
-
-async function saveDay() {
-    const uid = $('day-uid').value;
-    const dateStr = $('day-date').value;
-    const restKey = $('day-rest').value;
-    const status = $('day-status').value;
-    const st = $('day-start').value;
-    const et = $('day-end').value;
-    const hours = parseFloat($('day-calc-hours').value) || 0;
-
-    try {
-        await api('/api/timesheet/save_cell', {
-            user_id: parseInt(uid),
-            work_date: dateStr,
-            hours: hours,
-            status: status,
-            restaurant_key: restKey,
-            start_time: st,
-            end_time: et
-        });
-        toast('Сохранено');
-        closeDayModal();
-        await loadMatrix(); 
-    } catch (e) {
-        if (e.message !== 'forbidden') alert('Ошибка: ' + e.message);
-    }
+function applyPreset(statusType) {
+  document.getElementById('shift-start').value = '';
+  document.getElementById('shift-end').value = '';
+  submitShiftUpdate(null, null, statusType);
 }
 
-async function deleteDay() {
-    if (!confirm('Очистить данные за этот день?')) return;
-    const uid = $('day-uid').value;
-    const dateStr = $('day-date').value;
-    const restKey = $('day-rest').value;
-
-    try {
-        await api('/api/timesheet/save_cell', {
-            user_id: parseInt(uid),
-            work_date: dateStr,
-            hours: 0,
-            status: 'work',
-            restaurant_key: restKey,
-            start_time: null,
-            end_time: null
-        });
-        toast('Очищено');
-        closeDayModal();
-        await loadMatrix();
-    } catch (e) {
-        if (e.message !== 'forbidden') alert('Ошибка: ' + e.message);
-    }
+function clearShift() {
+  document.getElementById('shift-start').value = '';
+  document.getElementById('shift-end').value = '';
+  document.getElementById('shift-comment').value = '';
+  submitShiftUpdate(null, null, '');
 }
 
-// ================== ВЫПЛАТЫ ==================
-async function loadPayouts() {
-  $('payouts-list').innerHTML = '<tr><td colspan="6" class="loader">Загрузка...</td></tr>';
-  const pendingBox = $('pending-accruals-container');
-  const pendingList = $('pending-accruals-list');
-  
-  const { start, end } = getPeriodDates();
-  const dateFrom = formatDate(start);
-  const dateTo = formatDate(end);
+function saveShiftFromModal() {
+  const start = document.getElementById('shift-start').value.trim();
+  const end = document.getElementById('shift-end').value.trim();
+  if (!start || !end) { showToast('Укажите время начала и окончания'); return; }
+  submitShiftUpdate(start, end, 'worked');
+}
+
+async function submitShiftUpdate(start, end, status) {
+  const comment = document.getElementById('shift-comment').value.trim();
+  closeModal('shift-modal');
+  try {
+    const restKey = CURRENT_WORK_REST || null;
+    await api('/api/timesheet/record/save', {
+      user_id: activeShiftUserId,
+      work_date: activeShiftDate,
+      start_time: start || null,
+      end_time: end || null,
+      status: status || null,
+      comment,
+      restaurant_key: restKey
+    });
+    showToast('Сохранено');
+    await loadSheet();
+  } catch (e) {
+    if (e.message !== 'unauthorized') showToast('Ошибка: ' + e.message);
+  }
+}
+
+function openImportModal() {
+  document.getElementById('import-file-input').value = '';
+  document.getElementById('import-result').style.display = 'none';
+  document.getElementById('import-modal').classList.add('show');
+}
+
+async function submitImportFile() {
+  const fileInput = document.getElementById('import-file-input');
+  if (!fileInput.files || fileInput.files.length === 0) { showToast('Выберите файл'); return; }
+  const btn = document.getElementById('import-submit-btn');
+  btn.disabled = true; btn.textContent = 'Импортируем...';
+
+  const formData = new FormData();
+  formData.append('file', fileInput.files[0]);
 
   try {
-    const res = await api('/api/payments/list', { date_from: dateFrom, date_to: dateTo });
-    const employees = res.employees || [];
-    const pending = res.pending || [];
-    const isHr = res.is_hr_or_super || false;
-    
-    if (isHr && pending.length > 0) {
-      pendingBox.style.display = 'block';
-      pendingList.innerHTML = pending.map(p => `
-        <div class="pending-card">
+    const res = await fetch('/api/timesheet/import', {
+      method: 'POST',
+      headers: { 'X-Token': getToken() },
+      body: formData
+    });
+    const j = await res.json();
+    if (!res.ok) throw new Error(j.error || 'Ошибка импорта');
+
+    const resEl = document.getElementById('import-result');
+    resEl.style.display = 'block';
+    resEl.textContent = `Успешно обработано записей: ${j.imported_count || 0}`;
+    showToast('Импорт завершён');
+    await loadSheet();
+    setTimeout(() => closeModal('import-modal'), 1200);
+  } catch (e) {
+    showToast('Ошибка: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Загрузить и импортировать';
+  }
+}
+
+async function loadPayouts() {
+  const cont = document.getElementById('payout-table-container');
+  const sumCont = document.getElementById('payout-summary');
+  const pendCont = document.getElementById('pending-payments-container');
+  cont.innerHTML = '<div class="loader">Загрузка...</div>';
+  pendCont.innerHTML = '';
+  try {
+    PAYOUTS_DATA = await api('/api/payments/summary', { year: CURRENT_YEAR, month: CURRENT_MONTH });
+    const t = PAYOUTS_DATA.totals || {};
+    sumCont.innerHTML = `
+      <div class="summary-card"><div class="summary-title">Начислено всего</div><div class="summary-value blue">${formatMoney(t.accrued_total)}</div></div>
+      <div class="summary-card"><div class="summary-title">Выплачено всего</div><div class="summary-value green">${formatMoney(t.paid_total)}</div></div>
+      <div class="summary-card"><div class="summary-title">Остаток к выплате</div><div class="summary-value amber">${formatMoney(t.remaining_total)}</div></div>
+    `;
+
+    const pending = PAYOUTS_DATA.pending || [];
+    if (pending.length > 0) {
+      pendCont.innerHTML = '<div style="font-weight: 700; margin-bottom: 12px; font-size: 16px;">На модерации (' + pending.length + ')</div>' + pending.map(p => {
+        const typeLabel = p.record_type === 'accrual' ? 'Начисление' : 'Выплата';
+        const colorStyle = p.record_type === 'accrual' ? 'color: var(--accent);' : 'color: var(--green-text);';
+        return `<div class="pending-card">
           <div class="pending-info">
-            <div class="pending-title">${esc(p.full_name)} — ${(parseFloat(p.amount) || 0).toLocaleString('ru-RU')} ₽</div>
-            <div class="pending-meta">Предложил: ${esc(p.proposed_by_name || '—')} · ${fmtDate(p.payment_date)}</div>
-            <div class="pending-body">${esc(p.comment)}</div>
+            <div class="pending-title">${typeLabel}: ${p.employee_name} — <span style="${colorStyle}">${formatMoney(p.amount)}</span></div>
+            <div class="pending-meta">Дата: ${p.payment_date} • Предложил: ${p.proposed_by_name}</div>
+            <div class="pending-body">${p.comment}</div>
           </div>
           <div class="pending-actions">
-            <button class="btn-action green small" style="padding: 8px 16px; font-size: 13px;" onclick="approveAccrual(${p.id})">Согласовать</button>
-            <button class="btn-action" style="padding: 8px 16px; font-size: 13px; background: var(--red);" onclick="rejectAccrual(${p.id})">Отклонить</button>
+            <button type="button" class="btn-action" style="background: var(--green-soft); color: var(--green-text); padding: 8px 16px; border: 1px solid #A7F3D0;" onclick="approvePayment(${p.id})">Согласовать</button>
+            <button type="button" class="btn-action" style="background: var(--red-soft); color: var(--red-text); padding: 8px 16px; border: 1px solid #FECACA;" onclick="rejectPayment(${p.id})">Отклонить</button>
           </div>
-        </div>
-      `).join('');
-    } else {
-      pendingBox.style.display = 'none';
-    }
-
-    const paySelect = $('pay-user');
-    const accSelect = $('acc-user');
-    paySelect.innerHTML = '<option value="">Выберите сотрудника...</option>';
-    accSelect.innerHTML = '<option value="">Выберите сотрудника...</option>';
-    
-    employees.forEach(e => {
-      const opt = `<option value="${e.user_id}">${esc(e.full_name)} (Остаток: ${e.remaining.toLocaleString('ru-RU')} ₽)</option>`;
-      paySelect.innerHTML += opt;
-      accSelect.innerHTML += opt;
-    });
-
-    let totalTimesheet = 0;
-    let totalExtra = 0;
-    let totalPaid = 0;
-    let totalRemaining = 0;
-
-    if (!employees.length) {
-      $('payouts-list').innerHTML = '<tr><td colspan="6" class="loader">Нет данных</td></tr>';
-    } else {
-      $('payouts-list').innerHTML = employees.map(e => {
-        totalTimesheet += e.timesheet_accrued;
-        totalExtra += e.extra_accrued;
-        totalPaid += e.paid;
-        totalRemaining += e.remaining;
-
-        return `
-          <tr>
-            <td><b class="emp-name" onclick="openEmpModal(${e.user_id})">${esc(e.full_name)}</b></td>
-            <td style="color:var(--text-muted);">${esc(e.position || '—')}</td>
-            <td class="right">${e.timesheet_accrued.toLocaleString('ru-RU')} ₽</td>
-            <td class="right" style="color:var(--accent); font-weight:600;">${e.extra_accrued > 0 ? '+' : ''}${e.extra_accrued.toLocaleString('ru-RU')} ₽</td>
-            <td class="right" style="color:var(--green-text); font-weight:600;">${e.paid.toLocaleString('ru-RU')} ₽</td>
-            <td class="right" style="font-weight:700; color:${e.remaining > 0 ? 'var(--amber-text)' : 'var(--text-main)'};">${e.remaining.toLocaleString('ru-RU')} ₽</td>
-          </tr>
-        `;
+        </div>`;
       }).join('');
     }
 
-    $('sum-timesheet-accrued').textContent = `${totalTimesheet.toLocaleString('ru-RU')} ₽`;
-    $('sum-extra-accrued').textContent = `${totalExtra.toLocaleString('ru-RU')} ₽`;
-    $('sum-paid').textContent = `${totalPaid.toLocaleString('ru-RU')} ₽`;
-    $('sum-remaining').textContent = `${totalRemaining.toLocaleString('ru-RU')} ₽`;
+    const rows = (PAYOUTS_DATA.employees || []).map(e => {
+      return `<tr>
+        <td><span class="emp-name" onclick="openEmpCard(${e.user_id})">${e.full_name}</span><div style="font-size: 12px; color: var(--text-muted);">${e.position}</div></td>
+        <td>${e.total_hours} ч</td>
+        <td>${formatMoney(e.accrued_total)}</td>
+        <td style="color: var(--green-text); font-weight: 600;">${formatMoney(e.paid_total)}</td>
+        <td style="color: var(--amber-text); font-weight: 700;">${formatMoney(e.remaining)}</td>
+      </tr>`;
+    }).join('');
 
+    cont.innerHTML = `<table class="payout-table"><thead><tr><th>Сотрудник</th><th>Часы</th><th>Начислено</th><th>Выплачено</th><th>Остаток</th></tr></thead><tbody>${rows}</tbody></table>`;
   } catch (e) {
-    if (e.message !== 'unauthorized' && e.message !== 'forbidden') {
-      $('payouts-list').innerHTML = `<tr><td colspan="6" class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</td></tr>`;
-    }
+    if (e.message !== 'unauthorized') cont.innerHTML = `<div class="loader">Ошибка: ${e.message}</div>`;
   }
 }
 
-async function approveAccrual(id) {
-  if (!confirm('Согласовать это начисление?')) return;
-  try {
-    await api('/api/accruals/approve', { id });
-    toast('Начисление одобрено');
-    await loadPayouts();
-  } catch (e) { if(e.message !== 'forbidden') toast(e.message, 'error'); }
+async function approvePayment(id) {
+  try { await api('/api/payments/approve', { payment_id: id }); showToast('Согласовано'); loadPayouts(); }
+  catch (e) { if (e.message !== 'unauthorized') showToast('Ошибка: ' + e.message); }
+}
+async function rejectPayment(id) {
+  if (!confirm('Отклонить операцию?')) return;
+  try { await api('/api/payments/reject', { payment_id: id }); showToast('Отклонено'); loadPayouts(); }
+  catch (e) { if (e.message !== 'unauthorized') showToast('Ошибка: ' + e.message); }
 }
 
-async function rejectAccrual(id) {
-  if (!confirm('Отклонить начисление? Оно будет удалено.')) return;
+function populateEmployeeSelect(selectId) {
+  const sel = document.getElementById(selectId);
+  sel.innerHTML = '';
+  const emps = [];
+  for (const g of SHEET_DATA.groups || []) {
+    for (const e of g.employees || []) emps.push(e);
+  }
+  emps.sort((a, b) => a.full_name.localeCompare(b.full_name));
+  emps.forEach(e => {
+    const opt = document.createElement('option');
+    opt.value = e.user_id;
+    opt.textContent = e.full_name;
+    sel.appendChild(opt);
+  });
+}
+
+function openAccrualModal() {
+  populateEmployeeSelect('accrual-emp');
+  document.getElementById('accrual-amount').value = '';
+  document.getElementById('accrual-date').value = formatDate(new Date());
+  document.getElementById('accrual-comment').value = '';
+  document.getElementById('accrual-modal').classList.add('show');
+}
+async function submitAccrual(e) {
+  e.preventDefault();
   try {
-    await api('/api/accruals/reject', { id });
-    toast('Начисление отклонено');
-    await loadPayouts();
-  } catch (e) { if(e.message !== 'forbidden') toast(e.message, 'error'); }
+    await api('/api/payments/accrual/add', {
+      user_id: parseInt(document.getElementById('accrual-emp').value),
+      amount: parseFloat(document.getElementById('accrual-amount').value),
+      payment_date: document.getElementById('accrual-date').value,
+      comment: document.getElementById('accrual-comment').value.trim()
+    });
+    showToast('Начисление сохранено');
+    closeModal('accrual-modal');
+    loadPayouts();
+  } catch (err) { if (err.message !== 'unauthorized') showToast('Ошибка: ' + err.message); }
 }
 
 function openPayoutModal() {
-  $('pay-user').value = ''; 
-  $('pay-amount').value = ''; 
-  $('pay-comment').value = '';
-  $('pay-date').value = getTodayStr(); 
-  $('pay-error').style.display = 'none'; 
-  $('payout-modal').classList.add('show');
+  populateEmployeeSelect('payout-emp');
+  document.getElementById('payout-amount').value = '';
+  document.getElementById('payout-date').value = formatDate(new Date());
+  document.getElementById('payout-comment').value = '';
+  document.getElementById('payout-modal').classList.add('show');
 }
-function closePayoutModal() { $('payout-modal').classList.remove('show'); }
-
-function openAccrualModal() {
-  $('acc-user').value = ''; 
-  $('acc-amount').value = ''; 
-  $('acc-comment').value = '';
-  $('acc-date').value = getTodayStr(); 
-  $('acc-error').style.display = 'none'; 
-  $('accrual-modal').classList.add('show');
-}
-function closeAccrualModal() { $('accrual-modal').classList.remove('show'); }
-
-async function savePayout() {
-  const userId = $('pay-user').value;
-  const amount = parseFloat($('pay-amount').value);
-  const comment = $('pay-comment').value.trim();
-  const paymentDate = $('pay-date').value;
-  const errEl = $('pay-error');
-
-  if (!userId) { errEl.textContent = 'Выберите сотрудника'; errEl.style.display = 'block'; return; }
-  if (!paymentDate) { errEl.textContent = 'Укажите дату выплаты'; errEl.style.display = 'block'; return; }
-  if (!amount || amount <= 0) { errEl.textContent = 'Укажите сумму'; errEl.style.display = 'block'; return; }
-  if (!comment) { errEl.textContent = 'Комментарий обязателен'; errEl.style.display = 'block'; return; }
-
-  errEl.style.display = 'none';
-  const btn = $('btn-save-payout');
-  btn.disabled = true; btn.textContent = '...';
-
+async function submitPayout(e) {
+  e.preventDefault();
   try {
-    await api('/api/payments/add', { 
-        user_id: parseInt(userId), 
-        amount, 
-        comment,
-        payment_date: paymentDate 
+    await api('/api/payments/add', {
+      user_id: parseInt(document.getElementById('payout-emp').value),
+      amount: parseFloat(document.getElementById('payout-amount').value),
+      payment_date: document.getElementById('payout-date').value,
+      comment: document.getElementById('payout-comment').value.trim()
     });
-    closePayoutModal();
-    toast('Выплата добавлена');
-    await loadPayouts();
-  } catch (e) {
-    if (e.message !== 'unauthorized' && e.message !== 'forbidden') { 
-        errEl.textContent = 'Ошибка: ' + e.message; 
-        errEl.style.display = 'block'; 
-    }
-  } finally { btn.disabled = false; btn.textContent = 'Сохранить'; }
+    showToast('Выплата сохранена');
+    closeModal('payout-modal');
+    loadPayouts();
+  } catch (err) { if (err.message !== 'unauthorized') showToast('Ошибка: ' + err.message); }
 }
 
-async function saveAccrual() {
-  const userId = $('acc-user').value;
-  const amount = parseFloat($('acc-amount').value);
-  const comment = $('acc-comment').value.trim();
-  const paymentDate = $('acc-date').value;
-  const errEl = $('acc-error');
-
-  if (!userId) { errEl.textContent = 'Выберите сотрудника'; errEl.style.display = 'block'; return; }
-  if (!paymentDate) { errEl.textContent = 'Укажите дату начисления'; errEl.style.display = 'block'; return; }
-  if (!amount || amount <= 0) { errEl.textContent = 'Укажите сумму'; errEl.style.display = 'block'; return; }
-  if (!comment) { errEl.textContent = 'Комментарий обязателен'; errEl.style.display = 'block'; return; }
-
-  errEl.style.display = 'none';
-  const btn = $('btn-save-accrual');
-  btn.disabled = true; btn.textContent = '...';
-
+async function openEmpCard(uid) {
+  document.getElementById('emp-name').textContent = 'Загрузка...';
+  document.getElementById('emp-modal').classList.add('show');
   try {
-    const res = await api('/api/accruals/add', { 
-        user_id: parseInt(userId), 
-        amount, 
-        comment,
-        payment_date: paymentDate 
-    });
-    closeAccrualModal();
-    if (res.status === 'pending') {
-        toast('Отправлено на модерацию HR');
-    } else {
-        toast('Начисление добавлено');
-    }
-    await loadPayouts();
-  } catch (e) {
-    if (e.message !== 'unauthorized' && e.message !== 'forbidden') { 
-        errEl.textContent = 'Ошибка: ' + e.message; 
-        errEl.style.display = 'block'; 
-    }
-  } finally { btn.disabled = false; btn.textContent = 'Сохранить'; }
-}
+    const res = await api('/api/payments/employee', { user_id: uid, year: CURRENT_YEAR, month: CURRENT_MONTH });
+    const emp = res.employee || {};
+    document.getElementById('emp-name').textContent = emp.full_name || '';
+    document.getElementById('emp-pos').textContent = emp.position || '';
 
-// ================== КАРТОЧКА СОТРУДНИКА ==================
-async function openEmpModal(uid) {
-  window._currentEmpModalUid = uid;
-  $('emp-modal').classList.add('show');
-  $('modal-emp-name').textContent = 'Загрузка...';
-  $('modal-emp-pos').textContent = '';
-  $('modal-emp-body-content').innerHTML = '<div class="loader">Загрузка данных...</div>';
-
-  const { start, end } = getPeriodDates();
-  const dateFrom = formatDate(start);
-  const dateTo = formatDate(end);
-
-  try {
-    const res = await api('/api/payments/employee', { user_id: uid, date_from: dateFrom, date_to: dateTo });
-    
-    let emp = EMPLOYEES_DATA.find(x => x.user_id === uid);
-    if (!emp) {
-        const selectOption = document.querySelector(`#pay-user option[value="${uid}"]`);
-        if (selectOption) $('modal-emp-name').textContent = selectOption.textContent.split(' (')[0];
-        else $('modal-emp-name').textContent = 'Сотрудник';
-    } else {
-        $('modal-emp-name').textContent = emp.full_name;
-        $('modal-emp-pos').textContent = emp.position || '—';
-    }
-
-    const formatMoney = (v) => (v || 0).toLocaleString('ru-RU') + ' ₽';
-
-    let historyHtml = '';
-    if (!res.history || !res.history.length) {
-        historyHtml = '<div style="text-align:center; color:var(--text-muted); font-size:14px; padding: 20px 0;">Операций за этот период нет</div>';
-    } else {
-        historyHtml = res.history.map(h => {
-            const isAccrual = h.record_type === 'accrual';
-            const prefix = isAccrual ? '+' : '';
-            const cls = isAccrual ? 'accrual' : 'payout';
-            
-            let statusTag = '';
-            if (h.status === 'pending') statusTag = ' <span class="tag amber" style="font-size:10px; padding:2px 6px;">На модерации</span>';
-            else if (h.status === 'rejected') statusTag = ' <span class="tag red" style="font-size:10px; padding:2px 6px;">Отклонено</span>';
-            
-            const styleText = h.status === 'rejected' ? 'text-decoration: line-through; opacity: 0.6;' : '';
-            const typeLbl = isAccrual ? 'Начисление' : 'Выплата';
-            
-            let authorLbl = h.created_by_name || 'Система';
-            if (h.status === 'pending') authorLbl = 'Предложил: ' + (h.proposed_by_name || authorLbl);
-            if (h.status === 'approved' && h.approved_by_name) authorLbl = 'Одобрил: ' + h.approved_by_name;
-
-            const deleteBtn = res.can_delete 
-                ? `<button onclick="deletePayment(${h.id}, this)" style="background:none; border:none; color:var(--red); cursor:pointer; padding:4px; margin-left: 10px;" title="Удалить">🗑️</button>` 
-                : '';
-
-            return `
-                <div class="history-item ${cls}" style="${styleText}; display: flex; justify-content: space-between; align-items: flex-start;">
-                    <div>
-                        <div class="history-meta">
-                            <span>${typeLbl} · ${fmtDate(h.payment_date)}${statusTag}</span>
-                        </div>
-                        <div class="history-amount ${cls}">${prefix}${formatMoney(h.amount)}</div>
-                        <div class="history-comment">${esc(h.comment)}</div>
-                        <div class="history-meta" style="margin-top:4px; font-size:10px;">${esc(authorLbl)}</div>
-                    </div>
-                    <div>${deleteBtn}</div>
-                </div>
-            `;
-        }).join('');
-    }
-
-    $('modal-emp-body-content').innerHTML = `
-        <div class="emp-stats-grid">
-            <div class="emp-stat-box">
-                <div class="emp-stat-lbl">По табелю (${res.total_hours} ч)</div>
-                <div class="emp-stat-val">${formatMoney(res.timesheet_accrued)}</div>
-            </div>
-            <div class="emp-stat-box">
-                <div class="emp-stat-lbl">Доп. начисления</div>
-                <div class="emp-stat-val" style="color:var(--accent);">${formatMoney(res.extra_accrued)}</div>
-            </div>
-            <div class="emp-stat-box">
-                <div class="emp-stat-lbl">Выплачено</div>
-                <div class="emp-stat-val highlight">${formatMoney(res.paid)}</div>
-            </div>
-            <div class="emp-stat-box">
-                <div class="emp-stat-lbl">Остаток к выплате</div>
-                <div class="emp-stat-val amber">${formatMoney(res.remaining)}</div>
-            </div>
-        </div>
-
-        <h4 style="font-size: 15px; font-weight: 700; margin-bottom: 12px; color: var(--text-main);">История операций</h4>
-        <div class="history-list">${historyHtml}</div>
+    document.getElementById('emp-stats').innerHTML = `
+      <div class="emp-stat-box"><div class="emp-stat-lbl">Отработано часов</div><div class="emp-stat-val">${res.total_hours || 0} ч</div></div>
+      <div class="emp-stat-box"><div class="emp-stat-lbl">Начислено всего</div><div class="emp-stat-val" style="color: var(--accent);">${formatMoney(res.accrued_total)}</div></div>
+      <div class="emp-stat-box"><div class="emp-stat-lbl">Выплачено</div><div class="emp-stat-val highlight">${formatMoney(res.paid_total)}</div></div>
+      <div class="emp-stat-box"><div class="emp-stat-lbl">Остаток к выплате</div><div class="emp-stat-val amber">${formatMoney(res.remaining)}</div></div>
     `;
 
-  } catch (e) {
-    if (e.message !== 'forbidden') {
-        $('modal-emp-body-content').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
+    const hist = res.history || [];
+    if (hist.length === 0) {
+      document.getElementById('emp-history').innerHTML = '<div style="color: var(--text-muted); font-size: 13px;">Операций за выбранный период нет</div>';
     } else {
-        closeEmpModal();
+      document.getElementById('emp-history').innerHTML = hist.map(h => {
+        const isAcc = h.type === 'accrual';
+        return `<div class="history-item ${h.type}">
+          <div class="history-meta"><span>${h.date} • ${isAcc ? 'Начисление' : 'Выплата'}</span><span class="history-amount ${h.type}">${isAcc ? '+' : '-'}${formatMoney(h.amount)}</span></div>
+          <div class="history-comment">${h.comment}</div>
+        </div>`;
+      }).join('');
     }
-  }
+  } catch (e) { if (e.message !== 'unauthorized') showToast('Ошибка: ' + e.message); }
 }
 
-async function deletePayment(id, btnEl) {
-    if (!confirm('Вы уверены, что хотите безвозвратно удалить эту операцию?')) return;
-    btnEl.disabled = true;
-    btnEl.textContent = '...';
-    try {
-        await api('/api/payments/delete', { id });
-        toast('Операция удалена');
-        const uid = window._currentEmpModalUid; 
-        if (uid) await openEmpModal(uid);
-        else await loadPayouts();
-    } catch (e) {
-        if (e.message !== 'forbidden') alert('Ошибка: ' + e.message);
-        btnEl.disabled = false;
-        btnEl.textContent = '🗑️';
-    }
-}
-
-function closeEmpModal() { $('emp-modal').classList.remove('show'); }
-
-function fmtDate(iso) {
-  if (!iso) return '—';
+async function loadReports() {
+  const cont = document.getElementById('reports-container');
+  cont.innerHTML = '<div class="loader">Загрузка...</div>';
   try {
-    const d = new Date(iso);
-    const pad = n => String(n).padStart(2, '0');
-    return `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`;
-  } catch (e) { return iso; }
+    const res = await api('/api/payments/summary', { year: CURRENT_YEAR, month: CURRENT_MONTH });
+    const t = res.totals || {};
+    cont.innerHTML = `<div class="payout-summary">
+      <div class="summary-card"><div class="summary-title">Начислено</div><div class="summary-value blue">${formatMoney(t.accrued_total)}</div></div>
+      <div class="summary-card"><div class="summary-title">Выплачено</div><div class="summary-value green">${formatMoney(t.paid_total)}</div></div>
+      <div class="summary-card"><div class="summary-title">Остаток</div><div class="summary-value amber">${formatMoney(t.remaining_total)}</div></div>
+    </div>`;
+  } catch (e) { if (e.message !== 'unauthorized') cont.innerHTML = `<div class="loader">Ошибка: ${e.message}</div>`; }
 }
 
-// ================== НАСТРОЙКИ ==================
+function downloadReportExcel() {
+  const token = encodeURIComponent(getToken());
+  window.location.href = `/api/timesheet/export?year=${CURRENT_YEAR}&month=${CURRENT_MONTH}&webToken=${token}`;
+}
+
 async function loadSettings() {
-  $('settings-list').innerHTML = '<div class="loader">Загрузка...</div>';
+  const cont = document.getElementById('settings-container');
+  cont.innerHTML = '<div class="loader">Загрузка...</div>';
   try {
-    const res = await api('/api/timesheet/settings', {});
-    SETTINGS_DATA = res.settings || [];
-    if (!SETTINGS_DATA.length) {
-      $('settings-list').innerHTML = '<div class="loader">У вас нет прав для просмотра настроек, либо нет доступных должностей.</div>';
-      return;
-    }
-    $('settings-list').innerHTML = SETTINGS_DATA.map(s => `
-      <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--border);">
-        <span style="font-weight: 500; font-size: 15px;">${esc(s.position_name)}</span>
-        <input type="number" class="setting-input" data-pos="${esc(s.position_name)}" value="${s.rate}" min="0" step="10" placeholder="0 ₽" style="width: 140px; text-align: right; padding: 12px 16px; border: 1px solid var(--border); border-radius: 12px; font-size: 15px; font-weight: 600; outline: none; background: #F9FAFB;">
-      </div>
-    `).join('');
-  } catch (e) {
-    if (e.message !== 'unauthorized' && e.message !== 'forbidden') {
-      $('settings-list').innerHTML = `<div class="loader" style="color:var(--red);">Ошибка: ${esc(e.message)}</div>`;
-    }
+    SETTINGS_DATA = await api('/api/timesheet/settings');
+    const emps = SETTINGS_DATA.employees || [];
+    const rows = emps.map(e => {
+      const pType = e.payment_type === 'fixed' ? 'Фиксированный оклад' : 'Почасовая ставка';
+      const valText = e.payment_type === 'fixed' ? formatMoney(e.fixed_salary) : formatMoney(e.hourly_rate) + '/ч';
+      return `<tr>
+        <td><div style="font-weight: 600;">${e.full_name}</div><div style="font-size: 12px; color: var(--text-muted);">${e.position}</div></td>
+        <td>${pType}</td>
+        <td style="font-weight: 700;">${valText}</td>
+        <td class="right"><button type="button" class="btn-action" style="padding: 8px 16px; font-size: 13px; display: inline-block;" onclick="editEmpRate(${e.user_id}, '${e.payment_type || 'hourly'}', ${e.hourly_rate || 0}, ${e.fixed_salary || 0})">Изменить</button></td>
+      </tr>`;
+    }).join('');
+    cont.innerHTML = `<table class="payout-table"><thead><tr><th>Сотрудник</th><th>Тип оплаты</th><th>Ставка / Оклад</th><th class="right">Действие</th></tr></thead><tbody>${rows}</tbody></table>`;
+  } catch (e) { if (e.message !== 'unauthorized') cont.innerHTML = `<div class="loader">Ошибка: ${e.message}</div>`; }
+}
+
+function editEmpRate(uid, pType, hRate, fSal) {
+  const newType = prompt('Тип оплаты ("hourly" — почасовая, "fixed" — оклад):', pType);
+  if (!newType) return;
+  if (newType === 'fixed') {
+    const val = prompt('Фиксированный оклад в рублях:', fSal);
+    if (val === null) return;
+    api('/api/timesheet/settings/save', { user_id: uid, payment_type: 'fixed', fixed_salary: parseFloat(val) || 0 }).then(() => { showToast('Сохранено'); loadSettings(); });
+  } else {
+    const val = prompt('Часовая ставка в рублях:', hRate);
+    if (val === null) return;
+    api('/api/timesheet/settings/save', { user_id: uid, payment_type: 'hourly', hourly_rate: parseFloat(val) || 0 }).then(() => { showToast('Сохранено'); loadSettings(); });
   }
 }
 
-async function saveSettings() {
-  const inputs = document.querySelectorAll('.setting-input');
-  if (!inputs.length) return;
-  const btn = document.querySelector('.btn-submit');
-  btn.disabled = true;
-  btn.textContent = 'Сохранение...';
-  try {
-    for (const inp of inputs) {
-      const posName = inp.dataset.pos;
-      const rate = parseFloat(inp.value) || 0;
-      await api('/api/timesheet/settings/save', { position_name: posName, rate });
-    }
-    toast('Настройки сохранены');
-  } catch (e) {
-    if (e.message !== 'unauthorized' && e.message !== 'forbidden') alert('Ошибка сохранения: ' + e.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Сохранить настройки';
-  }
-}
-
-// ================== ИНИЦИАЛИЗАЦИЯ ==================
 (async function init() {
   if (!getToken()) { showLogin(); return; }
   try {
-    const { start, end } = getPeriodDates();
-    const res = await api('/api/timesheet/matrix', { date_from: formatDate(start), date_to: formatDate(end) });
-    EMPLOYEES_DATA = res.employees || [];
-    
-    showApp();
-    updatePeriodTitle();
-    await loadRestaurants();
-    renderMatrix();
-  } catch (e) {}
+    await loadInitial();
+  } catch (e) {
+    if (e.message === 'unauthorized') {
+      showLogin();
+    } else {
+      showLogin();
+      document.getElementById('login-error').textContent = 'Ошибка загрузки: ' + e.message;
+    }
+  }
 })();
 </script>
 </body>

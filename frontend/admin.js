@@ -237,7 +237,7 @@ const PAGE_TITLES = {
     news: 'Новости', standards: 'Стандарты', certification: 'Сертификация', faq: 'FAQ',
     restaurants: 'Рестораны', positions: 'Должности', citizenships: 'Гражданства',
     'medbook-dirs': 'Справочники медкн.', questions: 'Вопросы',
-    admins: 'Администраторы', reports: 'Отчёты', audit: 'История', sales: 'Товарооборот',
+    admins: 'Администраторы', reports: 'Отчёты', audit: 'История'
 };
 
 function navigate(page) {
@@ -281,11 +281,11 @@ async function refreshCounters() {
 
 // ═══ AVATAR GRADIENTS ═══
 const GRADIENTS = [
-    'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-    'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-    'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
-    'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+    'linear-gradient(135deg, #4318FF 0%, #3311DB 100%)',
+    'linear-gradient(135deg, #3965FF 0%, #00d2ff 100%)',
+    'linear-gradient(135deg, #FFB547 0%, #FF7A00 100%)',
+    'linear-gradient(135deg, #05CD99 0%, #12B76A 100%)',
+    'linear-gradient(135deg, #EE5D50 0%, #F04438 100%)',
 ];
 function getAvatarGradient(index) { return GRADIENTS[index % GRADIENTS.length]; }
 
@@ -296,58 +296,46 @@ async function loadDashboard() {
     $('page-content').innerHTML = `
         <div class="stats-grid">
             <div class="neu-card neu-card--stat purple">
-                <div style="display:flex;align-items:center;justify-content:space-between;">
-                    <div class="neu-card__icon-wrapper neu-card__icon-wrapper--purple">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                    </div>
-                    <div class="neu-card__trend neu-card__trend--up">↑ активны</div>
+                <div class="neu-card__icon-wrapper">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
                 </div>
                 <div class="neu-card__value" id="stat-active"><div class="skeleton skeleton-stat"></div></div>
                 <div class="neu-card__label">Активные сотрудники</div>
             </div>
-            <div class="neu-card neu-card--stat blue">
-                <div style="display:flex;align-items:center;justify-content:space-between;">
-                    <div class="neu-card__icon-wrapper neu-card__icon-wrapper--blue">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                    </div>
-                    <div class="neu-card__trend neu-card__trend--warn">на модерации</div>
+            <div class="neu-card neu-card--stat yellow">
+                <div class="neu-card__icon-wrapper">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                 </div>
                 <div class="neu-card__value" id="stat-pending"><div class="skeleton skeleton-stat"></div></div>
                 <div class="neu-card__label">На модерации</div>
             </div>
-            <div class="neu-card neu-card--stat pink">
-                <div style="display:flex;align-items:center;justify-content:space-between;">
-                    <div class="neu-card__icon-wrapper neu-card__icon-wrapper--pink">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
-                    </div>
-                    <div class="neu-card__trend neu-card__trend--down">внимание</div>
+            <div class="neu-card neu-card--stat blue">
+                <div class="neu-card__icon-wrapper">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
                 </div>
                 <div class="neu-card__value" id="stat-medbooks"><div class="skeleton skeleton-stat"></div></div>
-                <div class="neu-card__label">Медкнижки требуют внимания</div>
+                <div class="neu-card__label">Медкнижки</div>
             </div>
             <div class="neu-card neu-card--stat green">
-                <div style="display:flex;align-items:center;justify-content:space-between;">
-                    <div class="neu-card__icon-wrapper neu-card__icon-wrapper--green">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-                    </div>
-                    <div class="neu-card__trend neu-card__trend--warn">открытых</div>
+                <div class="neu-card__icon-wrapper">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
                 </div>
                 <div class="neu-card__value" id="stat-questions"><div class="skeleton skeleton-stat"></div></div>
-                <div class="neu-card__label">Вопросы от сотрудников</div>
+                <div class="neu-card__label">Вопросы</div>
             </div>
         </div>
         <div class="grid-2">
             <div class="neu-card">
                 <div class="neu-card__header">
                     <div class="neu-card__header-title">Открытые вопросы</div>
-                    <div class="neu-card__header-action" onclick="navigate('questions')">Все вопросы →</div>
+                    <div class="neu-card__header-action" onclick="navigate('questions')">Смотреть все</div>
                 </div>
                 <div id="dash-questions"><div class="loading">Загрузка...</div></div>
             </div>
             <div class="neu-card">
                 <div class="neu-card__header">
                     <div class="neu-card__header-title">Новые сотрудники</div>
-                    <div class="neu-card__header-action" onclick="navigate('users')">Все →</div>
+                    <div class="neu-card__header-action" onclick="navigate('users')">Смотреть все</div>
                 </div>
                 <div id="dash-new-users"><div class="loading">Загрузка...</div></div>
             </div>
@@ -364,11 +352,11 @@ async function loadDashboard() {
         if (qsContainer) {
             const questions = (data.questions || []).slice(0, 5);
             qsContainer.innerHTML = questions.map(q => `
-                <div class="activity__item" style="display:flex; gap:12px; padding:12px; border-bottom:1px solid var(--border);">
-                    <div class="activity__content">
-                        <div class="activity__text" style="font-size:14px; font-weight:600; margin-bottom:4px;">${esc(q.full_name || 'Сотрудник')}</div>
-                        <div style="font-size:13px; color:var(--text-sec);">${esc(q.text || '—')}</div>
-                        <div class="activity__time" style="font-size:12px; color:var(--text-terc); margin-top:4px;">${fmtDate(q.created_at, true)}</div>
+                <div style="display:flex; gap:16px; padding:16px 0; border-bottom:1px solid var(--border);">
+                    <div style="flex:1;">
+                        <div style="font-size:15px; font-weight:800; color:var(--text-main); margin-bottom:4px;">${esc(q.full_name || 'Сотрудник')}</div>
+                        <div style="font-size:14px; color:var(--text-sec); font-weight:500;">${esc(q.text || '—')}</div>
+                        <div style="font-size:12px; color:var(--text-sec); margin-top:8px;">${fmtDate(q.created_at, true)}</div>
                     </div>
                 </div>`).join('') || '<div class="loading">Нет открытых вопросов</div>';
         }
@@ -376,11 +364,11 @@ async function loadDashboard() {
         if (usersContainer) {
             const users = (data.users || []).slice(0, 5);
             usersContainer.innerHTML = users.map((u, i) => `
-                <div class="activity__item" style="display:flex; gap:12px; padding:12px; border-bottom:1px solid var(--border); align-items:center;">
-                    <div class="avatar" style="background:${getAvatarGradient(i)}; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-size:14px; font-weight:700; flex-shrink:0;">${(u.full_name||'?').charAt(0)}</div>
-                    <div class="activity__content">
-                        <div class="activity__text" style="font-size:14px; font-weight:600;">${esc(u.full_name||'—')}</div>
-                        <div style="font-size:13px; color:var(--text-terc);">${esc(u.position||'')} · ${fmtDate(u.created_at)}</div>
+                <div style="display:flex; gap:16px; padding:16px 0; border-bottom:1px solid var(--border); align-items:center;">
+                    <div class="avatar" style="background:${getAvatarGradient(i)}; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:800; font-size:16px;">${(u.full_name||'?').charAt(0)}</div>
+                    <div style="flex:1;">
+                        <div style="font-size:15px; font-weight:800; color:var(--text-main);">${esc(u.full_name||'—')}</div>
+                        <div style="font-size:13px; color:var(--text-sec); font-weight:500;">${esc(u.position||'')} · ${fmtDate(u.created_at)}</div>
                     </div>
                 </div>`).join('') || '<div class="loading">Нет новых сотрудников</div>';
         }
@@ -397,8 +385,8 @@ async function loadUsers() {
             <div class="neu-card__header">
                 <div class="neu-card__header-title">Сотрудники</div>
                 <div style="display:flex;gap:12px;">
-                    <input class="form-input" id="users-search" placeholder="Поиск по ФИО, логину..." style="width:280px;">
-                    ${canCreate ? '<button class="btn btn--primary" onclick="openAddUser()">Создать сотрудника</button>' : ''}
+                    <input class="form-input" id="users-search" placeholder="Поиск по ФИО, логину..." style="width:280px; border-radius:30px; padding:12px 20px;">
+                    ${canCreate ? '<button class="btn btn--primary" onclick="openAddUser()">Добавить</button>' : ''}
                 </div>
             </div>
             <div class="subtabs">
@@ -407,8 +395,8 @@ async function loadUsers() {
             </div>
             <div class="table-wrap">
                 <table class="t">
-                    <thead><tr><th>Логин</th><th>ФИО</th><th>Должность</th><th>Ресторан</th><th>Медкнижка</th><th>Статус</th><th>Действия</th></tr></thead>
-                    <tbody id="users-table"><tr><td colspan="7" style="text-align:center;color:var(--text-terc);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
+                    <thead><tr><th>Логин</th><th>Сотрудник</th><th>Должность</th><th>Ресторан</th><th>Медкнижка</th><th>Статус</th><th>Действия</th></tr></thead>
+                    <tbody id="users-table"><tr><td colspan="7" style="text-align:center;color:var(--text-sec);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
                 </table>
             </div>
         </div>`;
@@ -445,8 +433,9 @@ async function loadUsers() {
                 let mbTag = '';
                 if (u.is_admin) mbTag = '<span class="tag">—</span>';
                 else if (mbStatus === 'ok') mbTag = '<span class="tag tag--green">ОК</span>';
-                else if (mbStatus === 'expiring') mbTag = '<span class="tag tag--amber">Скоро</span>';
+                else if (mbStatus === 'expiring') mbTag = '<span class="tag tag--amber">Истекает</span>';
                 else mbTag = '<span class="tag tag--pink">Ошибка</span>';
+                
                 if (currentTab === 'fired') {
                     return `<tr>
                         <td>${u.login ? esc(u.login) : '<span class="tag">нет</span>'}</td>
@@ -457,12 +446,21 @@ async function loadUsers() {
                         <td>${hasPerm('users_fire') ? `<button class="btn btn--sm btn--outline-success" onclick="restoreUser(${u.user_id})">Восстановить</button>` : ''}</td>
                     </tr>`;
                 }
-                const ptTag = u.payment_type === 'fixed' ? '<span class="tag" style="font-size:10px;padding:2px 6px; margin-left:4px;">Оклад</span>' : '<span class="tag" style="font-size:10px;padding:2px 6px; margin-left:4px;">Почасовка</span>';
+                
                 return `<tr>
                     <td>${u.login ? esc(u.login) : '<span class="tag">нет</span>'}</td>
-                    <td><div class="name-cell"><div class="avatar" style="background:${getAvatarGradient(i)}">${(u.full_name||'?').charAt(0).toUpperCase()}</div>
-                        <div>${esc(u.full_name||'—')}<br>${u.personnel_number ? '<span class="tag" style="font-size:10px; margin-top:4px; display:inline-block;">Таб. №'+esc(u.personnel_number)+'</span>' : ''} ${ptTag}</div>
-                    </div></td>
+                    <td>
+                        <div class="name-cell">
+                            <div class="avatar" style="background:${getAvatarGradient(i)}">${(u.full_name||'?').charAt(0).toUpperCase()}</div>
+                            <div>
+                                <div style="font-weight:800; color:var(--text-main);">${esc(u.full_name||'—')}</div>
+                                <div style="font-size:12px; color:var(--text-sec); margin-top:2px;">
+                                    ${u.personnel_number ? 'Таб: '+esc(u.personnel_number) : ''} 
+                                    ${u.payment_type === 'fixed' ? ' • Оклад' : ' • Почасовка'}
+                                </div>
+                            </div>
+                        </div>
+                    </td>
                     <td>${esc(u.position||'—')}</td>
                     <td>${esc(u.restaurant_name||'—')}</td>
                     <td>${mbTag}</td>
@@ -472,9 +470,9 @@ async function loadUsers() {
                         ${!u.is_fired && !u.is_super_admin && hasPerm('users_fire') ? `<button class="btn btn--sm btn--outline-danger" onclick="fireUser(${u.user_id},'${esc(u.full_name||'')}')" ${u.is_admin && !isSuperAdmin() ? 'disabled' : ''}>Уволить</button>` : ''}
                     </td>
                 </tr>`;
-            }).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--text-terc);padding:40px;">Нет сотрудников</td></tr>';
+            }).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--text-sec);padding:40px;">Нет сотрудников</td></tr>';
         } catch (e) {
-            $('users-table').innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+            $('users-table').innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-sec);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
         }
     }
 }
@@ -632,7 +630,7 @@ async function loadMedbooks() {
             $('med-content').innerHTML = `
                 <div class="stats-grid" style="margin-bottom:24px;">
                     <div class="neu-card neu-card--stat green"><div class="neu-card__label">Действительны</div><div class="neu-card__value" style="color:var(--green);">${ok}</div></div>
-                    <div class="neu-card neu-card--stat pink"><div class="neu-card__label">Скоро истекают</div><div class="neu-card__value" style="color:var(--amber);">${exp}</div></div>
+                    <div class="neu-card neu-card--stat yellow"><div class="neu-card__label">Скоро истекают</div><div class="neu-card__value" style="color:var(--yellow);">${exp}</div></div>
                     <div class="neu-card neu-card--stat pink"><div class="neu-card__label">Недействительны</div><div class="neu-card__value" style="color:var(--red);">${inv}</div></div>
                 </div>
                 <div class="table-wrap">
@@ -836,8 +834,8 @@ async function loadNews() {
                 ${canCreate ? '<button class="btn btn--primary" onclick="openAddNews()">Создать</button>' : ''}
             </div>
             ${canPublish() && pending.length ? `
-                <div style="background:var(--amber-bg); border:1px solid #fde68a; border-radius:8px; padding:16px; margin-bottom:24px;">
-                    <strong style="color:var(--amber); font-size:14px;">На модерации: ${pending.length}</strong>
+                <div style="background:var(--yellow-bg); border:1px solid #fde68a; border-radius:8px; padding:16px; margin-bottom:24px;">
+                    <strong style="color:var(--yellow); font-size:14px;">На модерации: ${pending.length}</strong>
                     <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px;">
                         ${pending.map(n => `
                             <div style="display:flex;gap:12px;align-items:center;padding:12px;background:#fff;border:1px solid #fde68a;border-radius:6px;box-shadow:var(--shadow-sm);">
@@ -857,8 +855,8 @@ async function loadNews() {
                     if (n.status==='pending' && canPublish()) acts += `<button class="btn btn--sm btn--outline-danger" style="margin-left:8px;" onclick="rejectNews(${n.id})">Отклонить</button>`;
                     if (canEdit) acts += `<button class="btn btn--sm btn--outline" style="margin-left:8px;" onclick="openNewsEdit(${n.id})">Изменить</button>`;
                     if (canEdit && n.status !== 'pending') acts += `<button class="btn btn--sm btn--outline-danger" style="margin-left:8px;" onclick="deleteNews(${n.id})">Удалить</button>`;
-                    return `<tr><td style="text-align:center;">${n.image_url ? `<img src="${getFileUrl(n.image_url)}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;box-shadow:var(--shadow-sm);">` : '<span style="color:var(--text-terc);">—</span>'}</td>
-                        <td style="font-weight:600;">${esc(n.title||'—')}</td><td>${esc(n.proposed_by||'—')}</td><td style="color:var(--text-terc);">${fmtDate(n.created_at)}</td><td><span class="tag ${st}">${tx}</span></td><td>${acts}</td></tr>`;
+                    return `<tr><td style="text-align:center;">${n.image_url ? `<img src="${getFileUrl(n.image_url)}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;box-shadow:var(--shadow-sm);">` : '<span style="color:var(--text-sec);">—</span>'}</td>
+                        <td style="font-weight:600;">${esc(n.title||'—')}</td><td>${esc(n.proposed_by||'—')}</td><td style="color:var(--text-sec);">${fmtDate(n.created_at)}</td><td><span class="tag ${st}">${tx}</span></td><td>${acts}</td></tr>`;
                 }).join('') || '<tr><td colspan="6" style="text-align:center;padding:40px;">Нет новостей</td></tr>'}</tbody></table>
             </div>
         </div>`;
@@ -1011,8 +1009,8 @@ async function loadStandards() {
                 ${canCreate ? '<button class="btn btn--primary" onclick="openAddStandard()">Создать</button>' : ''}
             </div>
             ${canPublish() && pending.length ? `
-                <div style="background:var(--amber-bg); border:1px solid #fde68a; border-radius:8px; padding:16px; margin-bottom:24px;">
-                    <strong style="color:var(--amber); font-size:14px;">На согласовании: ${pending.length}</strong>
+                <div style="background:var(--yellow-bg); border:1px solid #fde68a; border-radius:8px; padding:16px; margin-bottom:24px;">
+                    <strong style="color:var(--yellow); font-size:14px;">На согласовании: ${pending.length}</strong>
                     <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px;">
                         ${pending.map(s => `
                             <div style="display:flex;gap:12px;align-items:center;padding:12px;background:#fff;border:1px solid #fde68a;border-radius:6px;box-shadow:var(--shadow-sm);">
@@ -1032,7 +1030,7 @@ async function loadStandards() {
                     if (s.status==='pending' && canPublish()) acts += `<button class="btn btn--sm btn--outline-danger" style="margin-left:8px;" onclick="rejectStandard(${s.id})">Отклонить</button>`;
                     if (canEdit) acts += `<button class="btn btn--sm btn--outline" style="margin-left:8px;" onclick="openStdEdit(${s.id})">Изменить</button>`;
                     if (canEdit && s.status !== 'pending') acts += `<button class="btn btn--sm btn--outline-danger" style="margin-left:8px;" onclick="deleteStandard(${s.id})">Удалить</button>`;
-                    return `<tr><td style="text-align:center;">${s.image_url ? `<img src="${getFileUrl(s.image_url)}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;box-shadow:var(--shadow-sm);">` : '<span style="color:var(--text-terc);">—</span>'}</td>
+                    return `<tr><td style="text-align:center;">${s.image_url ? `<img src="${getFileUrl(s.image_url)}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;box-shadow:var(--shadow-sm);">` : '<span style="color:var(--text-sec);">—</span>'}</td>
                         <td><span class="tag">${esc(s.number||'—')}</span></td><td><span class="tag tag--purple">${esc(s.group_name||'Общее')}</span></td>
                         <td style="font-weight:600;">${esc(s.title||'—')}</td><td>${s.file_url ? 'Да' : '—'}</td>
                         <td><span class="tag ${st}">${tx}</span></td><td>${acts}</td></tr>`;
@@ -1140,7 +1138,7 @@ async function openAddStandard() {
                 <div id="std-file-preview-box" style="display:none;margin-top:12px;padding:12px;background:var(--bg-hover);border:1px solid var(--border);border-radius:8px;align-items:center;gap:12px;box-shadow:var(--shadow-sm);">
                     <div style="flex:1;min-width:0;">
                         <div id="std-file-name" style="font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
-                        <div id="std-file-status" style="font-size:12px;color:var(--text-terc);"></div>
+                        <div id="std-file-status" style="font-size:12px;color:var(--text-sec);"></div>
                     </div>
                     <button type="button" class="btn btn--sm btn--outline-danger" onclick="_uploadedStandardFileUrl='';_uploadedStandardFileName='';renderFilePreviewUI();">Удал.</button>
                 </div>
@@ -1161,7 +1159,7 @@ async function openAddStandard() {
                 <textarea class="form-textarea" id="paste-table-area" placeholder="Скопируйте таблицу из Excel и вставьте сюда..." style="min-height:80px;font-size:13px;background:#fff;margin-bottom:0;"></textarea>
                 <div class="form-hint" style="color:var(--green);opacity:0.8;">После вставки таблица появится ниже. Вы сможете её отредактировать.</div>
             </div>
-            <label style="display:block;font-size:12px;font-weight:700;color:var(--text-terc);margin-bottom:8px;text-transform:uppercase;">Ручная настройка</label>
+            <label style="display:block;font-size:12px;font-weight:700;color:var(--text-sec);margin-bottom:8px;text-transform:uppercase;">Ручная настройка</label>
             <div id="table-editor-container"></div>
         </div>
         <div class="form-hint" id="std-error"></div>
@@ -1251,7 +1249,7 @@ async function openStdEdit(sid) {
                 <div id="std-file-preview-box" style="display:${std.file_url ? 'flex' : 'none'};margin-top:12px;padding:12px;background:var(--bg-hover);border:1px solid var(--border);border-radius:8px;align-items:center;gap:12px;box-shadow:var(--shadow-sm);">
                     <div style="flex:1;min-width:0;">
                         <div id="std-file-name" style="font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(std.file_name || 'Файл')}</div>
-                        <div id="std-file-status" style="font-size:12px;color:var(--text-terc);">Готов к сохранению</div>
+                        <div id="std-file-status" style="font-size:12px;color:var(--text-sec);">Готов к сохранению</div>
                     </div>
                     <button type="button" class="btn btn--sm btn--outline-danger" onclick="_uploadedStandardFileUrl='';_uploadedStandardFileName='';renderFilePreviewUI();">Удал.</button>
                 </div>
@@ -1694,7 +1692,7 @@ async function loadQuestions() {
                     <div style="flex:1;">
                         <div style="font-weight:700;margin-bottom:8px; font-size:15px;">${esc(q.full_name || 'Сотрудник')}</div>
                         <div style="font-size:14px;color:var(--text-sec);white-space:pre-wrap;">${esc(q.text)}</div>
-                        <div style="font-size:12px;color:var(--text-terc);margin-top:8px;">${fmtDate(q.created_at, true)}</div>
+                        <div style="font-size:12px;color:var(--text-sec);margin-top:8px;">${fmtDate(q.created_at, true)}</div>
                     </div>
                     <div>${q.replied ? '<span class="tag tag--green">Отвечен</span>' : '<span class="tag tag--amber">Ожидает</span>'}</div>
                 </div>
@@ -1790,8 +1788,8 @@ async function loadReports() {
         $('page-content').innerHTML = `
             <div class="stats-grid">
                 <div class="neu-card neu-card--stat purple"><div class="neu-card__label">Активные сотрудники</div><div class="neu-card__value">${r.active || 0}</div></div>
-                <div class="neu-card neu-card--stat blue"><div class="neu-card__label">На модерации</div><div class="neu-card__value">${(r.news_pending || 0) + (r.standards_pending || 0)}</div></div>
-                <div class="neu-card neu-card--stat pink"><div class="neu-card__label">Медкнижки</div><div class="neu-card__value">${r.medbooks_alert || 0}</div></div>
+                <div class="neu-card neu-card--stat yellow"><div class="neu-card__label">На модерации</div><div class="neu-card__value">${(r.news_pending || 0) + (r.standards_pending || 0)}</div></div>
+                <div class="neu-card neu-card--stat blue"><div class="neu-card__label">Медкнижки</div><div class="neu-card__value">${r.medbooks_alert || 0}</div></div>
                 <div class="neu-card neu-card--stat green"><div class="neu-card__label">Вопросы</div><div class="neu-card__value">${r.questions_open || 0}</div></div>
             </div>`;
     } catch (e) {
@@ -1816,7 +1814,7 @@ async function loadAudit() {
             <td style="white-space:nowrap; color:var(--text-sec); font-size:12px;">${fmtDate(a.created_at, true)}</td>
             <td style="font-weight:600;">${esc(a.action || '—')}</td>
             <td><span class="tag">${esc((a.target_type || '') + ' ' + (a.target_id || ''))}</span></td>
-            <td style="font-size:13px;color:var(--text-terc);">${esc(a.details || '')}</td>
+            <td style="font-size:13px;color:var(--text-sec);">${esc(a.details || '')}</td>
         </tr>`).join('')}
         </tbody></table></div>`;
     } catch (e) { $('audit-list').innerHTML = `<div class="empty">Ошибка: ${esc(e.message)}</div>`; }

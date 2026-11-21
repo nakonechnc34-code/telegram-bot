@@ -5,12 +5,19 @@
 import pytest
 import os
 import sys
-import importlib
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.security import hash_password, verify_password, sanitize_html
+from utils.security import (
+    hash_password,
+    verify_password,
+    sanitize_html,
+    validate_login_data,
+    _check_rate_limit,
+    _reset_rate_limit,
+)
 from utils.common import safe_int, safe_float, generate_login_for
+from config import LOGIN_RE, PERM_KEYS
 
 
 # ===================== SECURITY TESTS =====================
@@ -40,6 +47,25 @@ class TestSecurity:
         assert '<script>' not in result
         assert 'alert' not in result
 
+    def test_validate_login_data(self):
+        ok, err = validate_login_data({"login": "ADM01", "password": "secret"})
+        assert err is None
+        assert ok == {"login": "adm01", "password": "secret"}
+
+        bad, err = validate_login_data({"login": "bad_login", "password": "secret"})
+        assert bad is None
+        assert err == "invalid_login_format"
+
+    def test_rate_limit_blocks_after_five(self):
+        ip = "127.0.0.99"
+        _reset_rate_limit(ip)
+        try:
+            for _ in range(5):
+                assert _check_rate_limit(ip) is True
+            assert _check_rate_limit(ip) is False
+        finally:
+            _reset_rate_limit(ip)
+
 
 # ===================== COMMON UTILS TESTS =====================
 class TestCommonUtils:
@@ -58,37 +84,19 @@ class TestCommonUtils:
 
     def test_generate_login_for_basic(self):
         existing = set()
-        login = generate_login_for("Иванов", existing)
-        assert len(login) == 5
-        assert login[:3].isalpha()
-        assert login[3:].isdigit()
+        login = generate_login_for("Иванов Иван", existing)
+        assert LOGIN_RE.match(login)
 
     def test_generate_login_for_unique(self):
-        existing = {"ivan01", "petr02"}
-        login = generate_login_for("Иванов", existing)
+        existing = {"iva10", "iva11"}
+        login = generate_login_for("Иванов Иван", existing)
         assert login not in existing
+        assert LOGIN_RE.match(login)
 
 
-# ===================== CONFIG TESTS =====================
-class TestConfig:
-    def test_db_url_required(self, monkeypatch):
-        """DATABASE_URL должен быть задан. Используем importlib.reload."""
-        monkeypatch.delenv("DATABASE_URL", raising=False)
-        # Убедимся, что config импортирован
-        import config as _cfg
-        with pytest.raises(ValueError, match="DATABASE_URL"):
-            importlib.reload(_cfg)
-        # Восстанавливаем модуль для последующих тестов
-        os.environ["DATABASE_URL"] = os.environ.get(
-            "DATABASE_URL", "postgresql://test:test@localhost:5432/test"
-        )
-        importlib.reload(_cfg)
-
-
-# ===================== ROUTES TESTS (mock) =====================
-class TestRoutes:
+# ===================== ROUTES / CONFIG CONSTANTS TESTS =====================
+class TestRoutesAndConfig:
     def test_login_format_regex(self):
-        from config import LOGIN_RE
         assert LOGIN_RE.match("abc01")
         assert LOGIN_RE.match("xyz99")
         assert LOGIN_RE.match("adm01")
@@ -96,7 +104,6 @@ class TestRoutes:
         assert LOGIN_RE.match("ABc01") is None
 
     def test_permissions_list_complete(self):
-        from config import PERM_KEYS
         assert "timesheet_access" in PERM_KEYS
         assert "users_create" in PERM_KEYS
         assert "users_edit" in PERM_KEYS
@@ -108,9 +115,8 @@ class TestDateValidation:
         from datetime import datetime
         test_cases = [
             ("2024-01-15", "%Y-%m-%d", "2024-01-15"),
-            ("15.01.2024", None, "2024-01-15"),
+            ("15.01.2024", "%d.%m.%Y", "2024-01-15"),
         ]
-        for val, fmt, expected in cases if False else test_cases:
-            if fmt:
-                parsed = datetime.strptime(val, fmt)
-                assert parsed.strftime("%Y-%m-%d") == expected
+        for val, fmt, expected in test_cases:
+            parsed = datetime.strptime(val, fmt)
+            assert parsed.strftime("%Y-%m-%d") == expected

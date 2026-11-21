@@ -18,6 +18,14 @@ env/
 .env
 .env.local
 .env.*.local
+.env.backup
+.env.*.backup
+
+# Secrets & dangerous scripts
+db_update.py
+*.pem
+*.key
+secrets/
 
 # IDE
 .vscode/

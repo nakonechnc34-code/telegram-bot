@@ -2,6 +2,9 @@
    WOKKER ADMIN — FULLY FUNCTIONAL DASHBOARD
    ═══════════════════════════════════════════ */
 
+// Global error guard
+window.addEventListener('error', e => { e.preventDefault(); console.error('[global]', e.error); });
+
 const TOKEN_KEY = 'wokker_admin_token';
 const LOGIN_RE = /^[a-z]{3}\d{2}$/;
 let ME = null;
@@ -107,13 +110,21 @@ function hasPerm(perm) {
 // ═══ MODAL ═══
 function openModal(title, bodyHtml, footerHtml, opts) {
     opts = opts || {};
-    $('modal-title').textContent = title;
-    $('modal-body').innerHTML = bodyHtml;
-    $('modal-footer').innerHTML = footerHtml || '';
-    $('modal-box').className = 'modal' + (opts.wide ? ' wide' : '');
-    $('modal-overlay').classList.add('show');
+    const titleEl = $('modal-title');
+    if (titleEl) titleEl.textContent = title;
+    const bodyEl = $('modal-body');
+    if (bodyEl) bodyEl.innerHTML = bodyHtml;
+    const footerEl = $('modal-footer');
+    if (footerEl) footerEl.innerHTML = footerHtml || '';
+    const boxEl = $('modal-box');
+    if (boxEl) boxEl.className = 'modal' + (opts.wide ? ' wide' : '');
+    const overlayEl = $('modal-overlay');
+    if (overlayEl) overlayEl.classList.add('show');
 }
-function closeModal() { $('modal-overlay').classList.remove('show'); }
+function closeModal() {
+    const overlayEl = $('modal-overlay');
+    if (overlayEl) overlayEl.classList.remove('show');
+}
 $('modal-close')?.addEventListener('click', closeModal);
 $('modal-overlay')?.addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
 document.addEventListener('keydown', (e) => {
@@ -146,14 +157,24 @@ $('change-password-btn')?.addEventListener('click', () => {
 
 // ═══ LOGIN ═══
 function showLogin() {
-    $('app').style.display = 'none';
-    $('login-screen').style.display = 'flex';
-    $('login-error').textContent = '';
-    $('login-login').value = '';
-    $('login-password').value = '';
+    const appEl = $('app');
+    const loginScreenEl = $('login-screen');
+    if (appEl) appEl.style.display = 'none';
+    if (loginScreenEl) loginScreenEl.style.display = 'flex';
+    const errEl = $('login-error');
+    if (errEl) errEl.textContent = '';
+    const loginInput = $('login-login');
+    const passInput = $('login-password');
+    if (loginInput) loginInput.value = '';
+    if (passInput) passInput.value = '';
     clearCache();
 }
-function showApp() { $('app').style.display = 'block'; $('login-screen').style.display = 'none'; }
+function showApp() { 
+    const appEl = $('app');
+    const loginScreenEl = $('login-screen');
+    if (appEl) appEl.style.display = 'block';
+    if (loginScreenEl) loginScreenEl.style.display = 'none';
+}
 
 $('login-login')?.addEventListener('input', e => {
     e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5);
@@ -195,18 +216,21 @@ $('login-btn')?.addEventListener('click', doLogin);
 $('login-password')?.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 $('login-login')?.addEventListener('keydown', e => { if (e.key === 'Enter') $('login-password')?.focus(); });
 
-// ═══ GLOBAL ERROR HANDLER ═══
-window.addEventListener('error', e => { console.error('[global]', e.error); });
-
 async function checkAdminAndLoad() {
     try {
         const res = await api('/api/admin/me', {});
         ME = res.profile;
-        $('admin-name').textContent = ME.full_name || '—';
-        $('admin-login').textContent = '@' + (ME.login || '');
-        $('admin-role').textContent = ME.is_super_admin ? 'Супер-админ' : ME.is_hr ? 'HR' : 'Админ';
-        $('admin-role').className = 'badge-role ' + (ME.is_super_admin ? 'super' : ME.is_hr ? 'hr' : 'regular');
-        $('nav-admins').style.display = ME.is_super_admin ? 'block' : 'none';
+        const nameEl = $('admin-name');
+        if (nameEl) nameEl.textContent = ME.full_name || '—';
+        const loginEl = $('admin-login');
+        if (loginEl) loginEl.textContent = '@' + (ME.login || '');
+        const roleEl = $('admin-role');
+        if (roleEl) {
+            roleEl.textContent = ME.is_super_admin ? 'Супер-админ' : ME.is_hr ? 'HR' : 'Админ';
+            roleEl.className = 'badge-role ' + (ME.is_super_admin ? 'super' : ME.is_hr ? 'hr' : 'regular');
+        }
+        const adminsNav = $('nav-admins');
+        if (adminsNav) adminsNav.style.display = ME.is_super_admin ? 'block' : 'none';
         const avatarEl = $('topbar-avatar');
         if (avatarEl && ME.full_name) avatarEl.textContent = ME.full_name.charAt(0).toUpperCase();
         showApp();
@@ -215,7 +239,11 @@ async function checkAdminAndLoad() {
         }
         navigate('dashboard');
         refreshCounters();
-    } catch (e) { showLogin(); $('login-error').textContent = 'Ошибка: ' + e.message; }
+    } catch (e) { 
+        showLogin(); 
+        const errEl = $('login-error');
+        if (errEl) errEl.textContent = 'Ошибка: ' + e.message; 
+    }
 }
 
 $('logout-btn')?.addEventListener('click', async () => {
@@ -251,7 +279,7 @@ function navigate(page) {
 }
 
 document.querySelectorAll('.nav-item').forEach(item => {
-    item.addEventListener('click', e => { e.preventDefault(); closeSidebar(); navigate(item.dataset.page); });
+    if (item) item.addEventListener('click', e => { e.preventDefault(); closeSidebar(); navigate(item.dataset.page); });
 });
 
 // ═══ REFRESH COUNTERS ═══
@@ -1756,4 +1784,8 @@ const PAGE_LOADERS = {
 };
 
 // ═══ INIT ═══
-if (getToken()) { checkAdminAndLoad(); } else { showLogin(); }
+try {
+    if (getToken()) { checkAdminAndLoad(); } else { showLogin(); }
+} catch (e) {
+    console.error('[INIT] Failed:', e);
+}

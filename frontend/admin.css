@@ -597,3 +597,27 @@ tr:hover td { background: rgba(0,0,0,0.02); }
   .stats-grid { grid-template-columns: 1fr; }
   .topbar-search { display: none; }
 }
+
+/* ═══ SUBTABS ═══ */
+.subtabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.subtab {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid rgba(0,0,0,0.08);
+  background: transparent;
+  color: var(--text-sec);
+  transition: all 0.15s;
+}
+.subtab:hover { background: rgba(0,0,0,0.04); color: var(--text); }
+.subtab.active { color: #fff; background: var(--purple); border-color: var(--purple); }
+
+/* ═══ FORM ROW ═══ */
+.form-row { display: flex; gap: 12px; flex-wrap: wrap; }

@@ -45,7 +45,6 @@
   .lesson-title { font-size: 22px; font-weight: 800; margin-bottom: 16px; }
   .lesson-content { font-size: 16px; color: #333; line-height: 1.7; font-weight: 500; white-space: pre-wrap; }
 
-  /* Стили для кнопок скачивания файлов */
   .file-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--accent-soft); color: var(--text-main); padding: 10px 16px; border-radius: 12px; text-decoration: none; font-weight: 700; margin-top: 12px; cursor: pointer; transition: background 0.2s; border: 1px solid rgba(0,0,0,0.05); }
   .file-btn:hover { background: #E5DED4; }
 
@@ -119,39 +118,33 @@ function downloadProtectedFile(fileUrl) {
         showToast('Вы не авторизованы', 'error');
         return;
     }
-    
-    // Открываем файл с токеном через новый API
+    // GET-запрос — токен в URL допустим (backend читает query)
     const urlWithToken = `${fileUrl}?webToken=${token}`;
     window.open(urlWithToken, '_blank');
 }
 
-// Функция для красивого вывода контента урока
 function formatContent(content) {
     if (!content) return '';
     let safe = esc(content);
-    
-    // Ищем ссылки. Если админ вставил /uploads/file.pdf, мы меняем это на /api/download/file.pdf
     const fileRegex = /(\/uploads\/[^\s<]+)/g;
     safe = safe.replace(fileRegex, (match) => {
-        // Извлекаем имя файла
         const fileName = match.split('/').pop();
-        // Меняем путь на новый API
         const apiUrl = '/api/download/' + fileName;
-        
         return `<br><a href="javascript:void(0)" onclick="downloadProtectedFile('${apiUrl}')" class="file-btn">📄 Скачать: ${fileName}</a>`;
     });
-    
     return safe;
 }
 // =========================================================
 
+// ✅ ИСПРАВЛЕНО: токен теперь в заголовке Authorization, а не в теле
 async function api(path, body) {
-  const payload = { webToken: getToken() };
-  if (body && typeof body === 'object') Object.assign(payload, body);
   const res = await fetch(path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + getToken()
+    },
+    body: JSON.stringify(body || {}),
   });
   if (res.status === 401) { window.location.href = '/'; throw new Error('unauthorized'); }
   if (!res.ok) {
@@ -168,7 +161,7 @@ async function loadCourses() {
   try {
     const res = await api('/api/academy/courses', {});
     const courses = res.courses || [];
-    
+
     if (!courses.length) {
       $('courses-list').innerHTML = '<div style="text-align:center; padding: 40px; color: var(--text-muted);">Курсов пока нет</div>';
       return;
@@ -204,7 +197,7 @@ async function openCourse(courseId) {
   try {
     const res = await api('/api/academy/course', { course_id: courseId });
     CURRENT_COURSE = res.course;
-    
+
     const lessonsHtml = res.lessons.map(l => `
       <div class="lesson-card">
         <div class="lesson-title">${esc(l.title)}</div>
@@ -214,7 +207,7 @@ async function openCourse(courseId) {
 
     const hasTests = res.tests && res.tests.length > 0;
     let testHtml = '';
-    
+
     if (hasTests) {
       testHtml = `
         <div style="margin-top: 40px; margin-bottom: 20px;">
@@ -301,7 +294,7 @@ async function submitTest(courseId) {
 
   try {
     const res = await api('/api/academy/submit-test', { course_id: courseId, answers });
-    
+
     if (res.passed) {
       $('course-view').innerHTML = `
         <div class="result-screen" style="margin-top: 40px;">

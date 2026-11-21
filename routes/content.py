@@ -1,544 +1,673 @@
-import os
-import uuid
 from aiohttp import web
-from psycopg2.extras import RealDictCursor, Json
-from psycopg2 import sql
+from psycopg2.extras import RealDictCursor
 from db import get_conn, _run
-from utils.auth_helpers import get_auth_user, get_admin_user, denied, require_perm, _sync_user_has_perm
+from utils.auth_helpers import get_auth_user, get_admin_user, denied, require_perm, _is_tu, _sync_get_tu_rests
+from utils.common import safe_int
 from utils.security import sanitize_html
-from middleware.auth import require_admin, require_perm as require_perm_decor
-import logging
 
 routes = web.RouteTableDef()
 
-def _safe_int(val, default=0):
-    try: return int(val)
-    except: return default
 
-def _auto_publish_scheduled(cur):
-    cur.execute("UPDATE news SET status = 'published' WHERE status = 'scheduled' AND publish_at IS NOT NULL AND publish_at <= NOW()")
+async def _can_manage_content_row(admin, row, allowed_rests):
+    if allowed_rests is None:
+        return True
+    if not row:
+        return False
+    if not allowed_rests:
+        return False
+    rest_key = row.get("restaurant_key")
+    if rest_key and rest_key in allowed_rests:
+        return True
+    return False
 
-def _check_can_publish(admin):
-    return admin["is_super_admin"] or (admin.get("position") or "").strip().upper() == "HR"
 
-@routes.post('/api/admin/news')
-@require_admin
-async def handle_admin_news_list(request):
-    admin = request['user']
-    def _sync():
-        with get_conn() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                _auto_publish_scheduled(cur)
-                cur.execute("SELECT * FROM news ORDER BY created_at DESC, id DESC")
-                return [dict(r) for r in cur.fetchall()]
-    return web.json_response({"news": await _run(_sync)})
-
-@routes.post('/api/admin/news/add')
-@require_admin
-async def handle_admin_news_add(request):
-    admin = request['user']
-    can_publish = _check_can_publish(admin)
-    can_suggest = _sync_user_has_perm(admin, "news_suggest") or _sync_user_has_perm(admin, "news_write")
-    if not (can_publish or can_suggest): return web.json_response({"error": "forbidden"}, status=403)
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    
-    title = (body.get("title") or "").strip()
-    text = (body.get("body") or "").strip()
-    if not title or not text or len(title) > 200 or len(text) > 5000:
-        return web.json_response({"error": "invalid_or_too_long"}, status=400)
-    
-    title = sanitize_html(title)
-    text = sanitize_html(text)
-
-    level = body.get("level") or "normal"
-    intent = body.get("intent") or "suggest"
-    publish_at = body.get("publish_at")
-    image_url = body.get("image_url") or ""
-
-    if not can_publish:
-        status = "pending"
-        proposed_by = admin.get("full_name") or admin.get("login")
-    else:
-        if intent == "publish": status = "published"
-        elif intent == "schedule":
-            if not publish_at: return web.json_response({"error": "publish_at_required"}, status=400)
-            status = "scheduled"
-        else: status = "pending"
-        proposed_by = None
-
-    def _sync():
-        with get_conn() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("INSERT INTO news (title, body, level, status, publish_at, proposed_by, image_url) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING *", (title, text, level, status, publish_at, proposed_by, image_url))
-                return dict(cur.fetchone())
-    news_row = await _run(_sync)
-    return web.json_response({"ok": True, "status": status, "news": news_row})
-
-@routes.post('/api/admin/standards')
-@require_admin
-async def handle_admin_standards(request):
-    admin = request['user']
-    def _sync():
-        with get_conn() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT * FROM standards ORDER BY created_at DESC, id DESC")
-                return [dict(r) for r in cur.fetchall()]
-    return web.json_response({"standards": await _run(_sync)})
-
-@routes.post('/api/admin/standard/add')
-@require_admin
-async def handle_admin_standard_add(request):
-    admin = request['user']
-    can_publish = _check_can_publish(admin)
-    can_suggest = _sync_user_has_perm(admin, "standards_edit")
-    if not (can_publish or can_suggest): return web.json_response({"error": "forbidden"}, status=403)
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    
-    number = (body.get("number") or "").strip()
-    title = (body.get("title") or "").strip()
-    text = (body.get("body") or "").strip()
-    image_url = body.get("image_url") or ""
-    group_name = (body.get("group_name") or "Общее").strip()
-    content_type = body.get("content_type") or "text"
-    content_data = body.get("content_data")
-    file_url = body.get("file_url") or ""
-    file_name = body.get("file_name") or ""
-    
-    if not title: return web.json_response({"error": "title_required"}, status=400)
-    if not text: return web.json_response({"error": "text_required"}, status=400)
-    if content_type == 'text': text = sanitize_html(text)
-
-    if not can_publish:
-        status = "pending"; proposed_by = admin.get("full_name") or admin.get("login")
-    else:
-        status = "published"; proposed_by = None
-
-    def _sync():
-        with get_conn() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("INSERT INTO standards (number, title, body, status, proposed_by, image_url, group_name, content_type, content_data, file_url, file_name) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *", 
-                            (number, title, text, status, proposed_by, image_url, group_name, content_type, Json(content_data) if content_data else None, file_url, file_name))
-                return dict(cur.fetchone())
-    std_row = await _run(_sync)
-    return web.json_response({"ok": True, "status": status, "standard": std_row})
-
-@routes.post('/api/admin/certification')
-@require_admin
-async def handle_admin_certification_list(request):
-    admin = request['user']
-    def _sync():
-        with get_conn() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT * FROM certification_questions ORDER BY created_at DESC")
-                return [dict(r) for r in cur.fetchall()]
-    return web.json_response({"questions": await _run(_sync)})
-
-@routes.post('/api/admin/certification/add')
-@require_admin
-async def handle_admin_certification_add(request):
-    admin = request['user']
-    perm_err = require_perm(admin, "certification_edit")
-    if perm_err: return perm_err
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    q = (body.get("question") or "").strip()
-    a = (body.get("option_a") or "").strip()
-    b = (body.get("option_b") or "").strip()
-    c = (body.get("option_c") or "").strip()
-    d = (body.get("option_d") or "").strip()
-    correct = (body.get("correct_option") or "").strip().lower()
-    if not q or not a or not b or not c or not d or correct not in ("a","b","c","d"):
-        return web.json_response({"error": "invalid"}, status=400)
-    def _sync():
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("INSERT INTO certification_questions (question, option_a, option_b, option_c, option_d, correct_option) VALUES (%s,%s,%s,%s,%s,%s)", (q, a, b, c, d, correct))
-    await _run(_sync)
-    return web.json_response({"ok": True})
-
-@routes.post('/api/admin/faq')
-@require_admin
-async def handle_admin_faq(request):
-    admin = request['user']
-    def _sync():
-        with get_conn() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT * FROM faq ORDER BY id")
-                return [dict(r) for r in cur.fetchall()]
-    return web.json_response({"faq": await _run(_sync)})
-
-@routes.post('/api/admin/faq/add')
-@require_admin
-async def handle_admin_faq_add(request):
-    admin = request['user']
-    perm_err = require_perm(admin, "faq_edit")
-    if perm_err: return perm_err
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    q = body.get("question") or ""
-    a = body.get("answer") or ""
-    if not q or len(q) > 500 or len(a) > 2000: return web.json_response({"error": "invalid_or_too_long"}, status=400)
-    def _sync():
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("INSERT INTO faq (question, answer, category) VALUES (%s,%s,%s)", (q, a, ""))
-    await _run(_sync)
-    return web.json_response({"ok": True})
-
-@routes.post('/api/admin/positions')
-@require_admin
-async def handle_admin_positions(request):
-    admin = request['user']
-    def _sync():
-        with get_conn() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT * FROM positions ORDER BY is_archived, sort, name")
-                return [dict(r) for r in cur.fetchall()]
-    return web.json_response({"positions": await _run(_sync)})
-
-@routes.post('/api/admin/position/add')
-@require_admin
-async def handle_admin_position_add(request):
-    admin = request['user']
-    perm_err = require_perm(admin, "positions_edit")
-    if perm_err: return perm_err
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    name = (body.get("name") or "").strip()
-    if not name or len(name) > 100: return web.json_response({"error": "invalid"}, status=400)
-    def _sync():
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT COALESCE(MAX(sort), 0) FROM positions")
-                sort = (cur.fetchone()[0] or 0) + 1
-                cur.execute("INSERT INTO positions (name, sort) VALUES (%s,%s) ON CONFLICT (name) DO NOTHING RETURNING id", (name, sort))
-                if not cur.fetchone(): return "duplicate"
-    res = await _run(_sync)
-    if res == "duplicate": return web.json_response({"ok": False, "error": "duplicate"}, status=409)
-    return web.json_response({"ok": True})
-
-@routes.post('/api/admin/questions')
-@require_admin
-async def handle_admin_questions(request):
-    admin = request['user']
-    def _sync():
-        with get_conn() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT q.id, q.user_id, q.text, q.replied, q.created_at, u.full_name FROM questions q LEFT JOIN users u ON q.user_id = u.user_id ORDER BY q.created_at DESC LIMIT 200")
-                return [dict(r) for r in cur.fetchall()]
-    return web.json_response({"questions": await _run(_sync)})
-
-@routes.post('/api/admin/question/reply')
-@require_admin
-async def handle_admin_question_reply(request):
-    admin = request['user']
-    perm_err = require_perm(admin, "questions_reply")
-    if perm_err: return perm_err
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    qid = _safe_int(body.get("id"))
-    text = (body.get("text") or "").strip()
-    if qid <= 0 or not text or len(text) > 2000: return web.json_response({"error": "invalid"}, status=400)
-    def _sync():
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("UPDATE questions SET replied = TRUE, reply_text = %s, replied_at = NOW(), replied_by = %s WHERE id = %s", (text, admin["user_id"], qid))
-    await _run(_sync)
-    return web.json_response({"ok": True})
-
-@routes.post('/api/questions')
-async def handle_questions_staff(request):
+# ================== НОВОСТИ ==================
+@routes.post('/api/news')
+async def handle_news(request):
     user, err = await get_auth_user(request)
-    if err: return denied(err)
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    text = (body.get("question") or "").strip()
-    if not text or len(text) > 1000: return web.json_response({"error": "invalid"}, status=400)
+    if err:
+        return denied(err)
+
     def _sync():
         with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("INSERT INTO questions (user_id, text) VALUES (%s,%s)", (user["user_id"], text))
-    await _run(_sync)
-    return web.json_response({"ok": True})
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    """SELECT n.id, n.title, n.body, n.image_url, n.created_at, n.restaurant_key,
+                              COALESCE(u.full_name, 'Редакция') AS author_name, r.name AS restaurant_name
+                       FROM news n LEFT JOIN users u ON n.author_id = u.user_id
+                       LEFT JOIN restaurants r ON n.restaurant_key = r.key
+                       WHERE n.status = 'published' ORDER BY n.created_at DESC LIMIT 50"""
+                )
+                return [dict(r) for r in cur.fetchall()]
+
+    items = await _run(_sync)
+    return web.json_response({"news": items})
+
+
+@routes.post('/api/news/suggest')
+async def handle_news_suggest(request):
+    user, err = await get_auth_user(request)
+    if err:
+        return denied(err)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
+    title = (body.get("title") or "").strip()
+    text = sanitize_html((body.get("body") or body.get("text") or "").strip())
+    image_url = (body.get("image_url") or "").strip()
+    restaurant_key = (body.get("restaurant_key") or "").strip() or None
+    if not title or not text:
+        return web.json_response({"error": "empty_fields"}, status=400)
+    if len(title) > 200 or len(text) > 10000:
+        return web.json_response({"error": "too_long"}, status=400)
+
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    """INSERT INTO news (title, body, image_url, author_id, restaurant_key, status)
+                       VALUES (%s, %s, %s, %s, %s, 'pending') RETURNING id, title, created_at""",
+                    (title, text, image_url or None, user["user_id"], restaurant_key)
+                )
+                return dict(cur.fetchone())
+
+    item = await _run(_sync)
+    return web.json_response({"ok": True, "item": item})
+
+
+@routes.post('/api/admin/news/list')
+async def handle_admin_news_list(request):
+    admin, err = await get_admin_user(request)
+    if err:
+        return denied(err)
+    allowed_rests = await _run(_sync_get_tu_rests, admin["user_id"]) if _is_tu(admin) else None
+
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                query = """SELECT n.id, n.title, n.body, n.image_url, n.status, n.created_at, n.restaurant_key,
+                                  COALESCE(u.full_name, 'Редакция') AS author_name, r.name AS restaurant_name
+                           FROM news n LEFT JOIN users u ON n.author_id = u.user_id
+                           LEFT JOIN restaurants r ON n.restaurant_key = r.key"""
+                params = []
+                if allowed_rests is not None:
+                    if not allowed_rests:
+                        return []
+                    query += " WHERE n.restaurant_key = ANY(%s)"
+                    params.append(allowed_rests)
+                query += " ORDER BY n.created_at DESC LIMIT 100"
+                cur.execute(query, params)
+                return [dict(r) for r in cur.fetchall()]
+
+    items = await _run(_sync)
+    return web.json_response({"news": items})
+
+
+@routes.post('/api/admin/news/create')
+async def handle_admin_news_create(request):
+    admin, err = await get_admin_user(request)
+    if err:
+        return denied(err)
+    perm_err = require_perm(admin, "news_write")
+    if perm_err:
+        return perm_err
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
+    title = (body.get("title") or "").strip()
+    text = sanitize_html((body.get("body") or body.get("text") or "").strip())
+    image_url = (body.get("image_url") or "").strip()
+    restaurant_key = (body.get("restaurant_key") or "").strip() or None
+    status = body.get("status") if body.get("status") in ("published", "draft", "pending") else "published"
+    if not title or not text:
+        return web.json_response({"error": "empty_fields"}, status=400)
+    if _is_tu(admin):
+        allowed_rests = await _run(_sync_get_tu_rests, admin["user_id"])
+        if not restaurant_key or not allowed_rests or restaurant_key not in allowed_rests:
+            return web.json_response({"error": "forbidden_restaurant"}, status=403)
+
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    """INSERT INTO news (title, body, image_url, author_id, restaurant_key, status)
+                       VALUES (%s, %s, %s, %s, %s, %s) RETURNING *""",
+                    (title, text, image_url or None, admin["user_id"], restaurant_key, status)
+                )
+                return dict(cur.fetchone())
+
+    item = await _run(_sync)
+    return web.json_response({"ok": True, "item": item})
+
 
 @routes.post('/api/admin/news/update')
-@require_admin
 async def handle_admin_news_update(request):
-    admin = request['user']
+    admin, err = await get_admin_user(request)
+    if err:
+        return denied(err)
     perm_err = require_perm(admin, "news_edit")
-    if perm_err: return perm_err
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    nid = _safe_int(body.get("id"))
-    if nid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
-    allowed = {"title", "body", "level", "status", "publish_at", "image_url"}
-    updates = {k: body[k] for k in allowed if k in body}
-    if not updates: return web.json_response({"ok": True})
-    
-    if "title" in updates: 
-        if len(updates["title"]) > 200: return web.json_response({"error": "title_too_long"}, status=400)
-        updates["title"] = sanitize_html(updates["title"])
-    if "body" in updates: 
-        if len(updates["body"]) > 5000: return web.json_response({"error": "body_too_long"}, status=400)
-        updates["body"] = sanitize_html(updates["body"])
+    if perm_err:
+        return perm_err
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
+    nid = safe_int(body.get("id"))
+    if nid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
 
-    set_clause = sql.SQL(", ").join(sql.SQL("{} = %s").format(sql.Identifier(k)) for k in updates)
-    query = sql.SQL("UPDATE news SET {} WHERE id = %s").format(set_clause)
+    allowed_rests = await _run(_sync_get_tu_rests, admin["user_id"]) if _is_tu(admin) else None
+
+    def _sync_get():
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM news WHERE id = %s", (nid,))
+                row = cur.fetchone()
+                return dict(row) if row else None
+
+    existing = await _run(_sync_get)
+    if not existing:
+        return web.json_response({"error": "not_found"}, status=404)
+    if not await _can_manage_content_row(admin, existing, allowed_rests):
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    title = (body.get("title") or "").strip()
+    text = sanitize_html((body.get("body") or body.get("text") or "").strip())
+    image_url = body.get("image_url")
+    status = body.get("status")
+    restaurant_key = body.get("restaurant_key")
+
+    if allowed_rests is not None and restaurant_key is not None:
+        rk = (restaurant_key or "").strip()
+        if not rk or rk not in allowed_rests:
+            return web.json_response({"error": "forbidden_restaurant"}, status=403)
+
     def _sync():
         with get_conn() as conn:
-            with conn.cursor() as cur: 
-                cur.execute(query, (*updates.values(), nid))
+            with conn.cursor() as cur:
+                if title:
+                    cur.execute("UPDATE news SET title = %s WHERE id = %s", (title, nid))
+                if text:
+                    cur.execute("UPDATE news SET body = %s WHERE id = %s", (text, nid))
+                if image_url is not None:
+                    cur.execute("UPDATE news SET image_url = %s WHERE id = %s", ((image_url or "").strip() or None, nid))
+                if status in ("published", "draft", "pending", "rejected"):
+                    cur.execute("UPDATE news SET status = %s WHERE id = %s", (status, nid))
+                if restaurant_key is not None:
+                    cur.execute("UPDATE news SET restaurant_key = %s WHERE id = %s", ((restaurant_key or "").strip() or None, nid))
+
     await _run(_sync)
     return web.json_response({"ok": True})
+
 
 @routes.post('/api/admin/news/delete')
-@require_admin
 async def handle_admin_news_delete(request):
-    admin = request['user']
+    admin, err = await get_admin_user(request)
+    if err:
+        return denied(err)
     perm_err = require_perm(admin, "news_edit")
-    if perm_err: return perm_err
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    nid = _safe_int(body.get("id"))
-    if nid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    if perm_err:
+        return perm_err
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
+    nid = safe_int(body.get("id"))
+    if nid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
+
+    allowed_rests = await _run(_sync_get_tu_rests, admin["user_id"]) if _is_tu(admin) else None
+
     def _sync():
         with get_conn() as conn:
-            with conn.cursor() as cur: 
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT id, restaurant_key FROM news WHERE id = %s", (nid,))
+                row = cur.fetchone()
+                return dict(row) if row else None
+
+    existing = await _run(_sync)
+    if not existing:
+        return web.json_response({"error": "not_found"}, status=404)
+    if not await _can_manage_content_row(admin, existing, allowed_rests):
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    def _sync_del():
+        with get_conn() as conn:
+            with conn.cursor() as cur:
                 cur.execute("DELETE FROM news WHERE id = %s", (nid,))
-    await _run(_sync)
+
+    await _run(_sync_del)
     return web.json_response({"ok": True})
 
-@routes.post('/api/admin/news/approve')
-@require_admin
-async def handle_admin_news_approve(request):
-    admin = request['user']
-    if not _check_can_publish(admin): return web.json_response({"error": "forbidden"}, status=403)
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    nid = _safe_int(body.get("id"))
-    if nid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
-    def _sync():
-        with get_conn() as conn:
-            with conn.cursor() as cur: 
-                cur.execute("UPDATE news SET status = 'published', approved_by = %s WHERE id = %s", (admin.get("full_name"), nid))
-    await _run(_sync)
-    return web.json_response({"ok": True})
 
-@routes.post('/api/admin/news/reject')
-@require_admin
-async def handle_admin_news_reject(request):
-    admin = request['user']
-    if not _check_can_publish(admin): return web.json_response({"error": "forbidden"}, status=403)
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    nid = _safe_int(body.get("id"))
-    if nid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+# ================== СТАНДАРТЫ ==================
+@routes.post('/api/standards')
+async def handle_standards(request):
+    user, err = await get_auth_user(request)
+    if err:
+        return denied(err)
+
     def _sync():
         with get_conn() as conn:
-            with conn.cursor() as cur: 
-                cur.execute("DELETE FROM news WHERE id = %s AND status = 'pending'", (nid,))
-    await _run(_sync)
-    return web.json_response({"ok": True})
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    """SELECT s.id, s.title, s.body, s.category, s.file_url, s.created_at, s.restaurant_key,
+                              COALESCE(u.full_name, 'Редакция') AS author_name, r.name AS restaurant_name
+                       FROM standards s LEFT JOIN users u ON s.author_id = u.user_id
+                       LEFT JOIN restaurants r ON s.restaurant_key = r.key
+                       WHERE s.status = 'published' ORDER BY s.created_at DESC LIMIT 100"""
+                )
+                return [dict(r) for r in cur.fetchall()]
+
+    items = await _run(_sync)
+    return web.json_response({"standards": items})
+
+
+@routes.post('/api/standards/suggest')
+async def handle_standards_suggest(request):
+    user, err = await get_auth_user(request)
+    if err:
+        return denied(err)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
+    title = (body.get("title") or "").strip()
+    text = sanitize_html((body.get("body") or body.get("text") or "").strip())
+    category = (body.get("category") or "Общее").strip()[:100]
+    file_url = (body.get("file_url") or "").strip()
+    restaurant_key = (body.get("restaurant_key") or "").strip() or None
+    if not title or not text:
+        return web.json_response({"error": "empty_fields"}, status=400)
+
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    """INSERT INTO standards (title, body, category, file_url, author_id, restaurant_key, status)
+                       VALUES (%s, %s, %s, %s, %s, %s, 'pending') RETURNING id, title, created_at""",
+                    (title, text, category, file_url or None, user["user_id"], restaurant_key)
+                )
+                return dict(cur.fetchone())
+
+    item = await _run(_sync)
+    return web.json_response({"ok": True, "item": item})
+
+
+@routes.post('/api/admin/standards/list')
+async def handle_admin_standards_list(request):
+    admin, err = await get_admin_user(request)
+    if err:
+        return denied(err)
+    allowed_rests = await _run(_sync_get_tu_rests, admin["user_id"]) if _is_tu(admin) else None
+
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                query = """SELECT s.id, s.title, s.body, s.category, s.file_url, s.status, s.created_at, s.restaurant_key,
+                                  COALESCE(u.full_name, 'Редакция') AS author_name, r.name AS restaurant_name
+                           FROM standards s LEFT JOIN users u ON s.author_id = u.user_id
+                           LEFT JOIN restaurants r ON s.restaurant_key = r.key"""
+                params = []
+                if allowed_rests is not None:
+                    if not allowed_rests:
+                        return []
+                    query += " WHERE s.restaurant_key = ANY(%s)"
+                    params.append(allowed_rests)
+                query += " ORDER BY s.created_at DESC LIMIT 100"
+                cur.execute(query, params)
+                return [dict(r) for r in cur.fetchall()]
+
+    items = await _run(_sync)
+    return web.json_response({"standards": items})
+
 
 @routes.post('/api/admin/standard/update')
-@require_admin
 async def handle_admin_standard_update(request):
-    admin = request['user']
+    admin, err = await get_admin_user(request)
+    if err:
+        return denied(err)
     perm_err = require_perm(admin, "standards_edit")
-    if perm_err: return perm_err
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    sid = _safe_int(body.get("id"))
-    if sid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
-    allowed = {"number", "title", "body", "image_url", "group_name", "content_type", "content_data", "file_url", "file_name"}
-    updates = {k: body[k] for k in allowed if k in body}
-    if not updates: return web.json_response({"ok": True})
+    if perm_err:
+        return perm_err
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
+    sid = safe_int(body.get("id"))
+    if sid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
 
-    if "title" in updates and not updates["title"]: return web.json_response({"error": "title_required"}, status=400)
-    if "body" in updates and not updates["body"]: return web.json_response({"error": "text_required"}, status=400)
-    if "body" in updates: updates["body"] = sanitize_html(updates["body"])
+    allowed_rests = await _run(_sync_get_tu_rests, admin["user_id"]) if _is_tu(admin) else None
 
-    set_clause = sql.SQL(", ").join(sql.SQL("{} = %s").format(sql.Identifier(k)) for k in updates)
-    query = sql.SQL("UPDATE standards SET {} WHERE id = %s").format(set_clause)
-    
-    vals = []
-    for k in updates.keys():
-        if k == "content_data": vals.append(Json(updates[k]) if updates[k] else None)
-        else: vals.append(updates[k])
-    
+    def _sync_get():
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM standards WHERE id = %s", (sid,))
+                row = cur.fetchone()
+                return dict(row) if row else None
+
+    existing = await _run(_sync_get)
+    if not existing:
+        return web.json_response({"error": "not_found"}, status=404)
+    if not await _can_manage_content_row(admin, existing, allowed_rests):
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    title = (body.get("title") or "").strip()
+    text = sanitize_html((body.get("body") or body.get("text") or "").strip())
+    category = body.get("category")
+    file_url = body.get("file_url")
+    status = body.get("status")
+    restaurant_key = body.get("restaurant_key")
+
+    if allowed_rests is not None and restaurant_key is not None:
+        rk = (restaurant_key or "").strip()
+        if not rk or rk not in allowed_rests:
+            return web.json_response({"error": "forbidden_restaurant"}, status=403)
+
     def _sync():
         with get_conn() as conn:
-            with conn.cursor() as cur: 
-                cur.execute(query, (*vals, sid))
+            with conn.cursor() as cur:
+                if title:
+                    cur.execute("UPDATE standards SET title = %s WHERE id = %s", (title, sid))
+                if text:
+                    cur.execute("UPDATE standards SET body = %s WHERE id = %s", (text, sid))
+                if category is not None:
+                    cur.execute("UPDATE standards SET category = %s WHERE id = %s", ((category or "Общее").strip()[:100], sid))
+                if file_url is not None:
+                    cur.execute("UPDATE standards SET file_url = %s WHERE id = %s", ((file_url or "").strip() or None, sid))
+                if status in ("published", "draft", "pending", "rejected"):
+                    cur.execute("UPDATE standards SET status = %s WHERE id = %s", (status, sid))
+                if restaurant_key is not None:
+                    cur.execute("UPDATE standards SET restaurant_key = %s WHERE id = %s", ((restaurant_key or "").strip() or None, sid))
+
     await _run(_sync)
     return web.json_response({"ok": True})
+
 
 @routes.post('/api/admin/standard/delete')
-@require_admin
 async def handle_admin_standard_delete(request):
-    admin = request['user']
+    admin, err = await get_admin_user(request)
+    if err:
+        return denied(err)
     perm_err = require_perm(admin, "standards_edit")
-    if perm_err: return perm_err
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    sid = _safe_int(body.get("id"))
-    if sid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    if perm_err:
+        return perm_err
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
+    sid = safe_int(body.get("id"))
+    if sid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
+
+    allowed_rests = await _run(_sync_get_tu_rests, admin["user_id"]) if _is_tu(admin) else None
+
+    def _sync_get():
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT id, restaurant_key FROM standards WHERE id = %s", (sid,))
+                row = cur.fetchone()
+                return dict(row) if row else None
+
+    existing = await _run(_sync_get)
+    if not existing:
+        return web.json_response({"error": "not_found"}, status=404)
+    if not await _can_manage_content_row(admin, existing, allowed_rests):
+        return web.json_response({"error": "forbidden"}, status=403)
+
     def _sync():
         with get_conn() as conn:
-            with conn.cursor() as cur: 
+            with conn.cursor() as cur:
                 cur.execute("DELETE FROM standards WHERE id = %s", (sid,))
+
     await _run(_sync)
     return web.json_response({"ok": True})
 
-@routes.post('/api/admin/standard/approve')
-@require_admin
-async def handle_admin_standard_approve(request):
-    admin = request['user']
-    if not _check_can_publish(admin): return web.json_response({"error": "forbidden"}, status=403)
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    sid = _safe_int(body.get("id"))
-    if sid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+
+# ================== FAQ ==================
+@routes.post('/api/faq')
+async def handle_faq(request):
+    user, err = await get_auth_user(request)
+    if err:
+        return denied(err)
+
     def _sync():
         with get_conn() as conn:
-            with conn.cursor() as cur: 
-                cur.execute("UPDATE standards SET status = 'published', approved_by = %s WHERE id = %s", (admin.get("full_name"), sid))
-    await _run(_sync)
-    return web.json_response({"ok": True})
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT id, question, answer, category, sort FROM faq ORDER BY sort, id")
+                return [dict(r) for r in cur.fetchall()]
 
-@routes.post('/api/admin/standard/reject')
-@require_admin
-async def handle_admin_standard_reject(request):
-    admin = request['user']
-    if not _check_can_publish(admin): return web.json_response({"error": "forbidden"}, status=403)
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    sid = _safe_int(body.get("id"))
-    if sid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
-    def _sync():
-        with get_conn() as conn:
-            with conn.cursor() as cur: 
-                cur.execute("DELETE FROM standards WHERE id = %s AND status = 'pending'", (sid,))
-    await _run(_sync)
-    return web.json_response({"ok": True})
+    items = await _run(_sync)
+    return web.json_response({"faq": items})
 
-@routes.post('/api/admin/faq/update')
-@require_admin
-async def handle_admin_faq_update(request):
-    admin = request['user']
+
+@routes.post('/api/admin/faq/save')
+async def handle_admin_faq_save(request):
+    admin, err = await get_admin_user(request)
+    if err:
+        return denied(err)
     perm_err = require_perm(admin, "faq_edit")
-    if perm_err: return perm_err
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    field = body.get("field")
-    if field not in ("question", "answer"): return web.json_response({"error": "invalid"}, status=400)
-    fid = _safe_int(body.get("id"))
-    if fid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
-    val = body.get("value") or ""
-    if (field == "question" and len(val) > 500) or (field == "answer" and len(val) > 2000):
-        return web.json_response({"error": "value_too_long"}, status=400)
-    query = sql.SQL("UPDATE faq SET {} = %s WHERE id = %s").format(sql.Identifier(field))
+    if perm_err:
+        return perm_err
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
+    fid = safe_int(body.get("id"))
+    question = (body.get("question") or "").strip()
+    answer = sanitize_html((body.get("answer") or "").strip())
+    category = (body.get("category") or "Общее").strip()[:100]
+    if not question or not answer:
+        return web.json_response({"error": "empty_fields"}, status=400)
+
     def _sync():
         with get_conn() as conn:
-            with conn.cursor() as cur: 
-                cur.execute(query, (val, fid))
-    await _run(_sync)
-    return web.json_response({"ok": True})
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                if fid > 0:
+                    cur.execute(
+                        "UPDATE faq SET question = %s, answer = %s, category = %s WHERE id = %s RETURNING *",
+                        (question, answer, category, fid)
+                    )
+                else:
+                    cur.execute("SELECT COALESCE(MAX(sort), 0) + 1 FROM faq")
+                    sort_val = cur.fetchone()[0]
+                    cur.execute(
+                        "INSERT INTO faq (question, answer, category, sort) VALUES (%s, %s, %s, %s) RETURNING *",
+                        (question, answer, category, sort_val)
+                    )
+                return dict(cur.fetchone())
+
+    item = await _run(_sync)
+    return web.json_response({"ok": True, "item": item})
+
 
 @routes.post('/api/admin/faq/delete')
-@require_admin
 async def handle_admin_faq_delete(request):
-    admin = request['user']
+    admin, err = await get_admin_user(request)
+    if err:
+        return denied(err)
     perm_err = require_perm(admin, "faq_edit")
-    if perm_err: return perm_err
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    fid = _safe_int(body.get("id"))
-    if fid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    if perm_err:
+        return perm_err
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
+    fid = safe_int(body.get("id"))
+    if fid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
+
     def _sync():
         with get_conn() as conn:
-            with conn.cursor() as cur: 
+            with conn.cursor() as cur:
                 cur.execute("DELETE FROM faq WHERE id = %s", (fid,))
+
     await _run(_sync)
     return web.json_response({"ok": True})
 
-@routes.post('/api/admin/position/archive')
-@require_admin
-async def handle_admin_position_archive(request):
-    admin = request['user']
-    perm_err = require_perm(admin, "positions_edit")
-    if perm_err: return perm_err
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    pid = _safe_int(body.get("id"))
-    if pid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
-    def _sync():
-        with get_conn() as conn:
-            with conn.cursor() as cur: 
-                cur.execute("UPDATE positions SET is_archived = TRUE WHERE id = %s", (pid,))
-    await _run(_sync)
-    return web.json_response({"ok": True})
 
-@routes.post('/api/admin/certification/delete')
-@require_admin
-async def handle_admin_certification_delete(request):
-    admin = request['user']
-    perm_err = require_perm(admin, "certification_edit")
-    if perm_err: return perm_err
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    qid = _safe_int(body.get("id"))
-    if qid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
-    def _sync():
-        with get_conn() as conn:
-            with conn.cursor() as cur: 
-                cur.execute("DELETE FROM certification_questions WHERE id = %s", (qid,))
-    await _run(_sync)
-    return web.json_response({"ok": True})
-
-@routes.post('/api/certification/get')
-async def handle_staff_certification_get(request):
+# ================== СЕРТИФИКАЦИЯ ==================
+@routes.post('/api/certification/questions')
+async def handle_certification_questions(request):
     user, err = await get_auth_user(request)
-    if err: return denied(err)
+    if err:
+        return denied(err)
+
     def _sync():
         with get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT id, question, option_a, option_b, option_c, option_d FROM certification_questions ORDER BY random()")
-                return [dict(r) for r in cur.fetchall()]
-    return web.json_response({"questions": await _run(_sync)})
+                cur.execute("SELECT id, question, options FROM certification_questions ORDER BY id")
+                rows = [dict(r) for r in cur.fetchall()]
+                for r in rows:
+                    if isinstance(r.get("options"), str):
+                        try:
+                            r["options"] = json.loads(r["options"])
+                        except Exception:
+                            r["options"] = []
+                return rows
+
+    import json
+    items = await _run(_sync)
+    return web.json_response({"questions": items})
+
 
 @routes.post('/api/certification/submit')
-async def handle_staff_certification_submit(request):
+async def handle_certification_submit(request):
     user, err = await get_auth_user(request)
-    if err: return denied(err)
-    try: body = await request.json()
-    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    
+    if err:
+        return denied(err)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
     answers = body.get("answers") or {}
-    if not answers: return web.json_response({"error": "no_answers"}, status=400)
-        
+    if not isinstance(answers, dict):
+        return web.json_response({"error": "invalid_answers"}, status=400)
+
     def _sync():
         with get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT id, correct_option FROM certification_questions")
-                correct_db = {str(r["id"]): r["correct_option"] for r in cur.fetchall()}
-                
-                score = 0
-                total = len(answers) # ИСПРАВЛЕНО: считаем только заданные вопросы
+                cur.execute("SELECT id, correct_index FROM certification_questions ORDER BY id")
+                qs = cur.fetchall()
+                total = len(qs)
                 if total == 0:
-                    return {"error": "no_answers"}
-
-                for q_id, ans in answers.items():
-                    if correct_db.get(str(q_id)) == str(ans).lower():
-                        score += 1
-                
-                passed = total > 0 and (score / total) >= 0.8 
+                    return 0, 0, False
+                correct = 0
+                norm_answers = {str(k): v for k, v in answers.items()}
+                for q in qs:
+                    qid = str(q["id"])
+                    if qid in norm_answers and str(norm_answers[qid]) == str(q["correct_index"]):
+                        correct += 1
+                score_pct = round((correct / total) * 100)
+                passed = score_pct >= 80
                 if passed:
                     cur.execute("UPDATE users SET is_certified = TRUE WHERE user_id = %s", (user["user_id"],))
-                
-                return {"score": score, "total": total, "passed": passed}
+                return correct, total, passed
 
-    result = await _run(_sync)
-    return web.json_response(result)
+    correct, total, passed = await _run(_sync)
+    return web.json_response({
+        "ok": True,
+        "correct": correct,
+        "total": total,
+        "score": round((correct / total) * 100) if total else 0,
+        "passed": passed,
+    })
+
+
+@routes.post('/api/admin/certification/questions')
+async def handle_admin_certification_questions(request):
+    admin, err = await get_admin_user(request)
+    if err:
+        return denied(err)
+    perm_err = require_perm(admin, "certification_edit")
+    if perm_err:
+        return perm_err
+
+    import json
+
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT id, question, options, correct_index FROM certification_questions ORDER BY id")
+                rows = [dict(r) for r in cur.fetchall()]
+                for r in rows:
+                    if isinstance(r.get("options"), str):
+                        try:
+                            r["options"] = json.loads(r["options"])
+                        except Exception:
+                            r["options"] = []
+                return rows
+
+    items = await _run(_sync)
+    return web.json_response({"questions": items})
+
+
+@routes.post('/api/admin/certification/question/save')
+async def handle_admin_certification_question_save(request):
+    admin, err = await get_admin_user(request)
+    if err:
+        return denied(err)
+    perm_err = require_perm(admin, "certification_edit")
+    if perm_err:
+        return perm_err
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
+    qid = safe_int(body.get("id"))
+    question = (body.get("question") or "").strip()
+    options = body.get("options") or []
+    correct_index = safe_int(body.get("correct_index"))
+    if not question or not isinstance(options, list) or len(options) < 2:
+        return web.json_response({"error": "invalid_data"}, status=400)
+    if correct_index < 0 or correct_index >= len(options):
+        return web.json_response({"error": "invalid_correct_index"}, status=400)
+
+    import json
+
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                opts_json = json.dumps(options, ensure_ascii=False)
+                if qid > 0:
+                    cur.execute(
+                        "UPDATE certification_questions SET question = %s, options = %s, correct_index = %s WHERE id = %s RETURNING *",
+                        (question, opts_json, correct_index, qid)
+                    )
+                else:
+                    cur.execute(
+                        "INSERT INTO certification_questions (question, options, correct_index) VALUES (%s, %s, %s) RETURNING *",
+                        (question, opts_json, correct_index)
+                    )
+                return dict(cur.fetchone())
+
+    item = await _run(_sync)
+    return web.json_response({"ok": True, "item": item})
+
+
+@routes.post('/api/admin/certification/question/delete')
+async def handle_admin_certification_question_delete(request):
+    admin, err = await get_admin_user(request)
+    if err:
+        return denied(err)
+    perm_err = require_perm(admin, "certification_edit")
+    if perm_err:
+        return perm_err
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
+    qid = safe_int(body.get("id"))
+    if qid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
+
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM certification_questions WHERE id = %s", (qid,))
+
+    await _run(_sync)
+    return web.json_response({"ok": True})

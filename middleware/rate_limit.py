@@ -24,6 +24,7 @@ def _check_rate(ip, limit, window):
         return True
 
 
+@web.middleware
 async def api_rate_middleware(request, handler):
     """Middleware: ограничивает количество POST-запросов с одного IP."""
     # Пропускаем health-check и статические роуты

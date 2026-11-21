@@ -121,6 +121,12 @@ _SPAM_PATHS = (
     '/.env', '/.git', '/.svn',
     '/actuator', '/actuator/health',
     '/api/v1/', '/swagger', '/swagger-ui',
+    '/robots.txt',
+)
+
+# API эндпоинты, ожидающие только POST — игнорируем GET запросы (сканеры/bots)
+_POST_ONLY_API_PATHS = (
+    '/api/admin/question/reply',
 )
 
 # PWA-ресурсы — не логируем
@@ -137,6 +143,9 @@ async def error_middleware(request, handler):
     # Пропускаем мусорные пути — не логируем
     if any(request.path.startswith(sp) for sp in _SPAM_PATHS):
         return await handler(request)
+    # POST-only API эндпоинты — игнорируем GET запросы (сканеры/bots)
+    if request.method == 'GET' and request.path in _POST_ONLY_API_PATHS:
+        return web.Response(status=405)
     # PWA-ресурсы — не логируем ошибки
     if any(request.path == sp for sp in _PWA_PATHS):
         return await handler(request)
@@ -293,6 +302,9 @@ async def handle_screenshot(request): return await _send_static_file("screenshot
 async def handle_assetlinks(request): return await _send_static_file(".well-known/assetlinks.json", "application/json")
 async def handle_favicon(request): return web.Response(status=204)
 
+async def handle_robots_txt(request):
+    return web.Response(text="User-agent: *\nDisallow: /\n", content_type="text/plain")
+
 # ============= HEALTH CHECK =============
 async def handle_health(request):
     """Health check с проверкой БД."""
@@ -384,6 +396,8 @@ app.router.add_get("/sw.js", handle_sw)
 app.router.add_get("/static/icon-192.svg", handle_icon192)
 app.router.add_get("/static/icon-512.svg", handle_icon512)
 app.router.add_get("/.well-known/assetlinks.json", handle_assetlinks)
+app.router.add_get("/robots.txt", handle_robots_txt)
+app.router.add_get("/favicon.ico", handle_favicon)
 
 # РОУТ ДЛЯ СКАЧИВАНИЯ
 app.router.add_get("/api/download/{filename:.*}", handle_download)

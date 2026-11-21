@@ -113,12 +113,22 @@ _SPAM_PATHS = (
     '/api/v1/', '/swagger', '/swagger-ui',
 )
 
+# PWA-ресурсы — не логируем
+_PWA_PATHS = (
+    '/manifest.json', '/sw.js', '/favicon.ico',
+    '/icon-192.svg', '/icon-512.svg', '/icon-192.png', '/icon-512.png',
+    '/screenshot1.png', '/.well-known/assetlinks.json',
+)
+
 # ============= MIDDLEWARES =============
 
 @web.middleware
 async def error_middleware(request, handler):
-    # Пропускаем мусорные пути от сканеров — не логируем
+    # Пропускаем мусорные пути — не логируем
     if any(request.path.startswith(sp) for sp in _SPAM_PATHS):
+        return await handler(request)
+    # PWA-ресурсы — не логируем ошибки
+    if any(request.path == sp for sp in _PWA_PATHS):
         return await handler(request)
     try:
         return await handler(request)
@@ -183,9 +193,10 @@ async def request_logging_middleware(request, handler):
         duration = time.time() - start
         method = request.method
         path = request.path
-        # Пропускаем статику и мусорные пути
+        # Пропускаем статику, мусор и PWA-ресурсы
         if (path.startswith('/static/') or path in ('/favicon.ico', '/.well-known/assetlinks.json')
-                or any(path.startswith(sp) for sp in _SPAM_PATHS)):
+                or any(path.startswith(sp) for sp in _SPAM_PATHS)
+                or path in _PWA_PATHS):
             return response
         user_id = request.get('user', {}).get('user_id', '-') if 'user' in request else '-'
         status = response.status if hasattr(response, 'status') else '?'

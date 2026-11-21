@@ -245,6 +245,7 @@ const PAGE_TITLES = {
   news: 'Новости', standards: 'Стандарты', certification: 'Сертификация', faq: 'FAQ',
   restaurants: 'Рестораны', positions: 'Должности', questions: 'Вопросы',
   admins: 'Администраторы', reports: 'Отчёты', audit: 'История',
+  sales: 'Товарооборот',
 };
 
 function navigate(page) {
@@ -1463,6 +1464,7 @@ const PAGE_LOADERS = {
   admins: loadAdmins,
   reports: loadReports,
   audit: loadAudit,
+  sales: () => { window.location.href = '/sales'; },
 };
 
 // ═══ Init ═══

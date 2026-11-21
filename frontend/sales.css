@@ -1,0 +1,679 @@
+/* ====================================================
+   DASHBOARDS: Sales/Revenue — стили
+   Основаны на design tokens admin.css
+   ==================================================== */
+
+/* ---------- Топбар-селекты ---------- */
+.topbar-select {
+    background: var(--bg-input);
+    color: var(--text);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius);
+    padding: 6px 14px;
+    font-family: var(--font, Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+    font-size: 13px;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+
+.topbar-select:hover,
+.topbar-select:focus {
+    border-color: var(--purple);
+}
+
+.topbar-select option {
+    background: var(--bg-card);
+    color: var(--text);
+}
+
+/* ---------- Карточки статистики ---------- */
+.sales-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.sales-stat-card {
+    background: var(--bg-card);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: var(--radius);
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    transition: border-color 0.2s, transform 0.15s;
+    cursor: default;
+}
+
+.sales-stat-card:hover {
+    border-color: rgba(102, 126, 234, 0.3);
+    transform: translateY(-2px);
+}
+
+.sales-stat-card__icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    flex-shrink: 0;
+}
+
+.sales-stat-card__icon--revenue {
+    background: linear-gradient(135deg, #667eea, #4facfe);
+}
+
+.sales-stat-card__icon--cost {
+    background: linear-gradient(135deg, #f093fb, #f5576c);
+}
+
+.sales-stat-card__icon--profit {
+    background: linear-gradient(135deg, #43e97b, #38f9d7);
+}
+
+.sales-stat-card__icon--margin {
+    background: linear-gradient(135deg, #fee140, #f5a623);
+}
+
+.sales-stat-card__icon--items {
+    background: linear-gradient(135deg, #a18cd1, #fbc2eb);
+}
+
+.sales-stat-card__icon--check {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+}
+
+.sales-stat-card__info {
+    flex: 1;
+}
+
+.sales-stat-card__value {
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--text);
+    line-height: 1.1;
+    margin-bottom: 4px;
+}
+
+.sales-stat-card__label {
+    font-size: 12px;
+    color: var(--text-sec);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.sales-stat-card__trend {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-weight: 600;
+}
+
+.sales-stat-card__trend--up {
+    background: rgba(67, 233, 123, 0.15);
+    color: #43e97b;
+}
+
+.sales-stat-card__trend--down {
+    background: rgba(245, 87, 108, 0.15);
+    color: #f5576c;
+}
+
+/* ---------- Графики/Чарты ---------- */
+.charts-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.chart-card {
+    background: var(--bg-card);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: var(--radius);
+    padding: 20px;
+}
+
+.chart-card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.chart-card__title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.chart-card__subtitle {
+    font-size: 12px;
+    color: var(--text-sec);
+}
+
+.chart-card--full {
+    grid-column: 1 / -1;
+}
+
+/* Canvas-чарты */
+.chart-canvas-wrapper {
+    position: relative;
+    width: 100%;
+    height: 280px;
+}
+
+.chart-canvas-wrapper canvas {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* Bar Chart (чистый CSS) */
+.css-bar-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    height: 200px;
+    padding: 0 4px;
+}
+
+.css-bar-chart__bar {
+    flex: 1;
+    min-width: 12px;
+    border-radius: 4px 4px 0 0;
+    position: relative;
+    cursor: pointer;
+    transition: filter 0.2s;
+    background: linear-gradient(to top, var(--purple), var(--blue));
+}
+
+.css-bar-chart__bar:hover {
+    filter: brightness(1.2);
+}
+
+.css-bar-chart__bar--profit {
+    background: linear-gradient(to top, #43e97b, #38f9d7);
+}
+
+.css-bar-chart__bar--cost {
+    background: linear-gradient(to top, #f5576c, #f093fb);
+}
+
+.css-bar-chart__tooltip {
+    position: absolute;
+    top: -32px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg);
+    color: var(--text);
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 10;
+}
+
+.css-bar-chart__bar:hover .css-bar-chart__tooltip {
+    opacity: 1;
+}
+
+.css-bar-chart__label {
+    text-align: center;
+    font-size: 10px;
+    color: var(--text-terc);
+    margin-top: 4px;
+}
+
+/* Donut Chart (чистый CSS) */
+.css-donut {
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    position: relative;
+    margin: 0 auto;
+}
+
+.css-donut__center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90px;
+    height: 90px;
+    background: var(--bg-card);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+}
+
+.css-donut__value {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--text);
+}
+
+.css-donut__label {
+    font-size: 10px;
+    color: var(--text-sec);
+}
+
+/* Legend */
+.chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 16px;
+    justify-content: center;
+}
+
+.chart-legend__item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-sec);
+}
+
+.chart-legend__dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+/* ---------- Таблицы ---------- */
+.sales-table-wrap {
+    background: var(--bg-card);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.sales-table-wrap .table-wrap {
+    border-radius: 0;
+}
+
+/* ---------- Загрузка файла ---------- */
+.upload-actions {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+
+.upload-actions .btn {
+    white-space: nowrap;
+}
+
+/* File Drop Zone */
+.file-upload-area {
+    border: 2px dashed rgba(102, 126, 234, 0.4);
+    border-radius: var(--radius);
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    background: rgba(102, 126, 234, 0.03);
+}
+
+.file-upload-area:hover,
+.file-upload-area.dragover {
+    border-color: var(--purple);
+    background: rgba(102, 126, 234, 0.08);
+}
+
+.file-upload-icon {
+    font-size: 40px;
+    margin-bottom: 12px;
+}
+
+.file-upload-text {
+    font-size: 14px;
+    color: var(--text);
+    margin-bottom: 8px;
+}
+
+.file-upload-hint {
+    font-size: 12px;
+    color: var(--text-terc);
+}
+
+#file-info {
+    font-size: 13px;
+    color: var(--text);
+}
+
+/* ---------- Топ-списки (Товары, Категории) ---------- */
+.top-lists-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.top-list-card {
+    background: var(--bg-card);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: var(--radius);
+    padding: 20px;
+}
+
+.top-list-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.top-list-item:last-child {
+    border-bottom: none;
+}
+
+.top-list-item__rank {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    background: rgba(102, 126, 234, 0.15);
+    color: var(--purple);
+    font-size: 12px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.top-list-item__rank--gold {
+    background: linear-gradient(135deg, #fee140, #f5a623);
+    color: #000;
+}
+
+.top-list-item__rank--silver {
+    background: linear-gradient(135deg, #c0c0c0, #a0a0a0);
+    color: #000;
+}
+
+.top-list-item__rank--bronze {
+    background: linear-gradient(135deg, #cd7f32, #b8860b);
+    color: #fff;
+}
+
+.top-list-item__info {
+    flex: 1;
+    min-width: 0;
+}
+
+.top-list-item__name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.top-list-item__meta {
+    font-size: 11px;
+    color: var(--text-sec);
+}
+
+.top-list-item__value {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+}
+
+/* Progress bar */
+.top-list-item__progress {
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 2px;
+    margin-top: 4px;
+    overflow: hidden;
+}
+
+.top-list-item__progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--purple), var(--blue));
+    transition: width 0.5s ease;
+}
+
+/* ---------- Ежедневные сводки ---------- */
+.daily-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.daily-card {
+    background: var(--bg-card);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: var(--radius);
+    padding: 16px;
+    transition: border-color 0.2s;
+}
+
+.daily-card:hover {
+    border-color: rgba(102, 126, 234, 0.3);
+}
+
+.daily-card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.daily-card__date {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.daily-card__badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-weight: 600;
+}
+
+.daily-card__metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.daily-card__metric {
+    text-align: center;
+}
+
+.daily-card__metric-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.daily-card__metric-label {
+    font-size: 10px;
+    color: var(--text-terc);
+    text-transform: uppercase;
+}
+
+/* ---------- Импорты ---------- */
+.imports-section {
+    background: var(--bg-card);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 24px;
+}
+
+.imports-section__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.imports-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.import-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: var(--bg);
+    border-radius: 10px;
+    font-size: 13px;
+}
+
+.import-item__icon {
+    font-size: 20px;
+}
+
+.import-item__info {
+    flex: 1;
+    min-width: 0;
+}
+
+.import-item__filename {
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.import-item__meta {
+    font-size: 11px;
+    color: var(--text-sec);
+    margin-top: 2px;
+}
+
+.import-item__status {
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.import-item__status--completed {
+    background: rgba(67, 233, 123, 0.15);
+    color: #43e97b;
+}
+
+.import-item__status--processing {
+    background: rgba(102, 126, 234, 0.15);
+    color: #667eea;
+}
+
+.import-item__status--error {
+    background: rgba(245, 87, 108, 0.15);
+    color: #f5576c;
+}
+
+/* ---------- Skeleton загрузка ---------- */
+.skeleton-sales {
+    background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-hover) 50%, var(--bg-card) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: var(--radius);
+    height: 120px;
+}
+
+/* ---------- Сегменты дашборда ---------- */
+.sales-section {
+    margin-bottom: 24px;
+}
+
+.sales-section__title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sales-section__title::before {
+    content: '';
+    width: 4px;
+    height: 18px;
+    background: linear-gradient(to bottom, var(--purple), var(--blue));
+    border-radius: 2px;
+}
+
+/* ---------- Custom date picker ---------- */
+.custom-date-range {
+    display: none;
+    gap: 8px;
+    margin-bottom: 16px;
+    align-items: center;
+}
+
+.custom-date-range.active {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.custom-date-range .form-input {
+    flex: 1;
+    min-width: 140px;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1024px) {
+    .charts-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .sales-stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .sales-stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .topbar-right .topbar-select {
+        display: none;
+    }
+
+    .upload-actions {
+        flex-direction: column;
+    }
+
+    .upload-actions .btn {
+        width: 100%;
+    }
+
+    .daily-cards-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .top-lists-grid {
+        grid-template-columns: 1fr;
+    }
+}

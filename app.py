@@ -53,6 +53,7 @@ from routes.timesheet import routes as timesheet_routes
 from routes.content import routes as content_routes
 from routes.core import routes as core_routes
 from routes.academy import routes as academy_routes
+from routes.sales import routes as sales_routes
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -100,6 +101,15 @@ def run_migrations():
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_standards_status ON standards(status);")
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_payments_date ON payments(payment_date, status);")
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_payments_user_date ON payments(user_id, payment_date);")
+
+                # Миграция: таблицы товарооборота
+                sales_sql_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "database", "002_create_sales_tables.sql")
+                if os.path.exists(sales_sql_path):
+                    with open(sales_sql_path, "r") as f:
+                        sales_sql = f.read()
+                    cur.execute(sales_sql)
+                    logging.info("✅ Миграция БД: таблицы товарооборота проверены/добавлены.")
+
                 logging.info("✅ Миграция БД: колонки, таблицы и индексы проверены/добавлены.")
     except Exception as e:
         logging.error(f"❌ Ошибка миграции/создания папок: {e}")
@@ -220,6 +230,7 @@ _INDEX_CACHE = {"data": None, "mtime": 0.0}
 _ADMIN_CACHE = {"data": None, "mtime": 0.0}
 _ACADEMY_CACHE = {"data": None, "mtime": 0.0}
 _TIMESHEET_CACHE = {"data": None, "mtime": 0.0}
+_SALES_CACHE = {"data": None, "mtime": 0.0}
 _STATIC_FILES_CACHE = {}
 
 def _serve_file(name, cache):
@@ -247,6 +258,7 @@ async def handle_index(request): return await _handle_html("index.html", _INDEX_
 async def handle_admin_page(request): return await _handle_html("admin.html", _ADMIN_CACHE)
 async def handle_academy_page(request): return await _handle_html("academy.html", _ACADEMY_CACHE)
 async def handle_timesheet_page(request): return await _handle_html("timesheet.html", _TIMESHEET_CACHE)
+async def handle_sales_page(request): return await _handle_html("sales.html", _SALES_CACHE)
 
 async def handle_admin_css(request):
     data, mtime = _serve_file("admin.css", _STATIC_FILES_CACHE.setdefault("admin.css", {"data": None, "mtime": 0.0}))
@@ -353,10 +365,13 @@ app.add_routes(timesheet_routes)
 app.add_routes(content_routes)
 app.add_routes(core_routes)
 app.add_routes(academy_routes)
+app.add_routes(sales_routes)
 
 app.router.add_get("/", handle_index)
 app.router.add_get("/admin", handle_admin_page)
 app.router.add_get("/admin/", handle_admin_page)
+app.router.add_get("/sales", handle_sales_page)
+app.router.add_get("/sales/", handle_sales_page)
 app.router.add_get("/admin.css", handle_admin_css)
 app.router.add_get("/academy", handle_academy_page)
 app.router.add_get("/academy/", handle_academy_page)

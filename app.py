@@ -174,15 +174,6 @@ async def security_headers_middleware(request, handler):
         response.headers["Pragma"] = "no-cache"
     return response
 
-# Мусорные пути от сканеров — не логируем
-_SPAM_PATHS = (
-    '/wp-admin', '/wp-login', '/wp-content', '/wp-includes', '/xmlrpc.php',
-    '/phpmyadmin', '/pma', '/phpMyAdmin',
-    '/.env', '/.git', '/.svn',
-    '/actuator', '/actuator/health',
-    '/api/v1/', '/swagger', '/swagger-ui',
-)
-
 @web.middleware
 async def request_logging_middleware(request, handler):
     """Middleware: логирует каждый HTTP запрос, пропуская мусор."""

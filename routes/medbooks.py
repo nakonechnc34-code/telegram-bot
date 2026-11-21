@@ -6,6 +6,7 @@ from utils.auth_helpers import get_admin_user, denied, require_perm, _is_tu, _sy
 import datetime
 import calendar
 import json
+from utils.common import safe_int # ИСПРАВЛЕНО: импорт safe_int
 
 routes = web.RouteTableDef()
 
@@ -87,14 +88,13 @@ async def handle_admin_medbooks(request):
     doctors, tests, vaccines, users = await _run(_sync_medbooks_full, admin["user_id"], _is_tu(admin))
     return web.json_response({"doctors": doctors, "tests": tests, "vaccines": vaccines, "users": users})
 
-# --- ДОБАВЛЕНО: Получение одной медкнижки ---
 @routes.post('/api/admin/medbook/get')
 async def handle_admin_medbook_get(request):
     admin, err = await get_admin_user(request)
     if err: return denied(err)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    uid = int(body.get("user_id", 0))
+    uid = safe_int(body.get("user_id")) # ИСПРАВЛЕНО
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     
     def _sync():
@@ -119,7 +119,7 @@ async def handle_admin_medbook_save(request):
     if perm_err: return perm_err
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    uid = int(body.get("user_id", 0))
+    uid = safe_int(body.get("user_id")) # ИСПРАВЛЕНО
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     
     mb = body.get("medbook") or {"doctors": {}, "tests": {}, "vaccines": {}}
@@ -130,7 +130,6 @@ async def handle_admin_medbook_save(request):
     await _run(_sync)
     return web.json_response({"ok": True})
 
-# --- ДОБАВЛЕНО: Справочники ---
 @routes.post('/api/admin/medbook/reference/add')
 async def handle_admin_medbook_ref_add(request):
     admin, err = await get_admin_user(request)
@@ -141,7 +140,7 @@ async def handle_admin_medbook_ref_add(request):
     if rtype not in ("doctor", "test", "vaccine"): return web.json_response({"error": "invalid_type"}, status=400)
     name = (body.get("name") or "").strip()
     if not name or len(name) > 100: return web.json_response({"error": "invalid"}, status=400)
-    months = max(1, min(120, int(body.get("validity_months", 12))))
+    months = max(1, min(120, safe_int(body.get("validity_months", 12)))) # ИСПРАВЛЕНО
     required = bool(body.get("required"))
     table = {"doctor": "medbook_doctors", "test": "medbook_tests", "vaccine": "medbook_vaccines"}[rtype]
     def _sync():
@@ -160,14 +159,14 @@ async def handle_admin_medbook_ref_update(request):
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     rtype = body.get("type")
-    rid = int(body.get("id", 0))
+    rid = safe_int(body.get("id")) # ИСПРАВЛЕНО
     if rtype not in ("doctor", "test", "vaccine") or not rid: return web.json_response({"error": "invalid"}, status=400)
     table = {"doctor": "medbook_doctors", "test": "medbook_tests", "vaccine": "medbook_vaccines"}[rtype]
     def _sync():
         with get_conn() as conn:
             with conn.cursor() as cur:
                 if "name" in body: cur.execute(sql.SQL("UPDATE {} SET name = %s WHERE id = %s").format(sql.Identifier(table)), (body["name"], rid))
-                if "validity_months" in body: cur.execute(sql.SQL("UPDATE {} SET validity_months = %s WHERE id = %s").format(sql.Identifier(table)), (max(1, min(120, int(body["validity_months"]))), rid))
+                if "validity_months" in body: cur.execute(sql.SQL("UPDATE {} SET validity_months = %s WHERE id = %s").format(sql.Identifier(table)), (max(1, min(120, safe_int(body["validity_months"]))), rid)) # ИСПРАВЛЕНО
                 if "required" in body: cur.execute(sql.SQL("UPDATE {} SET required = %s WHERE id = %s").format(sql.Identifier(table)), (bool(body["required"]), rid))
     await _run(_sync)
     return web.json_response({"ok": True})
@@ -179,7 +178,7 @@ async def handle_admin_medbook_ref_delete(request):
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     rtype = body.get("type")
-    rid = int(body.get("id", 0))
+    rid = safe_int(body.get("id")) # ИСПРАВЛЕНО
     if rtype not in ("doctor", "test", "vaccine") or not rid: return web.json_response({"error": "invalid"}, status=400)
     table = {"doctor": "medbook_doctors", "test": "medbook_tests", "vaccine": "medbook_vaccines"}[rtype]
     def _sync():

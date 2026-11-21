@@ -54,7 +54,6 @@ function fmtDate(iso, withTime) {
 }
 
 // ═══ API ═══
-// ✅ ИСПРАВЛЕНО: токен передаётся в заголовке Authorization
 async function api(path, body) {
     const res = await fetch(path, {
         method: 'POST',
@@ -1049,7 +1048,6 @@ function renderTableEditor(headers, rows) {
 }
 
 window.updateTableHeaders = function () {
-    const newHeaders = Array.from(document.querySelectorAll('#table-editor-rows') /* noop */);
     const inputs = Array.from(document.querySelectorAll('#table-editor-container thead input'));
     _tableHeaders = inputs.map(i => i.value);
     _tableRows = _tableRows.map(r => {
@@ -1703,14 +1701,68 @@ async function loadAdmins() {
     try {
         const data = await api('/api/admin/admins', {});
         const admins = data.admins || [];
-        $('admins-list').innerHTML = `<div class="table-wrap"><table><thead><tr><th>ФИО</th><th>Логин</th><th>Роль</th></tr></thead><tbody>
-        ${admins.map(a => `<tr>
-            <td>${esc(a.full_name || '—')}</td>
-            <td>@${esc(a.login || '')}</td>
-            <td>${a.is_super_admin ? '<span class="tag tag--purple">Суперадмин</span>' : '<span class="tag tag--blue">Админ</span>'}</td>
-        </tr>`).join('')}
+        $('admins-list').innerHTML = `<div class="table-wrap"><table><thead><tr><th>ФИО</th><th>Логин</th><th>Роль</th><th>Действия</th></tr></thead><tbody>
+        ${admins.map(a => {
+            let acts = '';
+            if (isSuperAdmin() && !a.is_super_admin) {
+                const permsJson = typeof a.permissions === 'string' ? a.permissions : JSON.stringify(a.permissions || {});
+                acts = `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="openEditPermissions(${a.user_id}, '${esc(a.full_name || '')}', ${permsJson.replace(/"/g, '&quot;')})">🔑 Права</button>`;
+            }
+            return `<tr>
+                <td>${esc(a.full_name || '—')}</td>
+                <td>@${esc(a.login || '')}</td>
+                <td>${a.is_super_admin ? '<span class="tag tag--purple">Суперадмин</span>' : '<span class="tag tag--blue">Админ</span>'}</td>
+                <td>${acts}</td>
+            </tr>`;
+        }).join('')}
         </tbody></table></div>`;
     } catch (e) { $('admins-list').innerHTML = `<div class="empty">Ошибка: ${esc(e.message)}</div>`; }
+}
+
+async function openEditPermissions(uid, name, currentPerms) {
+    let permsList = [];
+    try {
+        const data = await api('/api/admin/permissions-list', {});
+        permsList = data.permissions || [];
+    } catch (e) { toast('Ошибка загрузки списка прав', 'error'); return; }
+
+    let activePerms = {};
+    try {
+        activePerms = typeof currentPerms === 'string' ? JSON.parse(currentPerms || '{}') : (currentPerms || {});
+    } catch (e) {}
+
+    let html = `<div class="form-group">
+        <label style="margin-bottom:12px; display:block; font-size:14px;">Права для: <strong>${esc(name)}</strong></label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">`;
+    
+    permsList.forEach(p => {
+        const checked = activePerms[p.key] ? 'checked' : '';
+        html += `<label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;cursor:pointer;line-height:1.2;padding:4px;">
+            <input type="checkbox" class="perm-checkbox" value="${p.key}" ${checked} style="margin-top:2px;">
+            <span>${esc(p.label)}</span>
+        </label>`;
+    });
+    
+    html += `</div></div><div class="form-hint error" id="perm-error"></div>`;
+
+    openModal('Настройка прав администратора', html, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="perm-save">Сохранить</button>`);
+
+    $('perm-save').addEventListener('click', async () => {
+        const errEl = $('perm-error'); errEl.textContent = '';
+        const newPerms = {};
+        document.querySelectorAll('.perm-checkbox:checked').forEach(cb => {
+            newPerms[cb.value] = true;
+        });
+        
+        try {
+            await api('/api/admin/set-permissions', { user_id: uid, permissions: newPerms });
+            toast('Права обновлены', 'success');
+            closeModal();
+            loadAdmins();
+        } catch (e) {
+            errEl.textContent = 'Ошибка: ' + e.message;
+        }
+    });
 }
 
 // ═══════════════════════════════════════════
@@ -1728,7 +1780,9 @@ async function loadReports() {
                 <div class="neu-card neu-card--stat"><div class="neu-card__label">Медкнижки</div><div class="neu-card__value">${r.medbooks_alert || 0}</div></div>
                 <div class="neu-card neu-card--stat"><div class="neu-card__label">Вопросы</div><div class="neu-card__value">${r.questions_open || 0}</div></div>
             </div>`;
-    } catch (e) { $('page-content').innerHTML = `<div class="empty">Ошибка: ${esc(e.message)}</div>`; }
+    } catch (e) {
+        $('page-content').innerHTML = `<div class="empty">Ошибка: ${esc(e.message)}</div>`;
+    }
 }
 
 // ═══════════════════════════════════════════

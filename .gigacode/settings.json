@@ -11,7 +11,15 @@
       "Bash(curl *)",
       "Bash(findstr *)",
       "Bash(tasklist)",
-      "Bash(timeout *)"
+      "Bash(timeout *)",
+      "Bash(sc *)",
+      "Bash(net *)",
+      "Bash(type *)",
+      "Bash(pip list)",
+      "Bash(winget *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
     ]
   },
   "$version": 3

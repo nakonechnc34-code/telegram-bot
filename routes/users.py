@@ -154,7 +154,7 @@ async def handle_admin_user_get(request):
     if err: return denied(err)
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    uid = int(body.get("user_id", 0))
+    uid = safe_int(body.get("user_id")) # ИСПРАВЛЕНО
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     
     if not await _check_admin_can_manage_user(admin, uid):
@@ -191,7 +191,7 @@ async def handle_admin_user_update(request):
     if perm_err: return perm_err
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    uid = int(body.get("user_id", 0))
+    uid = safe_int(body.get("user_id")) # ИСПРАВЛЕНО
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     
     if not await _check_admin_can_manage_user(admin, uid):
@@ -222,7 +222,7 @@ async def handle_admin_user_fire(request):
     if perm_err: return perm_err
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    uid = int(body.get("user_id", 0))
+    uid = safe_int(body.get("user_id")) # ИСПРАВЛЕНО
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     
     if not await _check_admin_can_manage_user(admin, uid):
@@ -250,7 +250,7 @@ async def handle_admin_user_restore(request):
     if perm_err: return perm_err
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
-    uid = int(body.get("user_id", 0))
+    uid = safe_int(body.get("user_id")) # ИСПРАВЛЕНО
     if uid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
     
     if not await _check_admin_can_manage_user(admin, uid):
@@ -309,10 +309,9 @@ async def handle_admin_dashboard_summary(request):
                 """)
                 stats = dict(cur.fetchone())
 
-                # ИСПРАВЛЕНО: добавлен as cnt и обращение по ключу
                 cur.execute("SELECT COUNT(*) as cnt FROM questions WHERE replied = FALSE")
                 stats["questions_open"] = cur.fetchone()["cnt"] or 0
-                cur.execute("SELECT q.id, q.text, q.created_at, u.full_name FROM questions q LEFT JOIN users u ON q.user_id = u.user_id WHERE q.replied = FALSE ORDER BY q.created_at DESC LIMIT 4")
+                cur.execute("SELECT q.id, q.text, u.full_name FROM questions q LEFT JOIN users u ON q.user_id = u.user_id WHERE q.replied = FALSE ORDER BY q.created_at DESC LIMIT 4")
                 open_qs = [dict(r) for r in cur.fetchall()]
 
                 cur.execute("SELECT COUNT(*) as cnt FROM news WHERE status = 'pending'")
@@ -323,7 +322,7 @@ async def handle_admin_dashboard_summary(request):
                 cur.execute("SELECT COUNT(*) as cnt FROM standards WHERE status = 'pending'")
                 stats["standards_pending"] = cur.fetchone()["cnt"] or 0
 
-                cur.execute("SELECT user_id, full_name, position, created_at FROM users WHERE login IS NOT NULL AND COALESCE(is_fired, FALSE) = FALSE AND COALESCE(is_admin, FALSE) = FALSE ORDER BY created_at DESC LIMIT 4")
+                cur.execute("SELECT user_id, full_name, position FROM users WHERE login IS NOT NULL AND COALESCE(is_fired, FALSE) = FALSE AND COALESCE(is_admin, FALSE) = FALSE ORDER BY created_at DESC LIMIT 4")
                 new_users = [dict(r) for r in cur.fetchall()]
 
                 doctors, tests, vaccines = _sync_get_medbook_refs()

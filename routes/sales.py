@@ -7,18 +7,30 @@ import io
 import csv
 import json
 import os
-import asyncio  # ✅ Добавлено для to_thread
+import asyncio
+import uuid
 from datetime import datetime, date, timedelta
-from typing import Any
 
 from aiohttp import web
 import openpyxl
 
 import db
 from middleware.auth import require_admin
-from utils.auth_helpers import get_auth_user
+from utils.auth_helpers import get_auth_user, _is_tu, _sync_get_tu_rests
 
 routes = web.RouteTableDef()
+
+
+def _get_sales_upload_dir():
+    env_dir = os.getenv("DATA_DIR")
+    base_dir = env_dir if env_dir else ("/data" if os.path.exists("/data") else os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data"))
+    return os.path.join(base_dir, "uploads", "sales")
+
+
+async def _get_allowed_restaurants(user):
+    if _is_tu(user):
+        return await db._run(_sync_get_tu_rests, user["user_id"])
+    return None
 
 
 # =============================================================================
@@ -39,9 +51,13 @@ async def upload_sales_file(request: web.Request) -> web.Response:
     if not file_upload or not file_upload.filename:
         return web.json_response({"error": "Файл не найден"}, status=400)
 
-    restaurant_key = reader.get("restaurant_key")
+    restaurant_key = (reader.get("restaurant_key") or "").strip()
     if not restaurant_key:
         return web.json_response({"error": "Укажите restaurant_key"}, status=400)
+
+    allowed_rests = await _get_allowed_restaurants(admin_user)
+    if allowed_rests is not None and restaurant_key not in allowed_rests:
+        return web.json_response({"error": "Недостаточно прав для выбранного ресторана"}, status=403)
 
     pool = db.get_pool(request.app)
     async with pool.acquire() as conn:
@@ -49,16 +65,17 @@ async def upload_sales_file(request: web.Request) -> web.Response:
         if not row:
             return web.json_response({"error": "Ресторан не найден"}, status=404)
 
-    filename = file_upload.filename
+    filename = os.path.basename(file_upload.filename)
     ext = os.path.splitext(filename)[1].lower()
 
     if ext not in (".xlsx", ".xls", ".csv"):
         return web.json_response({"error": "Поддерживаемые форматы: .xlsx, .xls, .csv"}, status=400)
 
-    uploads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads", "sales")
+    uploads_dir = _get_sales_upload_dir()
     os.makedirs(uploads_dir, exist_ok=True)
 
-    file_path = os.path.join(uploads_dir, f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{filename}")
+    stored_name = f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}{ext}"
+    file_path = os.path.join(uploads_dir, stored_name)
     data = await file_upload.read()
 
     with open(file_path, "wb") as f:
@@ -77,10 +94,9 @@ async def upload_sales_file(request: web.Request) -> web.Response:
 
     try:
         if ext in (".xlsx", ".xls"):
-            # ✅ ИСПРАВЛЕНО: Парсинг Excel в отдельном потоке, чтобы не вешать сервер
             records = await asyncio.to_thread(_parse_excel, io.BytesIO(data))
         else:
-            text = data.decode("utf-8")
+            text = data.decode("utf-8-sig")
             records = _parse_csv(text)
 
         await _save_sales_records(pool, import_id, restaurant_key, records)
@@ -124,7 +140,7 @@ def _parse_excel(file_obj: io.BytesIO) -> list[dict]:
     records = []
     headers = None
 
-    for row_idx, row in enumerate(ws.iter_rows(), start=1):
+    for row in ws.iter_rows():
         values = [cell.value for cell in row]
         if not any(v is not None for v in values):
             continue
@@ -142,7 +158,7 @@ def _parse_excel(file_obj: io.BytesIO) -> list[dict]:
                 elif header in ("quantity", "shift_number"):
                     record[header] = int(val) if val is not None else 0
                 elif header in ("unit_price", "total_amount", "cost_amount",
-                                "profit_amount", "discount_amount"):
+                               "profit_amount", "discount_amount"):
                     record[header] = float(val) if val is not None else 0.0
                 elif header in ("sale_date",):
                     if isinstance(val, datetime):
@@ -190,7 +206,7 @@ def _parse_csv(text: str) -> list[dict]:
                     cleaned[num_field] = 0
 
         for money_field in ("unit_price", "total_amount", "cost_amount",
-                            "profit_amount", "discount_amount"):
+                           "profit_amount", "discount_amount"):
             if money_field in cleaned and cleaned[money_field]:
                 try:
                     cleaned[money_field] = float(cleaned[money_field].replace(",", "."))
@@ -219,9 +235,16 @@ def _parse_csv(text: str) -> list[dict]:
 
 async def _save_sales_records(pool, import_id: int, restaurant_key: str, records: list[dict]) -> None:
     """Сохраняет парсенные записи в БД."""
+    extra_keys = {
+        "sale_date", "category", "subcategory", "product_name",
+        "sku", "quantity", "unit_price", "total_amount",
+        "cost_amount", "profit_amount", "profit_margin",
+        "payment_method", "shift_number", "employee_name", "discount_amount"
+    }
     async with pool.acquire() as conn:
         async with conn.transaction():
             for rec in records:
+                extra = {k: v for k, v in rec.items() if k not in extra_keys}
                 await conn.execute(
                     """
                     INSERT INTO sales_records (
@@ -248,17 +271,7 @@ async def _save_sales_records(pool, import_id: int, restaurant_key: str, records
                     rec.get("shift_number"),
                     rec.get("employee_name"),
                     rec.get("discount_amount", 0),
-                    json.dumps({k: v for k, v in rec.items() if k not in [
-                        "sale_date", "category", "subcategory", "product_name",
-                        "sku", "quantity", "unit_price", "total_amount",
-                        "cost_amount", "profit_amount", "profit_margin",
-                        "payment_method", "shift_number", "employee_name", "discount_amount"
-                    ]}) if any(k not in [
-                        "sale_date", "category", "subcategory", "product_name",
-                        "sku", "quantity", "unit_price", "total_amount",
-                        "cost_amount", "profit_amount", "profit_margin",
-                        "payment_method", "shift_number", "employee_name", "discount_amount"
-                    ] for k in rec) else None
+                    json.dumps(extra) if extra else None
                 )
 
 
@@ -335,10 +348,16 @@ async def sales_dashboard(request: web.Request) -> web.Response:
     if err or not user:
         return web.json_response({"error": "Unauthorized"}, status=401)
 
-    # ✅ ИСПРАВЛЕНО: await request.json()
+    allowed_rests = await _get_allowed_restaurants(user)
     body = await request.json()
     period = body.get("period", "30d")
     restaurant_key = body.get("restaurant_key")
+
+    if allowed_rests is not None:
+        if restaurant_key and restaurant_key not in allowed_rests:
+            return web.json_response({"error": "Forbidden"}, status=403)
+        if not restaurant_key:
+            restaurant_key = allowed_rests[0] if allowed_rests else "__none__"
 
     pool = db.get_pool(request.app)
     results = {}
@@ -347,9 +366,6 @@ async def sales_dashboard(request: web.Request) -> web.Response:
     date_from = (datetime.utcnow().date() - timedelta(days=days)).isoformat()
 
     async with pool.acquire() as conn:
-        # ✅ ИСПРАВЛЕНО: Все запросы параметризованы (защита от SQL-инъекций)
-        where_clause = ""
-        params = []
         if restaurant_key:
             where_clause = "WHERE sr.restaurant_key = $1 AND sr.sale_date >= $2"
             params = [restaurant_key, date_from]
@@ -357,7 +373,6 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             where_clause = "WHERE sr.sale_date >= $1"
             params = [date_from]
 
-        # Общие метрики
         total_sales = await conn.fetchval(
             f"SELECT COALESCE(SUM(total_amount), 0) FROM sales_records sr {where_clause}", *params
         )
@@ -382,7 +397,6 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             "period_days": days
         }
 
-        # Динамика по дням
         daily_trend = await conn.fetch(f"""
             SELECT
                 sale_date,
@@ -407,7 +421,6 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             for r in daily_trend
         ]
 
-        # Выручка по ресторанам
         if restaurant_key:
             restaurant_sales = await conn.fetch("""
                 SELECT
@@ -417,6 +430,7 @@ async def sales_dashboard(request: web.Request) -> web.Response:
                     COALESCE(SUM(sr.profit_amount), 0) as profit
                 FROM restaurants r
                 LEFT JOIN sales_records sr ON sr.restaurant_key = r.key AND sr.sale_date >= $1 AND sr.restaurant_key = $2
+                WHERE r.key = $2
                 GROUP BY r.key, r.name
                 ORDER BY total DESC
             """, date_from, restaurant_key)
@@ -443,7 +457,6 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             for r in restaurant_sales
         ]
 
-        # Топ-10 товаров
         top_products = await conn.fetch(f"""
             SELECT
                 product_name,
@@ -465,7 +478,6 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             for r in top_products if r["product_name"]
         ]
 
-        # Выручка по категориям
         by_category = await conn.fetch(f"""
             SELECT
                 COALESCE(category, 'Без категории') as cat,
@@ -488,7 +500,6 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             for r in by_category
         ]
 
-        # Способы оплаты
         by_payment = await conn.fetch(f"""
             SELECT
                 COALESCE(payment_method, 'Не указан') as method,
@@ -509,7 +520,6 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             for r in by_payment
         ]
 
-        # Пиковые часы
         peak_hours = await conn.fetch(f"""
             SELECT
                 EXTRACT(HOUR FROM sale_date::timestamp) as hour,
@@ -531,9 +541,6 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             for r in peak_hours
         ]
 
-        # Ежедневные сводки
-        summary_where = ""
-        summary_params = []
         if restaurant_key:
             summary_where = "WHERE restaurant_key = $1 AND summary_date >= $2"
             summary_params = [restaurant_key, date_from]
@@ -566,14 +573,12 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             for s in daily_summaries
         ]
 
-        # Загруженные файлы
-        imports_where = ""
-        imports_params = []
         if restaurant_key:
             imports_where = "WHERE si.restaurant_key = $1"
             imports_params = [restaurant_key]
         else:
             imports_where = ""
+            imports_params = []
 
         imports = await conn.fetch(f"""
             SELECT si.*, u.full_name as uploader_name
@@ -612,23 +617,30 @@ async def sales_records(request: web.Request) -> web.Response:
     user, err = await get_auth_user(request)
     if err or not user:
         return web.json_response({"error": "Unauthorized"}, status=401)
-    admin_user = user
 
+    allowed_rests = await _get_allowed_restaurants(user)
     body = await request.json()
     restaurant_key = body.get("restaurant_key")
     date_from = body.get("date_from")
     date_to = body.get("date_to")
     category = body.get("category")
     product_name = body.get("product_name")
-    page = body.get("page", 1)
-    limit = body.get("limit", 100)
+    page = max(1, int(body.get("page", 1) or 1))
+    limit = max(1, min(500, int(body.get("limit", 100) or 100)))
 
     pool = db.get_pool(request.app)
     conditions = []
     params = []
     param_idx = 1
 
-    if restaurant_key:
+    if allowed_rests is not None:
+        if restaurant_key and restaurant_key not in allowed_rests:
+            return web.json_response({"error": "Forbidden"}, status=403)
+        target_rests = [restaurant_key] if restaurant_key else allowed_rests
+        conditions.append(f"sr.restaurant_key = ANY(${param_idx})")
+        params.append(target_rests)
+        param_idx += 1
+    elif restaurant_key:
         conditions.append(f"sr.restaurant_key = ${param_idx}")
         params.append(restaurant_key)
         param_idx += 1
@@ -654,7 +666,6 @@ async def sales_records(request: web.Request) -> web.Response:
         param_idx += 1
 
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-
     offset = (page - 1) * limit
 
     async with pool.acquire() as conn:
@@ -716,22 +727,36 @@ async def sales_restaurants(request: web.Request) -> web.Response:
     user, err = await get_auth_user(request)
     if err or not user:
         return web.json_response({"error": "Unauthorized"}, status=401)
-    admin_user = user
 
+    allowed_rests = await _get_allowed_restaurants(user)
     pool = db.get_pool(request.app)
 
     async with pool.acquire() as conn:
-        restaurants = await conn.fetch("""
-            SELECT
-                r.key,
-                r.name,
-                r.address,
-                (SELECT COUNT(*) FROM sales_records sr WHERE sr.restaurant_key = r.key) as total_records,
-                (SELECT COALESCE(SUM(total_amount), 0) FROM sales_records sr WHERE sr.restaurant_key = r.key) as total_sales,
-                (SELECT MAX(sale_date) FROM sales_records sr WHERE sr.restaurant_key = r.key) as last_sale_date
-            FROM restaurants r
-            ORDER BY r.sort NULLS FIRST, r.name
-        """)
+        if allowed_rests is not None:
+            restaurants = await conn.fetch("""
+                SELECT
+                    r.key,
+                    r.name,
+                    r.address,
+                    (SELECT COUNT(*) FROM sales_records sr WHERE sr.restaurant_key = r.key) as total_records,
+                    (SELECT COALESCE(SUM(total_amount), 0) FROM sales_records sr WHERE sr.restaurant_key = r.key) as total_sales,
+                    (SELECT MAX(sale_date) FROM sales_records sr WHERE sr.restaurant_key = r.key) as last_sale_date
+                FROM restaurants r
+                WHERE r.key = ANY($1)
+                ORDER BY r.sort NULLS FIRST, r.name
+            """, allowed_rests)
+        else:
+            restaurants = await conn.fetch("""
+                SELECT
+                    r.key,
+                    r.name,
+                    r.address,
+                    (SELECT COUNT(*) FROM sales_records sr WHERE sr.restaurant_key = r.key) as total_records,
+                    (SELECT COALESCE(SUM(total_amount), 0) FROM sales_records sr WHERE sr.restaurant_key = r.key) as total_sales,
+                    (SELECT MAX(sale_date) FROM sales_records sr WHERE sr.restaurant_key = r.key) as last_sale_date
+                FROM restaurants r
+                ORDER BY r.sort NULLS FIRST, r.name
+            """)
 
         return web.json_response({
             "success": True,
@@ -760,8 +785,8 @@ async def export_sales_data(request: web.Request) -> web.Response:
     user, err = await get_auth_user(request)
     if err or not user:
         return web.json_response({"error": "Unauthorized"}, status=401)
-    admin_user = user
 
+    allowed_rests = await _get_allowed_restaurants(user)
     body = await request.json()
     restaurant_key = body.get("restaurant_key")
     date_from = body.get("date_from")
@@ -772,11 +797,18 @@ async def export_sales_data(request: web.Request) -> web.Response:
     params = []
     param_idx = 1
 
-    # ✅ ИСПРАВЛЕНО: Параметризованный запрос (защита от SQL-инъекций)
-    if restaurant_key:
+    if allowed_rests is not None:
+        if restaurant_key and restaurant_key not in allowed_rests:
+            return web.json_response({"error": "Forbidden"}, status=403)
+        target_rests = [restaurant_key] if restaurant_key else allowed_rests
+        conditions.append(f"sr.restaurant_key = ANY(${param_idx})")
+        params.append(target_rests)
+        param_idx += 1
+    elif restaurant_key:
         conditions.append(f"sr.restaurant_key = ${param_idx}")
         params.append(restaurant_key)
         param_idx += 1
+
     if date_from:
         conditions.append(f"sr.sale_date >= ${param_idx}")
         params.append(date_from)
@@ -809,7 +841,6 @@ async def export_sales_data(request: web.Request) -> web.Response:
             ORDER BY sr.sale_date DESC
         """, *params)
 
-    # ✅ ИСПРАВЛЕНО: Генерация Excel в отдельном потоке
     def _generate_excel():
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -862,7 +893,6 @@ async def export_sales_data(request: web.Request) -> web.Response:
         return output.read()
 
     excel_bytes = await asyncio.to_thread(_generate_excel)
-
     filename = f"sales_export_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
 
     return web.Response(

@@ -90,12 +90,26 @@ async function uploadFile(file) {
 }
 
 // ═══ MOBILE SIDEBAR ═══
-const burger = document.getElementById('hamburger');
-const overlay = document.getElementById('overlay');
-function openSidebar() { document.getElementById('sidebar').classList.add('sidebar--open'); overlay.classList.add('overlay--show'); document.body.style.overflow = 'hidden'; }
-function closeSidebar() { document.getElementById('sidebar').classList.remove('sidebar--open'); overlay.classList.remove('overlay--show'); document.body.style.overflow = ''; }
-if (burger) burger.addEventListener('click', openSidebar);
-if (overlay) overlay.addEventListener('click', closeSidebar);
+const burger = () => document.getElementById('hamburger');
+const overlay = () => document.getElementById('overlay');
+function openSidebar() { 
+    const sidebar = document.getElementById('sidebar');
+    const overlayEl = overlay();
+    if (sidebar) sidebar.classList.add('sidebar--open'); 
+    if (overlayEl) {
+        overlayEl.classList.add('overlay--show'); 
+        document.body.style.overflow = 'hidden';
+    }
+}
+function closeSidebar() { 
+    const sidebar = document.getElementById('sidebar');
+    const overlayEl = overlay();
+    if (sidebar) sidebar.classList.remove('sidebar--open'); 
+    if (overlayEl) {
+        overlayEl.classList.remove('overlay--show'); 
+        document.body.style.overflow = '';
+    }
+}
 
 // ═══ PERMISSIONS ═══
 function isSuperAdmin() { return !!(ME && ME.is_super_admin); }
@@ -125,35 +139,9 @@ function closeModal() {
     const overlayEl = $('modal-overlay');
     if (overlayEl) overlayEl.classList.remove('show');
 }
-$('modal-close')?.addEventListener('click', closeModal);
-$('modal-overlay')?.addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && $('modal-overlay')?.classList.contains('show')) closeModal();
-});
 
 // ═══ CHANGE PASSWORD ═══
-$('change-password-btn')?.addEventListener('click', () => {
-    openModal('Сменить пароль', `
-        <div class="form-group"><label>Текущий пароль</label><input class="form-input" id="cp-old" type="password"></div>
-        <div class="form-group"><label>Новый пароль</label><input class="form-input" id="cp-new" type="password"><div class="form-hint">Минимум 8 символов</div></div>
-        <div class="form-group"><label>Повторите</label><input class="form-input" id="cp-new2" type="password"></div>
-        <div class="form-hint error" id="cp-error"></div>
-    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="cp-save">Сохранить</button>`);
-    $('cp-save')?.addEventListener('click', async () => {
-        const errEl = $('cp-error'); errEl.textContent = '';
-        if (!$('cp-old')?.value) { errEl.textContent = 'Введите текущий пароль'; return; }
-        if (!$('cp-new')?.value || $('cp-new').value.length < 8) { errEl.textContent = 'Новый минимум 8 символов'; return; }
-        if ($('cp-new').value !== $('cp-new2')?.value) { errEl.textContent = 'Пароли не совпадают'; return; }
-        try {
-            await api('/api/admin/change-password', { old_password: $('cp-old').value, new_password: $('cp-new').value });
-            toast('Пароль изменён', 'success'); closeModal();
-        } catch (e) {
-            if (e.message === 'wrong_password') errEl.textContent = 'Текущий пароль неверный';
-            else if (e.message === 'password_too_short') errEl.textContent = 'Минимум 8 символов';
-            else errEl.textContent = 'Ошибка: ' + e.message;
-        }
-    });
-});
+// Event listener added in DOMContentLoaded block
 
 // ═══ LOGIN ═══
 function showLogin() {
@@ -212,9 +200,7 @@ async function doLogin() {
     finally { btn.disabled = false; btn.textContent = 'Войти'; }
 }
 
-$('login-btn')?.addEventListener('click', doLogin);
-$('login-password')?.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
-$('login-login')?.addEventListener('keydown', e => { if (e.key === 'Enter') $('login-password')?.focus(); });
+// Event listeners moved to DOMContentLoaded block
 
 async function checkAdminAndLoad() {
     try {
@@ -246,11 +232,7 @@ async function checkAdminAndLoad() {
     }
 }
 
-$('logout-btn')?.addEventListener('click', async () => {
-    if (!confirm('Выйти?')) return;
-    try { await api('/api/auth/logout', {}); } catch (e) {}
-    clearToken(); ME = null; closeSidebar(); clearCache(); showLogin();
-});
+// Logout event listener moved to DOMContentLoaded block
 
 // ═══ NAVIGATION ═══
 const PAGE_TITLES = {
@@ -278,9 +260,7 @@ function navigate(page) {
     }
 }
 
-document.querySelectorAll('.nav-item').forEach(item => {
-    if (item) item.addEventListener('click', e => { e.preventDefault(); closeSidebar(); navigate(item.dataset.page); });
-});
+// Navigation event listeners moved to DOMContentLoaded block
 
 // ═══ REFRESH COUNTERS ═══
 async function refreshCounters() {
@@ -1783,9 +1763,75 @@ const PAGE_LOADERS = {
     sales: loadSales,
 };
 
-// ═══ INIT ═══
-try {
-    if (getToken()) { checkAdminAndLoad(); } else { showLogin(); }
-} catch (e) {
-    console.error('[INIT] Failed:', e);
-}
+// ═══ INIT (DOMContentLoaded) ═══
+document.addEventListener('DOMContentLoaded', () => {
+    // Modal events
+    $('modal-close')?.addEventListener('click', closeModal);
+    $('modal-overlay')?.addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && $('modal-overlay')?.classList.contains('show')) closeModal();
+    });
+
+    // Change password
+    $('change-password-btn')?.addEventListener('click', () => {
+        openModal('Сменить пароль', `
+            <div class="form-group"><label>Текущий пароль</label><input class="form-input" id="cp-old" type="password"></div>
+            <div class="form-group"><label>Новый пароль</label><input class="form-input" id="cp-new" type="password"><div class="form-hint">Минимум 8 символов</div></div>
+            <div class="form-group"><label>Повторите</label><input class="form-input" id="cp-new2" type="password"></div>
+            <div class="form-hint error" id="cp-error"></div>
+        `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="cp-save">Сохранить</button>`);
+        $('cp-save')?.addEventListener('click', async () => {
+            const errEl = $('cp-error'); errEl.textContent = '';
+            if (!$('cp-old')?.value) { errEl.textContent = 'Введите текущий пароль'; return; }
+            if (!$('cp-new')?.value || $('cp-new').value.length < 8) { errEl.textContent = 'Новый минимум 8 символов'; return; }
+            if ($('cp-new').value !== $('cp-new2')?.value) { errEl.textContent = 'Пароли не совпадают'; return; }
+            try {
+                await api('/api/admin/change-password', { old_password: $('cp-old').value, new_password: $('cp-new').value });
+                toast('Пароль изменён', 'success'); closeModal();
+            } catch (e) {
+                if (e.message === 'wrong_password') errEl.textContent = 'Текущий пароль неверный';
+                else if (e.message === 'password_too_short') errEl.textContent = 'Минимум 8 символов';
+                else errEl.textContent = 'Ошибка: ' + e.message;
+            }
+        });
+    });
+
+    // Login events
+    $('login-login')?.addEventListener('input', e => {
+        e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5);
+    });
+    $('login-btn')?.addEventListener('click', doLogin);
+    $('login-password')?.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+    $('login-login')?.addEventListener('keydown', e => { if (e.key === 'Enter') $('login-password')?.focus(); });
+
+    // Sidebar events
+    const burgerEl = burger();
+    const overlayEl = overlay();
+    if (burgerEl) burgerEl.addEventListener('click', openSidebar);
+    if (overlayEl) overlayEl.addEventListener('click', closeSidebar);
+
+    // Navigation
+    document.querySelectorAll('.nav-item').forEach(item => {
+        if (item) item.addEventListener('click', e => { e.preventDefault(); closeSidebar(); navigate(item.dataset.page); });
+    });
+
+    // Logout
+    $('logout-btn')?.addEventListener('click', async () => {
+        if (!confirm('Выйти?')) return;
+        try { await api('/api/auth/logout', {}); } catch (e) {}
+        clearToken(); ME = null; closeSidebar(); clearCache(); showLogin();
+    });
+
+    // Mobile sidebar overlay
+    const mobileOverlay = document.getElementById('overlay');
+    if (mobileOverlay) {
+        mobileOverlay.addEventListener('click', closeSidebar);
+    }
+
+    // ═══ INITIALIZE ═══
+    try {
+        if (getToken()) { checkAdminAndLoad(); } else { showLogin(); }
+    } catch (e) {
+        console.error('[INIT] Failed:', e);
+    }
+});

@@ -11,6 +11,7 @@ from config import SESSION_TTL_DAYS, SESSION_CACHE_TTL, MAX_SESSION_CACHE_SIZE
 
 _session_cache = {}
 _session_cache_lock = threading.Lock()
+_request_counter = 0  # ✅ Добавлен счетчик для очистки кэша
 
 def _cleanup_session_cache():
     """Простая очистка кэша: если размер превышен, удаляем самые старые записи."""
@@ -61,12 +62,6 @@ def _sync_get_session_user(token):
             with _session_cache_lock:
                 _session_cache[token] = (uid, now)
             return uid
-
-    # Вызываем очистку каждые ~100 запросов (через time.time() % 100 == 0)
-    if int(now * 10) % 100 == 0:
-        _cleanup_session_cache()
-
-    return None
 
 def _sync_create_session(user_id):
     token = secrets.token_urlsafe(32)
@@ -120,6 +115,13 @@ def _sync_get_tu_rests(user_id):
             return [r[0] for r in cur.fetchall()]
 
 async def get_auth_user(request):
+    global _request_counter
+    _request_counter += 1
+    
+    # ✅ ИСПРАВЛЕНО: Правильная очистка кэша раз в 100 запросов
+    if _request_counter % 100 == 0:
+        _cleanup_session_cache()
+
     # 1. Сначала ищем в query params
     token = request.query.get("token") or request.query.get("webToken")
     
@@ -131,13 +133,8 @@ async def get_auth_user(request):
         if not token:
             token = request.headers.get("X-Token") or ""
     
-    # 3. Если нет token — пытаемся из JSON body
-    if not token:
-        try:
-            body = await request.json()
-            token = body.get("webToken") or ""
-        except Exception:
-            token = ""
+    # ❌ УДАЛЕНО: Блок чтения request.json(). 
+    # Теперь токен передается только через заголовки Authorization или X-Token.
 
     if not token: return None, 401
 

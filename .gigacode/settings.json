@@ -7,7 +7,9 @@
       "Bash(del *)",
       "Bash(node *)",
       "Bash(copy *)",
-      "Bash(dir *)"
+      "Bash(dir *)",
+      "Bash(curl *)",
+      "Bash(findstr *)"
     ]
   },
   "$version": 3

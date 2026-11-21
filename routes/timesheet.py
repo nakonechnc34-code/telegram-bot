@@ -421,7 +421,8 @@ async def handle_import_attendance(request):
     return web.json_response({"ok": True, "success_count": success, "errors": errors})
 
 
-def _sync_reports(user_id, date_from, date_to):
+# ИСПРАВЛЕНО: добавлен флаг only_me и LEFT JOIN для корректной работы сотрудников без часов
+def _sync_reports(user_id, date_from, date_to, only_me=False):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
@@ -432,18 +433,23 @@ def _sync_reports(user_id, date_from, date_to):
 
             base = """SELECT u.full_name, u.position,
                        COALESCE(tr.name, r.name) AS restaurant_name,
-                       SUM(t.hours) as total_hours,
+                       COALESCE(SUM(t.hours), 0) as total_hours,
                        COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, u.payment_type,
                        CASE WHEN u.payment_type = 'fixed' THEN COALESCE(NULLIF(u.rate, 0), pr.rate, 0)
-                            ELSE (SUM(t.hours) * COALESCE(NULLIF(u.rate, 0), pr.rate, 0)) END as total_salary
-                FROM users u JOIN timesheet_records t ON u.user_id = t.user_id
+                            ELSE (COALESCE(SUM(t.hours), 0) * COALESCE(NULLIF(u.rate, 0), pr.rate, 0)) END as total_salary
+                FROM users u 
+                LEFT JOIN timesheet_records t ON u.user_id = t.user_id AND t.work_date >= %s::date AND t.work_date <= %s::date
                 LEFT JOIN restaurants r ON u.restaurant_key = r.key
                 LEFT JOIN restaurants tr ON t.restaurant_key = tr.key
                 LEFT JOIN position_rates pr ON u.position = pr.position_name
-                WHERE COALESCE(u.is_fired, FALSE) = FALSE AND u.login IS NOT NULL
-                  AND t.work_date >= %s::date AND t.work_date <= %s::date"""
+                WHERE COALESCE(u.is_fired, FALSE) = FALSE AND u.login IS NOT NULL"""
+            
             params = [date_from, date_to]
-            if is_us:
+            
+            if only_me:
+                base += " AND u.user_id = %s"
+                params.append(user_id)
+            elif is_us:
                 base += " AND COALESCE(t.restaurant_key, u.restaurant_key) = %s"
                 params.append(u.get("restaurant_key"))
             elif is_tu:
@@ -452,6 +458,7 @@ def _sync_reports(user_id, date_from, date_to):
             elif not is_hr_or_super:
                 base += " AND u.user_id = %s"
                 params.append(user_id)
+                
             base += " GROUP BY u.user_id, u.full_name, u.position, COALESCE(tr.name, r.name), u.rate, pr.rate, u.payment_type ORDER BY COALESCE(tr.name, r.name), u.full_name"
 
             cur.execute(base, params)
@@ -463,7 +470,7 @@ async def handle_timesheet_reports(request):
     user, err = await get_auth_user(request)
     if err:
         return denied(err)
-    _require_timesheet_access(user)
+    # ИСПРАВЛЕНО: убрали _require_timesheet_access(user), чтобы сотрудники могли видеть свои выплаты
 
     try:
         body = await request.json()
@@ -479,7 +486,8 @@ async def handle_timesheet_reports(request):
         date_from = f"{year}-{month:02d}-01"
         date_to = f"{year}-{month:02d}-{last_day:02d}"
 
-    report = await _run(_sync_reports, user["user_id"], date_from, date_to)
+    # ИСПРАВЛЕНО: Передаем True в only_me, чтобы каждый видел только свою зарплату в личном кабинете
+    report = await _run(_sync_reports, user["user_id"], date_from, date_to, True)
     return web.json_response({"report": report})
 
 
@@ -488,14 +496,16 @@ async def handle_timesheet_export_excel(request):
     user, err = await get_auth_user(request)
     if err:
         return denied(err)
-    _require_timesheet_access(user)
+    # ИСПРАВЛЕНО: убрали _require_timesheet_access(user)
 
     date_from = request.query.get("date_from")
     date_to = request.query.get("date_to")
     if not date_from or not date_to:
         return web.Response(text="Укажите даты", status=400)
 
-    report = await _run(_sync_reports, user["user_id"], date_from, date_to)
+    # Если сотрудник качает из профиля, он передает only_me=true. Иначе (из табеля админа) качаем всех доступных.
+    only_me = request.query.get("only_me") == "true"
+    report = await _run(_sync_reports, user["user_id"], date_from, date_to, only_me)
 
     wb = Workbook()
     ws = wb.active

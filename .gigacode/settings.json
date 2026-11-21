@@ -6,7 +6,8 @@
       "Bash(pip install *)",
       "Bash(del *)",
       "Bash(node *)",
-      "Bash(copy *)"
+      "Bash(copy *)",
+      "Bash(dir *)"
     ]
   },
   "$version": 3

@@ -641,8 +641,8 @@ async def sales_records(request: web.Request) -> web.Response:
             LEFT JOIN restaurants r ON r.key = sr.restaurant_key
             {where_clause}
             ORDER BY sr.sale_date DESC, sr.id DESC
-            LIMIT ${{param_idx}} OFFSET ${{param_idx + 1}}
-        ", *params, limit, offset)
+            LIMIT ${param_idx} OFFSET ${param_idx + 1}
+        """, *params, limit, offset)
 
         return web.json_response({
             "success": True,

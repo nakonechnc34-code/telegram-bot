@@ -15,7 +15,7 @@ import openpyxl
 
 import db
 from middleware.auth import require_admin
-from utils.auth_helpers import get_current_user
+from utils.auth_helpers import get_auth_user
 
 routes = web.RouteTableDef()
 
@@ -29,9 +29,10 @@ routes = web.RouteTableDef()
 async def upload_sales_file(request: web.Request) -> web.Response:
     """Загрузка Excel (.xlsx/.xls) или CSV файла с данными товарооборота."""
     reader = await request.post()
-    admin_user = await get_current_user(request)
-    if not admin_user:
+    user, err = await get_auth_user(request)
+    if err or not user:
         return web.json_response({"error": "Unauthorized"}, status=401)
+    admin_user = user
 
     file_upload = reader.get("file")
     if not file_upload or not file_upload.filename:
@@ -339,8 +340,8 @@ async def _recalculate_daily_summary(pool, restaurant_key: str) -> None:
 @require_admin
 async def sales_dashboard(request: web.Request) -> web.Response:
     """Основная сводка дашборда товарооборота."""
-    admin_user = await get_current_user(request)
-    if not admin_user:
+    user, err = await get_auth_user(request)
+    if err or not user:
         return web.json_response({"error": "Unauthorized"}, status=401)
 
     period = request.json.get("period", "30d")  # 7d, 30d, 90d, custom
@@ -583,9 +584,10 @@ async def sales_dashboard(request: web.Request) -> web.Response:
 @require_admin
 async def sales_records(request: web.Request) -> web.Response:
     """Получение списка транзакций с пагинацией и фильтрами."""
-    admin_user = await get_current_user(request)
-    if not admin_user:
+    user, err = await get_auth_user(request)
+    if err or not user:
         return web.json_response({"error": "Unauthorized"}, status=401)
+    admin_user = user
 
     body = request.json or {}
     restaurant_key = body.get("restaurant_key")
@@ -686,9 +688,10 @@ async def sales_records(request: web.Request) -> web.Response:
 @require_admin
 async def sales_restaurants(request: web.Request) -> web.Response:
     """Получение списка ресторанов с метриками товарооборота."""
-    admin_user = await get_current_user(request)
-    if not admin_user:
+    user, err = await get_auth_user(request)
+    if err or not user:
         return web.json_response({"error": "Unauthorized"}, status=401)
+    admin_user = user
 
     pool = db.get_pool(request.app)
 
@@ -729,9 +732,10 @@ async def sales_restaurants(request: web.Request) -> web.Response:
 @require_admin
 async def export_sales_data(request: web.Request) -> web.Response:
     """Экспорт данных товарооборота в Excel."""
-    admin_user = await get_current_user(request)
-    if not admin_user:
+    user, err = await get_auth_user(request)
+    if err or not user:
         return web.json_response({"error": "Unauthorized"}, status=401)
+    admin_user = user
 
     body = request.json or {}
     restaurant_key = body.get("restaurant_key")

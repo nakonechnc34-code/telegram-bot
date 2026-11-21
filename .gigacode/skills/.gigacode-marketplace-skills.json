@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "skills": {
+    "bundled:docx": {
+      "dirName": "docx",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:idea-refine": {
+      "dirName": "idea-refine",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:jobs-to-be-done": {
+      "dirName": "jobs-to-be-done",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:pptx": {
+      "dirName": "pptx",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:roadmap-planning": {
+      "dirName": "roadmap-planning",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:stop-slop-ru": {
+      "dirName": "stop-slop-ru",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:user-story": {
+      "dirName": "user-story",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:xlsx": {
+      "dirName": "xlsx",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:doc-coauthoring": {
+      "dirName": "doc-coauthoring",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:prioritization-advisor": {
+      "dirName": "prioritization-advisor",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:product-brainstorming": {
+      "dirName": "product-brainstorming",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:using-agent-skills": {
+      "dirName": "using-agent-skills",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:frontend-design": {
+      "dirName": "frontend-design",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:repository-analyzer": {
+      "dirName": "repository-analyzer",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:code-reviewer": {
+      "dirName": "code-reviewer",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:deep-analysis": {
+      "dirName": "deep-analysis",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:prototype-generator": {
+      "dirName": "prototype-generator",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:prompt-improver": {
+      "dirName": "prompt-improver",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:product-brief": {
+      "dirName": "product-brief",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:task-planner": {
+      "dirName": "task-planner",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:writing-editor": {
+      "dirName": "writing-editor",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:debugging-assistant": {
+      "dirName": "debugging-assistant",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:notes-synthesis": {
+      "dirName": "notes-synthesis",
+      "marketplaceVersion": "0.1.0"
+    },
+    "bundled:discovery-process": {
+      "dirName": "discovery-process",
+      "marketplaceVersion": "0.1.0"
+    }
+  }
+}

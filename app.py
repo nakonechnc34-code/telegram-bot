@@ -298,6 +298,19 @@ async def handle_sales_css(request):
         }
     )
 
+async def handle_sales_js(request):
+    data, mtime = _serve_file("sales.js", _STATIC_FILES_CACHE.setdefault("sales.js", {"data": None, "mtime": 0.0}))
+    if not data: return web.Response(text="sales.js not found", status=404)
+    return web.Response(
+        body=data,
+        content_type="application/javascript",
+        charset="utf-8",
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "Last-Modified": formatdate(mtime, usegmt=True)
+        }
+    )
+
 async def _send_static_file(name, content_type):
     if name not in _STATIC_FILES_CACHE: _STATIC_FILES_CACHE[name] = {"data": None, "mtime": 0.0}
     data, mtime = _serve_file(name, _STATIC_FILES_CACHE[name])

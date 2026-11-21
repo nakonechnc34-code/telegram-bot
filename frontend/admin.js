@@ -18,7 +18,7 @@ function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
 function clearToken() { localStorage.removeItem(TOKEN_KEY); }
 function getFileUrl(url) {
     if (!url) return '';
-    return url + '?token=' + getToken();
+    return url + '?webToken=' + encodeURIComponent(getToken());
 }
 
 // ═══ CACHE ═══
@@ -54,13 +54,15 @@ function fmtDate(iso, withTime) {
 }
 
 // ═══ API ═══
+// ✅ ИСПРАВЛЕНО: токен передаётся в заголовке Authorization
 async function api(path, body) {
-    const payload = { webToken: getToken() };
-    if (body && typeof body === 'object') Object.assign(payload, body);
     const res = await fetch(path, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + getToken(),
+        },
+        body: JSON.stringify(body || {}),
     });
     if (res.status === 401) { clearToken(); showLogin(); throw new Error('unauthorized'); }
     if (res.status === 403) {
@@ -82,31 +84,36 @@ async function uploadFile(file) {
     formData.append('file', file);
     try {
         const res = await fetch('/api/admin/upload', {
-            method: 'POST', headers: { 'X-Token': getToken() }, body: formData
+            method: 'POST',
+            headers: { 'X-Token': getToken() },
+            body: formData,
         });
-        if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Upload failed'); }
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Upload failed');
+        }
         return await res.json();
-    } catch (e) { throw new Error('Ошибка сети при загрузке файла'); }
+    } catch (e) {
+        throw new Error(e.message || 'Ошибка сети при загрузке файла');
+    }
 }
 
 // ═══ MOBILE SIDEBAR ═══
-const burger = () => document.getElementById('hamburger');
-const overlay = () => document.getElementById('overlay');
-function openSidebar() { 
-    const sidebar = document.getElementById('sidebar');
-    const overlayEl = overlay();
-    if (sidebar) sidebar.classList.add('sidebar--open'); 
+function openSidebar() {
+    const sidebar = $('sidebar');
+    const overlayEl = $('overlay');
+    if (sidebar) sidebar.classList.add('sidebar--open');
     if (overlayEl) {
-        overlayEl.classList.add('overlay--show'); 
+        overlayEl.classList.add('sidebar-overlay--show');
         document.body.style.overflow = 'hidden';
     }
 }
-function closeSidebar() { 
-    const sidebar = document.getElementById('sidebar');
-    const overlayEl = overlay();
-    if (sidebar) sidebar.classList.remove('sidebar--open'); 
+function closeSidebar() {
+    const sidebar = $('sidebar');
+    const overlayEl = $('overlay');
+    if (sidebar) sidebar.classList.remove('sidebar--open');
     if (overlayEl) {
-        overlayEl.classList.remove('overlay--show'); 
+        overlayEl.classList.remove('sidebar-overlay--show');
         document.body.style.overflow = '';
     }
 }
@@ -140,9 +147,6 @@ function closeModal() {
     if (overlayEl) overlayEl.classList.remove('show');
 }
 
-// ═══ CHANGE PASSWORD ═══
-// Event listener added in DOMContentLoaded block
-
 // ═══ LOGIN ═══
 function showLogin() {
     const appEl = $('app');
@@ -157,22 +161,17 @@ function showLogin() {
     if (passInput) passInput.value = '';
     clearCache();
 }
-function showApp() { 
+function showApp() {
     const appEl = $('app');
     const loginScreenEl = $('login-screen');
     if (appEl) appEl.style.display = 'block';
     if (loginScreenEl) loginScreenEl.style.display = 'none';
 }
 
-$('login-login')?.addEventListener('input', e => {
-    e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5);
-});
-
 async function doLogin() {
-    console.log('[login] doLogin called');
     const loginInput = $('login-login');
     const passwordInput = $('login-password');
-    if (!loginInput || !passwordInput) { console.error('Login elements not found'); return; }
+    if (!loginInput || !passwordInput) return;
     const login = loginInput.value.trim().toLowerCase();
     const password = passwordInput.value;
     const errEl = $('login-error');
@@ -182,25 +181,26 @@ async function doLogin() {
     const btn = $('login-btn');
     btn.disabled = true; btn.textContent = 'Проверяем…';
     try {
-        console.log('[login] Sending to /api/admin/login');
         const res = await fetch('/api/admin/login', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ login, password }),
         });
-        console.log('[login] Response status:', res.status);
         if (res.status === 401) { errEl.textContent = 'Неверный логин или пароль'; return; }
         if (res.status === 403) { errEl.textContent = 'Аккаунт уволен или нет прав администратора'; return; }
         if (!res.ok) { errEl.textContent = 'Ошибка сервера'; return; }
         const data = await res.json();
         if (!data.token) { errEl.textContent = 'Ошибка'; return; }
-        setToken(data.token); clearCache();
-        console.log('[login] Success, token set');
+        setToken(data.token);
+        clearCache();
         await checkAdminAndLoad();
-    } catch (e) { console.error('[login] Error:', e); errEl.textContent = 'Сеть недоступна'; }
-    finally { btn.disabled = false; btn.textContent = 'Войти'; }
+    } catch (e) {
+        errEl.textContent = 'Сеть недоступна';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Войти';
+    }
 }
-
-// Event listeners moved to DOMContentLoaded block
 
 async function checkAdminAndLoad() {
     try {
@@ -225,14 +225,12 @@ async function checkAdminAndLoad() {
         }
         navigate('dashboard');
         refreshCounters();
-    } catch (e) { 
-        showLogin(); 
+    } catch (e) {
+        showLogin();
         const errEl = $('login-error');
-        if (errEl) errEl.textContent = 'Ошибка: ' + e.message; 
+        if (errEl) errEl.textContent = 'Ошибка: ' + e.message;
     }
 }
-
-// Logout event listener moved to DOMContentLoaded block
 
 // ═══ NAVIGATION ═══
 const PAGE_TITLES = {
@@ -259,8 +257,6 @@ function navigate(page) {
         });
     }
 }
-
-// Navigation event listeners moved to DOMContentLoaded block
 
 // ═══ REFRESH COUNTERS ═══
 async function refreshCounters() {
@@ -295,10 +291,8 @@ const GRADIENTS = [
 function getAvatarGradient(index) { return GRADIENTS[index % GRADIENTS.length]; }
 
 // ═══════════════════════════════════════════
-// PAGE LOADERS
+// DASHBOARD
 // ═══════════════════════════════════════════
-
-// ═══ DASHBOARD ═══
 async function loadDashboard() {
     $('page-content').innerHTML = `
         <div class="stats-grid">
@@ -358,7 +352,7 @@ async function loadDashboard() {
         if ($('stat-pending')) $('stat-pending').textContent = (stats.news_pending || 0) + (stats.standards_pending || 0);
         if ($('stat-medbooks')) $('stat-medbooks').textContent = stats.medbooks_alert || 0;
         if ($('stat-questions')) $('stat-questions').textContent = stats.questions_open || 0;
-        // Реальные открытые вопросы
+
         const qsContainer = $('dash-questions');
         if (qsContainer) {
             const questions = (data.questions || []).slice(0, 5);
@@ -371,7 +365,6 @@ async function loadDashboard() {
                     </div>
                 </div>`).join('') || '<div class="loading">Нет открытых вопросов</div>';
         }
-        // Новые сотрудники
         const usersContainer = $('dash-new-users');
         if (usersContainer) {
             const users = (data.users || []).slice(0, 5);
@@ -388,7 +381,7 @@ async function loadDashboard() {
 }
 
 // ═══════════════════════════════════════════
-// TASK 1: ПОЛНОЦЕННЫЕ ПОЛЬЗОВАТЕЛИ
+// USERS
 // ═══════════════════════════════════════════
 async function loadUsers() {
     const canCreate = hasPerm('users_create');
@@ -437,7 +430,7 @@ async function loadUsers() {
 
     async function loadUsersTable() {
         try {
-            const data = await cachedApi('/api/admin/users', { search: currentSearch, fired: currentTab === 'fired' });
+            const data = await cachedApi('/api/admin/users', { search: currentSearch, fired: currentTab === 'fired' }, 5000);
             const users = data.users || [];
             const tbody = $('users-table');
             tbody.innerHTML = users.map((u, i) => {
@@ -479,24 +472,16 @@ async function loadUsers() {
     }
 }
 
-// Таблица: клик по строке = редактировать
-document.addEventListener('click', e => {
-    const tr = e.target.closest('tr[data-edit]');
-    if (tr) openEditUser(parseInt(tr.dataset.edit));
-});
-
 async function openAddUser() {
     let restaurants = [], positions = [], citizens = [];
     try {
         const r = await api('/api/admin/restaurants', {}); restaurants = r.restaurants || [];
-        const p = await api('/api/admin/positions', {}); positions = p.positions.filter(x => !x.is_archived) || [];
+        const p = await api('/api/admin/positions', {}); positions = (p.positions || []).filter(x => !x.is_archived);
         const c = await api('/api/admin/citizenships', {}); citizens = c.citizenships || [];
-    } catch(e) {}
+    } catch (e) {}
 
     openModal('Добавить сотрудника', `
-        <div class="form-group"><label>ФИО</label><input class="form-input" id="user-full-name" placeholder="Иванов Иван Иванович">
-            <div class="form-hint" id="login-preview" style="display:none;">Логин: <strong id="lp-val"></strong></div>
-        </div>
+        <div class="form-group"><label>ФИО</label><input class="form-input" id="user-full-name" placeholder="Иванов Иван Иванович"></div>
         <div class="form-group"><label>Пароль</label><input class="form-input" id="user-password" type="password"></div>
         <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
             <div class="form-group"><label>Телефон</label><input class="form-input" id="user-phone"></div>
@@ -514,21 +499,6 @@ async function openAddUser() {
         <div class="form-group"><label>Тип оплаты</label><select class="form-input" id="user-payment"><option value="hourly">Почасовая</option><option value="fixed">Фиксированный оклад</option></select></div>
         <div class="form-hint" id="user-error"></div>
     `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="user-save">Создать</button>`);
-
-    // Авто-логин из фамилии
-    $('user-full-name').addEventListener('input', () => {
-        const name = $('user-full-name').value.trim();
-        const pp = $('login-preview');
-        if (!name) { pp.style.display = 'none'; return; }
-        pp.style.display = 'block';
-        const translit = {"а":"a","б":"b","в":"v","г":"g","д":"d","е":"e","ё":"e","ж":"zh","з":"z","и":"i","й":"y","к":"k","л":"l","м":"m","н":"n","о":"o","п":"p","р":"r","с":"s","т":"t","у":"u","ф":"f","х":"h","ц":"ts","ч":"ch","ш":"sh","щ":"sch","ъ":"","ы":"y","ь":"","э":"e","ю":"yu","я":"ya"};
-        const parts = name.split(/\s+/);
-        const surname = (parts[0]||'').toLowerCase();
-        let letters = '';
-        for (const ch of surname) { if (letters.length >= 3) break; const t = translit[ch]; if (t) letters += t; }
-        while (letters.length < 3) letters += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random()*26)];
-        $('lp-val').textContent = letters.slice(0,3) + Math.floor(Math.random()*90+10);
-    });
 
     $('user-save').addEventListener('click', async () => {
         const errEl = $('user-error'); errEl.textContent = '';
@@ -560,7 +530,7 @@ async function openEditUser(uid) {
     openModal('Редактировать: ' + (user.full_name||''), `
         <div class="form-group"><label>Логин</label><input class="form-input" value="${esc(user.login||'')}" readonly></div>
         <div class="form-group"><label>ФИО</label><input class="form-input" id="ed-full-name" value="${esc(user.full_name||'')}"></div>
-        <div class="form-group"><label>Новый пароль (оставьте пустым если не нужно менять)</label><input class="form-input" id="ed-password" type="password"></div>
+        <div class="form-group"><label>Новый пароль (оставьте пустым, если не нужно менять)</label><input class="form-input" id="ed-password" type="password"></div>
         <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
             <div class="form-group"><label>Телефон</label><input class="form-input" id="ed-phone" value="${esc(user.phone||'')}"></div>
             <div class="form-group"><label>Дата рождения</label><input class="form-input" id="ed-birth" value="${esc(user.birth_date||'')}"></div>
@@ -612,7 +582,7 @@ async function restoreUser(uid) {
 }
 
 // ═══════════════════════════════════════════
-// TASK 3: МЕДСПРАВОЧНИКИ (до и во время medbooks)
+// MEDBOOKS
 // ═══════════════════════════════════════════
 let _medTab = 'staff';
 async function loadMedbooks() {
@@ -687,7 +657,6 @@ async function loadMedbooks() {
     }
 }
 
-// Medbook editor
 async function openEditMedbook(uid) {
     if (!hasPerm('medbook_edit')) { toast('Нет права', 'error'); return; }
     let user, medbook, doctors = [], tests = [], vaccines = [];
@@ -728,11 +697,14 @@ async function openEditMedbook(uid) {
     });
 }
 
-// Medbook dirs CRUD
 async function loadMedbookDirs() {
     const data = await api('/api/admin/medbooks', {});
     const doctors = data.doctors || [], tests = data.tests || [], vaccines = data.vaccines || [];
-    const all = [...doctors.map(d=>({...d,type:'doctor',tl:'Врач'})),...tests.map(t=>({...t,type:'test',tl:'Анализ'})),...vaccines.map(v=>({...v,type:'vaccine',tl:'Вакцина'}))];
+    const all = [
+        ...doctors.map(d => ({...d, type:'doctor', tl:'Врач'})),
+        ...tests.map(t => ({...t, type:'test', tl:'Анализ'})),
+        ...vaccines.map(v => ({...v, type:'vaccine', tl:'Вакцина'})),
+    ];
     const typeColors = { doctor:'var(--purple)', test:'var(--blue)', vaccine:'var(--green)' };
     $('page-content').innerHTML = `
         <div class="neu-card">
@@ -788,10 +760,10 @@ async function editMedDirItem(id, type, name, months, required) {
     `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="ed-med-dir-save">Сохранить</button>`);
     $('ed-med-dir-save').addEventListener('click', async () => {
         const errEl = $('ed-med-dir-error'); errEl.textContent = '';
-        const name = $('ed-med-dir-name').value.trim();
-        if (!name) { errEl.textContent = 'Введите название'; return; }
+        const nameVal = $('ed-med-dir-name').value.trim();
+        if (!nameVal) { errEl.textContent = 'Введите название'; return; }
         try {
-            await api('/api/admin/medbook/reference/update', { type, id, name, validity_months: parseInt($('ed-med-dir-months').value)||12, required: $('ed-med-dir-required').checked });
+            await api('/api/admin/medbook/reference/update', { type, id, name: nameVal, validity_months: parseInt($('ed-med-dir-months').value)||12, required: $('ed-med-dir-required').checked });
             toast('Сохранено', 'success'); closeModal(); loadMedbookDirs();
         } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
     });
@@ -804,7 +776,7 @@ async function deleteMedDirItem(type, id) {
 }
 
 // ═══════════════════════════════════════════
-// TASK 2: НОВОСТИ/СТАНДАРТЫ С МОДЕРАЦИЕЙ + ФАЙЛЫ + EDIT
+// NEWS
 // ═══════════════════════════════════════════
 let _uploadedNewsImageUrl = '';
 let _uploadedStandardImageUrl = '';
@@ -814,7 +786,6 @@ let _tableHeaders = [];
 let _tableRows = [];
 const STANDARD_GROUPS = ['Пищевая Безопасность', 'Касса', 'Горячий цех', 'Холодный цех', 'Общее'];
 
-// Clean HTML from scripts/styles
 function cleanHTML(html) {
     if (!html) return '';
     let clean = String(html);
@@ -872,7 +843,7 @@ async function loadNews() {
                     let acts = '';
                     if (n.status==='pending' && canPublish()) acts += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--green);" onclick="approveNews(${n.id})">✓</button>`;
                     if (n.status==='pending' && canPublish()) acts += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--pink);" onclick="rejectNews(${n.id})">✕</button>`;
-                    if (canEdit) acts += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="openNewsEdit(${n.id},others)">✏️</button>`;
+                    if (canEdit) acts += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="openNewsEdit(${n.id})">✏️</button>`;
                     if (canEdit && n.status !== 'pending') acts += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--pink);" onclick="deleteNews(${n.id})">🗑️</button>`;
                     return `<tr><td style="text-align:center;">${n.image_url ? `<img src="${getFileUrl(n.image_url)}" style="width:48px;height:48px;object-fit:cover;border-radius:12px;">` : '<span style="color:var(--text-terc);">—</span>'}</td>
                         <td style="font-weight:600;">${esc(n.title||'—')}</td><td>${esc(n.proposed_by||'—')}</td><td style="color:var(--text-terc);">${fmtDate(n.created_at)}</td><td><span class="tag ${st}">${tx}</span></td><td>${acts}</td></tr>`;
@@ -903,12 +874,11 @@ async function openAddNews() {
         <div class="form-hint" id="news-error"></div>
     `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="create-news-btn">${canPublishFlag ? 'Создать' : 'Предложить'}</button>`);
 
-    // Image upload handler
     $('n-image-btn').addEventListener('click', () => $('n-image-file').click());
     $('n-image-file').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        if (file.size > 15*1024*1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
+        if (file.size > 15 * 1024 * 1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
         const btn = $('n-image-btn');
         btn.textContent = 'Загрузка...';
         btn.disabled = true;
@@ -943,17 +913,17 @@ async function openAddNews() {
             bodyReq.publish_at = new Date(dt).toISOString();
         }
         try {
-            const res = await api('/api/admin/news/add', bodyReq);
+            await api('/api/admin/news/add', bodyReq);
             toast('Новость создана', 'success'); closeModal(); loadNews();
-        } catch (e) { errEl.textContent = 'Ошибка: '+e.message; }
+        } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
     });
 }
 
-async function openNewsEdit(id, others) {
+async function openNewsEdit(id) {
     if (!hasPerm('news_edit')) { toast('Нет права', 'error'); return; }
     let newsData;
-    try { newsData = await cachedApi('/api/admin/news', {}); } catch(e) { return; }
-    const n = (newsData.news||[]).find(x => x.id === id);
+    try { newsData = await cachedApi('/api/admin/news', {}); } catch (e) { return; }
+    const n = (newsData.news || []).find(x => x.id === id);
     if (!n) return;
 
     _uploadedNewsImageUrl = n.image_url || '';
@@ -962,7 +932,7 @@ async function openNewsEdit(id, others) {
             <label>Фотография</label>
             <input type="file" id="n-image-file-edit" accept="image/*" style="display:none;">
             <button type="button" class="btn btn--ghost" id="n-image-btn-edit" style="width:100%;padding:20px;border-style:dashed;border-radius:14px;">${n.image_url ? 'Заменить фото' : 'Прикрепить фото'}</button>
-            <div id="n-image-preview-box-edit" style="display:${n.image_url?'block':'none'};margin-top:12px;text-align:center;">
+            <div id="n-image-preview-box-edit" style="display:${n.image_url ? 'block' : 'none'};margin-top:12px;text-align:center;">
                 <img id="n-image-preview-edit" src="${getFileUrl(n.image_url)}" style="max-width:100%;max-height:150px;border-radius:12px;object-fit:contain;">
             </div>
         </div>
@@ -972,12 +942,11 @@ async function openNewsEdit(id, others) {
         <div class="form-hint" id="edit-news-error"></div>
     `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="save-news-btn">Сохранить</button>`);
 
-    // Image upload
     $('n-image-btn-edit').addEventListener('click', () => $('n-image-file-edit').click());
     $('n-image-file-edit').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        if (file.size > 15*1024*1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
+        if (file.size > 15 * 1024 * 1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
         const btn = $('n-image-btn-edit');
         btn.textContent = 'Загрузка...';
         btn.disabled = true;
@@ -1004,15 +973,17 @@ async function openNewsEdit(id, others) {
                 image_url: _uploadedNewsImageUrl
             });
             toast('Сохранено', 'success'); closeModal(); loadNews();
-        } catch (e) { errEl.textContent = 'Ошибка: '+e.message; }
+        } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
     });
 }
 
-async function approveNews(id) { try { await api('/api/admin/news/approve', { id }); toast('Одобрено', 'success'); loadNews(); } catch(e) { toast('Ошибка: '+e.message, 'error'); } }
-async function rejectNews(id) { try { await api('/api/admin/news/reject', { id }); toast('Отклонено', 'success'); loadNews(); } catch(e) { toast('Ошибка: '+e.message, 'error'); } }
-async function deleteNews(id) { if(!confirm('Удалить?')) return; try { await api('/api/admin/news/delete', { id }); toast('Удалено', 'success'); loadNews(); } catch(e) { toast('Ошибка: '+e.message, 'error'); } }
+async function approveNews(id) { try { await api('/api/admin/news/approve', { id }); toast('Одобрено', 'success'); loadNews(); } catch (e) { toast('Ошибка: ' + e.message, 'error'); } }
+async function rejectNews(id) { try { await api('/api/admin/news/reject', { id }); toast('Отклонено', 'success'); loadNews(); } catch (e) { toast('Ошибка: ' + e.message, 'error'); } }
+async function deleteNews(id) { if (!confirm('Удалить?')) return; try { await api('/api/admin/news/delete', { id }); toast('Удалено', 'success'); loadNews(); } catch (e) { toast('Ошибка: ' + e.message, 'error'); } }
 
-// ═══ STANDARDS ═══
+// ═══════════════════════════════════════════
+// STANDARDS
+// ═══════════════════════════════════════════
 async function loadStandards() {
     const data = await cachedApi('/api/admin/standards', {});
     const all = data.standards || [];
@@ -1058,45 +1029,77 @@ async function loadStandards() {
 }
 
 function renderTableEditor(headers, rows) {
-    let headerHtml = headers.map((h, i) => `<th style="padding:4px;"><input class="form-input" style="padding:8px;border-radius:8px;font-size:13px;text-align:center;" value="${esc(h)}" onchange="updateTableHeaders()" data-col="${i}"></th>`).join('');
-    let rowsHtml = rows.map((row, rIdx) => `<tr>${headers.map((_, cIdx) => `<td style="padding:4px;"><input class="form-input" style="padding:8px;border-radius:8px;font-size:13px;" value="${esc(row[cIdx]||'')}" onchange="updateTableCell(${rIdx},${cIdx})"></td>`).join('')}<td style="padding:4px;"><button type="button" class="btn btn--ghost" style="font-size:10px;padding:4px;" onclick="removeTableRow(${rIdx})">Удал.</button></td></tr>`).join('');
-    return `<div style="overflow-x:auto;padding-bottom:8px;"><table style="width:100%;border-collapse:collapse;min-width:600px;"><thead><tr>${headerHtml}<th></th></tr></thead><tbody id="table-editor-rows">${rowsHtml}</tbody></table></div>
-        <div style="display:flex;gap:8px;margin-top:16px;"><button type="button" class="btn btn--ghost" style="font-size:11px;" onclick="addTableRow()">Добавить строку</button></div>`;
+    const headerHtml = headers.map((h, i) =>
+        `<th style="padding:4px;"><input class="form-input" style="padding:8px;border-radius:8px;font-size:13px;text-align:center;" value="${esc(h)}" onchange="updateTableHeaders()" data-col="${i}"></th>`
+    ).join('');
+    const rowsHtml = rows.map((row, rIdx) =>
+        `<tr>${headers.map((_, cIdx) =>
+            `<td style="padding:4px;"><input class="form-input" style="padding:8px;border-radius:8px;font-size:13px;" value="${esc(row[cIdx]||'')}" onchange="updateTableCell(${rIdx},${cIdx})"></td>`
+        ).join('')}<td style="padding:4px;"><button type="button" class="btn btn--ghost" style="font-size:10px;padding:4px;" onclick="removeTableRow(${rIdx})">Удал.</button></td></tr>`
+    ).join('');
+    return `<div style="overflow-x:auto;padding-bottom:8px;">
+        <table style="width:100%;border-collapse:collapse;min-width:600px;">
+            <thead><tr>${headerHtml}<th></th></tr></thead>
+            <tbody id="table-editor-rows">${rowsHtml}</tbody>
+        </table>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px;">
+        <button type="button" class="btn btn--ghost" style="font-size:11px;" onclick="addTableRow()">Добавить строку</button>
+    </div>`;
 }
-window.updateTableHeaders = function() {
-    const newHeaders = Array.from(document.querySelectorAll('#std-table-area thead input')).map(i => i.value);
-    _tableHeaders = newHeaders;
-    _tableRows = _tableRows.map(r => { const newR = []; for(let i=0;i<newHeaders.length;i++) newR.push(r[i]||''); return newR; });
-    document.getElementById('table-editor-container').innerHTML = renderTableEditor(_tableHeaders, _tableRows);
+
+window.updateTableHeaders = function () {
+    const newHeaders = Array.from(document.querySelectorAll('#table-editor-rows') /* noop */);
+    const inputs = Array.from(document.querySelectorAll('#table-editor-container thead input'));
+    _tableHeaders = inputs.map(i => i.value);
+    _tableRows = _tableRows.map(r => {
+        const newR = [];
+        for (let i = 0; i < _tableHeaders.length; i++) newR.push(r[i] || '');
+        return newR;
+    });
+    const container = document.getElementById('table-editor-container');
+    if (container) container.innerHTML = renderTableEditor(_tableHeaders, _tableRows);
 };
-window.updateTableCell = function(rIdx, cIdx) {
+window.updateTableCell = function (rIdx, cIdx) {
     const inputs = document.querySelectorAll(`#table-editor-rows tr:nth-child(${rIdx+1}) input`);
-    _tableRows[rIdx][cIdx] = inputs[cIdx].value;
+    if (inputs[cIdx]) _tableRows[rIdx][cIdx] = inputs[cIdx].value;
 };
-window.addTableRow = function() { _tableRows.push(Array(_tableHeaders.length).fill('')); document.getElementById('table-editor-container').innerHTML = renderTableEditor(_tableHeaders, _tableRows); };
-window.removeTableRow = function(rIdx) { _tableRows.splice(rIdx, 1); document.getElementById('table-editor-container').innerHTML = renderTableEditor(_tableHeaders, _tableRows); };
+window.addTableRow = function () {
+    _tableRows.push(Array(_tableHeaders.length).fill(''));
+    const container = document.getElementById('table-editor-container');
+    if (container) container.innerHTML = renderTableEditor(_tableHeaders, _tableRows);
+};
+window.removeTableRow = function (rIdx) {
+    _tableRows.splice(rIdx, 1);
+    const container = document.getElementById('table-editor-container');
+    if (container) container.innerHTML = renderTableEditor(_tableHeaders, _tableRows);
+};
 
 function switchContentTypeUI(type) {
-    $('std-text-area').style.display = type === 'table' ? 'none' : 'block';
-    $('std-table-area').style.display = type === 'table' ? 'block' : 'none';
+    const textArea = $('std-text-area');
+    const tableArea = $('std-table-area');
+    if (textArea) textArea.style.display = type === 'table' ? 'none' : 'block';
+    if (tableArea) tableArea.style.display = type === 'table' ? 'block' : 'none';
     if (type === 'table' && !_tableHeaders.length) {
         _tableHeaders = ['Колонка 1', 'Колонка 2', 'Колонка 3'];
         _tableRows = [['', '', '']];
-        $('table-editor-container').innerHTML = renderTableEditor(_tableHeaders, _tableRows);
+        const container = $('table-editor-container');
+        if (container) container.innerHTML = renderTableEditor(_tableHeaders, _tableRows);
     }
 }
 
 function renderFilePreviewUI() {
     const box = $('std-file-preview-box');
+    const btn = $('std-file-btn');
     if (!box) return;
     if (_uploadedStandardFileUrl) {
         box.style.display = 'flex';
-        $('std-file-name').textContent = _uploadedStandardFileName || 'Файл';
-        $('std-file-status').textContent = 'Готов к сохранению';
-        $('std-file-btn').style.display = 'none';
+        if ($('std-file-name')) $('std-file-name').textContent = _uploadedStandardFileName || 'Файл';
+        if ($('std-file-status')) $('std-file-status').textContent = 'Готов к сохранению';
+        if (btn) btn.style.display = 'none';
     } else {
         box.style.display = 'none';
-        $('std-file-btn').style.display = 'block';
+        if (btn) btn.style.display = 'block';
     }
 }
 
@@ -1106,6 +1109,7 @@ async function openAddStandard() {
     _uploadedStandardFileName = '';
     _tableHeaders = [];
     _tableRows = [];
+
     const groupOpts = STANDARD_GROUPS.map(g => `<option value="${g}">${g}</option>`).join('');
     openModal('Новый стандарт', `
         <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
@@ -1122,7 +1126,10 @@ async function openAddStandard() {
                 <input type="file" id="std-file-file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" style="display:none;">
                 <button type="button" class="btn btn--ghost" id="std-file-btn" style="width:100%;padding:16px;border-style:dashed;border-radius:14px;">Прикрепить файл</button>
                 <div id="std-file-preview-box" style="display:none;margin-top:12px;padding:12px;background:var(--bg-card);border-radius:12px;align-items:center;gap:12px;">
-                    <div style="flex:1;min-width:0;"><div id="std-file-name" style="font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div><div id="std-file-status" style="font-size:12px;color:var(--text-terc);"></div></div>
+                    <div style="flex:1;min-width:0;">
+                        <div id="std-file-name" style="font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+                        <div id="std-file-status" style="font-size:12px;color:var(--text-terc);"></div>
+                    </div>
                     <button type="button" class="btn btn--ghost" style="font-size:10px;padding:4px;" onclick="_uploadedStandardFileUrl='';_uploadedStandardFileName='';renderFilePreviewUI();">Удал.</button>
                 </div>
             </div>
@@ -1146,225 +1153,250 @@ async function openAddStandard() {
             <div id="table-editor-container"></div>
         </div>
         <div class="form-hint" id="std-error"></div>
-    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="create-std-btn">Создать</button>`);
+    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="std-save">Создать</button>`);
 
-    // Paste table
-    $('paste-table-area').addEventListener('paste', (e) => {
-        setTimeout(() => {
-            const text = e.target.value;
-            if (text.trim()) {
-                const rows = text.trim().split('\n').map(line => line.split('\t'));
-                if (rows.length) {
-                    _tableHeaders = rows[0];
-                    _tableRows = rows.slice(1).map(r => { const newR = []; for(let i=0;i<_tableHeaders.length;i++) newR.push(r[i]||''); return newR; });
-                    $('table-editor-container').innerHTML = renderTableEditor(_tableHeaders, _tableRows);
-                    $('paste-table-area').value = '';
-                    $('paste-table-area').placeholder = 'Таблица вставлена. Отредактируйте ниже.';
-                }
-            }
-        }, 100);
-    });
-
-    // Image upload
     $('std-image-btn').addEventListener('click', () => $('std-image-file').click());
     $('std-image-file').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        if (file.size > 15*1024*1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
-        const btn = $('std-image-btn');
-        btn.textContent = 'Загрузка...';
-        btn.disabled = true;
+        const f = e.target.files[0]; if (!f) return;
+        const btn = $('std-image-btn'); btn.disabled = true; btn.textContent = 'Загрузка...';
         try {
-            const res = await uploadFile(file);
+            const res = await uploadFile(f);
             _uploadedStandardImageUrl = res.url;
             $('std-image-preview').src = getFileUrl(res.url);
             $('std-image-preview-box').style.display = 'block';
             btn.textContent = 'Фото загружено';
-            btn.style.borderColor = 'var(--green)';
-        } catch (err) { toast(err.message, 'error'); btn.textContent = 'Прикрепить фото'; } finally { btn.disabled = false; }
+        } catch (err) { toast(err.message, 'error'); btn.textContent = 'Прикрепить фото'; }
+        finally { btn.disabled = false; }
     });
 
-    // File upload
     $('std-file-btn').addEventListener('click', () => $('std-file-file').click());
     $('std-file-file').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        if (file.size > 15*1024*1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
-        const btn = $('std-file-btn');
-        btn.textContent = 'Загрузка...';
-        btn.disabled = true;
+        const f = e.target.files[0]; if (!f) return;
+        const btn = $('std-file-btn'); btn.disabled = true; btn.textContent = 'Загрузка...';
         try {
-            const res = await uploadFile(file);
+            const res = await uploadFile(f);
             _uploadedStandardFileUrl = res.url;
-            _uploadedStandardFileName = res.name;
+            _uploadedStandardFileName = res.name || f.name;
             renderFilePreviewUI();
-        } catch (err) { toast(err.message, 'error'); } finally { btn.disabled = false; btn.textContent = 'Прикрепить файл'; }
+        } catch (err) { toast(err.message, 'error'); btn.textContent = 'Прикрепить файл'; }
+        finally { btn.disabled = false; }
     });
 
-    $('create-std-btn').addEventListener('click', async () => {
+    $('std-save').addEventListener('click', async () => {
         const errEl = $('std-error'); errEl.textContent = '';
-        const type = $('std-content-type').value;
-        const body = {
-            number: $('std-number').value.trim(), group_name: $('std-group').value,
-            title: $('std-title').value.trim(), image_url: _uploadedStandardImageUrl,
-            file_url: _uploadedStandardFileUrl, file_name: _uploadedStandardFileName,
-            content_type: type, content_data: type === 'table' ? { headers: _tableHeaders, rows: _tableRows } : null
-        };
-        if (type === 'text') {
-            body.body = cleanHTML($('std-body').innerHTML);
-            if (!body.body || body.body === '<br>') { errEl.textContent = 'Заполните текст стандарта'; return; }
-        } else {
-            body.body = 'Таблица';
-            if (!_tableHeaders.length || !_tableRows.length) { errEl.textContent = 'Заполните таблицу'; return; }
-        }
-        if (!body.title) { errEl.textContent = 'Заполните заголовок'; return; }
         try {
-            await api('/api/admin/standard/add', body);
-            toast('Стандарт создан', 'success'); closeModal(); loadStandards();
-        } catch (e) { errEl.textContent = 'Ошибка: '+e.message; }
+            const payload = {
+                number: $('std-number').value.trim(),
+                title: $('std-title').value.trim(),
+                body: $('std-body').innerHTML.trim(),
+                image_url: _uploadedStandardImageUrl,
+                group_name: $('std-group').value,
+                content_type: $('std-content-type').value,
+                content_data: $('std-content-type').value === 'table' ? { headers: _tableHeaders, rows: _tableRows } : null,
+                file_url: _uploadedStandardFileUrl,
+                file_name: _uploadedStandardFileName,
+            };
+            if (!payload.title || !payload.body) { errEl.textContent = 'Заполните заголовок и текст'; return; }
+            await api('/api/admin/standard/add', payload);
+            toast('Стандарт создан', 'success');
+            closeModal();
+            loadStandards();
+        } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
     });
 }
 
-async function openStdEdit(id) {
+async function openStdEdit(sid) {
     if (!hasPerm('standards_edit')) { toast('Нет права', 'error'); return; }
-    let stdData, n;
+    let std;
     try {
-        stdData = await cachedApi('/api/admin/standards', {});
-        n = (stdData.standards||[]).find(x => x.id === id);
-    } catch(e) { return; }
-    if (!n) return;
+        const data = await cachedApi('/api/admin/standards', {});
+        std = (data.standards || []).find(x => x.id === sid);
+        if (!std) { toast('Стандарт не найден', 'error'); return; }
+    } catch (e) { toast('Ошибка: ' + e.message, 'error'); return; }
 
-    _uploadedStandardImageUrl = n.image_url || '';
-    _uploadedStandardFileUrl = n.file_url || '';
-    _uploadedStandardFileName = n.file_name || '';
-    _tableHeaders = [];
-    _tableRows = [];
+    _uploadedStandardImageUrl = std.image_url || '';
+    _uploadedStandardFileUrl = std.file_url || '';
+    _uploadedStandardFileName = std.file_name || '';
+    _tableHeaders = (std.content_data && std.content_data.headers) || [];
+    _tableRows = (std.content_data && std.content_data.rows) || [];
 
-    const isTable = n.content_type === 'table' && n.content_data;
-    if (isTable) {
-        _tableHeaders = n.content_data.headers || [];
-        _tableRows = n.content_data.rows || [];
-    }
+    const groupOpts = STANDARD_GROUPS.map(g => `<option value="${g}" ${g === std.group_name ? 'selected' : ''}>${g}</option>`).join('');
 
-    const groupOpts = STANDARD_GROUPS.map(g => `<option value="${g}" ${n.group_name===g?'selected':''}>${g}</option>`).join('');
     openModal('Редактировать стандарт', `
         <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
             <div class="form-group">
-                <label>Обложка (фото)</label>
-                <input type="file" id="std-image-file-edit" accept="image/*" style="display:none;">
-                <button type="button" class="btn btn--ghost" id="std-image-btn-edit" style="width:100%;padding:16px;border-style:dashed;border-radius:14px;">${n.image_url ? 'Заменить фото' : 'Прикрепить фото'}</button>
-                <div id="std-image-preview-box-edit" style="display:${n.image_url?'block':'none'};margin-top:12px;text-align:center;">
-                    <img id="std-image-preview-edit" src="${getFileUrl(n.image_url)}" style="max-width:100%;max-height:100px;border-radius:12px;object-fit:contain;">
+                <label>Обложка</label>
+                <input type="file" id="std-image-file" accept="image/*" style="display:none;">
+                <button type="button" class="btn btn--ghost" id="std-image-btn" style="width:100%;padding:16px;border-style:dashed;border-radius:14px;">${std.image_url ? 'Заменить фото' : 'Прикрепить фото'}</button>
+                <div id="std-image-preview-box" style="display:${std.image_url ? 'block' : 'none'};margin-top:12px;text-align:center;">
+                    <img id="std-image-preview" src="${getFileUrl(std.image_url)}" style="max-width:100%;max-height:100px;border-radius:12px;">
                 </div>
             </div>
             <div class="form-group">
-                <label>Документ (PDF, Word, Excel)</label>
-                <input type="file" id="std-file-file-edit" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" style="display:none;">
-                <button type="button" class="btn btn--ghost" id="std-file-btn-edit" style="width:100%;padding:16px;border-style:dashed;border-radius:14px;${n.file_url?'display:none;':''}">Прикрепить файл</button>
-                <div id="std-file-preview-box-edit" style="display:${n.file_url?'flex':'none'};margin-top:12px;padding:12px;background:var(--bg-card);border-radius:12px;align-items:center;gap:12px;">
-                    <div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(n.file_name||'Документ')}</div><div style="font-size:12px;color:var(--text-terc);">Готов к сохранению</div></div>
-                    <button type="button" class="btn btn--ghost" style="font-size:10px;padding:4px;" onclick="_uploadedStandardFileUrl='';_uploadedStandardFileName='';$('#std-file-btn-edit').show();$('#std-file-preview-box-edit').hide();">Удал.</button>
+                <label>Документ</label>
+                <input type="file" id="std-file-file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" style="display:none;">
+                <button type="button" class="btn btn--ghost" id="std-file-btn" style="width:100%;padding:16px;border-style:dashed;border-radius:14px;${std.file_url ? 'display:none;' : ''}">Прикрепить файл</button>
+                <div id="std-file-preview-box" style="display:${std.file_url ? 'flex' : 'none'};margin-top:12px;padding:12px;background:var(--bg-card);border-radius:12px;align-items:center;gap:12px;">
+                    <div style="flex:1;min-width:0;">
+                        <div id="std-file-name" style="font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(std.file_name || 'Файл')}</div>
+                        <div id="std-file-status" style="font-size:12px;color:var(--text-terc);">Готов к сохранению</div>
+                    </div>
+                    <button type="button" class="btn btn--ghost" style="font-size:10px;padding:4px;" onclick="_uploadedStandardFileUrl='';_uploadedStandardFileName='';renderFilePreviewUI();">Удал.</button>
                 </div>
             </div>
         </div>
         <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-            <div class="form-group"><label>Номер</label><input class="form-input" id="edit-std-number" value="${esc(n.number||'')}"></div>
-            <div class="form-group"><label>Группа</label><select class="form-input" id="edit-std-group">${groupOpts}</select></div>
+            <div class="form-group"><label>Номер</label><input class="form-input" id="std-number" value="${esc(std.number || '')}"></div>
+            <div class="form-group"><label>Группа</label><select class="form-input" id="std-group">${groupOpts}</select></div>
         </div>
-        <div class="form-group"><label>Заголовок</label><input class="form-input" id="edit-std-title" value="${esc(n.title)}"></div>
-        <div class="form-group"><label>Тип контента</label><select class="form-input" id="edit-std-content-type" onchange="switchContentTypeUI(this.value)"><option value="text" ${!isTable?'selected':''}>Текст</option><option value="table" ${isTable?'selected':''}>Таблица</option></select></div>
-        <div id="std-text-area-edit" style="display:${isTable?'none':'block'};">
-            <div class="form-group"><label>Текст стандарта</label><div contenteditable="true" id="edit-std-body" style="min-height:150px;padding:12px;background:var(--bg);border:1px solid rgba(0,0,0,0.1);border-radius:10px;outline:none;">${!isTable?cleanHTML(n.body||''):'')}</div></div>
+        <div class="form-group"><label>Заголовок</label><input class="form-input" id="std-title" value="${esc(std.title || '')}"></div>
+        <div class="form-group"><label>Тип контента</label><select class="form-input" id="std-content-type" onchange="switchContentTypeUI(this.value)"><option value="text" ${std.content_type !== 'table' ? 'selected' : ''}>Текст</option><option value="table" ${std.content_type === 'table' ? 'selected' : ''}>Таблица</option></select></div>
+        <div id="std-text-area" style="display:${std.content_type === 'table' ? 'none' : 'block'};">
+            <div class="form-group"><label>Текст</label><div contenteditable="true" id="std-body" class="rich-editor">${std.body || ''}</div></div>
         </div>
-        <div id="std-table-area-edit" style="display:${isTable?'block':'none'};margin-bottom:24px;">
+        <div id="std-table-area" style="display:${std.content_type === 'table' ? 'block' : 'none'};margin-bottom:24px;">
             <div class="form-group" style="background:rgba(67,233,123,0.08);padding:16px;border-radius:12px;border:1px dashed var(--green);">
-                <label style="color:#1B7A36;">Вставить таблицу заново из Excel/Word (Ctrl+V)</label>
-                <textarea class="form-textarea" id="paste-table-area-edit" placeholder="Скопируйте таблицу из Excel и вставьте сюда..." style="min-height:80px;font-size:13px;background:#fff;margin-bottom:0;"></textarea>
-                <div class="form-hint" style="color:#1B7A36;opacity:0.8;">Вставка перезапишет текущую таблицу ниже.</div>
+                <label style="color:#1B7A36;">Вставить таблицу из Excel (Ctrl+V)</label>
+                <textarea class="form-textarea" id="paste-table-area" style="min-height:80px;font-size:13px;background:#fff;margin-bottom:0;"></textarea>
             </div>
-            <label style="display:block;font-size:12px;font-weight:700;color:var(--text-terc);margin-bottom:8px;text-transform:uppercase;">Ручная настройка</label>
-            <div id="table-editor-container-edit"></div>
+            <div id="table-editor-container"></div>
         </div>
-    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="save-std-btn">Сохранить</button>`);
+        <div class="form-hint" id="std-error"></div>
+    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="std-save">Сохранить</button>`);
 
-    // Table editor
-    if (isTable) {
-        $('table-editor-container-edit').innerHTML = renderTableEditor(_tableHeaders, _tableRows);
+    if (std.content_type === 'table' && _tableHeaders.length) {
+        $('table-editor-container').innerHTML = renderTableEditor(_tableHeaders, _tableRows);
     }
 
-    // Paste handler
-    $('paste-table-area-edit').addEventListener('paste', (e) => {
-        setTimeout(() => {
-            const text = e.target.value;
-            if (text.trim()) {
-                const rows = text.trim().split('\n').map(line => line.split('\t'));
-                if (rows.length) {
-                    _tableHeaders = rows[0];
-                    _tableRows = rows.slice(1).map(r => { const newR = []; for(let i=0;i<_tableHeaders.length;i++) newR.push(r[i]||''); return newR; });
-                    $('table-editor-container-edit').innerHTML = renderTableEditor(_tableHeaders, _tableRows);
-                }
-            }
-        }, 100);
-    });
-
-    // Image upload
-    $('std-image-btn-edit').addEventListener('click', () => $('std-image-file-edit').click());
-    $('std-image-file-edit').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        if (file.size > 15*1024*1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
-        const btn = $('std-image-btn-edit');
-        btn.textContent = 'Загрузка...';
-        btn.disabled = true;
+    $('std-image-btn').addEventListener('click', () => $('std-image-file').click());
+    $('std-image-file').addEventListener('change', async (e) => {
+        const f = e.target.files[0]; if (!f) return;
+        const btn = $('std-image-btn'); btn.disabled = true; btn.textContent = 'Загрузка...';
         try {
-            const res = await uploadFile(file);
+            const res = await uploadFile(f);
             _uploadedStandardImageUrl = res.url;
-            $('std-image-preview-edit').src = getFileUrl(res.url);
-            $('std-image-preview-box-edit').style.display = 'block';
+            $('std-image-preview').src = getFileUrl(res.url);
+            $('std-image-preview-box').style.display = 'block';
             btn.textContent = 'Фото загружено';
-        } catch (err) { toast(err.message, 'error'); btn.textContent = 'Заменить фото'; } finally { btn.disabled = false; }
+        } catch (err) { toast(err.message, 'error'); btn.textContent = 'Заменить фото'; }
+        finally { btn.disabled = false; }
     });
 
-    // File upload
-    $('std-file-btn-edit').addEventListener('click', () => $('std-file-file-edit').click());
-    $('std-file-file-edit').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        if (file.size > 15*1024*1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
-        const btn = $('std-file-btn-edit');
-        btn.textContent = 'Загрузка...';
-        btn.disabled = true;
+    $('std-file-btn').addEventListener('click', () => $('std-file-file').click());
+    $('std-file-file').addEventListener('change', async (e) => {
+        const f = e.target.files[0]; if (!f) return;
+        const btn = $('std-file-btn'); btn.disabled = true; btn.textContent = 'Загрузка...';
         try {
-            const res = await uploadFile(file);
+            const res = await uploadFile(f);
             _uploadedStandardFileUrl = res.url;
-            _uploadedStandardFileName = res.name;
-            $('std-file-btn-edit').style.display = 'none';
-            $('std-file-preview-box-edit').style.display = 'flex';
-        } catch (err) { toast(err.message, 'error'); } finally { btn.disabled = false; btn.textContent = 'Прикрепить файл'; }
+            _uploadedStandardFileName = res.name || f.name;
+            renderFilePreviewUI();
+        } catch (err) { toast(err.message, 'error'); btn.textContent = 'Прикрепить файл'; }
+        finally { btn.disabled = false; }
     });
 
-    $('save-std-btn').addEventListener('click', async () => {
-        const type = $('edit-std-content-type').value;
-        const body = {
-            id, number: $('edit-std-number').value.trim(), group_name: $('edit-std-group').value,
-            title: $('edit-std-title').value.trim(), image_url: _uploadedStandardImageUrl,
-            file_url: _uploadedStandardFileUrl, file_name: _uploadedStandardFileName,
-            content_type: type, content_data: type === 'table' ? { headers: _tableHeaders, rows: _tableRows } : null
-        };
-        if (type === 'text') { body.body = cleanHTML($('edit-std-body').innerHTML); } else { body.body = 'Таблица'; }
+    $('std-save').addEventListener('click', async () => {
+        const errEl = $('std-error'); errEl.textContent = '';
         try {
-            await api('/api/admin/standard/update', body);
-            toast('Сохранено', 'success'); closeModal(); loadStandards();
-        } catch (e) { toast('Ошибка: '+e.message, 'error'); }
+            const payload = {
+                id: sid,
+                number: $('std-number').value.trim(),
+                title: $('std-title').value.trim(),
+                body: $('std-body').innerHTML.trim(),
+                image_url: _uploadedStandardImageUrl,
+                group_name: $('std-group').value,
+                content_type: $('std-content-type').value,
+                content_data: $('std-content-type').value === 'table' ? { headers: _tableHeaders, rows: _tableRows } : null,
+                file_url: _uploadedStandardFileUrl,
+                file_name: _uploadedStandardFileName,
+            };
+            if (!payload.title || !payload.body) { errEl.textContent = 'Заполните заголовок и текст'; return; }
+            await api('/api/admin/standard/update', payload);
+            toast('Сохранено', 'success');
+            closeModal();
+            loadStandards();
+        } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
     });
 }
 
-async function approveStandard(id) { try { await api('/api/admin/standard/approve', { id }); toast('Одобрено', 'success'); loadStandards(); } catch(e) { toast('Ошибка: '+e.message, 'error'); } }
-async function rejectStandard(id) { try { await api('/api/admin/standard/reject', { id }); toast('Отклонено', 'success'); loadStandards(); } catch(e) { toast('Ошибка: '+e.message, 'error'); } }
-async function deleteStandard(id) { if(!confirm('Удалить?')) return; try { await api('/api/admin/standard/delete', { id }); toast('Удалено', 'success'); loadStandards(); } catch(e) { toast('Ошибка: '+e.message, 'error'); } }
+async function approveStandard(id) { try { await api('/api/admin/standard/approve', { id }); toast('Одобрено', 'success'); loadStandards(); } catch (e) { toast('Ошибка: ' + e.message, 'error'); } }
+async function rejectStandard(id) { try { await api('/api/admin/standard/reject', { id }); toast('Отклонено', 'success'); loadStandards(); } catch (e) { toast('Ошибка: ' + e.message, 'error'); } }
+async function deleteStandard(id) { if (!confirm('Удалить стандарт?')) return; try { await api('/api/admin/standard/delete', { id }); toast('Удалено', 'success'); loadStandards(); } catch (e) { toast('Ошибка: ' + e.message, 'error'); } }
 
-// ═══ FAQ ═══
-async function loadFaq() {
+// ═══════════════════════════════════════════
+// CERTIFICATION
+// ═══════════════════════════════════════════
+async function loadCertification() {
+    const canEdit = hasPerm('certification_edit');
+    $('page-content').innerHTML = `
+        <div class="neu-card">
+            <div class="neu-card__header">
+                <div class="neu-card__header-title">Вопросы сертификации</div>
+                ${canEdit ? '<button class="btn btn--primary" onclick="openAddCertQuestion()">+ Добавить</button>' : ''}
+            </div>
+            <div id="cert-list"><div class="loading">Загрузка...</div></div>
+        </div>`;
+    try {
+        const data = await cachedApi('/api/admin/certification', {});
+        const questions = data.questions || [];
+        $('cert-list').innerHTML = questions.map(q => `
+            <div class="neu-card" style="margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;gap:12px;">
+                    <div style="flex:1;">
+                        <div style="font-weight:700;margin-bottom:8px;">${esc(q.question)}</div>
+                        <div style="font-size:13px;color:var(--text-sec);">
+                            A) ${esc(q.option_a)}<br>
+                            B) ${esc(q.option_b)}<br>
+                            C) ${esc(q.option_c)}<br>
+                            D) ${esc(q.option_d)}
+                        </div>
+                        <div style="margin-top:8px;"><span class="tag tag--green">Правильный: ${esc((q.correct_option || '').toUpperCase())}</span></div>
+                    </div>
+                    ${canEdit ? `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--pink);" onclick="deleteCertQuestion(${q.id})">🗑️</button>` : ''}
+                </div>
+            </div>
+        `).join('') || '<div class="empty">Нет вопросов</div>';
+    } catch (e) { $('cert-list').innerHTML = `<div class="empty">Ошибка: ${esc(e.message)}</div>`; }
+}
+
+function openAddCertQuestion() {
+    openModal('Новый вопрос', `
+        <div class="form-group"><label>Вопрос</label><textarea class="form-textarea" id="cq-question"></textarea></div>
+        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group"><label>A</label><input class="form-input" id="cq-a"></div>
+            <div class="form-group"><label>B</label><input class="form-input" id="cq-b"></div>
+            <div class="form-group"><label>C</label><input class="form-input" id="cq-c"></div>
+            <div class="form-group"><label>D</label><input class="form-input" id="cq-d"></div>
+        </div>
+        <div class="form-group"><label>Правильный ответ</label><select class="form-input" id="cq-correct"><option value="a">A</option><option value="b">B</option><option value="c">C</option><option value="d">D</option></select></div>
+        <div class="form-hint" id="cq-error"></div>
+    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="cq-save">Сохранить</button>`);
+    $('cq-save').addEventListener('click', async () => {
+        const errEl = $('cq-error'); errEl.textContent = '';
+        try {
+            await api('/api/admin/certification/add', {
+                question: $('cq-question').value.trim(),
+                option_a: $('cq-a').value.trim(),
+                option_b: $('cq-b').value.trim(),
+                option_c: $('cq-c').value.trim(),
+                option_d: $('cq-d').value.trim(),
+                correct_option: $('cq-correct').value,
+            });
+            toast('Добавлено', 'success'); closeModal(); loadCertification();
+        } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+    });
+}
+
+async function deleteCertQuestion(id) {
+    if (!confirm('Удалить вопрос?')) return;
+    try { await api('/api/admin/certification/delete', { id }); toast('Удалено', 'success'); loadCertification(); }
+    catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+}
+
+// ═══════════════════════════════════════════
+// FAQ
+// ═══════════════════════════════════════════
+async function loadFAQ() {
     const canEdit = hasPerm('faq_edit');
     $('page-content').innerHTML = `
         <div class="neu-card">
@@ -1372,331 +1404,94 @@ async function loadFaq() {
                 <div class="neu-card__header-title">FAQ</div>
                 ${canEdit ? '<button class="btn btn--primary" onclick="openAddFaq()">+ Добавить</button>' : ''}
             </div>
-            <div class="table-wrap"><table class="t"><thead><tr><th>Вопрос</th><th>Ответ</th><th>Действия</th></tr></thead>
-            <tbody id="faq-table"></tbody></table></div>
+            <div id="faq-list"><div class="loading">Загрузка...</div></div>
         </div>`;
     try {
         const data = await cachedApi('/api/admin/faq', {});
-        $('faq-table').innerHTML = (data.faq||[]).map(f => `
-            <tr><td style="font-weight:600;">${esc(f.question)}</td><td>${esc(f.answer)}</td>
-            <td>${canEdit ? `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="editFaq(${f.id},'${esc(f.question)}','${esc(f.answer)}')">✏️</button>
-                <button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--pink);" onclick="deleteFaq(${f.id})">🗑️</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="3" style="text-align:center;padding:40px;">Пусто</td></tr>';
-    } catch(e) {}
+        const faq = data.faq || [];
+        $('faq-list').innerHTML = faq.map(f => `
+            <div class="neu-card" style="margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;gap:12px;">
+                    <div style="flex:1;">
+                        <div style="font-weight:700;margin-bottom:6px;">${esc(f.question)}</div>
+                        <div style="font-size:13px;color:var(--text-sec);white-space:pre-wrap;">${esc(f.answer)}</div>
+                    </div>
+                    ${canEdit ? `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--pink);" onclick="deleteFaq(${f.id})">🗑️</button>` : ''}
+                </div>
+            </div>
+        `).join('') || '<div class="empty">Нет записей</div>';
+    } catch (e) { $('faq-list').innerHTML = `<div class="empty">Ошибка: ${esc(e.message)}</div>`; }
 }
-async function openAddFaq() {
-    openModal('Добавить FAQ', `
-        <div class="form-group"><label>Вопрос</label><input class="form-input" id="faq-question" maxlength="500"></div>
-        <div class="form-group"><label>Ответ</label><textarea class="form-textarea" id="faq-answer" rows="4" maxlength="2000"></textarea></div>
+
+function openAddFaq() {
+    openModal('Новый FAQ', `
+        <div class="form-group"><label>Вопрос</label><input class="form-input" id="faq-q"></div>
+        <div class="form-group"><label>Ответ</label><textarea class="form-textarea" id="faq-a" rows="5"></textarea></div>
         <div class="form-hint" id="faq-error"></div>
-    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="faq-save">Добавить</button>`);
+    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="faq-save">Сохранить</button>`);
     $('faq-save').addEventListener('click', async () => {
         const errEl = $('faq-error'); errEl.textContent = '';
-        const q = $('faq-question').value.trim(), a = $('faq-answer').value.trim();
-        if (!q || !a) { errEl.textContent = 'Заполните все поля'; return; }
-        try { await api('/api/admin/faq/add', { question:q, answer:a }); toast('Добавлено', 'success'); closeModal(); loadFaq(); }
-        catch(e) { errEl.textContent = 'Ошибка: '+e.message; }
-    });
-}
-async function editFaq(id, q, a) {
-    openModal('Редактировать FAQ', `
-        <div class="form-group"><label>Вопрос</label><input class="form-input" id="ed-faq-q" value="${esc(q)}" maxlength="500"></div>
-        <div class="form-group"><label>Ответ</label><textarea class="form-textarea" id="ed-faq-a" rows="4" maxlength="2000">${esc(a)}</textarea></div>
-        <div class="form-hint" id="ed-faq-error"></div>
-    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="ed-faq-save">Сохранить</button>`);
-    $('ed-faq-save').addEventListener('click', async () => {
-        const errEl = $('ed-faq-error'); errEl.textContent = '';
-        const q = $('ed-faq-q').value.trim(), a = $('ed-faq-a').value.trim();
-        if (!q || !a) { errEl.textContent = 'Заполните все поля'; return; }
-        try { await api('/api/admin/faq/update', { id, field:'question', value:q }); await api('/api/admin/faq/update', { id, field:'answer', value:a }); toast('Сохранено', 'success'); closeModal(); loadFaq(); }
-        catch(e) { errEl.textContent = 'Ошибка: '+e.message; }
-    });
-}
-async function deleteFaq(id) { if(!confirm('Удалить?')) return; try { await api('/api/admin/faq/delete', { id }); toast('Удалено', 'success'); loadFaq(); } catch(e) { toast('Ошибка: '+e.message, 'error'); } }
-
-// ═══ RESTAURANTS ═══
-async function loadRestaurants() {
-    const canCreate = hasPerm('restaurant_create');
-    const canEdit = hasPerm('restaurant_edit');
-    const canTU = hasPerm('restaurant_tu');
-    $('page-content').innerHTML = `
-        <div class="neu-card">
-            <div class="neu-card__header">
-                <div class="neu-card__header-title">Рестораны</div>
-                ${canCreate ? '<button class="btn btn--primary" onclick="openAddRestaurant()">+ Добавить</button>' : ''}
-            </div>
-            <div class="table-wrap"><table class="t"><thead><tr><th>Название</th><th>Адрес</th><th>ТУ</th><th>Статус</th><th>Действия</th></tr></thead><tbody id="rest-table"></tbody></table></div>
-        </div>`;
-    try {
-        const data = await cachedApi('/api/admin/restaurants', {});
-        const restaurants = data.restaurants || [];
-        const tuCandidates = data.tu_candidates || [];
-        $('rest-table').innerHTML = restaurants.map(r => {
-            const st = r.force_status==='open'?'tag--green':'tag--amber';
-            const tx = r.force_status==='open'?'Открыт':'Закрыт';
-            let acts = '';
-            if (canEdit) acts += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="editRestaurant('${esc(r.key)}')">✏️</button>`;
-            if (canTU) acts += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="assignTU('${esc(r.key)}',${JSON.stringify(tuCandidates).replace(/"/g,'&quot;')})">👤</button>`;
-            return `<tr><td style="font-weight:600;">${esc(r.name)}</td><td>${esc(r.address)}</td><td>${esc(r.territory_manager_name||'—')}</td><td><span class="tag ${st}">${tx}</span></td><td>${acts}</td></tr>`;
-        }).join('') || '<tr><td colspan="5" style="text-align:center;padding:40px;">Нет ресторанов</td></tr>';
-    } catch(e) {}
-}
-async function openAddRestaurant() {
-    openModal('Добавить ресторан', `
-        <div class="form-group"><label>Ключ (лат, без пробелов)</label><input class="form-input" id="rest-key" maxlength="50"></div>
-        <div class="form-group"><label>Название</label><input class="form-input" id="rest-name" maxlength="100"></div>
-        <div class="form-group"><label>Адрес</label><input class="form-input" id="rest-address"></div>
-        <div class="form-group"><label>Телефон</label><input class="form-input" id="rest-phone"></div>
-        <div class="form-hint" id="rest-error"></div>
-    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="rest-save">Создать</button>`);
-    $('rest-key').addEventListener('input', e => { e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''); });
-    $('rest-save').addEventListener('click', async () => {
-        const errEl = $('rest-error'); errEl.textContent = '';
-        const key = $('rest-key').value.trim().toLowerCase().replace(/\s/g,'_');
-        const name = $('rest-name').value.trim();
-        if (!key || !name) { errEl.textContent = 'Заполните ключ и название'; return; }
-        try { await api('/api/admin/restaurant/add', { key, name, address:$('rest-address').value, phone:$('rest-phone').value }); toast('Создан', 'success'); closeModal(); loadRestaurants(); }
-        catch(e) { errEl.textContent = 'Ошибка: '+e.message; }
-    });
-}
-async function editRestaurant(key) {
-    let r;
-    try { const data = await api('/api/admin/restaurants', {}); r = (data.restaurants||[]).find(x=>x.key===key); } catch(e) { return; }
-    if (!r) return;
-    openModal('Редактировать: '+r.name, `
-        <div class="form-group"><label>Название</label><input class="form-input" id="ed-rest-name" value="${esc(r.name)}"></div>
-        <div class="form-group"><label>Адрес</label><input class="form-input" id="ed-rest-address" value="${esc(r.address||'')}"></div>
-        <div class="form-group"><label>Телефон</label><input class="form-input" id="ed-rest-phone" value="${esc(r.phone||'')}"></div>
-        <div class="form-hint" id="ed-rest-error"></div>
-    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="ed-rest-save">Сохранить</button>`);
-    $('ed-rest-save').addEventListener('click', async () => {
-        const errEl = $('ed-rest-error'); errEl.textContent = '';
-        try { await api('/api/admin/restaurant/update', { key, updates:{ name:$('ed-rest-name').value.trim(), address:$('ed-rest-address').value.trim(), phone:$('ed-rest-phone').value.trim() }}); toast('Сохранено', 'success'); closeModal(); loadRestaurants(); }
-        catch(e) { errEl.textContent = 'Ошибка: '+e.message; }
-    });
-}
-async function assignTU(key, tuCandidates) {
-    openModal('Назначить ТУ', `
-        <div class="form-group"><label>Территориальный менеджер</label><select class="form-input" id="tu-select"><option value="">— Не назначен —</option>${(tuCandidates||[]).map(t=>`<option value="${t.user_id}">${esc(t.full_name)}</option>`).join('')}</select></div>
-        <div class="form-hint" id="tu-error"></div>
-    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="tu-save">Назначить</button>`);
-    $('tu-save').addEventListener('click', async () => {
-        const errEl = $('tu-error'); errEl.textContent = '';
-        try { await api('/api/admin/restaurant/tu', { key, territory_manager_id: $('tu-select').value || null }); toast('ТУ назначен', 'success'); closeModal(); loadRestaurants(); }
-        catch(e) { errEl.textContent = 'Ошибка: '+e.message; }
+        try {
+            await api('/api/admin/faq/add', { question: $('faq-q').value.trim(), answer: $('faq-a').value.trim() });
+            toast('Добавлено', 'success'); closeModal(); loadFAQ();
+        } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
     });
 }
 
-// ═══ CERTIFICATION ═══
-async function loadCertification() {
-    const canEdit = hasPerm('certification_edit');
-    $('page-content').innerHTML = `
-        <div class="neu-card">
-            <div class="neu-card__header"><div class="neu-card__header-title">Сертификация</div>${canEdit ? '<button class="btn btn--primary" onclick="openAddCert()">+ Добавить вопрос</button>' : ''}</div>
-            <div class="table-wrap"><table class="t"><thead><tr><th>Вопрос</th><th>Правильный ответ</th><th>Действия</th></tr></thead><tbody id="cert-table"></tbody></table></div>
-        </div>`;
-    try {
-        const data = await cachedApi('/api/admin/certification', {});
-        const questions = data.questions || [];
-        const correctLabels = {a:'A',b:'B',c:'C',d:'D'};
-        $('cert-table').innerHTML = questions.map(q => {
-            let acts = '';
-            if (canEdit) acts += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--pink);" onclick="deleteCert(${q.id})">🗑️</button>`;
-            return `<tr><td>${esc(q.question)}</td><td><span class="tag tag--green">${correctLabels[q.correct_option?.toLowerCase()]||'—'}</span></td><td>${acts}</td></tr>`;
-        }).join('') || '<tr><td colspan="3" style="text-align:center;padding:40px;">Пусто</td></tr>';
-    } catch(e) {}
+async function deleteFaq(id) {
+    if (!confirm('Удалить?')) return;
+    try { await api('/api/admin/faq/delete', { id }); toast('Удалено', 'success'); loadFAQ(); }
+    catch (e) { toast('Ошибка: ' + e.message, 'error'); }
 }
-async function openAddCert() {
-    openModal('Добавить вопрос', `
-        <div class="form-group"><label>Вопрос</label><textarea class="form-textarea" id="cert-question" rows="3"></textarea></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-            <div class="form-group"><label>Вариант A</label><input class="form-input" id="cert-a"></div>
-            <div class="form-group"><label>Вариант B</label><input class="form-input" id="cert-b"></div>
-            <div class="form-group"><label>Вариант C</label><input class="form-input" id="cert-c"></div>
-            <div class="form-group"><label>Вариант D</label><input class="form-input" id="cert-d"></div>
-        </div>
-        <div class="form-group"><label>Правильный</label><select class="form-input" id="cert-correct"><option value="a">A</option><option value="b">B</option><option value="c">C</option><option value="d">D</option></select></div>
-        <div class="form-hint" id="cert-error"></div>
-    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="cert-save">Добавить</button>`);
-    $('cert-save').addEventListener('click', async () => {
-        const errEl = $('cert-error'); errEl.textContent = '';
-        const q=$('cert-question').value.trim(), a=$('cert-a').value.trim(), b=$('cert-b').value.trim(), c=$('cert-c').value.trim(), d=$('cert-d').value.trim();
-        if (!q||!a||!b||!c||!d) { errEl.textContent = 'Заполните все поля'; return; }
-        try { await api('/api/admin/certification/add', { question:q, option_a:a, option_b:b, option_c:c, option_d:d, correct_option:$('cert-correct').value }); toast('Добавлено', 'success'); closeModal(); loadCertification(); }
-        catch(e) { errEl.textContent = 'Ошибка: '+e.message; }
-    });
-}
-async function deleteCert(id) { if(!confirm('Удалить?')) return; try { await api('/api/admin/certification/delete', { id }); toast('Удалено', 'success'); loadCertification(); } catch(e) { toast('Ошибка: '+e.message, 'error'); } }
 
-// ═══ POSITIONS ═══
+// ═══════════════════════════════════════════
+// POSITIONS
+// ═══════════════════════════════════════════
 async function loadPositions() {
     const canEdit = hasPerm('positions_edit');
     $('page-content').innerHTML = `
         <div class="neu-card">
-            <div class="neu-card__header"><div class="neu-card__header-title">Должности</div>${canEdit ? '<button class="btn btn--primary" onclick="openAddPosition()">+ Добавить</button>' : ''}</div>
-            <div class="table-wrap"><table class="t"><thead><tr><th>Название</th><th>Ставка</th><th>Статус</th><th>Действия</th></tr></thead><tbody id="positions-table"></tbody></table></div>
+            <div class="neu-card__header">
+                <div class="neu-card__header-title">Должности</div>
+                ${canEdit ? '<button class="btn btn--primary" onclick="openAddPosition()">+ Добавить</button>' : ''}
+            </div>
+            <div id="pos-list"><div class="loading">Загрузка...</div></div>
         </div>`;
     try {
         const data = await cachedApi('/api/admin/positions', {});
-        $('positions-table').innerHTML = (data.positions||[]).map(p => {
-            let acts = '';
-            if (canEdit && !p.is_archived) acts += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--pink);" onclick="archivePosition(${p.id})">🗑️</button>`;
-            return `<tr><td style="font-weight:600;">${esc(p.name)}</td><td>${p.rate!=null?'₽'+p.rate:'—'}</td><td><span class="tag ${p.is_archived?'tag--amber':'tag--green'}">${p.is_archived?'Архив':'Активна'}</span></td><td>${acts}</td></tr>`;
-        }).join('') || '<tr><td colspan="4" style="text-align:center;padding:40px;">Пусто</td></tr>';
-    } catch(e) {}
+        const positions = data.positions || [];
+        $('pos-list').innerHTML = `<div class="table-wrap"><table><thead><tr><th>Должность</th><th>Статус</th><th>Действия</th></tr></thead><tbody>
+        ${positions.map(p => `<tr>
+            <td>${esc(p.name)}</td>
+            <td>${p.is_archived ? '<span class="tag tag--amber">В архиве</span>' : '<span class="tag tag--green">Активна</span>'}</td>
+            <td>${canEdit && !p.is_archived ? `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="archivePosition(${p.id})">📦</button>` : ''}</td>
+        </tr>`).join('')}
+        </tbody></table></div>`;
+    } catch (e) { $('pos-list').innerHTML = `<div class="empty">Ошибка: ${esc(e.message)}</div>`; }
 }
-async function openAddPosition() {
-    openModal('Добавить должность', `
-        <div class="form-group"><label>Название</label><input class="form-input" id="pos-name" maxlength="100"></div>
+
+function openAddPosition() {
+    openModal('Новая должность', `
+        <div class="form-group"><label>Название</label><input class="form-input" id="pos-name"></div>
         <div class="form-hint" id="pos-error"></div>
-    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="pos-save">Добавить</button>`);
+    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="pos-save">Сохранить</button>`);
     $('pos-save').addEventListener('click', async () => {
         const errEl = $('pos-error'); errEl.textContent = '';
-        const name = $('pos-name').value.trim();
-        if (!name) { errEl.textContent = 'Введите название'; return; }
-        try { await api('/api/admin/position/add', { name }); toast('Добавлено', 'success'); closeModal(); loadPositions(); }
-        catch(e) { errEl.textContent = 'Ошибка: '+e.message; }
-    });
-}
-async function archivePosition(id) { if(!confirm('Архивировать?')) return; try { await api('/api/admin/position/archive', { id }); toast('Архив', 'success'); loadPositions(); } catch(e) { toast('Ошибка: '+e.message, 'error'); } }
-
-// ═══ QUESTIONS ═══
-async function loadQuestions() {
-    $('page-content').innerHTML = `
-        <div class="neu-card">
-            <div class="neu-card__header"><div class="neu-card__header-title">Вопросы от сотрудников</div></div>
-            <div class="table-wrap"><table class="t"><thead><tr><th>От</th><th>Вопрос</th><th>Дата</th><th>Статус</th><th>Действия</th></tr></thead><tbody id="questions-table"></tbody></table></div>
-        </div>`;
-    try {
-        const data = await cachedApi('/api/admin/questions', {});
-        const questions = data.questions || [];
-        const canReply = hasPerm('questions_reply');
-        $('questions-table').innerHTML = questions.map(q => {
-            let acts = '';
-            if (!q.replied && canReply) acts += `<button class="btn btn--primary" style="padding:4px 8px;font-size:11px;" onclick="replyQuestion(${q.id})">Ответить</button>`;
-            return `<tr><td>${esc(q.full_name||'—')}</td><td>${esc(q.text||'—')}</td><td style="color:var(--text-terc);">${fmtDate(q.created_at)}</td><td><span class="tag ${q.replied?'tag--green':'tag--amber'}">${q.replied?'Ответен':'Ожидает'}</span></td><td>${acts}</td></tr>`;
-        }).join('') || '<tr><td colspan="5" style="text-align:center;padding:40px;">Пусто</td></tr>';
-    } catch(e) {}
-}
-async function replyQuestion(qid) {
-    openModal('Ответить на вопрос', `
-        <div class="form-group"><label>Ваш ответ</label><textarea class="form-textarea" id="reply-text" rows="4" maxlength="2000"></textarea></div>
-        <div class="form-hint" id="reply-error"></div>
-    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="reply-save">Отправить</button>`);
-    $('reply-save').addEventListener('click', async () => {
-        const errEl = $('reply-error'); errEl.textContent = '';
-        const text = $('reply-text').value.trim();
-        if (!text) { errEl.textContent = 'Введите ответ'; return; }
-        try { await api('/api/admin/question/reply', { id:qid, text }); toast('Ответ отправлен', 'success'); closeModal(); loadQuestions(); }
-        catch(e) { errEl.textContent = 'Ошибка: '+e.message; }
-    });
-}
-
-// ═══ ADMINS ═══
-async function loadAdmins() {
-    if (!isSuperAdmin()) { $('page-content').innerHTML = '<div class="empty">Только для супер-админа</div>'; return; }
-    $('page-content').innerHTML = `
-        <div class="neu-card">
-            <div class="neu-card__header"><div class="neu-card__header-title">Администраторы</div></div>
-            <div class="table-wrap"><table class="t"><thead><tr><th>Логин</th><th>Имя</th><th>Роль</th><th>Действия</th></tr></thead><tbody id="admins-table"></tbody></table></div>
-        </div>`;
-    try {
-        const data = await cachedApi('/api/admin/admins', {});
-        const admins = data.admins || [];
-        $('admins-table').innerHTML = admins.map(a => {
-            const role = a.is_super_admin ? 'tag--purple' : 'tag--blue';
-            const tx = a.is_super_admin ? 'Супер-админ' : 'Админ';
-            let acts = '';
-            if (isSuperAdmin() && !a.is_super_admin) acts += `<button class="btn btn--primary" style="padding:4px 8px;font-size:11px;" onclick="openSetPerms(${a.user_id})">🔑 Права</button>`;
-            return `<tr><td style="font-weight:600;">${esc(a.login)}</td><td>${esc(a.full_name)}</td><td><span class="tag ${role}">${tx}</span></td><td>${acts}</td></tr>`;
-        }).join('') || '<tr><td colspan="4" style="text-align:center;padding:40px;">Пусто</td></tr>';
-    } catch(e) {}
-}
-
-// ═══════════════════════════════════════════
-// TASK 1 (продолжение): ПРАВА АДМИНОВ
-// ═══════════════════════════════════════════
-async function openSetPerms(uid) {
-    let login, existingPerms = {};
-    try {
-        const data = await api('/api/admin/admins', {});
-        const a = (data.admins||[]).find(x => x.user_id === uid);
-        if (!a) { toast('Не найден', 'error'); return; }
-        login = a.login; existingPerms = a.permissions || {};
-    } catch(e) { return; }
-
-    const permsList = [
-        { key:'users_create', label:'Добавлять сотрудников' },
-        { key:'users_edit', label:'Редактировать сотрудников' },
-        { key:'users_fire', label:'Увольнять сотрудников' },
-        { key:'citizenships_edit', label:'Управлять гражданствами' },
-        { key:'medbook_edit', label:'Заполнять медкнижки' },
-        { key:'restaurant_create', label:'Добавлять рестораны' },
-        { key:'restaurant_edit', label:'Редактировать рестораны' },
-        { key:'restaurant_tu', label:'Менять ТУ у ресторанов' },
-        { key:'news_write', label:'Писать новости' },
-        { key:'news_edit', label:'Редактировать новости' },
-        { key:'news_suggest', label:'Предлагать новости' },
-        { key:'faq_edit', label:'Редактировать FAQ' },
-        { key:'positions_edit', label:'Управлять должностями' },
-        { key:'questions_reply', label:'Отвечать на вопросы' },
-        { key:'certification_edit', label:'Управлять сертификацией' },
-    ];
-
-    openModal(`Права: ${login}`, `
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;" id="perm-grid">
-            ${permsList.map(p => `<label style="display:flex;align-items:center;gap:8px;padding:8px;background:var(--bg-card);border-radius:8px;cursor:pointer;"><input type="checkbox" value="${p.key}" ${existingPerms[p.key]?'checked':''}> ${p.label}</label>`).join('')}
-        </div>
-        <div class="form-hint" id="perms-error"></div>
-    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="perms-save">Сохранить</button>`);
-
-    $('perms-save').addEventListener('click', async () => {
-        const errEl = $('perms-error'); errEl.textContent = '';
-        const permissions = {};
-        $('perm-grid').querySelectorAll('input:checked').forEach(cb => { permissions[cb.value] = true; });
         try {
-            await api('/api/admin/set-permissions', { user_id: uid, permissions });
-            toast('Права обновлены', 'success'); closeModal(); loadAdmins();
-        } catch(e) { errEl.textContent = 'Ошибка: '+e.message; }
+            await api('/api/admin/position/add', { name: $('pos-name').value.trim() });
+            toast('Добавлено', 'success'); closeModal(); loadPositions();
+        } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
     });
 }
 
-// ═══ REPORTS ═══
-async function loadReports() {
-    $('page-content').innerHTML = `
-        <div class="neu-card">
-            <div class="neu-card__header"><div class="neu-card__header-title">Отчёты по персоналу</div></div>
-            <div class="table-wrap"><table class="t"><thead><tr><th>Всего</th><th>Активных</th><th>Уволено</th><th>Новые (7д)</th><th>Вопросы</th><th>Новости на модерации</th><th>Стандарты на модерации</th></tr></thead>
-            <tbody id="reports-body"><tr><td colspan="7" style="text-align:center;padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody></table></div>
-        </div>`;
-    try {
-        const data = await cachedApi('/api/admin/reports', {});
-        const r = data.report || {};
-        $('reports-body').innerHTML = `<tr>
-            <td style="font-weight:700;font-size:18px;">${r.total||0}</td>
-            <td style="font-weight:700;color:var(--green);font-size:18px;">${r.active||0}</td>
-            <td style="font-weight:700;color:var(--amber);font-size:18px;">${r.fired||0}</td>
-            <td>${r.new7||0}</td><td>${r.questions_open||0}</td><td>${r.news_pending||0}</td><td>${r.standards_pending||0}</td>
-        </tr>`;
-    } catch(e) { $('reports-body').innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`; }
-}
-
-// ═══ AUDIT ═══
-async function loadAudit() {
-    $('page-content').innerHTML = `
-        <div class="neu-card">
-            <div class="neu-card__header"><div class="neu-card__header-title">История действий</div></div>
-            <div class="table-wrap"><table class="t"><thead><tr><th>Дата</th><th>Админ</th><th>Действие</th><th>Объект</th></tr></thead><tbody id="audit-table"></tbody></table></div>
-        </div>`;
-    try {
-        const data = await cachedApi('/api/admin/audit', {});
-        const logs = (data.audit || []).slice(0, 100);
-        $('audit-table').innerHTML = logs.map(a => `
-            <tr><td style="color:var(--text-terc);font-size:12px;">${fmtDate(a.created_at, true)}</td><td>${esc(a.admin_full_name||'—')}</td><td><span class="tag tag--purple">${esc(a.action||'—')}</span></td><td style="color:var(--text-sec);">${esc(a.details||'—')}</td></tr>`).join('') || '<tr><td colspan="4" style="text-align:center;padding:40px;">Пусто</td></tr>';
-    } catch(e) { $('audit-table').innerHTML = `<tr><td colspan="4" style="text-align:center;padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`; }
+async function archivePosition(id) {
+    if (!confirm('В архив?')) return;
+    try { await api('/api/admin/position/archive', { id }); toast('В архиве', 'success'); loadPositions(); }
+    catch (e) { toast('Ошибка: ' + e.message, 'error'); }
 }
 
 // ═══════════════════════════════════════════
-// TASK 1 (продолжение): ГРАЖДАНСТВА
+// CITIZENSHIPS
 // ═══════════════════════════════════════════
 async function loadCitizenships() {
     const canEdit = hasPerm('citizenships_edit');
@@ -1706,131 +1501,333 @@ async function loadCitizenships() {
                 <div class="neu-card__header-title">Гражданства</div>
                 ${canEdit ? '<button class="btn btn--primary" onclick="openAddCitizenship()">+ Добавить</button>' : ''}
             </div>
-            <div class="table-wrap"><table class="t"><thead><tr><th>Название</th><th>Действия</th></tr></thead><tbody id="cits-table"></tbody></table></div>
+            <div id="cit-list"><div class="loading">Загрузка...</div></div>
         </div>`;
     try {
         const data = await cachedApi('/api/admin/citizenships', {});
-        $('cits-table').innerHTML = (data.citizenships||[]).map(c => {
-            let acts = '';
-            if (canEdit) acts += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--pink);" onclick="deleteCitizenship(${c.id})">🗑️</button>`;
-            return `<tr><td style="font-weight:600;">${esc(c.name)}</td><td>${acts}</td></tr>`;
-        }).join('') || '<tr><td colspan="2" style="text-align:center;padding:40px;">Пусто</td></tr>';
-    } catch(e) {}
+        const list = data.citizenships || [];
+        $('cit-list').innerHTML = `<div class="table-wrap"><table><thead><tr><th>Название</th><th>Действия</th></tr></thead><tbody>
+        ${list.map(c => `<tr>
+            <td>${esc(c.name)}</td>
+            <td>${canEdit ? `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--pink);" onclick="deleteCitizenship(${c.id})">🗑️</button>` : ''}</td>
+        </tr>`).join('')}
+        </tbody></table></div>`;
+    } catch (e) { $('cit-list').innerHTML = `<div class="empty">Ошибка: ${esc(e.message)}</div>`; }
 }
-async function openAddCitizenship() {
-    openModal('Добавить гражданство', `
-        <div class="form-group"><label>Название</label><input class="form-input" id="cit-name" maxlength="50"></div>
+
+function openAddCitizenship() {
+    openModal('Новое гражданство', `
+        <div class="form-group"><label>Название</label><input class="form-input" id="cit-name"></div>
         <div class="form-hint" id="cit-error"></div>
-    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="cit-save">Добавить</button>`);
+    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="cit-save">Сохранить</button>`);
     $('cit-save').addEventListener('click', async () => {
         const errEl = $('cit-error'); errEl.textContent = '';
-        const name = $('cit-name').value.trim();
-        if (!name) { errEl.textContent = 'Введите название'; return; }
-        try { await api('/api/admin/citizenship/add', { name }); toast('Добавлено', 'success'); closeModal(); loadCitizenships(); }
-        catch(e) { errEl.textContent = 'Ошибка: '+e.message; }
+        try {
+            await api('/api/admin/citizenship/add', { name: $('cit-name').value.trim() });
+            toast('Добавлено', 'success'); closeModal(); loadCitizenships();
+        } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
     });
 }
-async function deleteCitizenship(id) { if(!confirm('Удалить?')) return; try { await api('/api/admin/citizenship/delete', { id }); toast('Удалено', 'success'); loadCitizenships(); } catch(e) { toast('Ошибка: '+e.message, 'error'); } }
 
-// ═══ SALES ═══
-async function loadSales() {
-    $('page-content').innerHTML = `
-        <div class="neu-card">
-            <div class="neu-card__header"><div class="neu-card__header-title">Товарооборот</div></div>
-            <div class="empty" style="padding:60px;">Функционал в разработке</div>
-        </div>`;
+async function deleteCitizenship(id) {
+    if (!confirm('Удалить?')) return;
+    try { await api('/api/admin/citizenship/delete', { id }); toast('Удалено', 'success'); loadCitizenships(); }
+    catch (e) { toast('Ошибка: ' + e.message, 'error'); }
 }
 
 // ═══════════════════════════════════════════
-// ═══ PAGE LOADERS ═══
+// RESTAURANTS
+// ═══════════════════════════════════════════
+async function loadRestaurants() {
+    try {
+        const data = await api('/api/admin/restaurants', {});
+        const rests = data.restaurants || [];
+        const tus = data.tu_candidates || [];
+        window._restaurants = rests;
+        window._tuCandidates = tus;
+        const canEdit = hasPerm('restaurant_edit');
+        const canCreate = hasPerm('restaurant_create');
+        const canTU = hasPerm('restaurant_tu');
+        $('page-content').innerHTML = `
+            <div class="neu-card">
+                <div class="neu-card__header">
+                    <div class="neu-card__header-title">Рестораны</div>
+                    ${canCreate ? '<button class="btn btn--primary" onclick="openAddRestaurant()">+ Добавить</button>' : ''}
+                </div>
+                <div class="table-wrap">
+                    <table class="t"><thead><tr><th>Название</th><th>Ключ</th><th>Адрес</th><th>ТУ</th><th>Статус</th><th>Действия</th></tr></thead>
+                    <tbody>
+                    ${rests.map(r => `<tr>
+                        <td style="font-weight:600;">${esc(r.name)}</td>
+                        <td><span class="tag">${esc(r.key)}</span></td>
+                        <td>${esc(r.address || '—')}</td>
+                        <td>${esc(r.territory_manager_name || '—')}</td>
+                        <td>${r.force_status === 'closed' ? '<span class="tag tag--pink">Закрыт</span>' : '<span class="tag tag--green">Открыт</span>'}</td>
+                        <td style="display:flex;gap:4px;">
+                            ${canEdit ? `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="openEditRestaurant('${esc(r.key)}')">✏️</button>` : ''}
+                            ${canTU ? `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="openTURestaurant('${esc(r.key)}',${r.territory_manager_id || 'null'})">👔</button>` : ''}
+                            ${canEdit ? `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="toggleRestaurantStatus('${esc(r.key)}','${r.force_status || 'open'}')">${r.force_status === 'closed' ? '🔓' : '🔒'}</button>` : ''}
+                        </td>
+                    </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;padding:40px;">Нет ресторанов</td></tr>'}
+                    </tbody></table>
+                </div>
+            </div>`;
+    } catch (e) { $('page-content').innerHTML = `<div class="empty">Ошибка: ${esc(e.message)}</div>`; }
+}
+
+function openAddRestaurant() {
+    openModal('Новый ресторан', `
+        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group"><label>Ключ (латиница)</label><input class="form-input" id="rest-key" placeholder="restaurant_1"></div>
+            <div class="form-group"><label>Название</label><input class="form-input" id="rest-name"></div>
+        </div>
+        <div class="form-group"><label>Адрес</label><input class="form-input" id="rest-address"></div>
+        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group"><label>Телефон</label><input class="form-input" id="rest-phone"></div>
+            <div class="form-group"><label>Часы работы</label><input class="form-input" id="rest-hours"></div>
+        </div>
+        <div class="form-group"><label>Организация</label><input class="form-input" id="rest-org"></div>
+        <div class="form-hint" id="rest-error"></div>
+    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="rest-save">Создать</button>`);
+    $('rest-save').addEventListener('click', async () => {
+        const errEl = $('rest-error'); errEl.textContent = '';
+        try {
+            await api('/api/admin/restaurant/add', {
+                key: $('rest-key').value.trim(),
+                name: $('rest-name').value.trim(),
+                address: $('rest-address').value.trim(),
+                phone: $('rest-phone').value.trim(),
+                hours: $('rest-hours').value.trim(),
+                org: $('rest-org').value.trim(),
+            });
+            toast('Создан', 'success'); closeModal(); loadRestaurants();
+        } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+    });
+}
+
+function openEditRestaurant(key) {
+    const r = (window._restaurants || []).find(x => x.key === key);
+    if (!r) return;
+    openModal('Редактировать: ' + (r.name || key), `
+        <div class="form-group"><label>Название</label><input class="form-input" id="er-name" value="${esc(r.name || '')}"></div>
+        <div class="form-group"><label>Адрес</label><input class="form-input" id="er-address" value="${esc(r.address || '')}"></div>
+        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group"><label>Телефон</label><input class="form-input" id="er-phone" value="${esc(r.phone || '')}"></div>
+            <div class="form-group"><label>Часы</label><input class="form-input" id="er-hours" value="${esc(r.hours || '')}"></div>
+        </div>
+        <div class="form-group"><label>Организация</label><input class="form-input" id="er-org" value="${esc(r.org || '')}"></div>
+        <div class="form-hint" id="er-error"></div>
+    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="er-save">Сохранить</button>`);
+    $('er-save').addEventListener('click', async () => {
+        const errEl = $('er-error'); errEl.textContent = '';
+        try {
+            await api('/api/admin/restaurant/update', {
+                key,
+                updates: {
+                    name: $('er-name').value.trim(),
+                    address: $('er-address').value.trim(),
+                    phone: $('er-phone').value.trim(),
+                    hours: $('er-hours').value.trim(),
+                    org: $('er-org').value.trim(),
+                }
+            });
+            toast('Сохранено', 'success'); closeModal(); loadRestaurants();
+        } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+    });
+}
+
+function openTURestaurant(key, currentTu) {
+    const tus = window._tuCandidates || [];
+    const opts = '<option value="">— Не назначен —</option>' + tus.map(t =>
+        `<option value="${t.user_id}" ${t.user_id === currentTu ? 'selected' : ''}>${esc(t.full_name)}</option>`
+    ).join('');
+    openModal('Территориальный управляющий', `
+        <div class="form-group"><label>ТУ</label><select class="form-input" id="tu-select">${opts}</select></div>
+        <div class="form-hint" id="tu-error"></div>
+    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="tu-save">Сохранить</button>`);
+    $('tu-save').addEventListener('click', async () => {
+        const errEl = $('tu-error'); errEl.textContent = '';
+        try {
+            const val = $('tu-select').value;
+            await api('/api/admin/restaurant/tu', { key, territory_manager_id: val ? parseInt(val) : null });
+            toast('Сохранено', 'success'); closeModal(); loadRestaurants();
+        } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+    });
+}
+
+async function toggleRestaurantStatus(key, currentStatus) {
+    const newStatus = currentStatus === 'closed' ? 'open' : 'closed';
+    try {
+        await api('/api/admin/restaurant/status', { key, status: newStatus });
+        toast('Статус обновлён', 'success');
+        loadRestaurants();
+    } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+}
+
+// ═══════════════════════════════════════════
+// QUESTIONS
+// ═══════════════════════════════════════════
+async function loadQuestions() {
+    $('page-content').innerHTML = `
+        <div class="neu-card">
+            <div class="neu-card__header"><div class="neu-card__header-title">Вопросы от сотрудников</div></div>
+            <div id="q-list"><div class="loading">Загрузка...</div></div>
+        </div>`;
+    try {
+        const data = await cachedApi('/api/admin/questions', {});
+        const list = data.questions || [];
+        $('q-list').innerHTML = list.map(q => `
+            <div class="neu-card" style="margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;gap:12px;">
+                    <div style="flex:1;">
+                        <div style="font-weight:700;margin-bottom:4px;">${esc(q.full_name || 'Сотрудник')}</div>
+                        <div style="font-size:13px;color:var(--text-sec);white-space:pre-wrap;">${esc(q.text)}</div>
+                        <div style="font-size:11px;color:var(--text-terc);margin-top:6px;">${fmtDate(q.created_at, true)}</div>
+                    </div>
+                    <div>${q.replied ? '<span class="tag tag--green">Отвечен</span>' : '<span class="tag tag--amber">Ожидает</span>'}</div>
+                </div>
+            </div>
+        `).join('') || '<div class="empty">Нет вопросов</div>';
+    } catch (e) { $('q-list').innerHTML = `<div class="empty">Ошибка: ${esc(e.message)}</div>`; }
+}
+
+// ═══════════════════════════════════════════
+// ADMINS
+// ═══════════════════════════════════════════
+async function loadAdmins() {
+    $('page-content').innerHTML = `
+        <div class="neu-card">
+            <div class="neu-card__header"><div class="neu-card__header-title">Администраторы</div></div>
+            <div id="admins-list"><div class="loading">Загрузка...</div></div>
+        </div>`;
+    try {
+        const data = await api('/api/admin/admins', {});
+        const admins = data.admins || [];
+        $('admins-list').innerHTML = `<div class="table-wrap"><table><thead><tr><th>ФИО</th><th>Логин</th><th>Роль</th></tr></thead><tbody>
+        ${admins.map(a => `<tr>
+            <td>${esc(a.full_name || '—')}</td>
+            <td>@${esc(a.login || '')}</td>
+            <td>${a.is_super_admin ? '<span class="tag tag--purple">Суперадмин</span>' : '<span class="tag tag--blue">Админ</span>'}</td>
+        </tr>`).join('')}
+        </tbody></table></div>`;
+    } catch (e) { $('admins-list').innerHTML = `<div class="empty">Ошибка: ${esc(e.message)}</div>`; }
+}
+
+// ═══════════════════════════════════════════
+// REPORTS
+// ═══════════════════════════════════════════
+async function loadReports() {
+    $('page-content').innerHTML = '<div class="loading">Загрузка...</div>';
+    try {
+        const data = await api('/api/admin/reports', {});
+        const r = data.report || {};
+        $('page-content').innerHTML = `
+            <div class="stats-grid">
+                <div class="neu-card neu-card--stat"><div class="neu-card__label">Активные сотрудники</div><div class="neu-card__value">${r.active || 0}</div></div>
+                <div class="neu-card neu-card--stat"><div class="neu-card__label">На модерации</div><div class="neu-card__value">${(r.news_pending || 0) + (r.standards_pending || 0)}</div></div>
+                <div class="neu-card neu-card--stat"><div class="neu-card__label">Медкнижки</div><div class="neu-card__value">${r.medbooks_alert || 0}</div></div>
+                <div class="neu-card neu-card--stat"><div class="neu-card__label">Вопросы</div><div class="neu-card__value">${r.questions_open || 0}</div></div>
+            </div>`;
+    } catch (e) { $('page-content').innerHTML = `<div class="empty">Ошибка: ${esc(e.message)}</div>`; }
+}
+
+// ═══════════════════════════════════════════
+// AUDIT
+// ═══════════════════════════════════════════
+async function loadAudit() {
+    $('page-content').innerHTML = `
+        <div class="neu-card">
+            <div class="neu-card__header"><div class="neu-card__header-title">История действий</div></div>
+            <div id="audit-list"><div class="loading">Загрузка...</div></div>
+        </div>`;
+    try {
+        const data = await api('/api/admin/audit', {});
+        const list = data.audit || [];
+        $('audit-list').innerHTML = `<div class="table-wrap"><table><thead><tr><th>Дата</th><th>Действие</th><th>Объект</th><th>Детали</th></tr></thead><tbody>
+        ${list.map(a => `<tr>
+            <td style="white-space:nowrap;">${fmtDate(a.created_at, true)}</td>
+            <td>${esc(a.action || '—')}</td>
+            <td>${esc((a.target_type || '') + ' ' + (a.target_id || ''))}</td>
+            <td style="font-size:12px;color:var(--text-terc);">${esc(a.details || '')}</td>
+        </tr>`).join('')}
+        </tbody></table></div>`;
+    } catch (e) { $('audit-list').innerHTML = `<div class="empty">Ошибка: ${esc(e.message)}</div>`; }
+}
+
+// ═══════════════════════════════════════════
+// PAGE LOADERS
+// ═══════════════════════════════════════════
 const PAGE_LOADERS = {
-    dashboard: () => loadDashboard(),
-    users: () => loadUsers(),
-    medbooks: () => loadMedbooks(),
-    news: () => loadNews(),
-    standards: () => loadStandards(),
-    certification: () => loadCertification(),
-    faq: () => loadFaq(),
-    restaurants: () => loadRestaurants(),
-    positions: () => loadPositions(),
-    citizenships: () => loadCitizenships(),
-    'medbook-dirs': () => loadMedbookDirs(),
-    questions: () => loadQuestions(),
-    admins: () => loadAdmins(),
-    reports: () => loadReports(),
-    audit: () => loadAudit(),
-    sales: () => loadSales(),
+    dashboard: loadDashboard,
+    users: loadUsers,
+    medbooks: loadMedbooks,
+    news: loadNews,
+    standards: loadStandards,
+    certification: loadCertification,
+    faq: loadFAQ,
+    restaurants: loadRestaurants,
+    positions: loadPositions,
+    citizenships: loadCitizenships,
+    'medbook-dirs': loadMedbookDirs,
+    questions: loadQuestions,
+    admins: loadAdmins,
+    reports: loadReports,
+    audit: loadAudit,
 };
 
-// ═══ INIT (DOMContentLoaded) ═══
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
-    // Modal events
-    $('modal-close')?.addEventListener('click', closeModal);
-    $('modal-overlay')?.addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && $('modal-overlay')?.classList.contains('show')) closeModal();
+    // Login
+    $('login-btn')?.addEventListener('click', doLogin);
+    $('login-password')?.addEventListener('keypress', e => { if (e.key === 'Enter') doLogin(); });
+    $('login-login')?.addEventListener('input', e => {
+        e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5);
+    });
+
+    // Logout
+    $('logout-btn')?.addEventListener('click', async () => {
+        try { await api('/api/auth/logout', { webToken: getToken() }); } catch (e) {}
+        clearToken(); clearCache(); showLogin();
     });
 
     // Change password
     $('change-password-btn')?.addEventListener('click', () => {
         openModal('Сменить пароль', `
             <div class="form-group"><label>Текущий пароль</label><input class="form-input" id="cp-old" type="password"></div>
-            <div class="form-group"><label>Новый пароль</label><input class="form-input" id="cp-new" type="password"><div class="form-hint">Минимум 8 символов</div></div>
-            <div class="form-group"><label>Повторите</label><input class="form-input" id="cp-new2" type="password"></div>
-            <div class="form-hint error" id="cp-error"></div>
+            <div class="form-group"><label>Новый пароль</label><input class="form-input" id="cp-new" type="password"></div>
+            <div class="form-hint" id="cp-error"></div>
         `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="cp-save">Сохранить</button>`);
-        $('cp-save')?.addEventListener('click', async () => {
+        $('cp-save').addEventListener('click', async () => {
             const errEl = $('cp-error'); errEl.textContent = '';
-            if (!$('cp-old')?.value) { errEl.textContent = 'Введите текущий пароль'; return; }
-            if (!$('cp-new')?.value || $('cp-new').value.length < 8) { errEl.textContent = 'Новый минимум 8 символов'; return; }
-            if ($('cp-new').value !== $('cp-new2')?.value) { errEl.textContent = 'Пароли не совпадают'; return; }
             try {
                 await api('/api/admin/change-password', { old_password: $('cp-old').value, new_password: $('cp-new').value });
                 toast('Пароль изменён', 'success'); closeModal();
-            } catch (e) {
-                if (e.message === 'wrong_password') errEl.textContent = 'Текущий пароль неверный';
-                else if (e.message === 'password_too_short') errEl.textContent = 'Минимум 8 символов';
-                else errEl.textContent = 'Ошибка: ' + e.message;
-            }
+            } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
         });
     });
 
-    // Login events
-    $('login-login')?.addEventListener('input', e => {
-        e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5);
-    });
-    $('login-btn')?.addEventListener('click', doLogin);
-    $('login-password')?.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
-    $('login-login')?.addEventListener('keydown', e => { if (e.key === 'Enter') $('login-password')?.focus(); });
-
-    // Sidebar events
-    const burgerEl = burger();
-    const overlayEl = overlay();
-    if (burgerEl) burgerEl.addEventListener('click', openSidebar);
-    if (overlayEl) overlayEl.addEventListener('click', closeSidebar);
-
-    // Navigation
+    // Nav
     document.querySelectorAll('.nav-item').forEach(item => {
-        if (item) item.addEventListener('click', e => { e.preventDefault(); closeSidebar(); navigate(item.dataset.page); });
+        item.addEventListener('click', () => {
+            navigate(item.dataset.page);
+            closeSidebar();
+        });
     });
 
-    // Logout
-    $('logout-btn')?.addEventListener('click', async () => {
-        if (!confirm('Выйти?')) return;
-        try { await api('/api/auth/logout', {}); } catch (e) {}
-        clearToken(); ME = null; closeSidebar(); clearCache(); showLogin();
-    });
+    // Sidebar
+    $('hamburger')?.addEventListener('click', openSidebar);
+    $('overlay')?.addEventListener('click', closeSidebar);
 
-    // Mobile sidebar overlay
-    const mobileOverlay = document.getElementById('overlay');
-    if (mobileOverlay) {
-        mobileOverlay.addEventListener('click', closeSidebar);
-    }
+    // Modal close
+    $('modal-close')?.addEventListener('click', closeModal);
+    $('modal-overlay')?.addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
 
-    // ═══ INITIALIZE ═══
-    try {
-        if (getToken()) { checkAdminAndLoad(); } else { showLogin(); }
-    } catch (e) {
-        console.error('[INIT] Failed:', e);
+    // Auto-init
+    if (getToken()) {
+        checkAdminAndLoad();
+    } else {
+        showLogin();
     }
 });

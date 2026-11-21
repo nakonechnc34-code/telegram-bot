@@ -27,6 +27,27 @@
     color: var(--text);
 }
 
+/* Topbar right alignment */
+.topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.topbar-right a {
+    color: var(--text-sec);
+    text-decoration: none;
+    font-size: 13px;
+    padding: 6px 10px;
+    border-radius: var(--radius);
+    transition: all 0.2s;
+}
+
+.topbar-right a:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.05);
+}
+
 /* ---------- Карточки статистики ---------- */
 .sales-stats-grid {
     display: grid;

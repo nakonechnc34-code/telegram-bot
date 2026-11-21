@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Товарооборот — Wokker Admin</title>
+    <title>Товарооборот — Wokker</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -14,10 +14,7 @@
     <!-- Топбар -->
     <div class="topbar">
         <div class="topbar-left">
-            <button class="hamburger" id="sales-hamburger">
-                <span></span><span></span><span></span>
-            </button>
-            <h1 id="sales-page-title">Товарооборот</h1>
+            <h1>💰 Товарооборот</h1>
         </div>
         <div class="topbar-right">
             <select class="topbar-select" id="restaurant-select" title="Выберите ресторан">
@@ -29,72 +26,19 @@
                 <option value="90d">90 дней</option>
                 <option value="custom">Произвольный</option>
             </select>
+            <a href="/admin" style="color:var(--text-sec);text-decoration:none;font-size:13px;padding:0 8px;">⬅ Админ-панель</a>
             <div class="avatar" id="sales-topbar-avatar" title="Администратор"></div>
         </div>
     </div>
 
-    <!-- Сайдбар -->
-    <aside class="sidebar" id="sales-sidebar">
-        <div class="sidebar-logo">
-            <span>wokker</span> <span class="badge">Admin</span>
-        </div>
-
-        <nav id="sales-nav">
-            <div class="nav-section">
-                <div class="nav-section-title">Навигация</div>
-                <button class="nav-item" data-page="dashboard">
-                    <span class="nav-icon">📊</span> Дашборд
-                </button>
-                <button class="nav-item" data-page="users">
-                    <span class="nav-icon">👥</span> Сотрудники
-                </button>
-                <button class="nav-item" data-page="medbooks">
-                    <span class="nav-icon">📋</span> Медкнижки
-                </button>
-                <button class="nav-item nav-item--active" data-page="sales">
-                    <span class="nav-icon">💰</span> Товарооборот
-                </button>
-                <button class="nav-item" data-page="news">
-                    <span class="nav-icon">📰</span> Новости
-                </button>
-                <button class="nav-item" data-page="standards">
-                    <span class="nav-icon">📜</span> Стандарты
-                </button>
-                <button class="nav-item" data-page="timesheet" style="display:none;">
-                    <span class="nav-icon">🕐</span> Табель
-                </button>
-                <button class="nav-item" data-page="restaurants">
-                    <span class="nav-icon">🍔</span> Рестораны
-                </button>
-                <button class="nav-item" data-page="reports">
-                    <span class="nav-icon">📈</span> Отчёты
-                </button>
-            </div>
-        </nav>
-
-        <div class="sidebar-footer">
-            <div class="sidebar-user">
-                <div class="avatar" id="sales-admin-avatar" style="width:40px;height:40px;"></div>
-                <div class="sidebar-user-info">
-                    <div class="sidebar-user-name" id="sales-admin-name"></div>
-                    <div class="sidebar-user-role" id="sales-admin-role"></div>
-                </div>
-            </div>
-            <div class="sidebar-actions">
-                <button class="btn-ghost" id="btn-change-password">🔑 Сменить пароль</button>
-                <button class="btn-ghost danger" id="btn-logout">🚪 Выйти</button>
-            </div>
-        </div>
-    </aside>
-
     <!-- Основной контент -->
-    <div class="main">
+    <div class="main" style="margin-left:0;">
         <div class="content" id="sales-page-content">
             <div class="loading">Загрузка дашборда…</div>
         </div>
     </div>
 
-    <!-- Модальные окна -->
+    <!-- Модальное окно загрузки -->
     <div class="modal-overlay" id="upload-modal">
         <div class="modal">
             <div class="modal-header">
@@ -102,24 +46,22 @@
                 <button class="modal-close" id="close-upload-modal">&times;</button>
             </div>
             <div class="modal-body">
-                <form id="upload-form">
-                    <div class="form-group">
-                        <label>Ресторан *</label>
-                        <select class="form-input" id="upload-restaurant" required>
-                            <option value="">Выберите ресторан</option>
-                        </select>
+                <div class="form-group">
+                    <label>Ресторан *</label>
+                    <select class="form-input" id="upload-restaurant" required>
+                        <option value="">Выберите ресторан</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Файл (Excel или CSV) *</label>
+                    <div class="file-upload-area" id="file-drop-zone">
+                        <div class="file-upload-icon">📁</div>
+                        <div class="file-upload-text">Перетащите файл сюда или нажмите для выбора</div>
+                        <div class="file-upload-hint">Поддерживаются форматы: .xlsx, .xls, .csv</div>
+                        <input type="file" id="file-input" accept=".xlsx,.xls,.csv" style="display:none;">
                     </div>
-                    <div class="form-group">
-                        <label>Файл (Excel или CSV) *</label>
-                        <div class="file-upload-area" id="file-drop-zone">
-                            <div class="file-upload-icon">📁</div>
-                            <div class="file-upload-text">Перетащите файл сюда или нажмите для выбора</div>
-                            <div class="file-upload-hint">Поддерживаются форматы: .xlsx, .xls, .csv</div>
-                            <input type="file" id="file-input" accept=".xlsx,.xls,.csv" style="display:none;">
-                        </div>
-                        <div id="file-info" style="margin-top:10px;"></div>
-                    </div>
-                </form>
+                    <div id="file-info" style="margin-top:10px;"></div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn ghost" id="btn-download-template">📥 Скачать шаблон</button>
@@ -160,7 +102,7 @@
                             </tr>
                         </thead>
                         <tbody id="records-tbody">
-                            <tr><td colspan="9" style="text-align:center;padding:40px;">Загрузите данные для просмотра</td></tr>
+                            <tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-sec);">Загрузите данные для просмотра</td></tr>
                         </tbody>
                     </table>
                 </div>

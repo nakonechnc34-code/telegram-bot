@@ -26,15 +26,9 @@
         DOM.content = document.getElementById('sales-page-content');
         DOM.restaurantSelect = document.getElementById('restaurant-select');
         DOM.periodSelect = document.getElementById('period-select');
-        DOM.hamburger = document.getElementById('sales-hamburger');
-        DOM.sidebar = document.getElementById('sales-sidebar');
-        DOM.adminName = document.getElementById('sales-admin-name');
-        DOM.adminRole = document.getElementById('sales-admin-role');
-        DOM.adminAvatar = document.getElementById('sales-admin-avatar');
-        DOM.topbarAvatar = document.getElementById('sales-topbar-avatar');
+        DOM.adminAvatar = document.getElementById('sales-topbar-avatar');
         DOM.uploadModal = document.getElementById('upload-modal');
         DOM.detailModal = document.getElementById('detail-modal');
-        DOM.uploadForm = document.getElementById('upload-form');
         DOM.uploadRestaurant = document.getElementById('upload-restaurant');
         DOM.fileInput = document.getElementById('file-input');
         DOM.fileDropZone = document.getElementById('file-drop-zone');
@@ -879,11 +873,6 @@
 
     // ---------- Events ----------
     function bindEvents() {
-        // Сайдбар
-        DOM.hamburger.addEventListener('click', () => {
-            DOM.sidebar.classList.toggle('open');
-        });
-
         // Период
         DOM.periodSelect.addEventListener('change', () => {
             state.period = DOM.periodSelect.value;
@@ -926,12 +915,14 @@
         DOM.btnUpload.addEventListener('click', uploadFile);
 
         // Шаблон
-        DOM.btnDownloadTemplate.addEventListener('click', () => {
-            window.open('/api/sales/template', '_blank');
-        });
-        DOM.btnDownloadTemplateBtn = document.getElementById('btn-download-template-btn');
-        if (DOM.btnDownloadTemplateBtn) {
-            DOM.btnDownloadTemplateBtn.addEventListener('click', () => {
+        if (DOM.btnDownloadTemplate) {
+            DOM.btnDownloadTemplate.addEventListener('click', () => {
+                window.open('/api/sales/template', '_blank');
+            });
+        }
+        const btnDownloadTemplateBtn = document.getElementById('btn-download-template-btn');
+        if (btnDownloadTemplateBtn) {
+            btnDownloadTemplateBtn.addEventListener('click', () => {
                 window.open('/api/sales/template', '_blank');
             });
         }
@@ -956,10 +947,15 @@
         });
 
         // Экспорт
-        document.getElementById('btn-export').addEventListener('click', exportDashboard);
-        DOM.btnExportDetail.addEventListener('click', () => {
-            window.open('/api/sales/export', '_blank');
-        });
+        const btnExport = document.getElementById('btn-export');
+        if (btnExport) {
+            btnExport.addEventListener('click', exportDashboard);
+        }
+        if (DOM.btnExportDetail) {
+            DOM.btnExportDetail.addEventListener('click', () => {
+                window.open('/api/sales/export', '_blank');
+            });
+        }
 
         // Выход
         document.getElementById('btn-logout').addEventListener('click', async () => {
@@ -980,14 +976,10 @@
     }
 
     // ---------- Admin info ----------
-    function setAdminInfo(name, login, role) {
+    function setAdminInfo(name) {
         const initial = (name || 'A')[0].toUpperCase();
-        DOM.adminName.textContent = name || 'Администратор';
-        DOM.adminRole.textContent = role || 'admin';
         DOM.adminAvatar.textContent = initial;
-        DOM.topbarAvatar.textContent = initial;
         DOM.adminAvatar.style.background = 'linear-gradient(135deg, var(--purple), var(--blue))';
-        DOM.topbarAvatar.style.background = 'linear-gradient(135deg, var(--purple), var(--blue))';
     }
 
     // ---------- Init ----------
@@ -1008,11 +1000,7 @@
             });
             if (meRes.success && meRes.data) {
                 state.adminData = meRes.data;
-                setAdminInfo(
-                    meRes.data.full_name,
-                    meRes.data.login,
-                    meRes.data.is_super_admin ? 'Super Admin' : meRes.data.is_admin ? 'Admin' : 'User'
-                );
+                setAdminInfo(meRes.data.full_name);
             }
         } catch (e) {
             console.error('Ошибка загрузки профиля:', e);

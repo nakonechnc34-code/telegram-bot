@@ -786,8 +786,41 @@ async function deleteMedDirItem(type, id) {
 }
 
 // ═══════════════════════════════════════════
-// TASK 2: НОВОСТИ/СТАНДАРТЫ С МОДЕРАЦИЕЙ + ФАЙЛЫ
+// TASK 2: НОВОСТИ/СТАНДАРТЫ С МОДЕРАЦИЕЙ + ФАЙЛЫ + EDIT
 // ═══════════════════════════════════════════
+let _uploadedNewsImageUrl = '';
+let _uploadedStandardImageUrl = '';
+let _uploadedStandardFileUrl = '';
+let _uploadedStandardFileName = '';
+let _tableHeaders = [];
+let _tableRows = [];
+const STANDARD_GROUPS = ['Пищевая Безопасность', 'Касса', 'Горячий цех', 'Холодный цех', 'Общее'];
+
+// Clean HTML from scripts/styles
+function cleanHTML(html) {
+    if (!html) return '';
+    let clean = String(html);
+    clean = clean.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+    clean = clean.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '');
+    clean = clean.replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, '');
+    clean = clean.replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, '');
+    clean = clean.replace(/<embed\b[^>]*\/?>/gi, '');
+    clean = clean.replace(/<form\b[^>]*>[\s\S]*?<\/form>/gi, '');
+    clean = clean.replace(/\s+on\w+\s*=\s*"[^"]*"/gi, '');
+    clean = clean.replace(/\s+on\w+\s*=\s*'[^']*'/gi, '');
+    clean = clean.replace(/\s+on\w+\s*=\s*[^\s>]+/gi, '');
+    clean = clean.replace(/href\s*=\s*["']?\s*javascript:[^"'\s>]*/gi, 'href="#"');
+    clean = clean.replace(/src\s*=\s*["']?\s*javascript:[^"'\s>]*/gi, '');
+    clean = clean.replace(/<meta[^>]*>/gi, '');
+    clean = clean.replace(/<link[^>]*>/gi, '');
+    clean = clean.replace(/\s*(class|id)="[^"]*"/gi, '');
+    clean = clean.replace(/font-size\s*:\s*[^;"]+;?/gi, '');
+    clean = clean.replace(/line-height\s*:\s*[^;"]+;?/gi, '');
+    clean = clean.replace(/<p><br><\/p>/gi, '');
+    clean = clean.replace(/<p>&nbsp;<\/p>/gi, '');
+    return clean.trim();
+}
+
 async function loadNews() {
     const data = await cachedApi('/api/admin/news', {});
     const all = data.news || [];
@@ -814,45 +847,154 @@ async function loadNews() {
                     </div>
                 </div>` : ''}
             <div class="table-wrap">
-                <table class="t"><thead><tr><th>Заголовок</th><th>Автор</th><th>Дата</th><th>Статус</th><th>Действия</th></tr></thead>
+                <table class="t"><thead><tr><th>Фото</th><th>Заголовок</th><th>Автор</th><th>Дата</th><th>Статус</th><th>Действия</th></tr></thead>
                 <tbody id="news-table">${others.map(n => {
                     const st = n.status==='published'?'tag--green':n.status==='scheduled'?'tag--blue':'tag--amber';
                     const tx = n.status==='published'?'Опубликована':n.status==='scheduled'?'Запланирована':'На модерации';
                     let acts = '';
                     if (n.status==='pending' && canPublish()) acts += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--green);" onclick="approveNews(${n.id})">✓</button>`;
                     if (n.status==='pending' && canPublish()) acts += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--pink);" onclick="rejectNews(${n.id})">✕</button>`;
-                    if (canEdit) acts += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="deleteNews(${n.id})">🗑️</button>`;
-                    return `<tr><td style="font-weight:600;">${esc(n.title||'—')}</td><td>${esc(n.proposed_by||'—')}</td><td style="color:var(--text-terc);">${fmtDate(n.created_at)}</td><td><span class="tag ${st}">${tx}</span></td><td>${acts}</td></tr>`;
-                }).join('') || '<tr><td colspan="5" style="text-align:center;padding:40px;">Нет новостей</td></tr>'}</tbody></table>
+                    if (canEdit) acts += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="openNewsEdit(${n.id},others)">✏️</button>`;
+                    if (canEdit && n.status !== 'pending') acts += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--pink);" onclick="deleteNews(${n.id})">🗑️</button>`;
+                    return `<tr><td style="text-align:center;">${n.image_url ? `<img src="${getFileUrl(n.image_url)}" style="width:48px;height:48px;object-fit:cover;border-radius:12px;">` : '<span style="color:var(--text-terc);">—</span>'}</td>
+                        <td style="font-weight:600;">${esc(n.title||'—')}</td><td>${esc(n.proposed_by||'—')}</td><td style="color:var(--text-terc);">${fmtDate(n.created_at)}</td><td><span class="tag ${st}">${tx}</span></td><td>${acts}</td></tr>`;
+                }).join('') || '<tr><td colspan="6" style="text-align:center;padding:40px;">Нет новостей</td></tr>'}</tbody></table>
             </div>
         </div>`;
 }
 
 async function openAddNews() {
-    openModal('Создать новость', `
-        <div class="form-group"><label>Заголовок</label><input class="form-input" id="news-title" maxlength="200"></div>
-        <div class="form-group"><label>Текст</label><textarea class="form-textarea" id="news-body" rows="6"></textarea></div>
-        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-            <div class="form-group"><label>Уровень</label><select class="form-input" id="news-level"><option value="normal">Обычная</option><option value="announcement">Объявление</option><option value="event">Событие</option></select></div>
-            <div class="form-group"><label>Действие</label><select class="form-input" id="news-intent"><option value="suggest">Предложить</option><option value="publish" ${canPublish()?'selected':''}>Опубликовать</option></select></div>
+    const canPublishFlag = canPublish();
+    _uploadedNewsImageUrl = '';
+    openModal(canPublishFlag ? 'Новая новость' : 'Предложить новость', `
+        <div class="form-group">
+            <label>Фотография (опционально)</label>
+            <input type="file" id="n-image-file" accept="image/*" style="display:none;">
+            <button type="button" class="btn btn--ghost" id="n-image-btn" style="width:100%;padding:20px;border-style:dashed;border-radius:14px;">Прикрепить фото</button>
+            <div id="n-image-preview-box" style="display:none;margin-top:12px;text-align:center;">
+                <img id="n-image-preview" style="max-width:100%;max-height:150px;border-radius:12px;object-fit:contain;">
+            </div>
         </div>
+        <div class="form-group"><label>Заголовок</label><input class="form-input" id="n-title" maxlength="100"></div>
+        <div class="form-group"><label>Текст</label><textarea class="form-textarea" id="n-body" rows="6"></textarea></div>
+        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group"><label>Уровень</label><select class="form-input" id="n-level"><option value="normal">Обычная</option><option value="announcement">Объявление</option><option value="event">Событие</option></select></div>
+            <div class="form-group"><label>Действие</label><select class="form-input" id="n-intent">${canPublishFlag ? '<option value="publish">Опубликовать</option><option value="schedule">Отложить</option>' : ''}<option value="suggest">Предложить</option></select></div>
+        </div>
+        <div class="form-group" id="n-sched-time" style="display:none;"><label>Дата и время</label><input class="form-input" type="datetime-local" id="n-publish-at"></div>
         <div class="form-hint" id="news-error"></div>
-    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="news-save">Создать</button>`);
-    $('news-save').addEventListener('click', async () => {
-        const errEl = $('news-error'); errEl.textContent = '';
-        const title = $('news-title').value.trim(), body = $('news-body').value.trim();
-        if (!title || !body) { errEl.textContent = 'Заполните заголовок и текст'; return; }
+    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="create-news-btn">${canPublishFlag ? 'Создать' : 'Предложить'}</button>`);
+
+    // Image upload handler
+    $('n-image-btn').addEventListener('click', () => $('n-image-file').click());
+    $('n-image-file').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (file.size > 15*1024*1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
+        const btn = $('n-image-btn');
+        btn.textContent = 'Загрузка...';
+        btn.disabled = true;
         try {
-            await api('/api/admin/news/add', { title, body, level: $('news-level').value, intent: $('news-intent').value });
+            const res = await uploadFile(file);
+            _uploadedNewsImageUrl = res.url;
+            $('n-image-preview').src = getFileUrl(res.url);
+            $('n-image-preview-box').style.display = 'block';
+            btn.textContent = 'Фото загружено';
+            btn.style.borderColor = 'var(--green)';
+        } catch (err) {
+            toast(err.message, 'error');
+            btn.textContent = 'Прикрепить фото';
+        } finally { btn.disabled = false; }
+    });
+
+    $('n-intent').addEventListener('change', e => {
+        $('n-sched-time').style.display = e.target.value === 'schedule' ? 'block' : 'none';
+    });
+
+    $('create-news-btn').addEventListener('click', async () => {
+        const errEl = $('news-error'); errEl.textContent = '';
+        const title = $('n-title').value.trim(), body = $('n-body').value.trim();
+        if (!title || !body) { errEl.textContent = 'Заполните заголовок и текст'; return; }
+        const bodyReq = {
+            title, body, level: $('n-level').value, intent: $('n-intent').value,
+            image_url: _uploadedNewsImageUrl
+        };
+        if (bodyReq.intent === 'schedule') {
+            const dt = $('n-publish-at').value;
+            if (!dt) { errEl.textContent = 'Укажите дату'; return; }
+            bodyReq.publish_at = new Date(dt).toISOString();
+        }
+        try {
+            const res = await api('/api/admin/news/add', bodyReq);
             toast('Новость создана', 'success'); closeModal(); loadNews();
-        } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+        } catch (e) { errEl.textContent = 'Ошибка: '+e.message; }
     });
 }
+
+async function openNewsEdit(id, others) {
+    if (!hasPerm('news_edit')) { toast('Нет права', 'error'); return; }
+    let newsData;
+    try { newsData = await cachedApi('/api/admin/news', {}); } catch(e) { return; }
+    const n = (newsData.news||[]).find(x => x.id === id);
+    if (!n) return;
+
+    _uploadedNewsImageUrl = n.image_url || '';
+    openModal('Редактировать новость', `
+        <div class="form-group">
+            <label>Фотография</label>
+            <input type="file" id="n-image-file-edit" accept="image/*" style="display:none;">
+            <button type="button" class="btn btn--ghost" id="n-image-btn-edit" style="width:100%;padding:20px;border-style:dashed;border-radius:14px;">${n.image_url ? 'Заменить фото' : 'Прикрепить фото'}</button>
+            <div id="n-image-preview-box-edit" style="display:${n.image_url?'block':'none'};margin-top:12px;text-align:center;">
+                <img id="n-image-preview-edit" src="${getFileUrl(n.image_url)}" style="max-width:100%;max-height:150px;border-radius:12px;object-fit:contain;">
+            </div>
+        </div>
+        <div class="form-group"><label>Заголовок</label><input class="form-input" id="edit-n-title" value="${esc(n.title)}"></div>
+        <div class="form-group"><label>Текст</label><textarea class="form-textarea" id="edit-n-body" rows="6">${esc(n.body)}</textarea></div>
+        <div class="form-group"><label>Уровень</label><select class="form-input" id="edit-n-level"><option value="normal" ${n.level==='normal'?'selected':''}>Обычная</option><option value="announcement" ${n.level==='announcement'?'selected':''}>Объявление</option><option value="event" ${n.level==='event'?'selected':''}>Событие</option></select></div>
+        <div class="form-hint" id="edit-news-error"></div>
+    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="save-news-btn">Сохранить</button>`);
+
+    // Image upload
+    $('n-image-btn-edit').addEventListener('click', () => $('n-image-file-edit').click());
+    $('n-image-file-edit').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (file.size > 15*1024*1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
+        const btn = $('n-image-btn-edit');
+        btn.textContent = 'Загрузка...';
+        btn.disabled = true;
+        try {
+            const res = await uploadFile(file);
+            _uploadedNewsImageUrl = res.url;
+            $('n-image-preview-edit').src = getFileUrl(res.url);
+            $('n-image-preview-box-edit').style.display = 'block';
+            btn.textContent = 'Фото загружено';
+        } catch (err) {
+            toast(err.message, 'error');
+            btn.textContent = 'Заменить фото';
+        } finally { btn.disabled = false; }
+    });
+
+    $('save-news-btn').addEventListener('click', async () => {
+        const errEl = $('edit-news-error'); errEl.textContent = '';
+        try {
+            await api('/api/admin/news/update', {
+                id,
+                title: $('edit-n-title').value.trim(),
+                body: $('edit-n-body').value.trim(),
+                level: $('edit-n-level').value,
+                image_url: _uploadedNewsImageUrl
+            });
+            toast('Сохранено', 'success'); closeModal(); loadNews();
+        } catch (e) { errEl.textContent = 'Ошибка: '+e.message; }
+    });
+}
+
 async function approveNews(id) { try { await api('/api/admin/news/approve', { id }); toast('Одобрено', 'success'); loadNews(); } catch(e) { toast('Ошибка: '+e.message, 'error'); } }
 async function rejectNews(id) { try { await api('/api/admin/news/reject', { id }); toast('Отклонено', 'success'); loadNews(); } catch(e) { toast('Ошибка: '+e.message, 'error'); } }
 async function deleteNews(id) { if(!confirm('Удалить?')) return; try { await api('/api/admin/news/delete', { id }); toast('Удалено', 'success'); loadNews(); } catch(e) { toast('Ошибка: '+e.message, 'error'); } }
 
-// STANDARDS
+// ═══ STANDARDS ═══
 async function loadStandards() {
     const data = await cachedApi('/api/admin/standards', {});
     const all = data.standards || [];
@@ -879,37 +1021,326 @@ async function loadStandards() {
                     </div>
                 </div>` : ''}
             <div class="table-wrap">
-                <table class="t"><thead><tr><th>Заголовок</th><th>Группа</th><th>Статус</th><th>Действия</th></tr></thead>
+                <table class="t"><thead><tr><th>Фото</th><th>Номер</th><th>Группа</th><th>Заголовок</th><th>Файл</th><th>Статус</th><th>Действия</th></tr></thead>
                 <tbody id="standards-table">${others.map(s => {
                     const st = s.status==='published'?'tag--green':'tag--amber';
                     const tx = s.status==='published'?'Опубликован':'На модерации';
                     let acts = '';
                     if (s.status==='pending' && canPublish()) acts += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--green);" onclick="approveStandard(${s.id})">✓</button>`;
                     if (s.status==='pending' && canPublish()) acts += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--pink);" onclick="rejectStandard(${s.id})">✕</button>`;
-                    if (canEdit) acts += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="deleteStandard(${s.id})">🗑️</button>`;
-                    return `<tr><td style="font-weight:600;">${esc(s.title||'—')}</td><td><span class="tag tag--purple">${esc(s.group_name||'Общее')}</span></td><td><span class="tag ${st}">${tx}</span></td><td>${acts}</td></tr>`;
-                }).join('') || '<tr><td colspan="4" style="text-align:center;padding:40px;">Нет стандартов</td></tr>'}</tbody></table>
+                    if (canEdit) acts += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="openStdEdit(${s.id})">✏️</button>`;
+                    if (canEdit && s.status !== 'pending') acts += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--pink);" onclick="deleteStandard(${s.id})">🗑️</button>`;
+                    return `<tr><td style="text-align:center;">${s.image_url ? `<img src="${getFileUrl(s.image_url)}" style="width:48px;height:48px;object-fit:cover;border-radius:12px;">` : '<span style="color:var(--text-terc);">—</span>'}</td>
+                        <td><span class="tag">${esc(s.number||'—')}</span></td><td><span class="tag tag--purple">${esc(s.group_name||'Общее')}</span></td>
+                        <td style="font-weight:600;">${esc(s.title||'—')}</td><td>${s.file_url ? 'Да' : '—'}</td>
+                        <td><span class="tag ${st}">${tx}</span></td><td>${acts}</td></tr>`;
+                }).join('') || '<tr><td colspan="7" style="text-align:center;padding:40px;">Нет стандартов</td></tr>'}</tbody></table>
             </div>
         </div>`;
 }
 
+function renderTableEditor(headers, rows) {
+    let headerHtml = headers.map((h, i) => `<th style="padding:4px;"><input class="form-input" style="padding:8px;border-radius:8px;font-size:13px;text-align:center;" value="${esc(h)}" onchange="updateTableHeaders()" data-col="${i}"></th>`).join('');
+    let rowsHtml = rows.map((row, rIdx) => `<tr>${headers.map((_, cIdx) => `<td style="padding:4px;"><input class="form-input" style="padding:8px;border-radius:8px;font-size:13px;" value="${esc(row[cIdx]||'')}" onchange="updateTableCell(${rIdx},${cIdx})"></td>`).join('')}<td style="padding:4px;"><button type="button" class="btn btn--ghost" style="font-size:10px;padding:4px;" onclick="removeTableRow(${rIdx})">Удал.</button></td></tr>`).join('');
+    return `<div style="overflow-x:auto;padding-bottom:8px;"><table style="width:100%;border-collapse:collapse;min-width:600px;"><thead><tr>${headerHtml}<th></th></tr></thead><tbody id="table-editor-rows">${rowsHtml}</tbody></table></div>
+        <div style="display:flex;gap:8px;margin-top:16px;"><button type="button" class="btn btn--ghost" style="font-size:11px;" onclick="addTableRow()">Добавить строку</button></div>`;
+}
+window.updateTableHeaders = function() {
+    const newHeaders = Array.from(document.querySelectorAll('#std-table-area thead input')).map(i => i.value);
+    _tableHeaders = newHeaders;
+    _tableRows = _tableRows.map(r => { const newR = []; for(let i=0;i<newHeaders.length;i++) newR.push(r[i]||''); return newR; });
+    document.getElementById('table-editor-container').innerHTML = renderTableEditor(_tableHeaders, _tableRows);
+};
+window.updateTableCell = function(rIdx, cIdx) {
+    const inputs = document.querySelectorAll(`#table-editor-rows tr:nth-child(${rIdx+1}) input`);
+    _tableRows[rIdx][cIdx] = inputs[cIdx].value;
+};
+window.addTableRow = function() { _tableRows.push(Array(_tableHeaders.length).fill('')); document.getElementById('table-editor-container').innerHTML = renderTableEditor(_tableHeaders, _tableRows); };
+window.removeTableRow = function(rIdx) { _tableRows.splice(rIdx, 1); document.getElementById('table-editor-container').innerHTML = renderTableEditor(_tableHeaders, _tableRows); };
+
+function switchContentTypeUI(type) {
+    $('std-text-area').style.display = type === 'table' ? 'none' : 'block';
+    $('std-table-area').style.display = type === 'table' ? 'block' : 'none';
+    if (type === 'table' && !_tableHeaders.length) {
+        _tableHeaders = ['Колонка 1', 'Колонка 2', 'Колонка 3'];
+        _tableRows = [['', '', '']];
+        $('table-editor-container').innerHTML = renderTableEditor(_tableHeaders, _tableRows);
+    }
+}
+
+function renderFilePreviewUI() {
+    const box = $('std-file-preview-box');
+    if (!box) return;
+    if (_uploadedStandardFileUrl) {
+        box.style.display = 'flex';
+        $('std-file-name').textContent = _uploadedStandardFileName || 'Файл';
+        $('std-file-status').textContent = 'Готов к сохранению';
+        $('std-file-btn').style.display = 'none';
+    } else {
+        box.style.display = 'none';
+        $('std-file-btn').style.display = 'block';
+    }
+}
+
 async function openAddStandard() {
-    openModal('Добавить стандарт', `
-        <div class="form-group"><label>Заголовок</label><input class="form-input" id="std-title"></div>
-        <div class="form-group"><label>Текст</label><textarea class="form-textarea" id="std-body" rows="6"></textarea></div>
-        <div class="form-group"><label>Группа</label><select class="form-input" id="std-group"><option>Пищевая Безопасность</option><option>Касса</option><option>Горячий цех</option><option>Холодный цех</option><option>Общее</option></select></div>
+    _uploadedStandardImageUrl = '';
+    _uploadedStandardFileUrl = '';
+    _uploadedStandardFileName = '';
+    _tableHeaders = [];
+    _tableRows = [];
+    const groupOpts = STANDARD_GROUPS.map(g => `<option value="${g}">${g}</option>`).join('');
+    openModal('Новый стандарт', `
+        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group">
+                <label>Обложка (фото)</label>
+                <input type="file" id="std-image-file" accept="image/*" style="display:none;">
+                <button type="button" class="btn btn--ghost" id="std-image-btn" style="width:100%;padding:16px;border-style:dashed;border-radius:14px;">Прикрепить фото</button>
+                <div id="std-image-preview-box" style="display:none;margin-top:12px;text-align:center;">
+                    <img id="std-image-preview" style="max-width:100%;max-height:100px;border-radius:12px;object-fit:contain;">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Документ (PDF, Word, Excel)</label>
+                <input type="file" id="std-file-file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" style="display:none;">
+                <button type="button" class="btn btn--ghost" id="std-file-btn" style="width:100%;padding:16px;border-style:dashed;border-radius:14px;">Прикрепить файл</button>
+                <div id="std-file-preview-box" style="display:none;margin-top:12px;padding:12px;background:var(--bg-card);border-radius:12px;align-items:center;gap:12px;">
+                    <div style="flex:1;min-width:0;"><div id="std-file-name" style="font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div><div id="std-file-status" style="font-size:12px;color:var(--text-terc);"></div></div>
+                    <button type="button" class="btn btn--ghost" style="font-size:10px;padding:4px;" onclick="_uploadedStandardFileUrl='';_uploadedStandardFileName='';renderFilePreviewUI();">Удал.</button>
+                </div>
+            </div>
+        </div>
+        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group"><label>Номер стандарта</label><input class="form-input" id="std-number" placeholder="СТ-001"></div>
+            <div class="form-group"><label>Группа</label><select class="form-input" id="std-group">${groupOpts}</select></div>
+        </div>
+        <div class="form-group"><label>Заголовок</label><input class="form-input" id="std-title" maxlength="150"></div>
+        <div class="form-group"><label>Тип контента</label><select class="form-input" id="std-content-type" onchange="switchContentTypeUI(this.value)"><option value="text">Текст</option><option value="table">Таблица</option></select></div>
+        <div id="std-text-area">
+            <div class="form-group"><label>Текст стандарта</label><div contenteditable="true" id="std-body" class="rich-editor" style="min-height:150px;padding:12px;background:var(--bg);border:1px solid rgba(0,0,0,0.1);border-radius:10px;outline:none;"></div></div>
+        </div>
+        <div id="std-table-area" style="display:none;margin-bottom:24px;">
+            <div class="form-group" style="background:rgba(67,233,123,0.08);padding:16px;border-radius:12px;border:1px dashed var(--green);">
+                <label style="color:#1B7A36;">Вставить таблицу из Excel/Word (Ctrl+V)</label>
+                <textarea class="form-textarea" id="paste-table-area" placeholder="Скопируйте таблицу из Excel и вставьте сюда..." style="min-height:80px;font-size:13px;background:#fff;margin-bottom:0;"></textarea>
+                <div class="form-hint" style="color:#1B7A36;opacity:0.8;">После вставки таблица появится ниже. Вы сможете её отредактировать.</div>
+            </div>
+            <label style="display:block;font-size:12px;font-weight:700;color:var(--text-terc);margin-bottom:8px;text-transform:uppercase;">Ручная настройка</label>
+            <div id="table-editor-container"></div>
+        </div>
         <div class="form-hint" id="std-error"></div>
-    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="std-save">Создать</button>`);
-    $('std-save').addEventListener('click', async () => {
-        const errEl = $('std-error'); errEl.textContent = '';
-        const title = $('std-title').value.trim(), body = $('std-body').value.trim();
-        if (!title || !body) { errEl.textContent = 'Заполните все поля'; return; }
+    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="create-std-btn">Создать</button>`);
+
+    // Paste table
+    $('paste-table-area').addEventListener('paste', (e) => {
+        setTimeout(() => {
+            const text = e.target.value;
+            if (text.trim()) {
+                const rows = text.trim().split('\n').map(line => line.split('\t'));
+                if (rows.length) {
+                    _tableHeaders = rows[0];
+                    _tableRows = rows.slice(1).map(r => { const newR = []; for(let i=0;i<_tableHeaders.length;i++) newR.push(r[i]||''); return newR; });
+                    $('table-editor-container').innerHTML = renderTableEditor(_tableHeaders, _tableRows);
+                    $('paste-table-area').value = '';
+                    $('paste-table-area').placeholder = 'Таблица вставлена. Отредактируйте ниже.';
+                }
+            }
+        }, 100);
+    });
+
+    // Image upload
+    $('std-image-btn').addEventListener('click', () => $('std-image-file').click());
+    $('std-image-file').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (file.size > 15*1024*1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
+        const btn = $('std-image-btn');
+        btn.textContent = 'Загрузка...';
+        btn.disabled = true;
         try {
-            await api('/api/admin/standard/add', { title, body, group_name: $('std-group').value });
+            const res = await uploadFile(file);
+            _uploadedStandardImageUrl = res.url;
+            $('std-image-preview').src = getFileUrl(res.url);
+            $('std-image-preview-box').style.display = 'block';
+            btn.textContent = 'Фото загружено';
+            btn.style.borderColor = 'var(--green)';
+        } catch (err) { toast(err.message, 'error'); btn.textContent = 'Прикрепить фото'; } finally { btn.disabled = false; }
+    });
+
+    // File upload
+    $('std-file-btn').addEventListener('click', () => $('std-file-file').click());
+    $('std-file-file').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (file.size > 15*1024*1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
+        const btn = $('std-file-btn');
+        btn.textContent = 'Загрузка...';
+        btn.disabled = true;
+        try {
+            const res = await uploadFile(file);
+            _uploadedStandardFileUrl = res.url;
+            _uploadedStandardFileName = res.name;
+            renderFilePreviewUI();
+        } catch (err) { toast(err.message, 'error'); } finally { btn.disabled = false; btn.textContent = 'Прикрепить файл'; }
+    });
+
+    $('create-std-btn').addEventListener('click', async () => {
+        const errEl = $('std-error'); errEl.textContent = '';
+        const type = $('std-content-type').value;
+        const body = {
+            number: $('std-number').value.trim(), group_name: $('std-group').value,
+            title: $('std-title').value.trim(), image_url: _uploadedStandardImageUrl,
+            file_url: _uploadedStandardFileUrl, file_name: _uploadedStandardFileName,
+            content_type: type, content_data: type === 'table' ? { headers: _tableHeaders, rows: _tableRows } : null
+        };
+        if (type === 'text') {
+            body.body = cleanHTML($('std-body').innerHTML);
+            if (!body.body || body.body === '<br>') { errEl.textContent = 'Заполните текст стандарта'; return; }
+        } else {
+            body.body = 'Таблица';
+            if (!_tableHeaders.length || !_tableRows.length) { errEl.textContent = 'Заполните таблицу'; return; }
+        }
+        if (!body.title) { errEl.textContent = 'Заполните заголовок'; return; }
+        try {
+            await api('/api/admin/standard/add', body);
             toast('Стандарт создан', 'success'); closeModal(); loadStandards();
-        } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+        } catch (e) { errEl.textContent = 'Ошибка: '+e.message; }
     });
 }
+
+async function openStdEdit(id) {
+    if (!hasPerm('standards_edit')) { toast('Нет права', 'error'); return; }
+    let stdData, n;
+    try {
+        stdData = await cachedApi('/api/admin/standards', {});
+        n = (stdData.standards||[]).find(x => x.id === id);
+    } catch(e) { return; }
+    if (!n) return;
+
+    _uploadedStandardImageUrl = n.image_url || '';
+    _uploadedStandardFileUrl = n.file_url || '';
+    _uploadedStandardFileName = n.file_name || '';
+    _tableHeaders = [];
+    _tableRows = [];
+
+    const isTable = n.content_type === 'table' && n.content_data;
+    if (isTable) {
+        _tableHeaders = n.content_data.headers || [];
+        _tableRows = n.content_data.rows || [];
+    }
+
+    const groupOpts = STANDARD_GROUPS.map(g => `<option value="${g}" ${n.group_name===g?'selected':''}>${g}</option>`).join('');
+    openModal('Редактировать стандарт', `
+        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group">
+                <label>Обложка (фото)</label>
+                <input type="file" id="std-image-file-edit" accept="image/*" style="display:none;">
+                <button type="button" class="btn btn--ghost" id="std-image-btn-edit" style="width:100%;padding:16px;border-style:dashed;border-radius:14px;">${n.image_url ? 'Заменить фото' : 'Прикрепить фото'}</button>
+                <div id="std-image-preview-box-edit" style="display:${n.image_url?'block':'none'};margin-top:12px;text-align:center;">
+                    <img id="std-image-preview-edit" src="${getFileUrl(n.image_url)}" style="max-width:100%;max-height:100px;border-radius:12px;object-fit:contain;">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Документ (PDF, Word, Excel)</label>
+                <input type="file" id="std-file-file-edit" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" style="display:none;">
+                <button type="button" class="btn btn--ghost" id="std-file-btn-edit" style="width:100%;padding:16px;border-style:dashed;border-radius:14px;${n.file_url?'display:none;':''}">Прикрепить файл</button>
+                <div id="std-file-preview-box-edit" style="display:${n.file_url?'flex':'none'};margin-top:12px;padding:12px;background:var(--bg-card);border-radius:12px;align-items:center;gap:12px;">
+                    <div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(n.file_name||'Документ')}</div><div style="font-size:12px;color:var(--text-terc);">Готов к сохранению</div></div>
+                    <button type="button" class="btn btn--ghost" style="font-size:10px;padding:4px;" onclick="_uploadedStandardFileUrl='';_uploadedStandardFileName='';$('#std-file-btn-edit').show();$('#std-file-preview-box-edit').hide();">Удал.</button>
+                </div>
+            </div>
+        </div>
+        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group"><label>Номер</label><input class="form-input" id="edit-std-number" value="${esc(n.number||'')}"></div>
+            <div class="form-group"><label>Группа</label><select class="form-input" id="edit-std-group">${groupOpts}</select></div>
+        </div>
+        <div class="form-group"><label>Заголовок</label><input class="form-input" id="edit-std-title" value="${esc(n.title)}"></div>
+        <div class="form-group"><label>Тип контента</label><select class="form-input" id="edit-std-content-type" onchange="switchContentTypeUI(this.value)"><option value="text" ${!isTable?'selected':''}>Текст</option><option value="table" ${isTable?'selected':''}>Таблица</option></select></div>
+        <div id="std-text-area-edit" style="display:${isTable?'none':'block'};">
+            <div class="form-group"><label>Текст стандарта</label><div contenteditable="true" id="edit-std-body" style="min-height:150px;padding:12px;background:var(--bg);border:1px solid rgba(0,0,0,0.1);border-radius:10px;outline:none;">${!isTable?cleanHTML(n.body||''):'')}</div></div>
+        </div>
+        <div id="std-table-area-edit" style="display:${isTable?'block':'none'};margin-bottom:24px;">
+            <div class="form-group" style="background:rgba(67,233,123,0.08);padding:16px;border-radius:12px;border:1px dashed var(--green);">
+                <label style="color:#1B7A36;">Вставить таблицу заново из Excel/Word (Ctrl+V)</label>
+                <textarea class="form-textarea" id="paste-table-area-edit" placeholder="Скопируйте таблицу из Excel и вставьте сюда..." style="min-height:80px;font-size:13px;background:#fff;margin-bottom:0;"></textarea>
+                <div class="form-hint" style="color:#1B7A36;opacity:0.8;">Вставка перезапишет текущую таблицу ниже.</div>
+            </div>
+            <label style="display:block;font-size:12px;font-weight:700;color:var(--text-terc);margin-bottom:8px;text-transform:uppercase;">Ручная настройка</label>
+            <div id="table-editor-container-edit"></div>
+        </div>
+    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="save-std-btn">Сохранить</button>`);
+
+    // Table editor
+    if (isTable) {
+        $('table-editor-container-edit').innerHTML = renderTableEditor(_tableHeaders, _tableRows);
+    }
+
+    // Paste handler
+    $('paste-table-area-edit').addEventListener('paste', (e) => {
+        setTimeout(() => {
+            const text = e.target.value;
+            if (text.trim()) {
+                const rows = text.trim().split('\n').map(line => line.split('\t'));
+                if (rows.length) {
+                    _tableHeaders = rows[0];
+                    _tableRows = rows.slice(1).map(r => { const newR = []; for(let i=0;i<_tableHeaders.length;i++) newR.push(r[i]||''); return newR; });
+                    $('table-editor-container-edit').innerHTML = renderTableEditor(_tableHeaders, _tableRows);
+                }
+            }
+        }, 100);
+    });
+
+    // Image upload
+    $('std-image-btn-edit').addEventListener('click', () => $('std-image-file-edit').click());
+    $('std-image-file-edit').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (file.size > 15*1024*1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
+        const btn = $('std-image-btn-edit');
+        btn.textContent = 'Загрузка...';
+        btn.disabled = true;
+        try {
+            const res = await uploadFile(file);
+            _uploadedStandardImageUrl = res.url;
+            $('std-image-preview-edit').src = getFileUrl(res.url);
+            $('std-image-preview-box-edit').style.display = 'block';
+            btn.textContent = 'Фото загружено';
+        } catch (err) { toast(err.message, 'error'); btn.textContent = 'Заменить фото'; } finally { btn.disabled = false; }
+    });
+
+    // File upload
+    $('std-file-btn-edit').addEventListener('click', () => $('std-file-file-edit').click());
+    $('std-file-file-edit').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (file.size > 15*1024*1024) { toast('Файл слишком большой (макс 15MB)', 'error'); return; }
+        const btn = $('std-file-btn-edit');
+        btn.textContent = 'Загрузка...';
+        btn.disabled = true;
+        try {
+            const res = await uploadFile(file);
+            _uploadedStandardFileUrl = res.url;
+            _uploadedStandardFileName = res.name;
+            $('std-file-btn-edit').style.display = 'none';
+            $('std-file-preview-box-edit').style.display = 'flex';
+        } catch (err) { toast(err.message, 'error'); } finally { btn.disabled = false; btn.textContent = 'Прикрепить файл'; }
+    });
+
+    $('save-std-btn').addEventListener('click', async () => {
+        const type = $('edit-std-content-type').value;
+        const body = {
+            id, number: $('edit-std-number').value.trim(), group_name: $('edit-std-group').value,
+            title: $('edit-std-title').value.trim(), image_url: _uploadedStandardImageUrl,
+            file_url: _uploadedStandardFileUrl, file_name: _uploadedStandardFileName,
+            content_type: type, content_data: type === 'table' ? { headers: _tableHeaders, rows: _tableRows } : null
+        };
+        if (type === 'text') { body.body = cleanHTML($('edit-std-body').innerHTML); } else { body.body = 'Таблица'; }
+        try {
+            await api('/api/admin/standard/update', body);
+            toast('Сохранено', 'success'); closeModal(); loadStandards();
+        } catch (e) { toast('Ошибка: '+e.message, 'error'); }
+    });
+}
+
 async function approveStandard(id) { try { await api('/api/admin/standard/approve', { id }); toast('Одобрено', 'success'); loadStandards(); } catch(e) { toast('Ошибка: '+e.message, 'error'); } }
 async function rejectStandard(id) { try { await api('/api/admin/standard/reject', { id }); toast('Отклонено', 'success'); loadStandards(); } catch(e) { toast('Ошибка: '+e.message, 'error'); } }
 async function deleteStandard(id) { if(!confirm('Удалить?')) return; try { await api('/api/admin/standard/delete', { id }); toast('Удалено', 'success'); loadStandards(); } catch(e) { toast('Ошибка: '+e.message, 'error'); } }

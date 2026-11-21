@@ -282,6 +282,19 @@ async def handle_admin_css(request):
         }
     )
 
+async def handle_sales_css(request):
+    data, mtime = _serve_file("sales.css", _STATIC_FILES_CACHE.setdefault("sales.css", {"data": None, "mtime": 0.0}))
+    if not data: return web.Response(text="sales.css not found", status=404)
+    return web.Response(
+        body=data,
+        content_type="text/css",
+        charset="utf-8",
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "Last-Modified": formatdate(mtime, usegmt=True)
+        }
+    )
+
 async def _send_static_file(name, content_type):
     if name not in _STATIC_FILES_CACHE: _STATIC_FILES_CACHE[name] = {"data": None, "mtime": 0.0}
     data, mtime = _serve_file(name, _STATIC_FILES_CACHE[name])
@@ -385,11 +398,12 @@ app.router.add_get("/admin/", handle_admin_page)
 app.router.add_get("/sales", handle_sales_page)
 app.router.add_get("/sales/", handle_sales_page)
 app.router.add_get("/admin.css", handle_admin_css)
+app.router.add_get("/sales.css", handle_sales_css)
+app.router.add_get("/sales.js", handle_sales_js)
 app.router.add_get("/academy", handle_academy_page)
 app.router.add_get("/academy/", handle_academy_page)
 app.router.add_get("/timesheet", handle_timesheet_page)
 app.router.add_get("/timesheet/", handle_timesheet_page)
-app.router.add_get("/favicon.ico", handle_favicon)
 app.router.add_get("/api/health", handle_health)
 app.router.add_get("/manifest.json", handle_manifest)
 app.router.add_get("/sw.js", handle_sw)

@@ -104,10 +104,22 @@ def run_migrations():
     except Exception as e:
         logging.error(f"❌ Ошибка миграции/создания папок: {e}")
 
+# Мусорные пути от сканеров — не логируем
+_SPAM_PATHS = (
+    '/wp-admin', '/wp-login', '/wp-content', '/wp-includes', '/xmlrpc.php',
+    '/phpmyadmin', '/pma', '/phpMyAdmin',
+    '/.env', '/.git', '/.svn',
+    '/actuator', '/actuator/health',
+    '/api/v1/', '/swagger', '/swagger-ui',
+)
+
 # ============= MIDDLEWARES =============
 
 @web.middleware
 async def error_middleware(request, handler):
+    # Пропускаем мусорные пути от сканеров — не логируем
+    if any(request.path.startswith(sp) for sp in _SPAM_PATHS):
+        return await handler(request)
     try:
         return await handler(request)
     except web.HTTPException:

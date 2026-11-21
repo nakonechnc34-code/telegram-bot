@@ -526,7 +526,10 @@ async def handle_staff_certification_submit(request):
                 correct_db = {str(r["id"]): r["correct_option"] for r in cur.fetchall()}
                 
                 score = 0
-                total = len(correct_db)
+                total = len(answers) # ИСПРАВЛЕНО: считаем только заданные вопросы
+                if total == 0:
+                    return {"error": "no_answers"}
+
                 for q_id, ans in answers.items():
                     if correct_db.get(str(q_id)) == str(ans).lower():
                         score += 1

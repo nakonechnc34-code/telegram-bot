@@ -7,7 +7,7 @@ from psycopg2.extras import RealDictCursor, Json
 from psycopg2 import sql
 from db import get_conn, _run
 from config import (
-    ALLOWED_EXTENSIONS, IMAGE_EXTENSIONS, ENABLE_PUSH, VAPID_PRIVATE_KEY, VAPID_CLAIMS, PERM_KEYS,
+    ALLOWED_EXTENSIONS, IMAGE_EXTENSIONS, ENABLE_PUSH, VAPID_PRIVATE_KEY, VAPID_CLAIMS, PERM_KEYS, PERMISSIONS_LIST,
     CACHE_TTL_RESTAURANTS, CACHE_TTL_MEDBOOK_REF, CACHE_TTL_NEWS
 )
 from utils.auth_helpers import (
@@ -226,7 +226,6 @@ async def handle_admin_restaurant_add(request):
                 cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)", (admin["user_id"], "restaurant_create", "restaurant", key, f"name={name}"))
     res = await _run(_sync)
     if res == "duplicate": return web.json_response({"error": "duplicate"}, status=409)
-    # Очищаем кэш ресторанов
     clear_cache("restaurants_all")
     return web.json_response({"ok": True})
 
@@ -249,12 +248,10 @@ async def handle_admin_restaurant_update(request):
                     if k in allowed:
                         query = sql.SQL("UPDATE restaurants SET {} = %s WHERE key = %s").format(sql.Identifier(k))
                         cur.execute(query, (v, key))
-                # Audit log
-        with get_conn() as conn:
-            with conn.cursor() as cur:
                 cur.execute("INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)",
                             (admin["user_id"], "restaurant_update", "restaurant", key, f"fields={','.join(updates.keys())}"))
     await _run(_sync)
+    clear_cache("restaurants_all")
     return web.json_response({"ok": True})
 
 @routes.post('/api/admin/restaurant/tu')
@@ -277,6 +274,7 @@ async def handle_admin_restaurant_tu(request):
                 cur.execute("UPDATE restaurants SET territory_manager_id = %s WHERE key = %s", (tu, key))
     res = await _run(_sync)
     if res == "invalid_tu": return web.json_response({"error": "invalid_tu"}, status=400)
+    clear_cache("restaurants_all")
     return web.json_response({"ok": True})
 
 @routes.post('/api/admin/restaurant/status')
@@ -294,6 +292,7 @@ async def handle_admin_restaurant_status(request):
         with get_conn() as conn:
             with conn.cursor() as cur: cur.execute("UPDATE restaurants SET force_status = %s WHERE key = %s", (st, key))
     await _run(_sync)
+    clear_cache("restaurants_all")
     return web.json_response({"ok": True})
 
 @routes.post('/api/admin/citizenships')
@@ -356,6 +355,13 @@ async def handle_admin_admins(request):
     if not admin["is_super_admin"]: return web.json_response({"error": "forbidden"}, status=403)
     return web.json_response({"admins": await _run(_sync_list_admins)})
 
+@routes.post('/api/admin/permissions-list')
+async def handle_permissions_list(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    if not admin["is_super_admin"]: return web.json_response({"error": "forbidden"}, status=403)
+    return web.json_response({"permissions": PERMISSIONS_LIST})
+
 @routes.post('/api/admin/set-permissions')
 async def handle_admin_set_permissions(request):
     admin, err = await get_admin_user(request)
@@ -413,7 +419,6 @@ async def handle_admin_change_password(request):
 
 @routes.post('/api/admin/upload')
 async def handle_admin_upload(request):
-    # При multipart/form-data нет JSON body — берём токен из headers или query
     token = request.query.get('webToken') or request.headers.get('X-Token')
     if not token and request.headers.get('Authorization', '').startswith('Bearer '):
         token = request.headers['Authorization'].split(' ', 1)[1]
@@ -421,7 +426,6 @@ async def handle_admin_upload(request):
     if not token:
         return web.json_response({"error": "Unauthorized: No token provided"}, status=401)
 
-    # Создаём временный request-объект с токеном для get_admin_user
     from multidict import CIMultiDict
     headers = CIMultiDict(request.headers)
     headers['Authorization'] = f'Bearer {token}'

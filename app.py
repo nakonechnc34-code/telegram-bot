@@ -3,17 +3,17 @@ import asyncio
 import logging
 import gzip
 import traceback
+import json
 import time
+from datetime import datetime, date
+from decimal import Decimal
 from email.utils import formatdate
 from aiohttp import web
 
 import config
 from db import init_pool, close_pool, get_conn, init_async_pool, close_async_pool
 from middleware.cache import clear_cache
-from middleware.logging_middleware import request_logging_middleware
-from middleware.rate_limit import api_rate_middleware
 from utils.auth_helpers import _sync_get_session_user, _sync_get_user
-from utils.security import _json_dumps
 
 # ============= START TIME =============
 START_TIME = time.time()
@@ -29,7 +29,20 @@ if config.SENTRY_DSN:
     )
     logging.info("📡 Sentry initialized")
 
+
 # ============= JSON SERIALIZER FIX =============
+def _json_default(obj):
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    if isinstance(obj, Decimal):
+        return float(obj)
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
+def _json_dumps(data):
+    return json.dumps(data, ensure_ascii=False, default=_json_default)
+
+
 _orig_json_response = web.json_response
 
 
@@ -53,18 +66,11 @@ from routes.sales import routes as sales_routes
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 
-def _get_base_data_dir():
-    env_dir = os.getenv("DATA_DIR")
-    if env_dir:
-        return env_dir
-    return "/data" if os.path.exists("/data") else os.path.dirname(os.path.abspath(__file__))
-
-
 # ============= МИГРАЦИИ БАЗЫ ДАННЫХ =============
 def run_migrations():
     """Автоматически добавляет нужные колонки в БД при старте и создает папку uploads."""
     try:
-        base_dir = _get_base_data_dir()
+        base_dir = "/data" if os.path.exists("/data") else os.path.dirname(os.path.abspath(__file__))
         upload_dir = os.path.join(base_dir, "uploads")
         os.makedirs(upload_dir, exist_ok=True)
         logging.info(f"✅ Папка для загрузок проверена/создана: {upload_dir}")
@@ -158,10 +164,10 @@ async def security_headers_middleware(request, handler):
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     csp = (
         "default-src 'self'; script-src 'self' 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "font-src 'self' https://fonts.gstatic.com; "
-        "img-src 'self' data: https://images.unsplash.com; "
-        "connect-src 'self' https://fonts.googleapis.com; "
+        "style-src 'self' 'unsafe-inline' [https://fonts.googleapis.com](https://fonts.googleapis.com); "
+        "font-src 'self' [https://fonts.gstatic.com](https://fonts.gstatic.com); "
+        "img-src 'self' data: [https://images.unsplash.com](https://images.unsplash.com); "
+        "connect-src 'self' [https://fonts.googleapis.com](https://fonts.googleapis.com); "
         "frame-ancestors 'none'; child-src 'none';"
     )
     response.headers["Content-Security-Policy"] = csp
@@ -170,6 +176,9 @@ async def security_headers_middleware(request, handler):
         response.headers["Pragma"] = "no-cache"
     return response
 
+
+from middleware.logging_middleware import request_logging_middleware
+from middleware.rate_limit import api_rate_middleware
 
 # ============= STATIC FILE SERVING =============
 _INDEX_CACHE = {"data": None, "mtime": 0.0}
@@ -362,12 +371,10 @@ async def handle_download(request):
     if not user or user.get("is_fired"):
         return web.Response(status=403, text="Forbidden")
 
-    filename = request.match_info.get('filename') or ""
+    filename = request.match_info.get('filename')
     safe_filename = os.path.basename(filename)
-    if not safe_filename:
-        return web.Response(status=400, text="Bad Request: empty filename")
 
-    base_dir = _get_base_data_dir()
+    base_dir = "/data" if os.path.exists("/data") else os.path.dirname(os.path.abspath(__file__))
     upload_dir = os.path.join(base_dir, "uploads")
     filepath = os.path.join(upload_dir, safe_filename)
 
@@ -377,7 +384,7 @@ async def handle_download(request):
         logging.warning(f"Path traversal attempt: {filename}")
         return web.Response(status=403, text="Forbidden")
 
-    if not os.path.isfile(filepath):
+    if not os.path.exists(filepath):
         return web.Response(status=404, text="File not found")
 
     return web.FileResponse(filepath)
@@ -425,6 +432,7 @@ app.router.add_get("/static/screenshot1.png", handle_screenshot)
 app.router.add_get("/.well-known/assetlinks.json", handle_assetlinks)
 
 app.router.add_get("/api/download/{filename:.*}", handle_download)
+app.router.add_get("/uploads/{filename:.*}", handle_download)
 
 
 # ============= MAIN =============

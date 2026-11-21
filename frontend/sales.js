@@ -988,7 +988,7 @@
         state.token = getToken();
 
         if (!state.token) {
-            window.location.href = '/admin';
+            window.location.href = '/';
             return;
         }
 

@@ -2,7 +2,6 @@
    WOKKER ADMIN — FULLY FUNCTIONAL DASHBOARD
    ═══════════════════════════════════════════ */
 
-// Global error guard
 window.addEventListener('error', e => { e.preventDefault(); console.error('[global]', e.error); });
 
 const TOKEN_KEY = 'wokker_admin_token';
@@ -10,18 +9,13 @@ const LOGIN_RE = /^[a-z]{3}\d{2}$/;
 let ME = null;
 let _cache = {};
 
-// ═══ UTILS ═══
 const $ = id => document.getElementById(id);
 const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
 function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
 function clearToken() { localStorage.removeItem(TOKEN_KEY); }
-function getFileUrl(url) {
-    if (!url) return '';
-    return url + '?webToken=' + encodeURIComponent(getToken());
-}
+function getFileUrl(url) { if (!url) return ''; return url + '?webToken=' + encodeURIComponent(getToken()); }
 
-// ═══ CACHE ═══
 let _cacheData = {};
 async function cachedApi(path, body, ttl = 30000) {
     const key = path + (body ? JSON.stringify(body) : '');
@@ -53,7 +47,6 @@ function fmtDate(iso, withTime) {
     } catch (e) { return iso; }
 }
 
-// ═══ API ═══
 async function api(path, body) {
     const res = await fetch(path, {
         method: 'POST',
@@ -87,37 +80,22 @@ async function uploadFile(file) {
             headers: { 'X-Token': getToken() },
             body: formData,
         });
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.error || 'Upload failed');
-        }
+        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Upload failed'); }
         return await res.json();
-    } catch (e) {
-        throw new Error(e.message || 'Ошибка сети при загрузке файла');
-    }
+    } catch (e) { throw new Error(e.message || 'Ошибка сети при загрузке файла'); }
 }
 
-// ═══ MOBILE SIDEBAR ═══
 function openSidebar() {
-    const sidebar = $('sidebar');
-    const overlayEl = $('overlay');
+    const sidebar = $('sidebar'); const overlayEl = $('overlay');
     if (sidebar) sidebar.classList.add('sidebar--open');
-    if (overlayEl) {
-        overlayEl.classList.add('sidebar-overlay--show');
-        document.body.style.overflow = 'hidden';
-    }
+    if (overlayEl) { overlayEl.classList.add('sidebar-overlay--show'); document.body.style.overflow = 'hidden'; }
 }
 function closeSidebar() {
-    const sidebar = $('sidebar');
-    const overlayEl = $('overlay');
+    const sidebar = $('sidebar'); const overlayEl = $('overlay');
     if (sidebar) sidebar.classList.remove('sidebar--open');
-    if (overlayEl) {
-        overlayEl.classList.remove('sidebar-overlay--show');
-        document.body.style.overflow = '';
-    }
+    if (overlayEl) { overlayEl.classList.remove('sidebar-overlay--show'); document.body.style.overflow = ''; }
 }
 
-// ═══ PERMISSIONS ═══
 function isSuperAdmin() { return !!(ME && ME.is_super_admin); }
 function isHR() { return !!(ME && ME.is_hr); }
 function canPublish() { return isSuperAdmin() || isHR(); }
@@ -127,62 +105,44 @@ function hasPerm(perm) {
     return !!(ME.permissions && ME.permissions[perm]);
 }
 
-// ═══ MODAL ═══
 function openModal(title, bodyHtml, footerHtml, opts) {
     opts = opts || {};
-    const titleEl = $('modal-title');
-    if (titleEl) titleEl.textContent = title;
-    const bodyEl = $('modal-body');
-    if (bodyEl) bodyEl.innerHTML = bodyHtml;
-    const footerEl = $('modal-footer');
-    if (footerEl) footerEl.innerHTML = footerHtml || '';
-    const boxEl = $('modal-box');
-    if (boxEl) boxEl.className = 'modal' + (opts.wide ? ' wide' : '');
-    const overlayEl = $('modal-overlay');
-    if (overlayEl) overlayEl.classList.add('show');
+    const titleEl = $('modal-title'); if (titleEl) titleEl.textContent = title;
+    const bodyEl = $('modal-body'); if (bodyEl) bodyEl.innerHTML = bodyHtml;
+    const footerEl = $('modal-footer'); if (footerEl) footerEl.innerHTML = footerHtml || '';
+    const boxEl = $('modal-box'); if (boxEl) boxEl.className = 'modal' + (opts.wide ? ' wide' : '');
+    const overlayEl = $('modal-overlay'); if (overlayEl) overlayEl.classList.add('show');
 }
 function closeModal() {
-    const overlayEl = $('modal-overlay');
-    if (overlayEl) overlayEl.classList.remove('show');
+    const overlayEl = $('modal-overlay'); if (overlayEl) overlayEl.classList.remove('show');
 }
 
-// ═══ LOGIN ═══
 function showLogin() {
-    const appEl = $('app');
-    const loginScreenEl = $('login-screen');
+    const appEl = $('app'); const loginScreenEl = $('login-screen');
     if (appEl) appEl.style.display = 'none';
     if (loginScreenEl) loginScreenEl.style.display = 'flex';
-    const errEl = $('login-error');
-    if (errEl) errEl.textContent = '';
-    const loginInput = $('login-login');
-    const passInput = $('login-password');
-    if (loginInput) loginInput.value = '';
-    if (passInput) passInput.value = '';
+    const errEl = $('login-error'); if (errEl) errEl.textContent = '';
+    const loginInput = $('login-login'); const passInput = $('login-password');
+    if (loginInput) loginInput.value = ''; if (passInput) passInput.value = '';
     clearCache();
 }
 function showApp() {
-    const appEl = $('app');
-    const loginScreenEl = $('login-screen');
+    const appEl = $('app'); const loginScreenEl = $('login-screen');
     if (appEl) appEl.style.display = 'block';
     if (loginScreenEl) loginScreenEl.style.display = 'none';
 }
 
 async function doLogin() {
-    const loginInput = $('login-login');
-    const passwordInput = $('login-password');
+    const loginInput = $('login-login'); const passwordInput = $('login-password');
     if (!loginInput || !passwordInput) return;
-    const login = loginInput.value.trim().toLowerCase();
-    const password = passwordInput.value;
-    const errEl = $('login-error');
-    errEl.textContent = '';
+    const login = loginInput.value.trim().toLowerCase(); const password = passwordInput.value;
+    const errEl = $('login-error'); errEl.textContent = '';
     if (!LOGIN_RE.test(login)) { errEl.textContent = 'Логин: 3 латинские буквы + 2 цифры'; return; }
     if (!password) { errEl.textContent = 'Введите пароль'; return; }
-    const btn = $('login-btn');
-    btn.disabled = true; btn.textContent = 'Проверяем…';
+    const btn = $('login-btn'); btn.disabled = true; btn.textContent = 'Проверяем…';
     try {
         const res = await fetch('/api/admin/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ login, password }),
         });
         if (res.status === 401) { errEl.textContent = 'Неверный логин или пароль'; return; }
@@ -190,34 +150,25 @@ async function doLogin() {
         if (!res.ok) { errEl.textContent = 'Ошибка сервера'; return; }
         const data = await res.json();
         if (!data.token) { errEl.textContent = 'Ошибка'; return; }
-        setToken(data.token);
-        clearCache();
+        setToken(data.token); clearCache();
         await checkAdminAndLoad();
-    } catch (e) {
-        errEl.textContent = 'Сеть недоступна';
-    } finally {
-        btn.disabled = false;
-        btn.textContent = 'Войти';
-    }
+    } catch (e) { errEl.textContent = 'Сеть недоступна'; }
+    finally { btn.disabled = false; btn.textContent = 'Войти'; }
 }
 
 async function checkAdminAndLoad() {
     try {
         const res = await api('/api/admin/me', {});
         ME = res.profile;
-        const nameEl = $('admin-name');
-        if (nameEl) nameEl.textContent = ME.full_name || '—';
-        const loginEl = $('admin-login');
-        if (loginEl) loginEl.textContent = '@' + (ME.login || '');
+        const nameEl = $('admin-name'); if (nameEl) nameEl.textContent = ME.full_name || '—';
+        const loginEl = $('admin-login'); if (loginEl) loginEl.textContent = '@' + (ME.login || '');
         const roleEl = $('admin-role');
         if (roleEl) {
             roleEl.textContent = ME.is_super_admin ? 'Супер-админ' : ME.is_hr ? 'HR' : 'Админ';
             roleEl.className = 'badge-role ' + (ME.is_super_admin ? 'super' : ME.is_hr ? 'hr' : 'regular');
         }
-        const adminsNav = $('nav-admins');
-        if (adminsNav) adminsNav.style.display = ME.is_super_admin ? 'flex' : 'none';
-        const avatarEl = $('topbar-avatar');
-        if (avatarEl && ME.full_name) avatarEl.textContent = ME.full_name.charAt(0).toUpperCase();
+        const adminsNav = $('nav-admins'); if (adminsNav) adminsNav.style.display = ME.is_super_admin ? 'flex' : 'none';
+        const avatarEl = $('topbar-avatar'); if (avatarEl && ME.full_name) avatarEl.textContent = ME.full_name.charAt(0).toUpperCase();
         showApp();
         if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
             navigator.serviceWorker.controller.postMessage({ type: 'SET_TOKEN', token: getToken() });
@@ -226,12 +177,10 @@ async function checkAdminAndLoad() {
         refreshCounters();
     } catch (e) {
         showLogin();
-        const errEl = $('login-error');
-        if (errEl) errEl.textContent = 'Ошибка: ' + e.message;
+        const errEl = $('login-error'); if (errEl) errEl.textContent = 'Ошибка: ' + e.message;
     }
 }
 
-// ═══ NAVIGATION ═══
 const PAGE_TITLES = {
     dashboard: 'Дашборд', users: 'Сотрудники', medbooks: 'Медкнижки',
     news: 'Новости', standards: 'Стандарты', certification: 'Сертификация', faq: 'FAQ',
@@ -257,7 +206,6 @@ function navigate(page) {
     }
 }
 
-// ═══ REFRESH COUNTERS ═══
 async function refreshCounters() {
     try {
         const q = await api('/api/admin/questions', {});
@@ -279,7 +227,6 @@ async function refreshCounters() {
     } catch (e) {}
 }
 
-// ═══ AVATAR GRADIENTS ═══
 const GRADIENTS = [
     'linear-gradient(135deg, #4318FF 0%, #3311DB 100%)',
     'linear-gradient(135deg, #3965FF 0%, #00d2ff 100%)',
@@ -380,23 +327,33 @@ async function loadDashboard() {
 // ═══════════════════════════════════════════
 async function loadUsers() {
     const canCreate = hasPerm('users_create');
+    
+    // ИСПРАВЛЕНО: Убран дублирующий заголовок "Сотрудники", вкладки перенесены в header
     $('page-content').innerHTML = `
         <div class="neu-card">
-            <div class="neu-card__header">
-                <div class="neu-card__header-title">Сотрудники</div>
+            <div class="neu-card__header" style="display:flex; justify-content:space-between; align-items:flex-end; border-bottom:none; margin-bottom:20px; padding-bottom:0; flex-wrap:wrap; gap:16px;">
+                <div class="subtabs" style="margin-bottom:0; border:none; padding:0; background:transparent;">
+                    <button class="subtab active" data-tab="active">Активные</button>
+                    <button class="subtab" data-tab="fired">Уволенные</button>
+                </div>
                 <div style="display:flex;gap:12px;">
                     <input class="form-input" id="users-search" placeholder="Поиск по ФИО, логину..." style="width:280px; border-radius:30px; padding:12px 20px;">
                     ${canCreate ? '<button class="btn btn--primary" onclick="openAddUser()">Добавить</button>' : ''}
                 </div>
             </div>
-            <div class="subtabs">
-                <button class="subtab active" data-tab="active">Активные</button>
-                <button class="subtab" data-tab="fired">Уволенные</button>
-            </div>
             <div class="table-wrap">
                 <table class="t">
-                    <thead><tr><th>Логин</th><th>Сотрудник</th><th>Должность</th><th>Ресторан</th><th>Медкнижка</th><th>Статус</th><th>Действия</th></tr></thead>
-                    <tbody id="users-table"><tr><td colspan="7" style="text-align:center;color:var(--text-sec);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
+                    <thead>
+                        <tr>
+                            <th>Логин</th>
+                            <th>Сотрудник</th>
+                            <th>Должность</th>
+                            <th>Ресторан</th>
+                            <th>Статус</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-table"><tr><td colspan="6" style="text-align:center;color:var(--text-sec);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
                 </table>
             </div>
         </div>`;
@@ -428,22 +385,20 @@ async function loadUsers() {
             const data = await cachedApi('/api/admin/users', { search: currentSearch, fired: currentTab === 'fired' }, 5000);
             const users = data.users || [];
             const tbody = $('users-table');
+            
             tbody.innerHTML = users.map((u, i) => {
-                const mbStatus = u.medbook_status || 'invalid';
-                let mbTag = '';
-                if (u.is_admin) mbTag = '<span class="tag">—</span>';
-                else if (mbStatus === 'ok') mbTag = '<span class="tag tag--green">ОК</span>';
-                else if (mbStatus === 'expiring') mbTag = '<span class="tag tag--amber">Истекает</span>';
-                else mbTag = '<span class="tag tag--pink">Ошибка</span>';
-                
                 if (currentTab === 'fired') {
                     return `<tr>
                         <td>${u.login ? esc(u.login) : '<span class="tag">нет</span>'}</td>
                         <td><div class="name-cell"><div class="avatar" style="background:${getAvatarGradient(i)}">${(u.full_name||'?').charAt(0).toUpperCase()}</div>${esc(u.full_name||'—')}</div></td>
                         <td>${esc(u.position||'—')}</td>
                         <td>${esc(u.restaurant_name||'—')}</td>
-                        <td colspan="2"></td>
-                        <td>${hasPerm('users_fire') ? `<button class="btn btn--sm btn--outline-success" onclick="restoreUser(${u.user_id})">Восстановить</button>` : ''}</td>
+                        <td><span class="tag tag--amber">Уволен</span></td>
+                        <td>
+                            <div style="display:flex; gap:8px; white-space:nowrap;">
+                                ${hasPerm('users_fire') ? `<button class="btn btn--sm btn--outline-success" onclick="restoreUser(${u.user_id})">Восстановить</button>` : ''}
+                            </div>
+                        </td>
                     </tr>`;
                 }
                 
@@ -463,16 +418,17 @@ async function loadUsers() {
                     </td>
                     <td>${esc(u.position||'—')}</td>
                     <td>${esc(u.restaurant_name||'—')}</td>
-                    <td>${mbTag}</td>
                     <td><span class="tag ${u.is_fired ? 'tag--amber' : 'tag--green'}">${u.is_fired ? 'Уволен' : 'Активен'}</span></td>
-                    <td style="display:flex;gap:8px;">
-                        ${!u.is_fired && hasPerm('users_edit') ? `<button class="btn btn--sm btn--outline" onclick="openEditUser(${u.user_id})">Изменить</button>` : ''}
-                        ${!u.is_fired && !u.is_super_admin && hasPerm('users_fire') ? `<button class="btn btn--sm btn--outline-danger" onclick="fireUser(${u.user_id},'${esc(u.full_name||'')}')" ${u.is_admin && !isSuperAdmin() ? 'disabled' : ''}>Уволить</button>` : ''}
+                    <td>
+                        <div style="display:flex; gap:8px; white-space:nowrap;">
+                            ${!u.is_fired && hasPerm('users_edit') ? `<button class="btn btn--sm btn--outline" onclick="openEditUser(${u.user_id})">Изменить</button>` : ''}
+                            ${!u.is_fired && !u.is_super_admin && hasPerm('users_fire') ? `<button class="btn btn--sm btn--outline-danger" onclick="fireUser(${u.user_id},'${esc(u.full_name||'')}')" ${u.is_admin && !isSuperAdmin() ? 'disabled' : ''}>Уволить</button>` : ''}
+                        </div>
                     </td>
                 </tr>`;
-            }).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--text-sec);padding:40px;">Нет сотрудников</td></tr>';
+            }).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-sec);padding:40px;">Нет сотрудников</td></tr>';
         } catch (e) {
-            $('users-table').innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-sec);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+            $('users-table').innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-sec);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
         }
     }
 }
@@ -596,16 +552,17 @@ async function loadMedbooks() {
     const data = await cachedApi('/api/admin/medbooks', {});
     _medTab = _medTab || 'staff';
     const canEdit = hasPerm('medbook_edit');
+    
+    // ИСПРАВЛЕНО: Убран дублирующий заголовок "Медкнижки", вкладки перенесены в header
     $('page-content').innerHTML = `
         <div class="neu-card">
-            <div class="neu-card__header">
-                <div class="neu-card__header-title">Медкнижки</div>
-            </div>
-            <div class="subtabs">
-                <button class="subtab ${_medTab==='staff'?'active':''}" data-mt="staff">Сотрудники</button>
-                <button class="subtab ${_medTab==='doctors'?'active':''}" data-mt="doctors">Врачи</button>
-                <button class="subtab ${_medTab==='tests'?'active':''}" data-mt="tests">Анализы</button>
-                <button class="subtab ${_medTab==='vaccines'?'active':''}" data-mt="vaccines">Прививки</button>
+            <div class="neu-card__header" style="display:flex; justify-content:space-between; align-items:flex-end; border-bottom:none; margin-bottom:20px; padding-bottom:0;">
+                <div class="subtabs" style="margin-bottom:0; border:none; padding:0; background:transparent;">
+                    <button class="subtab ${_medTab==='staff'?'active':''}" data-mt="staff">Сотрудники</button>
+                    <button class="subtab ${_medTab==='doctors'?'active':''}" data-mt="doctors">Врачи</button>
+                    <button class="subtab ${_medTab==='tests'?'active':''}" data-mt="tests">Анализы</button>
+                    <button class="subtab ${_medTab==='vaccines'?'active':''}" data-mt="vaccines">Прививки</button>
+                </div>
             </div>
             <div id="med-content"></div>
         </div>`;
@@ -660,8 +617,12 @@ async function loadMedbooks() {
                     <tbody>${list.map(item => `<tr>
                         <td style="font-weight:600;">${esc(item.name)}</td><td>${item.validity_months||'—'}</td>
                         <td>${item.required ? '<span class="tag tag--green">Да</span>' : '<span class="tag tag--amber">Нет</span>'}</td>
-                        <td>${canManage ? `<button class="btn btn--sm btn--outline" onclick="editMedDirItem(${item.id},'${type}','${esc(item.name)}',${item.validity_months||0},${item.required})">Изменить</button>
-                            <button class="btn btn--sm btn--outline-danger" onclick="deleteMedDirItem('${type}',${item.id})" style="margin-left:8px;">Удалить</button>` : ''}</td>
+                        <td>
+                            <div style="display:flex; gap:8px; white-space:nowrap;">
+                                ${canManage ? `<button class="btn btn--sm btn--outline" onclick="editMedDirItem(${item.id},'${type}','${esc(item.name)}',${item.validity_months||0},${item.required})">Изменить</button>
+                                <button class="btn btn--sm btn--outline-danger" onclick="deleteMedDirItem('${type}',${item.id})">Удалить</button>` : ''}
+                            </div>
+                        </td>
                     </tr>`).join('') || '<tr><td colspan="4" style="text-align:center;padding:40px;">Пусто</td></tr>'}</tbody></table></div>`;
         }
     }
@@ -733,8 +694,10 @@ async function loadMedbookDirs() {
                     <td style="font-weight:600;">${esc(item.name)}</td><td>${item.validity_months||'—'}</td>
                     <td>${item.required ? '<span class="tag tag--green">Да</span>' : '<span class="tag tag--amber">Нет</span>'}</td>
                     <td>
-                        <button class="btn btn--sm btn--outline" onclick="editMedDirItem(${item.id},'${esc(item.type)}','${esc(item.name)}',${item.validity_months||0},${item.required})">Изменить</button>
-                        <button class="btn btn--sm btn--outline-danger" style="margin-left:8px;" onclick="deleteMedDirItem('${esc(item.type)}',${item.id})">Удалить</button>
+                        <div style="display:flex; gap:8px; white-space:nowrap;">
+                            <button class="btn btn--sm btn--outline" onclick="editMedDirItem(${item.id},'${esc(item.type)}','${esc(item.name)}',${item.validity_months||0},${item.required})">Изменить</button>
+                            <button class="btn btn--sm btn--outline-danger" onclick="deleteMedDirItem('${esc(item.type)}',${item.id})">Удалить</button>
+                        </div>
                     </td>
                 </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;padding:40px;">Нет записей</td></tr>'}</tbody></table>
             </div>
@@ -1474,7 +1437,11 @@ async function loadPositions() {
         ${positions.map(p => `<tr>
             <td style="font-weight:600;">${esc(p.name)}</td>
             <td>${p.is_archived ? '<span class="tag tag--amber">В архиве</span>' : '<span class="tag tag--green">Активна</span>'}</td>
-            <td>${canEdit && !p.is_archived ? `<button class="btn btn--sm btn--outline" onclick="archivePosition(${p.id})">В архив</button>` : ''}</td>
+            <td>
+                <div style="display:flex; gap:8px; white-space:nowrap;">
+                    ${canEdit && !p.is_archived ? `<button class="btn btn--sm btn--outline" onclick="archivePosition(${p.id})">В архив</button>` : ''}
+                </div>
+            </td>
         </tr>`).join('')}
         </tbody></table></div>`;
     } catch (e) { $('pos-list').innerHTML = `<div class="empty">Ошибка: ${esc(e.message)}</div>`; }
@@ -1519,7 +1486,11 @@ async function loadCitizenships() {
         $('cit-list').innerHTML = `<div class="table-wrap"><table class="t"><thead><tr><th>Название</th><th>Действия</th></tr></thead><tbody>
         ${list.map(c => `<tr>
             <td style="font-weight:600;">${esc(c.name)}</td>
-            <td>${canEdit ? `<button class="btn btn--sm btn--outline-danger" onclick="deleteCitizenship(${c.id})">Удалить</button>` : ''}</td>
+            <td>
+                <div style="display:flex; gap:8px; white-space:nowrap;">
+                    ${canEdit ? `<button class="btn btn--sm btn--outline-danger" onclick="deleteCitizenship(${c.id})">Удалить</button>` : ''}
+                </div>
+            </td>
         </tr>`).join('')}
         </tbody></table></div>`;
     } catch (e) { $('cit-list').innerHTML = `<div class="empty">Ошибка: ${esc(e.message)}</div>`; }
@@ -1573,10 +1544,12 @@ async function loadRestaurants() {
                         <td>${esc(r.address || '—')}</td>
                         <td>${esc(r.territory_manager_name || '—')}</td>
                         <td>${r.force_status === 'closed' ? '<span class="tag tag--pink">Закрыт</span>' : '<span class="tag tag--green">Открыт</span>'}</td>
-                        <td style="display:flex;gap:8px;">
-                            ${canEdit ? `<button class="btn btn--sm btn--outline" onclick="openEditRestaurant('${esc(r.key)}')">Изменить</button>` : ''}
-                            ${canTU ? `<button class="btn btn--sm btn--outline" onclick="openTURestaurant('${esc(r.key)}',${r.territory_manager_id || 'null'})">ТУ</button>` : ''}
-                            ${canEdit ? `<button class="btn btn--sm btn--outline-danger" onclick="toggleRestaurantStatus('${esc(r.key)}','${r.force_status || 'open'}')">${r.force_status === 'closed' ? 'Открыть' : 'Закрыть'}</button>` : ''}
+                        <td>
+                            <div style="display:flex; gap:8px; white-space:nowrap;">
+                                ${canEdit ? `<button class="btn btn--sm btn--outline" onclick="openEditRestaurant('${esc(r.key)}')">Изменить</button>` : ''}
+                                ${canTU ? `<button class="btn btn--sm btn--outline" onclick="openTURestaurant('${esc(r.key)}',${r.territory_manager_id || 'null'})">ТУ</button>` : ''}
+                                ${canEdit ? `<button class="btn btn--sm btn--outline-danger" onclick="toggleRestaurantStatus('${esc(r.key)}','${r.force_status || 'open'}')">${r.force_status === 'closed' ? 'Открыть' : 'Закрыть'}</button>` : ''}
+                            </div>
                         </td>
                     </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;padding:40px;">Нет ресторанов</td></tr>'}
                     </tbody></table>
@@ -1724,7 +1697,11 @@ async function loadAdmins() {
                 <td style="font-weight:600;">${esc(a.full_name || '—')}</td>
                 <td>@${esc(a.login || '')}</td>
                 <td>${a.is_super_admin ? '<span class="tag tag--purple">Суперадмин</span>' : '<span class="tag tag--blue">Админ</span>'}</td>
-                <td>${acts}</td>
+                <td>
+                    <div style="display:flex; gap:8px; white-space:nowrap;">
+                        ${acts}
+                    </div>
+                </td>
             </tr>`;
         }).join('')}
         </tbody></table></div>`;

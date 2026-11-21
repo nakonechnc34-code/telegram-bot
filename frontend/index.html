@@ -152,6 +152,8 @@
   .rest-actions a { flex: 1; display: flex; align-items: center; justify-content: center; padding: 14px; border-radius: var(--radius-sm); font-size: 15px; font-weight: 700; text-decoration: none; }
   .btn-call { background: var(--bg); color: var(--text-main); }
   .btn-route { background: var(--accent); color: #fff; }
+  .btn-send { display: flex; align-items: center; justify-content: center; padding: 18px; background: var(--accent); color: #fff; border-radius: var(--radius-sm); font-size: 16px; font-weight: 700; text-align: center; box-shadow: var(--shadow); transition: transform 0.2s; }
+  .btn-send:active { transform: scale(0.98); }
   .my-rest-tag { position: absolute; top: 20px; right: 24px; font-size: 11px; background: var(--gold); color: #fff; padding: 4px 10px; border-radius: 8px; font-weight: 800; text-transform: uppercase; }
 
   .detail-hero { text-align: center; margin: 32px 24px; }
@@ -348,6 +350,67 @@ const $ = id => document.getElementById(id);
 function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
 function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
 function clearToken() { localStorage.removeItem(TOKEN_KEY); }
+
+function buildProtectedMediaUrl(url) {
+  if (!url) return '';
+  const raw = String(url).trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const parsed = new URL(raw, window.location.origin);
+      const token = getToken();
+      if (token && parsed.origin === window.location.origin && !parsed.searchParams.has('token') && !parsed.searchParams.has('webToken')) {
+        parsed.searchParams.set('token', token);
+      }
+      return esc(parsed.toString());
+    } catch (e) {
+      return esc(raw);
+    }
+  }
+  const cleanPath = raw.startsWith('/') ? raw : `/api/download/${encodeURIComponent(raw.split('/').pop().split('?')[0])}`;
+  const sep = cleanPath.includes('?') ? '&' : '?';
+  const token = getToken();
+  return esc(token ? `${cleanPath}${sep}token=${encodeURIComponent(token)}` : cleanPath);
+}
+
+function sanitizeStandardHtml(html) {
+  if (!html) return '';
+  const allowedTags = new Set([
+    'P', 'BR', 'DIV', 'SPAN', 'B', 'STRONG', 'I', 'EM', 'U',
+    'H1', 'H2', 'H3', 'H4', 'UL', 'OL', 'LI',
+    'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD', 'BLOCKQUOTE'
+  ]);
+  const template = document.createElement('template');
+  template.innerHTML = String(html);
+
+  const cleanNode = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return document.createTextNode(node.textContent || '');
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return document.createDocumentFragment();
+    }
+    const tag = node.tagName.toUpperCase();
+    const frag = document.createDocumentFragment();
+    if (!allowedTags.has(tag)) {
+      for (const child of Array.from(node.childNodes)) {
+        frag.appendChild(cleanNode(child));
+      }
+      return frag;
+    }
+    const el = document.createElement(tag.toLowerCase());
+    for (const child of Array.from(node.childNodes)) {
+      el.appendChild(cleanNode(child));
+    }
+    return el;
+  };
+
+  const out = document.createElement('div');
+  for (const child of Array.from(template.content.childNodes)) {
+    out.appendChild(cleanNode(child));
+  }
+  return out.innerHTML;
+}
 
 let _toastTimer = null;
 function showToast(text, type) {
@@ -786,7 +849,6 @@ function renderProfileFromBoot() {
     </div>
   `;
 
-  // Показываем кнопку ТОЛЬКО если бэкенд подтвердил наличие прав
   const timesheetBtn = $('open-timesheet-btn');
   if (timesheetBtn && p.can_access_timesheet === true) {
     timesheetBtn.style.display = 'flex';
@@ -906,7 +968,6 @@ function renderTeamFromBoot() {
   const pos = (BOOT && BOOT.profile && BOOT.profile.position || "").toLowerCase();
   const isHR = pos.trim() === "hr";
   const isTU = pos.includes("территориальный");
-  const isUS = pos.includes("управляющий сменой");
 
   const subtitle = $('team-subtitle');
   if (subtitle) {
@@ -1019,7 +1080,7 @@ function showRestaurantDetail(key) {
       ${phoneClean ? `<div class="row"><div class="lbl">Телефон</div><a href="tel:${esc(phoneClean)}" style="color:var(--text-main);text-decoration:none;">${esc(r.phone)}</a></div>` : ''}
       <div class="row"><div class="lbl">Часы работы</div>${esc((r.hours || '—').replace(/\n/g, ' · '))}</div>
     </div>
-    <a href="${routeUrl}" target="_blank" rel="noopener" class="btn-send" style="display:block; margin: 0 20px 30px; text-decoration:none;">Открыть в Яндекс Картах</a>
+    <a href="${esc(routeUrl)}" target="_blank" rel="noopener" class="btn-send" style="margin: 0 20px 30px; text-decoration:none;">Открыть в Яндекс Картах</a>
   `;
 
   document.querySelector('.tabs').style.display = 'none';
@@ -1052,7 +1113,7 @@ function renderNewsFromBoot() {
     else if (lvl === 'important') badgeHtml = '<span class="news-badge important">Важно</span>';
     
     const imageHtml = n.image_url 
-      ? `<img src="${esc(n.image_url)}?token=${getToken()}" class="news-item-img">` 
+      ? `<img src="${buildProtectedMediaUrl(n.image_url)}" class="news-item-img">` 
       : `<div class="news-item-img" style="display:flex;align-items:center;justify-content:center;font-size:32px;background:var(--bg);">📰</div>`;
 
     return `
@@ -1079,7 +1140,7 @@ function showNewsDetail(id) {
   if (lvl === 'urgent') badgeHtml = '<span class="news-badge urgent">Срочно</span>';
   else if (lvl === 'important') badgeHtml = '<span class="news-badge important">Важно</span>';
   
-  const imageHtml = n.image_url ? `<img src="${esc(n.image_url)}?token=${getToken()}" class="news-detail-img">` : '';
+  const imageHtml = n.image_url ? `<img src="${buildProtectedMediaUrl(n.image_url)}" class="news-detail-img">` : '';
 
   $('news-detail-box').innerHTML = `
     <div class="news-detail-header">
@@ -1159,7 +1220,7 @@ function drawStandardsList() {
 
   box.innerHTML = filtered.map(s => {
     const imageHtml = s.image_url 
-      ? `<img src="${esc(s.image_url)}?token=${getToken()}" class="std-img">` 
+      ? `<img src="${buildProtectedMediaUrl(s.image_url)}" class="std-img">` 
       : '';
 
     return `
@@ -1176,16 +1237,12 @@ function drawStandardsList() {
   }).join('');
 }
 
-// ИСПРАВЛЕННАЯ ФУНКЦИЯ СКАЧИВАНИЯ ФАЙЛА
 async function downloadFile(url, filename) {
   try {
     showToast('Скачивание началось...');
-    
-    // Извлекаем имя файла из старого пути (/uploads/...)
-    const fileName = url.split('/').pop();
-    
-    // Стучимся на новый API с токеном в URL
-    const apiUrl = `/api/download/${fileName}?webToken=${getToken()}`;
+    const fileName = String(url || '').split('/').pop().split('?')[0];
+    const token = getToken();
+    const apiUrl = `/api/download/${encodeURIComponent(fileName)}?token=${encodeURIComponent(token)}&webToken=${encodeURIComponent(token)}`;
     
     const response = await fetch(apiUrl);
     if (!response.ok) throw new Error(`Ошибка сервера (код ${response.status})`);
@@ -1210,7 +1267,7 @@ function showStandardDetail(id) {
   const s = (BOOT && BOOT.standards || []).find(x => x.id === id);
   if (!s) return;
 
-  const imageHtml = s.image_url ? `<img src="${esc(s.image_url)}?token=${getToken()}" class="std-detail-img">` : '';
+  const imageHtml = s.image_url ? `<img src="${buildProtectedMediaUrl(s.image_url)}" class="std-detail-img">` : '';
 
   let contentHtml = '';
   if (s.content_type === 'table' && s.content_data) {
@@ -1232,7 +1289,7 @@ function showStandardDetail(id) {
     `;
     contentHtml = `<div class="std-content-card">${tableHtml}</div>`;
   } else {
-    contentHtml = `<div class="std-content-card"><div class="std-detail-text">${s.body || ''}</div></div>`;
+    contentHtml = `<div class="std-content-card"><div class="std-detail-text">${sanitizeStandardHtml(s.body || '')}</div></div>`;
   }
 
   let fileHtml = '';

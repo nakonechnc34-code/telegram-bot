@@ -9,7 +9,9 @@
       "Bash(copy *)",
       "Bash(dir *)",
       "Bash(curl *)",
-      "Bash(findstr *)"
+      "Bash(findstr *)",
+      "Bash(tasklist)",
+      "Bash(timeout *)"
     ]
   },
   "$version": 3

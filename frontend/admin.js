@@ -317,7 +317,7 @@ async function loadDashboard() {
       <div class="neu-card neu-card--stat">
         <div style="display:flex;align-items:center;justify-content:space-between;">
           <div class="neu-card__icon-wrapper neu-card__icon-wrapper--purple">👥</div>
-          <div class="neu-card__trend neu-card__trend--up">↑ +3</div>
+          <div class="neu-card__trend neu-card__trend--up">↑ активны</div>
         </div>
         <div class="neu-card__value" id="stat-active"><div class="skeleton skeleton-stat"></div></div>
         <div class="neu-card__label">Активные сотрудники</div>
@@ -325,7 +325,7 @@ async function loadDashboard() {
       <div class="neu-card neu-card--stat">
         <div style="display:flex;align-items:center;justify-content:space-between;">
           <div class="neu-card__icon-wrapper neu-card__icon-wrapper--blue">📝</div>
-          <div class="neu-card__trend neu-card__trend--warn">⏳</div>
+          <div class="neu-card__trend neu-card__trend--warn">⏳ модерация</div>
         </div>
         <div class="neu-card__value" id="stat-pending"><div class="skeleton skeleton-stat"></div></div>
         <div class="neu-card__label">На модерации</div>
@@ -350,32 +350,10 @@ async function loadDashboard() {
     <div class="grid-2">
       <div class="neu-card">
         <div class="neu-card__header">
-          <div class="neu-card__header-title">Последняя активность</div>
-          <div class="neu-card__header-action" onclick="navigate('news')">Все события →</div>
+          <div class="neu-card__header-title">Открытые вопросы</div>
+          <div class="neu-card__header-action" onclick="navigate('questions')">Все вопросы →</div>
         </div>
-        <div class="activity">
-          <div class="activity__item">
-            <div class="activity__icon activity__icon--green">👤</div>
-            <div class="activity__content">
-              <div class="activity__text"><strong>HR</strong> создала сотрудника</div>
-              <div class="activity__time">только что</div>
-            </div>
-          </div>
-          <div class="activity__item">
-            <div class="activity__icon activity__icon--accent">📰</div>
-            <div class="activity__content">
-              <div class="activity__text"><strong>Смирнов В.</strong> предложил новость</div>
-              <div class="activity__time">1 час назад</div>
-            </div>
-          </div>
-          <div class="activity__item">
-            <div class="activity__icon activity__icon--blue">📋</div>
-            <div class="activity__content">
-              <div class="activity__text"><strong>Табель</strong> обновлён</div>
-              <div class="activity__time">2 часа назад</div>
-            </div>
-          </div>
-        </div>
+        <div id="dash-questions"><div class="loading">Загрузка...</div></div>
       </div>
       <div class="neu-card">
         <div class="neu-card__header">
@@ -393,6 +371,22 @@ async function loadDashboard() {
     if ($('stat-pending')) $('stat-pending').textContent = (stats.news_pending || 0) + (stats.standards_pending || 0);
     if ($('stat-medbooks')) $('stat-medbooks').textContent = stats.medbooks_alert || 0;
     if ($('stat-questions')) $('stat-questions').textContent = stats.questions_open || 0;
+
+    // Реальные открытые вопросы
+    if ($('dash-questions')) {
+      const questions = (data.questions || []).slice(0, 5);
+      $('dash-questions').innerHTML = questions.map(q => `
+        <div class="activity__item">
+          <div class="activity__icon activity__icon--accent">❓</div>
+          <div class="activity__content">
+            <div class="activity__text"><strong>${esc(q.full_name || 'Сотрудник')}</strong><br>${esc(q.text || '—')}</div>
+            <div class="activity__time">${fmtDate(q.created_at, true)}</div>
+          </div>
+        </div>
+      `).join('') || '<div class="loading">Нет открытых вопросов</div>';
+    }
+
+    // Новые сотрудники
     if ($('dash-new-users')) {
       const users = (data.users || []).slice(0, 5);
       $('dash-new-users').innerHTML = users.map((u, i) => `
@@ -400,10 +394,10 @@ async function loadDashboard() {
           <div class="avatar" style="background:${getAvatarGradient(i)};width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:700;flex-shrink:0;">${(u.full_name||'?').charAt(0)}</div>
           <div class="activity__content">
             <div class="activity__text">${esc(u.full_name||'—')}</div>
-            <div class="activity__time">${esc(u.position||'')}</div>
+            <div class="activity__time">${esc(u.position||'')} · ${fmtDate(u.created_at)}</div>
           </div>
         </div>
-      `).join('') || '<div class="loading">Нет новых</div>';
+      `).join('') || '<div class="loading">Нет новых сотрудников</div>';
     }
   } catch (e) { console.error('Dashboard error:', e); }
 }

@@ -312,7 +312,7 @@ async def handle_admin_dashboard_summary(request):
                 # ИСПРАВЛЕНО: добавлен as cnt и обращение по ключу
                 cur.execute("SELECT COUNT(*) as cnt FROM questions WHERE replied = FALSE")
                 stats["questions_open"] = cur.fetchone()["cnt"] or 0
-                cur.execute("SELECT q.id, q.text, u.full_name FROM questions q LEFT JOIN users u ON q.user_id = u.user_id WHERE q.replied = FALSE ORDER BY q.created_at DESC LIMIT 4")
+                cur.execute("SELECT q.id, q.text, q.created_at, u.full_name FROM questions q LEFT JOIN users u ON q.user_id = u.user_id WHERE q.replied = FALSE ORDER BY q.created_at DESC LIMIT 4")
                 open_qs = [dict(r) for r in cur.fetchall()]
 
                 cur.execute("SELECT COUNT(*) as cnt FROM news WHERE status = 'pending'")
@@ -323,7 +323,7 @@ async def handle_admin_dashboard_summary(request):
                 cur.execute("SELECT COUNT(*) as cnt FROM standards WHERE status = 'pending'")
                 stats["standards_pending"] = cur.fetchone()["cnt"] or 0
 
-                cur.execute("SELECT user_id, full_name, position FROM users WHERE login IS NOT NULL AND COALESCE(is_fired, FALSE) = FALSE AND COALESCE(is_admin, FALSE) = FALSE ORDER BY created_at DESC LIMIT 4")
+                cur.execute("SELECT user_id, full_name, position, created_at FROM users WHERE login IS NOT NULL AND COALESCE(is_fired, FALSE) = FALSE AND COALESCE(is_admin, FALSE) = FALSE ORDER BY created_at DESC LIMIT 4")
                 new_users = [dict(r) for r in cur.fetchall()]
 
                 doctors, tests, vaccines = _sync_get_medbook_refs()

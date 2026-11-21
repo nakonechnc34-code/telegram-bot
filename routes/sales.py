@@ -7,6 +7,7 @@ import io
 import csv
 import json
 import os
+import asyncio  # ✅ Добавлено для to_thread
 from datetime import datetime, date, timedelta
 from typing import Any
 
@@ -28,12 +29,12 @@ routes = web.RouteTableDef()
 @require_admin
 async def upload_sales_file(request: web.Request) -> web.Response:
     """Загрузка Excel (.xlsx/.xls) или CSV файла с данными товарооборота."""
-    reader = await request.post()
     user, err = await get_auth_user(request)
     if err or not user:
         return web.json_response({"error": "Unauthorized"}, status=401)
     admin_user = user
 
+    reader = await request.post()
     file_upload = reader.get("file")
     if not file_upload or not file_upload.filename:
         return web.json_response({"error": "Файл не найден"}, status=400)
@@ -42,7 +43,6 @@ async def upload_sales_file(request: web.Request) -> web.Response:
     if not restaurant_key:
         return web.json_response({"error": "Укажите restaurant_key"}, status=400)
 
-    # Проверка ресторана
     pool = db.get_pool(request.app)
     async with pool.acquire() as conn:
         row = await conn.fetchrow("SELECT key FROM restaurants WHERE key = $1", restaurant_key)
@@ -55,7 +55,6 @@ async def upload_sales_file(request: web.Request) -> web.Response:
     if ext not in (".xlsx", ".xls", ".csv"):
         return web.json_response({"error": "Поддерживаемые форматы: .xlsx, .xls, .csv"}, status=400)
 
-    # Сохраняем файл
     uploads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads", "sales")
     os.makedirs(uploads_dir, exist_ok=True)
 
@@ -65,7 +64,6 @@ async def upload_sales_file(request: web.Request) -> web.Response:
     with open(file_path, "wb") as f:
         f.write(data)
 
-    # Создаём запись импорта
     async with pool.acquire() as conn:
         result = await conn.fetchrow(
             """
@@ -77,24 +75,22 @@ async def upload_sales_file(request: web.Request) -> web.Response:
         )
         import_id = result["id"]
 
-    # Парсим файл в зависимости от формата
     try:
         if ext in (".xlsx", ".xls"):
-            records = _parse_excel(io.BytesIO(data))
+            # ✅ ИСПРАВЛЕНО: Парсинг Excel в отдельном потоке, чтобы не вешать сервер
+            records = await asyncio.to_thread(_parse_excel, io.BytesIO(data))
         else:
             text = data.decode("utf-8")
             records = _parse_csv(text)
 
-        # Сохраняем записи
         await _save_sales_records(pool, import_id, restaurant_key, records)
 
-        # Обновляем статус импорта
-        await conn.execute(
-            "UPDATE sales_imports SET status = 'completed', rows_count = $1, processed_at = NOW() WHERE id = $2",
-            len(records), import_id
-        )
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE sales_imports SET status = 'completed', rows_count = $1, processed_at = NOW() WHERE id = $2",
+                len(records), import_id
+            )
 
-        # Пересчитываем агрегации
         await _recalculate_daily_summary(pool, restaurant_key)
 
         return web.json_response({
@@ -105,10 +101,11 @@ async def upload_sales_file(request: web.Request) -> web.Response:
         })
 
     except Exception as e:
-        await conn.execute(
-            "UPDATE sales_imports SET status = 'error', error_message = $1 WHERE id = $2",
-            str(e)[:1000], import_id
-        )
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE sales_imports SET status = 'error', error_message = $1 WHERE id = $2",
+                str(e)[:1000], import_id
+            )
         return web.json_response({
             "error": f"Ошибка парсинга: {str(e)[:500]}",
             "import_id": import_id
@@ -157,7 +154,6 @@ def _parse_excel(file_obj: io.BytesIO) -> list[dict]:
                 else:
                     record[header] = str(val) if val else None
 
-        # Обязательные поля
         if "sale_date" in record and "total_amount" in record:
             record.setdefault("quantity", 1)
             record.setdefault("unit_price", record.get("total_amount", 0))
@@ -186,7 +182,6 @@ def _parse_csv(text: str) -> list[dict]:
         if not cleaned:
             continue
 
-        # Парсим числовые поля
         for num_field in ("quantity", "shift_number"):
             if num_field in cleaned and cleaned[num_field]:
                 try:
@@ -202,7 +197,6 @@ def _parse_csv(text: str) -> list[dict]:
                 except (ValueError, TypeError):
                     cleaned[money_field] = 0.0
 
-        # Парсим дату
         if "sale_date" in cleaned and cleaned["sale_date"]:
             for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y", "%Y/%m/%d"):
                 try:
@@ -211,7 +205,6 @@ def _parse_csv(text: str) -> list[dict]:
                 except ValueError:
                     continue
 
-        # Обязательные поля
         if "sale_date" in cleaned and "total_amount" in cleaned:
             cleaned.setdefault("quantity", 1)
             cleaned.setdefault("unit_price", cleaned.get("total_amount", 0))
@@ -270,18 +263,16 @@ async def _save_sales_records(pool, import_id: int, restaurant_key: str, records
 
 
 # =============================================================================
-# Еодневная агрегация
+# Ежедневная агрегация
 # =============================================================================
 
 async def _recalculate_daily_summary(pool, restaurant_key: str) -> None:
     """Пересчитывает дневные сводки для ресторана."""
     async with pool.acquire() as conn:
-        # Удаляем старые сводки для ресторана
         await conn.execute(
             "DELETE FROM sales_daily_summary WHERE restaurant_key = $1", restaurant_key
         )
 
-        # Пересчитываем все даты
         rows = await conn.fetch("""
             SELECT
                 sale_date,
@@ -344,36 +335,40 @@ async def sales_dashboard(request: web.Request) -> web.Response:
     if err or not user:
         return web.json_response({"error": "Unauthorized"}, status=401)
 
-    period = request.json.get("period", "30d")  # 7d, 30d, 90d, custom
-    restaurant_key = request.json.get("restaurant_key")  # None = все рестораны
+    # ✅ ИСПРАВЛЕНО: await request.json()
+    body = await request.json()
+    period = body.get("period", "30d")
+    restaurant_key = body.get("restaurant_key")
 
     pool = db.get_pool(request.app)
     results = {}
 
-    async with pool.acquire() as conn:
-        if restaurant_key:
-            date_filter = f"WHERE sr.restaurant_key = '{restaurant_key}'"
-            summary_filter = f"WHERE sds.restaurant_key = '{restaurant_key}'"
-        else:
-            date_filter = ""
-            summary_filter = ""
+    days = {"7d": 7, "30d": 30, "90d": 90}.get(period, 30)
+    date_from = (datetime.utcnow().date() - timedelta(days=days)).isoformat()
 
-        # Определяем date range
-        days = {"7d": 7, "30d": 30, "90d": 90}.get(period, 30)
-        date_from = (datetime.utcnow().date() - timedelta(days=days)).isoformat()
+    async with pool.acquire() as conn:
+        # ✅ ИСПРАВЛЕНО: Все запросы параметризованы (защита от SQL-инъекций)
+        where_clause = ""
+        params = []
+        if restaurant_key:
+            where_clause = "WHERE sr.restaurant_key = $1 AND sr.sale_date >= $2"
+            params = [restaurant_key, date_from]
+        else:
+            where_clause = "WHERE sr.sale_date >= $1"
+            params = [date_from]
 
         # Общие метрики
         total_sales = await conn.fetchval(
-            f"SELECT COALESCE(SUM(total_amount), 0) FROM sales_records sr {date_filter} AND sr.sale_date >= '{date_from}'",
+            f"SELECT COALESCE(SUM(total_amount), 0) FROM sales_records sr {where_clause}", *params
         )
         total_cost = await conn.fetchval(
-            f"SELECT COALESCE(SUM(cost_amount), 0) FROM sales_records sr {date_filter} AND sr.sale_date >= '{date_from}'",
+            f"SELECT COALESCE(SUM(cost_amount), 0) FROM sales_records sr {where_clause}", *params
         )
         total_profit = await conn.fetchval(
-            f"SELECT COALESCE(SUM(profit_amount), 0) FROM sales_records sr {date_filter} AND sr.sale_date >= '{date_from}'",
+            f"SELECT COALESCE(SUM(profit_amount), 0) FROM sales_records sr {where_clause}", *params
         )
         total_items = await conn.fetchval(
-            f"SELECT COALESCE(SUM(quantity), 0) FROM sales_records sr {date_filter} AND sr.sale_date >= '{date_from}'",
+            f"SELECT COALESCE(SUM(quantity), 0) FROM sales_records sr {where_clause}", *params
         )
 
         margin = round(float(total_profit) * 100 / max(float(total_sales), 1), 2) if float(total_sales) > 0 else 0
@@ -387,7 +382,7 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             "period_days": days
         }
 
-        # Динамика по дням (для графика)
+        # Динамика по дням
         daily_trend = await conn.fetch(f"""
             SELECT
                 sale_date,
@@ -396,10 +391,10 @@ async def sales_dashboard(request: web.Request) -> web.Response:
                 SUM(profit_amount) as daily_profit,
                 SUM(quantity) as daily_items
             FROM sales_records
-            {date_filter} AND sale_date >= '{date_from}'
+            {where_clause.replace('sr.', '')}
             GROUP BY sale_date
             ORDER BY sale_date
-        """)
+        """, *params)
 
         results["daily_trend"] = [
             {
@@ -413,17 +408,30 @@ async def sales_dashboard(request: web.Request) -> web.Response:
         ]
 
         # Выручка по ресторанам
-        restaurant_sales = await conn.fetch(f"""
-            SELECT
-                r.name,
-                r.key,
-                COALESCE(SUM(sr.total_amount), 0) as total,
-                COALESCE(SUM(sr.profit_amount), 0) as profit
-            FROM restaurants r
-            LEFT JOIN sales_records sr ON sr.restaurant_key = r.key {date_filter}
-            GROUP BY r.key, r.name
-            ORDER BY total DESC
-        """)
+        if restaurant_key:
+            restaurant_sales = await conn.fetch("""
+                SELECT
+                    r.name,
+                    r.key,
+                    COALESCE(SUM(sr.total_amount), 0) as total,
+                    COALESCE(SUM(sr.profit_amount), 0) as profit
+                FROM restaurants r
+                LEFT JOIN sales_records sr ON sr.restaurant_key = r.key AND sr.sale_date >= $1 AND sr.restaurant_key = $2
+                GROUP BY r.key, r.name
+                ORDER BY total DESC
+            """, date_from, restaurant_key)
+        else:
+            restaurant_sales = await conn.fetch("""
+                SELECT
+                    r.name,
+                    r.key,
+                    COALESCE(SUM(sr.total_amount), 0) as total,
+                    COALESCE(SUM(sr.profit_amount), 0) as profit
+                FROM restaurants r
+                LEFT JOIN sales_records sr ON sr.restaurant_key = r.key AND sr.sale_date >= $1
+                GROUP BY r.key, r.name
+                ORDER BY total DESC
+            """, date_from)
 
         results["by_restaurant"] = [
             {
@@ -442,11 +450,11 @@ async def sales_dashboard(request: web.Request) -> web.Response:
                 SUM(quantity) as qty,
                 SUM(total_amount) as total
             FROM sales_records
-            {date_filter} AND product_name IS NOT NULL
+            {where_clause.replace('sr.', '')} AND product_name IS NOT NULL
             GROUP BY product_name
             ORDER BY total DESC
             LIMIT 10
-        """)
+        """, *params)
 
         results["top_products"] = [
             {
@@ -465,10 +473,10 @@ async def sales_dashboard(request: web.Request) -> web.Response:
                 SUM(total_amount) as total,
                 SUM(profit_amount) as profit
             FROM sales_records
-            {date_filter}
+            {where_clause.replace('sr.', '')}
             GROUP BY category
             ORDER BY total DESC
-        """)
+        """, *params)
 
         results["by_category"] = [
             {
@@ -487,10 +495,10 @@ async def sales_dashboard(request: web.Request) -> web.Response:
                 SUM(total_amount) as total,
                 COUNT(*) as count
             FROM sales_records
-            {date_filter}
+            {where_clause.replace('sr.', '')}
             GROUP BY payment_method
             ORDER BY total DESC
-        """)
+        """, *params)
 
         results["by_payment"] = [
             {
@@ -501,18 +509,18 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             for r in by_payment
         ]
 
-        # Пиковые часы (агрегация по часам)
+        # Пиковые часы
         peak_hours = await conn.fetch(f"""
             SELECT
                 EXTRACT(HOUR FROM sale_date::timestamp) as hour,
                 SUM(total_amount) as total,
                 COUNT(*) as transactions
             FROM sales_records
-            {date_filter}
+            {where_clause.replace('sr.', '')}
             GROUP BY hour
             ORDER BY total DESC
             LIMIT 5
-        """)
+        """, *params)
 
         results["peak_hours"] = [
             {
@@ -523,13 +531,22 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             for r in peak_hours
         ]
 
-        # Ежедневные сводки (для детального просмотра)
+        # Ежедневные сводки
+        summary_where = ""
+        summary_params = []
+        if restaurant_key:
+            summary_where = "WHERE restaurant_key = $1 AND summary_date >= $2"
+            summary_params = [restaurant_key, date_from]
+        else:
+            summary_where = "WHERE summary_date >= $1"
+            summary_params = [date_from]
+
         daily_summaries = await conn.fetch(f"""
             SELECT * FROM sales_daily_summary
-            {summary_filter.replace('WHERE', 'WHERE').strip()} AND summary_date >= '{date_from}'
+            {summary_where}
             ORDER BY summary_date DESC
             LIMIT 30
-        """)
+        """, *summary_params)
 
         results["daily_summaries"] = [
             {
@@ -550,14 +567,22 @@ async def sales_dashboard(request: web.Request) -> web.Response:
         ]
 
         # Загруженные файлы
+        imports_where = ""
+        imports_params = []
+        if restaurant_key:
+            imports_where = "WHERE si.restaurant_key = $1"
+            imports_params = [restaurant_key]
+        else:
+            imports_where = ""
+
         imports = await conn.fetch(f"""
             SELECT si.*, u.full_name as uploader_name
             FROM sales_imports si
             LEFT JOIN users u ON u.user_id = si.uploaded_by
-            {date_filter.replace('', 'AND sr.restaurant_key = si.restaurant_key')}
+            {imports_where}
             ORDER BY si.upload_date DESC
             LIMIT 20
-        """)
+        """, *imports_params)
 
         results["imports"] = [
             {
@@ -589,7 +614,7 @@ async def sales_records(request: web.Request) -> web.Response:
         return web.json_response({"error": "Unauthorized"}, status=401)
     admin_user = user
 
-    body = request.json or {}
+    body = await request.json()
     restaurant_key = body.get("restaurant_key")
     date_from = body.get("date_from")
     date_to = body.get("date_to")
@@ -737,7 +762,7 @@ async def export_sales_data(request: web.Request) -> web.Response:
         return web.json_response({"error": "Unauthorized"}, status=401)
     admin_user = user
 
-    body = request.json or {}
+    body = await request.json()
     restaurant_key = body.get("restaurant_key")
     date_from = body.get("date_from")
     date_to = body.get("date_to")
@@ -745,13 +770,21 @@ async def export_sales_data(request: web.Request) -> web.Response:
     pool = db.get_pool(request.app)
     conditions = []
     params = []
+    param_idx = 1
 
+    # ✅ ИСПРАВЛЕНО: Параметризованный запрос (защита от SQL-инъекций)
     if restaurant_key:
-        conditions.append(f"sr.restaurant_key = '{restaurant_key}'")
+        conditions.append(f"sr.restaurant_key = ${param_idx}")
+        params.append(restaurant_key)
+        param_idx += 1
     if date_from:
-        conditions.append(f"sr.sale_date >= '{date_from}'")
+        conditions.append(f"sr.sale_date >= ${param_idx}")
+        params.append(date_from)
+        param_idx += 1
     if date_to:
-        conditions.append(f"sr.sale_date <= '{date_to}'")
+        conditions.append(f"sr.sale_date <= ${param_idx}")
+        params.append(date_to)
+        param_idx += 1
 
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
@@ -774,66 +807,66 @@ async def export_sales_data(request: web.Request) -> web.Response:
             LEFT JOIN restaurants r ON r.key = sr.restaurant_key
             {where_clause}
             ORDER BY sr.sale_date DESC
-        """)
+        """, *params)
 
-    # Создаём Excel файл
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Товарооборот"
+    # ✅ ИСПРАВЛЕНО: Генерация Excel в отдельном потоке
+    def _generate_excel():
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Товарооборот"
 
-    # Заголовки
-    headers = [
-        "Дата", "Ресторан", "Ключ", "Категория", "Товар", "Кол-во",
-        "Цена", "Сумма", "Себестоимость", "Прибыль", "Оплата", "Сотрудник"
-    ]
-    ws.append(headers)
+        headers = [
+            "Дата", "Ресторан", "Ключ", "Категория", "Товар", "Кол-во",
+            "Цена", "Сумма", "Себестоимость", "Прибыль", "Оплата", "Сотрудник"
+        ]
+        ws.append(headers)
 
-    # Стилизуем заголовки
-    from openpyxl.styles import Font, PatternFill
-    header_fill = PatternFill(start_color="667eea", end_color="667eea", fill_type="solid")
-    header_font = Font(bold=True, color="FFFFFF")
-    for cell in ws[1]:
-        cell.fill = header_fill
-        cell.font = header_font
+        from openpyxl.styles import Font, PatternFill
+        header_fill = PatternFill(start_color="667eea", end_color="667eea", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        for cell in ws[1]:
+            cell.fill = header_fill
+            cell.font = header_font
 
-    for r in records:
-        ws.append([
-            r["sale_date"],
-            r["restaurant_name"],
-            r["restaurant_key"],
-            r["category"],
-            r["product_name"],
-            r["quantity"],
-            r["unit_price"],
-            r["total_amount"],
-            r["cost_amount"],
-            r["profit_amount"],
-            r["payment_method"],
-            r["employee_name"]
-        ])
+        for r in records:
+            ws.append([
+                r["sale_date"],
+                r["restaurant_name"],
+                r["restaurant_key"],
+                r["category"],
+                r["product_name"],
+                r["quantity"],
+                r["unit_price"],
+                r["total_amount"],
+                r["cost_amount"],
+                r["profit_amount"],
+                r["payment_method"],
+                r["employee_name"]
+            ])
 
-    # Автоширина колонок
-    for col in ws.columns:
-        max_length = 0
-        column = col[0].column_letter
-        for cell in col:
-            try:
-                if cell.value:
-                    max_length = max(max_length, len(str(cell.value)))
-            except (ValueError, TypeError):
-                pass
-        ws.column_dimensions[column].width = min(max_length + 4, 40)
+        for col in ws.columns:
+            max_length = 0
+            column = col[0].column_letter
+            for cell in col:
+                try:
+                    if cell.value:
+                        max_length = max(max_length, len(str(cell.value)))
+                except (ValueError, TypeError):
+                    pass
+            ws.column_dimensions[column].width = min(max_length + 4, 40)
 
-    # Сохраняем в память
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-    wb.close()
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        wb.close()
+        return output.read()
+
+    excel_bytes = await asyncio.to_thread(_generate_excel)
 
     filename = f"sales_export_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
 
     return web.Response(
-        body=output.read(),
+        body=excel_bytes,
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
@@ -847,52 +880,54 @@ async def export_sales_data(request: web.Request) -> web.Response:
 @require_admin
 async def sales_template(request: web.Request) -> web.Response:
     """Скачивание шаблона Excel для загрузки данных товарооборота."""
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Шаблон"
+    def _generate_template():
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Шаблон"
 
-    headers = [
-        "sale_date", "restaurant_key", "category", "subcategory",
-        "product_name", "sku", "quantity", "unit_price", "total_amount",
-        "cost_amount", "profit_amount", "profit_margin",
-        "payment_method", "shift_number", "employee_name", "discount_amount"
-    ]
-    ws.append(headers)
+        headers = [
+            "sale_date", "restaurant_key", "category", "subcategory",
+            "product_name", "sku", "quantity", "unit_price", "total_amount",
+            "cost_amount", "profit_amount", "profit_margin",
+            "payment_method", "shift_number", "employee_name", "discount_amount"
+        ]
+        ws.append(headers)
 
-    # Пример данных
-    ws.append([
-        "2026-11-20", "restaurant_1", "Напитки", "Кофе",
-        "Капучино 300мл", "SKU001", 15, 250, 3750,
-        1200, 2550, 68.0,
-        "Карта", 1, "Иванов И.И.", 0
-    ])
-    ws.append([
-        "2026-11-20", "restaurant_1", "Еда", "Бургеры",
-        "Чизбургер", "SKU002", 8, 350, 2800,
-        1400, 1400, 50.0,
-        "Наличные", 1, "Петров П.П.", 50
-    ])
+        ws.append([
+            "2026-11-20", "restaurant_1", "Напитки", "Кофе",
+            "Капучино 300мл", "SKU001", 15, 250, 3750,
+            1200, 2550, 68.0,
+            "Карта", 1, "Иванов И.И.", 0
+        ])
+        ws.append([
+            "2026-11-20", "restaurant_1", "Еда", "Бургеры",
+            "Чизбургер", "SKU002", 8, 350, 2800,
+            1400, 1400, 50.0,
+            "Наличные", 1, "Петров П.П.", 50
+        ])
 
-    from openpyxl.styles import Font, PatternFill
-    header_fill = PatternFill(start_color="667eea", end_color="667eea", fill_type="solid")
-    header_font = Font(bold=True, color="FFFFFF")
-    example_fill = PatternFill(start_color="f0f0ff", end_color="f0f0ff", fill_type="solid")
-    for cell in ws[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-    for cell in ws[2]:
-        cell.fill = example_fill
+        from openpyxl.styles import Font, PatternFill
+        header_fill = PatternFill(start_color="667eea", end_color="667eea", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        example_fill = PatternFill(start_color="f0f0ff", end_color="f0f0ff", fill_type="solid")
+        for cell in ws[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+        for cell in ws[2]:
+            cell.fill = example_fill
+        for cell in ws[3]:
+            cell.fill = example_fill
 
-    for cell in ws[3]:
-        cell.fill = example_fill
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        wb.close()
+        return output.read()
 
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-    wb.close()
+    excel_bytes = await asyncio.to_thread(_generate_template)
 
     return web.Response(
-        body=output.read(),
+        body=excel_bytes,
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=sales_template.xlsx"}
     )

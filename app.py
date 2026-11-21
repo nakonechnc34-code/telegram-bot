@@ -1,4 +1,3 @@
-# app.py
 import os
 import asyncio
 import logging
@@ -26,7 +25,7 @@ if config.SENTRY_DSN:
         dsn=config.SENTRY_DSN,
         traces_sample_rate=0.1,
         environment=config.APP_ENV,
-        release=f"app@1.2.0",
+        release="app@1.2.0",
     )
     logging.info("📡 Sentry initialized")
 
@@ -62,14 +61,14 @@ from routes.timesheet import routes as timesheet_routes
 from routes.content import routes as content_routes
 from routes.core import routes as core_routes
 from routes.academy import routes as academy_routes
-from routes.sales import routes as sales_routes  # ✅ ДОБАВЛЕНО
+from routes.sales import routes as sales_routes
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 
 # ============= МИГРАЦИИ БАЗЫ ДАННЫХ =============
 def run_migrations():
-    """Автоматически добавляет нужные колонки в БД при старте и создает папку uploads"""
+    """Автоматически добавляет нужные колонки в БД при старте и создает папку uploads."""
     try:
         base_dir = "/data" if os.path.exists("/data") else os.path.dirname(os.path.abspath(__file__))
         upload_dir = os.path.join(base_dir, "uploads")
@@ -119,20 +118,29 @@ async def error_middleware(request, handler):
     except web.HTTPException:
         raise
     except Exception as e:
-        logging.error("Unhandled %s %s: %s\n%s", request.method, request.path, type(e).__name__, traceback.format_exc())
+        logging.error(
+            "Unhandled %s %s: %s\n%s",
+            request.method, request.path, type(e).__name__, traceback.format_exc()
+        )
         detail = str(e)[:200] if config.APP_ENV != "production" else "Internal Server Error"
         return web.json_response({"error": "internal", "detail": detail}, status=500)
 
 
-_GZIP_TYPES = ("application/json", "text/plain", "text/html", "text/css", "application/javascript", "image/svg+xml")
+_GZIP_TYPES = (
+    "application/json", "text/plain", "text/html", "text/css",
+    "application/javascript", "image/svg+xml",
+)
 
 
 @web.middleware
 async def gzip_middleware(request, handler):
     response = await handler(request)
     body = getattr(response, "body", None)
-    if (body is not None and len(body) > 500 and "gzip" in request.headers.get("Accept-Encoding", "")
-            and not response.headers.get("Content-Encoding") and response.content_type in _GZIP_TYPES):
+    if (body is not None and len(body) > 500
+            and "gzip" in request.headers.get("Accept-Encoding", "")
+            and not response.headers.get("Content-Encoding")
+            and response.content_type in _GZIP_TYPES):
+
         body_bytes = body.encode('utf-8') if isinstance(body, str) else body
         try:
             compressed = gzip.compress(body_bytes, compresslevel=6)
@@ -170,7 +178,7 @@ async def security_headers_middleware(request, handler):
 
 
 from middleware.logging_middleware import request_logging_middleware
-from middleware.rate_limit import api_rate_middleware  # ✅ ДОБАВЛЕНО
+from middleware.rate_limit import api_rate_middleware
 
 # ============= STATIC FILE SERVING =============
 _INDEX_CACHE = {"data": None, "mtime": 0.0}
@@ -181,8 +189,18 @@ _STATIC_FILES_CACHE = {}
 
 
 def _serve_file(name, cache):
-    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", name)
-    if not os.path.exists(p):
+    """Ищет файл сначала в frontend/, потом в корне проекта."""
+    base = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(base, "frontend", name),
+        os.path.join(base, name),
+    ]
+    p = None
+    for c in candidates:
+        if os.path.exists(c):
+            p = c
+            break
+    if not p:
         return None, 0
     try:
         mtime = os.stat(p).st_mtime
@@ -198,12 +216,12 @@ def _serve_file(name, cache):
 async def _handle_html(name, cache):
     data, mtime = _serve_file(name, cache)
     if not data:
-        return web.Response(text=f"frontend/{name} not found", status=404)
+        return web.Response(text=f"{name} not found", status=404)
     return web.Response(
         body=data,
         content_type="text/html",
         charset="utf-8",
-        headers={"Last-Modified": formatdate(mtime, usegmt=True)}
+        headers={"Last-Modified": formatdate(mtime, usegmt=True)},
     )
 
 
@@ -224,14 +242,38 @@ async def handle_timesheet_page(request):
 
 
 async def handle_admin_css(request):
-    data, mtime = _serve_file("admin.css", _STATIC_FILES_CACHE.setdefault("admin.css", {"data": None, "mtime": 0.0}))
+    data, mtime = _serve_file(
+        "admin.css",
+        _STATIC_FILES_CACHE.setdefault("admin.css", {"data": None, "mtime": 0.0})
+    )
     if not data:
         return web.Response(text="admin.css not found", status=404)
     return web.Response(
         body=data,
         content_type="text/css",
         charset="utf-8",
-        headers={"Cache-Control": "public, max-age=31536000", "Last-Modified": formatdate(mtime, usegmt=True)}
+        headers={
+            "Cache-Control": "public, max-age=31536000",
+            "Last-Modified": formatdate(mtime, usegmt=True),
+        }
+    )
+
+
+async def handle_admin_js(request):
+    data, mtime = _serve_file(
+        "admin.js",
+        _STATIC_FILES_CACHE.setdefault("admin.js", {"data": None, "mtime": 0.0})
+    )
+    if not data:
+        return web.Response(text="admin.js not found", status=404)
+    return web.Response(
+        body=data,
+        content_type="application/javascript",
+        charset="utf-8",
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "Last-Modified": formatdate(mtime, usegmt=True),
+        }
     )
 
 
@@ -300,14 +342,17 @@ async def handle_health(request):
         "database": db_status,
         "uptime": round(time.time() - START_TIME, 1),
         "version": "1.2.0",
-        "env": config.APP_ENV
+        "env": config.APP_ENV,
     })
 
 
 # ============= СКАЧИВАНИЕ ФАЙЛОВ (API) =============
 async def handle_download(request):
-    # ✅ ИСПРАВЛЕНО: реальная валидация токена через БД
-    token = request.query.get('webToken') or request.query.get('token')
+    token = (
+        request.query.get('webToken')
+        or request.query.get('token')
+        or ''
+    )
     if not token:
         auth_header = request.headers.get('Authorization')
         if auth_header and auth_header.startswith('Bearer '):
@@ -350,7 +395,7 @@ app = web.Application(
     middlewares=[
         error_middleware,
         request_logging_middleware,
-        api_rate_middleware,  # ✅ ДОБАВЛЕНО
+        api_rate_middleware,
         gzip_middleware,
         security_headers_middleware,
     ],
@@ -364,12 +409,13 @@ app.add_routes(timesheet_routes)
 app.add_routes(content_routes)
 app.add_routes(core_routes)
 app.add_routes(academy_routes)
-app.add_routes(sales_routes)  # ✅ ДОБАВЛЕНО
+app.add_routes(sales_routes)
 
 app.router.add_get("/", handle_index)
 app.router.add_get("/admin", handle_admin_page)
 app.router.add_get("/admin/", handle_admin_page)
 app.router.add_get("/admin.css", handle_admin_css)
+app.router.add_get("/admin.js", handle_admin_js)
 app.router.add_get("/academy", handle_academy_page)
 app.router.add_get("/academy/", handle_academy_page)
 app.router.add_get("/timesheet", handle_timesheet_page)
@@ -394,7 +440,7 @@ async def main():
 
     logging.info("⏳ Инициализация пулов БД...")
     await asyncio.to_thread(init_pool)
-    await init_async_pool()  # ✅ asyncpg pool для sales
+    await init_async_pool()
 
     if os.getenv("RUN_MIGRATIONS", "true").lower() == "true":
         logging.info("⏳ Запуск миграций БД и проверки папок...")

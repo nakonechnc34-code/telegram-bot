@@ -1742,25 +1742,24 @@ async function loadSales() {
 }
 
 // ═══════════════════════════════════════════
-// PAGE LOADERS REGISTRY
-// ═══════════════════════════════════════════
+// ═══ PAGE LOADERS ═══
 const PAGE_LOADERS = {
-    dashboard: loadDashboard,
-    users: loadUsers,
-    medbooks: loadMedbooks,
-    news: loadNews,
-    standards: loadStandards,
-    certification: loadCertification,
-    faq: loadFaq,
-    restaurants: loadRestaurants,
-    positions: loadPositions,
-    citizenships: loadCitizenships,
-    'medbook-dirs': loadMedbookDirs,
-    questions: loadQuestions,
-    admins: loadAdmins,
-    reports: loadReports,
-    audit: loadAudit,
-    sales: loadSales,
+    dashboard: () => loadDashboard(),
+    users: () => loadUsers(),
+    medbooks: () => loadMedbooks(),
+    news: () => loadNews(),
+    standards: () => loadStandards(),
+    certification: () => loadCertification(),
+    faq: () => loadFaq(),
+    restaurants: () => loadRestaurants(),
+    positions: () => loadPositions(),
+    citizenships: () => loadCitizenships(),
+    'medbook-dirs': () => loadMedbookDirs(),
+    questions: () => loadQuestions(),
+    admins: () => loadAdmins(),
+    reports: () => loadReports(),
+    audit: () => loadAudit(),
+    sales: () => loadSales(),
 };
 
 // ═══ INIT (DOMContentLoaded) ═══

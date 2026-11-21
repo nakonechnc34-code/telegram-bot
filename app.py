@@ -53,7 +53,6 @@ from routes.timesheet import routes as timesheet_routes
 from routes.content import routes as content_routes
 from routes.core import routes as core_routes
 from routes.academy import routes as academy_routes
-from routes.sales import routes as sales_routes
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -96,62 +95,23 @@ def run_migrations():
                 # Индексы БД (для производительности)
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_web_sessions_token ON web_sessions(token);")
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_users_login ON users(LOWER(login));")
-                cur.execute("CREATE INDEX IF NOT EXISTS idx_timesheet_records_date ON timesheet_records(user_id, work_date);")
+                
+                # ИСПРАВЛЕНО: Уникальный индекс для ON CONFLICT
+                cur.execute("DROP INDEX IF EXISTS idx_timesheet_records_date;")
+                cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_timesheet_records_uniq ON timesheet_records(user_id, work_date);")
+                
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_news_status ON news(status);")
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_standards_status ON standards(status);")
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_payments_date ON payments(payment_date, status);")
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_payments_user_date ON payments(user_id, payment_date);")
-
-                # Миграция: таблицы товарооборота
-                sales_sql_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "database", "002_create_sales_tables.sql")
-                if os.path.exists(sales_sql_path):
-                    with open(sales_sql_path, "r") as f:
-                        sales_sql = f.read()
-                    cur.execute(sales_sql)
-                    logging.info("✅ Миграция БД: таблицы товарооборота проверены/добавлены.")
-
                 logging.info("✅ Миграция БД: колонки, таблицы и индексы проверены/добавлены.")
     except Exception as e:
         logging.error(f"❌ Ошибка миграции/создания папок: {e}")
-
-# Мусорные пути от сканеров — не логируем
-_SPAM_PATHS = (
-    '/phpmyadmin', '/pma', '/phpMyAdmin',
-    '/wp-admin', '/wp-login', '/wp-content', '/wp-includes', '/xmlrpc.php',
-    '/.env', '/.git', '/.svn',
-    '/actuator', '/actuator/health',
-    '/api/v1/', '/swagger', '/swagger-ui',
-    '/robots.txt',
-)
-
-# API эндпоинты, ожидающие только POST — игнорируем GET запросы (сканеры/bots)
-_POST_ONLY_API_PATHS = (
-    '/api/admin/question/reply',
-)
-
-# PWA-ресурсы — не логируем
-_PWA_PATHS = (
-    '/manifest.json', '/sw.js', '/favicon.ico',
-    '/icon-192.svg', '/icon-512.svg', '/icon-192.png', '/icon-512.png',
-    '/screenshot1.png', '/.well-known/assetlinks.json',
-)
 
 # ============= MIDDLEWARES =============
 
 @web.middleware
 async def error_middleware(request, handler):
-    # Пропускаем мусорные пути — не логируем
-    if any(request.path.startswith(sp) for sp in _SPAM_PATHS):
-        return await handler(request)
-    # Статика /static/ — не логируем ошибки (PWA иконки и т.п.)
-    if request.path.startswith('/static/'):
-        return await handler(request)
-    # POST-only API эндпоинты — игнорируем GET запросы (сканеры/bots)
-    if request.method == 'GET' and request.path in _POST_ONLY_API_PATHS:
-        return web.Response(status=405)
-    # PWA-ресурсы — не логируем ошибки
-    if any(request.path == sp for sp in _PWA_PATHS):
-        return await handler(request)
     try:
         return await handler(request)
     except web.HTTPException:
@@ -190,7 +150,6 @@ async def security_headers_middleware(request, handler):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    # Обновлённый CSP
     csp = (
         "default-src 'self'; script-src 'self' 'unsafe-inline'; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
@@ -200,51 +159,19 @@ async def security_headers_middleware(request, handler):
         "frame-ancestors 'none'; child-src 'none';"
     )
     response.headers["Content-Security-Policy"] = csp
-    # Cache-Control для HTML (чтобы не кэшировался)
     if response.content_type == "text/html":
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
         response.headers["Pragma"] = "no-cache"
     return response
 
-@web.middleware
-async def request_logging_middleware(request, handler):
-    """Middleware: логирует каждый HTTP запрос, пропуская мусор."""
-    start = time.time()
-    try:
-        response = await handler(request)
-        duration = time.time() - start
-        method = request.method
-        path = request.path
-        # Пропускаем статику, мусор и PWA-ресурсы
-        if (path.startswith('/static/') or path in ('/favicon.ico', '/.well-known/assetlinks.json')
-                or any(path.startswith(sp) for sp in _SPAM_PATHS)
-                or path in _PWA_PATHS):
-            return response
-        user_id = request.get('user', {}).get('user_id', '-') if 'user' in request else '-'
-        status = response.status if hasattr(response, 'status') else '?'
-        logging.info(
-            "%s %-8s %-40s %d %.3fs user=%s",
-            request.remote or '-',
-            method,
-            path,
-            status,
-            duration,
-            user_id
-        )
-        return response
-    except web.HTTPException:
-        raise
-    except Exception as e:
-        duration = time.time() - start
-        logging.error("Unhandled %s %s: %s", request.method, request.path, str(e)[:100])
-        return web.json_response({"error": "internal"}, status=500)
+# Импортируем исправленный middleware
+from middleware.logging_middleware import request_logging_middleware
 
 # ============= STATIC FILE SERVING =============
 _INDEX_CACHE = {"data": None, "mtime": 0.0}
 _ADMIN_CACHE = {"data": None, "mtime": 0.0}
 _ACADEMY_CACHE = {"data": None, "mtime": 0.0}
 _TIMESHEET_CACHE = {"data": None, "mtime": 0.0}
-_SALES_CACHE = {"data": None, "mtime": 0.0}
 _STATIC_FILES_CACHE = {}
 
 def _serve_file(name, cache):
@@ -272,7 +199,6 @@ async def handle_index(request): return await _handle_html("index.html", _INDEX_
 async def handle_admin_page(request): return await _handle_html("admin.html", _ADMIN_CACHE)
 async def handle_academy_page(request): return await _handle_html("academy.html", _ACADEMY_CACHE)
 async def handle_timesheet_page(request): return await _handle_html("timesheet.html", _TIMESHEET_CACHE)
-async def handle_sales_page(request): return await _handle_html("sales.html", _SALES_CACHE)
 
 async def handle_admin_css(request):
     data, mtime = _serve_file("admin.css", _STATIC_FILES_CACHE.setdefault("admin.css", {"data": None, "mtime": 0.0}))
@@ -282,46 +208,7 @@ async def handle_admin_css(request):
         content_type="text/css",
         charset="utf-8",
         headers={
-            "Cache-Control": "public, max-age=3600",
-            "Last-Modified": formatdate(mtime, usegmt=True)
-        }
-    )
-
-async def handle_sales_css(request):
-    data, mtime = _serve_file("sales.css", _STATIC_FILES_CACHE.setdefault("sales.css", {"data": None, "mtime": 0.0}))
-    if not data: return web.Response(text="sales.css not found", status=404)
-    return web.Response(
-        body=data,
-        content_type="text/css",
-        charset="utf-8",
-        headers={
-            "Cache-Control": "public, max-age=3600",
-            "Last-Modified": formatdate(mtime, usegmt=True)
-        }
-    )
-
-async def handle_sales_js(request):
-    data, mtime = _serve_file("sales.js", _STATIC_FILES_CACHE.setdefault("sales.js", {"data": None, "mtime": 0.0}))
-    if not data: return web.Response(text="sales.js not found", status=404)
-    return web.Response(
-        body=data,
-        content_type="application/javascript",
-        charset="utf-8",
-        headers={
-            "Cache-Control": "public, max-age=3600",
-            "Last-Modified": formatdate(mtime, usegmt=True)
-        }
-    )
-
-async def handle_admin_js(request):
-    data, mtime = _serve_file("admin.js", _STATIC_FILES_CACHE.setdefault("admin.js", {"data": None, "mtime": 0.0}))
-    if not data: return web.Response(text="admin.js not found", status=404)
-    return web.Response(
-        body=data,
-        content_type="application/javascript",
-        charset="utf-8",
-        headers={
-            "Cache-Control": "public, max-age=3600",
+            "Cache-Control": "public, max-age=31536000",
             "Last-Modified": formatdate(mtime, usegmt=True)
         }
     )
@@ -346,12 +233,8 @@ async def handle_screenshot(request): return await _send_static_file("screenshot
 async def handle_assetlinks(request): return await _send_static_file(".well-known/assetlinks.json", "application/json")
 async def handle_favicon(request): return web.Response(status=204)
 
-async def handle_robots_txt(request):
-    return web.Response(text="User-agent: *\nDisallow: /\n", content_type="text/plain")
-
 # ============= HEALTH CHECK =============
 async def handle_health(request):
-    """Health check с проверкой БД."""
     db_status = "ok"
     try:
         with get_conn() as conn:
@@ -371,7 +254,6 @@ async def handle_health(request):
 
 # ============= СКАЧИВАНИЕ ФАЙЛОВ (API) =============
 async def handle_download(request):
-    # 1. Берем токен из URL
     token = request.query.get('webToken')
     if not token:
         auth_header = request.headers.get('Authorization')
@@ -381,16 +263,13 @@ async def handle_download(request):
     if not token:
         return web.Response(status=401, text="Unauthorized: No token provided")
 
-    # 2. Берем имя файла
     filename = request.match_info.get('filename')
-    safe_filename = os.path.basename(filename) # Защита от Path Traversal
+    safe_filename = os.path.basename(filename)
 
-    # Ищем файл в постоянном хранилище (/data) или локальной папке
     base_dir = "/data" if os.path.exists("/data") else os.path.dirname(os.path.abspath(__file__))
     upload_dir = os.path.join(base_dir, "uploads")
     filepath = os.path.join(upload_dir, safe_filename)
 
-    # ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: реальный путь должен быть внутри upload_dir
     real_upload_dir = os.path.realpath(upload_dir)
     real_filepath = os.path.realpath(filepath)
     if not real_filepath.startswith(real_upload_dir + os.sep):
@@ -400,7 +279,6 @@ async def handle_download(request):
     if not os.path.exists(filepath):
         return web.Response(status=404, text="File not found")
 
-    # 3. Отдаем файл
     return web.FileResponse(filepath)
 
 # ============= APP SETUP =============
@@ -421,31 +299,26 @@ app.add_routes(timesheet_routes)
 app.add_routes(content_routes)
 app.add_routes(core_routes)
 app.add_routes(academy_routes)
-app.add_routes(sales_routes)
 
 app.router.add_get("/", handle_index)
 app.router.add_get("/admin", handle_admin_page)
 app.router.add_get("/admin/", handle_admin_page)
-app.router.add_get("/sales", handle_sales_page)
-app.router.add_get("/sales/", handle_sales_page)
 app.router.add_get("/admin.css", handle_admin_css)
-app.router.add_get("/admin.js", handle_admin_js)
-app.router.add_get("/sales.css", handle_sales_css)
-app.router.add_get("/sales.js", handle_sales_js)
 app.router.add_get("/academy", handle_academy_page)
 app.router.add_get("/academy/", handle_academy_page)
 app.router.add_get("/timesheet", handle_timesheet_page)
 app.router.add_get("/timesheet/", handle_timesheet_page)
+app.router.add_get("/favicon.ico", handle_favicon)
 app.router.add_get("/api/health", handle_health)
 app.router.add_get("/manifest.json", handle_manifest)
 app.router.add_get("/sw.js", handle_sw)
 app.router.add_get("/static/icon-192.svg", handle_icon192)
 app.router.add_get("/static/icon-512.svg", handle_icon512)
+app.router.add_get("/static/icon-192.png", handle_icon192_png)
+app.router.add_get("/static/icon-512.png", handle_icon512_png)
+app.router.add_get("/static/screenshot1.png", handle_screenshot)
 app.router.add_get("/.well-known/assetlinks.json", handle_assetlinks)
-app.router.add_get("/robots.txt", handle_robots_txt)
-app.router.add_get("/favicon.ico", handle_favicon)
 
-# РОУТ ДЛЯ СКАЧИВАНИЯ
 app.router.add_get("/api/download/{filename:.*}", handle_download)
 
 # ============= MAIN =============

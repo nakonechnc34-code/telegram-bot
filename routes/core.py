@@ -18,7 +18,7 @@ from routes.medbooks import (
     compute_medbook_status, entry_status, _mb_items, _sync_get_medbook_refs
 )
 from routes.users import _sync_dashboard_stats
-from utils.common import safe_int
+from utils.common import safe_int, safe_int as _safe_int
 from middleware.cache import get_cached, set_cached, clear_cache
 
 try:

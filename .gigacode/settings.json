@@ -30,7 +30,8 @@
       "Bash(netstat *)",
       "Bash(xcopy *)",
       "Bash(mkdir *)",
-      "Bash(rmdir *)"
+      "Bash(rmdir *)",
+      "Bash(@find *)"
     ]
   },
   "$version": 3

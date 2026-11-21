@@ -44,11 +44,7 @@
 
     // ---------- Helpers ----------
     function getToken() {
-        return document.cookie
-            .split(';')
-            .map(c => c.trim())
-            .find(c => c.startsWith('session_token='))
-            ?.split('=')[1] || null;
+        return localStorage.getItem('wokker_admin_token') || null;
     }
 
     function formatCurrency(value) {

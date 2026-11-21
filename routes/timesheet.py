@@ -9,7 +9,7 @@ import traceback
 import logging
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-from utils.common import safe_int, safe_float
+from utils.common import safe_int as _safe_int, safe_float as _safe_float
 
 routes = web.RouteTableDef()
 

@@ -54,7 +54,6 @@ from routes.content import routes as content_routes
 from routes.core import routes as core_routes
 from routes.academy import routes as academy_routes
 from routes.sales import routes as sales_routes
-from routes.ai import routes as ai_routes
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -423,7 +422,6 @@ app.add_routes(content_routes)
 app.add_routes(core_routes)
 app.add_routes(academy_routes)
 app.add_routes(sales_routes)
-app.add_routes(ai_routes)
 
 app.router.add_get("/", handle_index)
 app.router.add_get("/admin", handle_admin_page)
@@ -470,10 +468,6 @@ async def main():
 
     logging.info(f"✅ Server on port {port}")
     logging.info(f"👤 Admin: {config.ADMIN_LOGIN}")
-    if config.ENABLE_AI:
-        logging.info(f"🤖 AI (DeepSeek): {config.DEEPSEEK_MODEL} — активен")
-    else:
-        logging.info("🤖 AI (DeepSeek): не настроен (DEEPSEEK_API_KEY)")
 
     try:
         await asyncio.Event().wait()

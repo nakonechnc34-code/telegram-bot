@@ -160,8 +160,12 @@ $('login-login')?.addEventListener('input', e => {
 });
 
 async function doLogin() {
-    const login = $('login-login').value.trim().toLowerCase();
-    const password = $('login-password').value;
+    console.log('[login] doLogin called');
+    const loginInput = $('login-login');
+    const passwordInput = $('login-password');
+    if (!loginInput || !passwordInput) { console.error('Login elements not found'); return; }
+    const login = loginInput.value.trim().toLowerCase();
+    const password = passwordInput.value;
     const errEl = $('login-error');
     errEl.textContent = '';
     if (!LOGIN_RE.test(login)) { errEl.textContent = 'Логин: 3 латинские буквы + 2 цифры'; return; }
@@ -169,24 +173,30 @@ async function doLogin() {
     const btn = $('login-btn');
     btn.disabled = true; btn.textContent = 'Проверяем…';
     try {
+        console.log('[login] Sending to /api/admin/login');
         const res = await fetch('/api/admin/login', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ login, password }),
         });
+        console.log('[login] Response status:', res.status);
         if (res.status === 401) { errEl.textContent = 'Неверный логин или пароль'; return; }
         if (res.status === 403) { errEl.textContent = 'Аккаунт уволен или нет прав администратора'; return; }
         if (!res.ok) { errEl.textContent = 'Ошибка сервера'; return; }
         const data = await res.json();
         if (!data.token) { errEl.textContent = 'Ошибка'; return; }
         setToken(data.token); clearCache();
+        console.log('[login] Success, token set');
         await checkAdminAndLoad();
-    } catch (e) { errEl.textContent = 'Сеть недоступна'; }
+    } catch (e) { console.error('[login] Error:', e); errEl.textContent = 'Сеть недоступна'; }
     finally { btn.disabled = false; btn.textContent = 'Войти'; }
 }
 
 $('login-btn')?.addEventListener('click', doLogin);
 $('login-password')?.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 $('login-login')?.addEventListener('keydown', e => { if (e.key === 'Enter') $('login-password')?.focus(); });
+
+// ═══ GLOBAL ERROR HANDLER ═══
+window.addEventListener('error', e => { console.error('[global]', e.error); });
 
 async function checkAdminAndLoad() {
     try {

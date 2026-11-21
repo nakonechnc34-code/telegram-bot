@@ -16,15 +16,29 @@ _session_cache_lock = threading.Lock()
 _request_counter = 0
 
 
+def invalidate_session_cache(token=None, user_id=None):
+    """Удаляет токен или все кэшированные сессии пользователя."""
+    with _session_cache_lock:
+        if token:
+            _session_cache.pop(token, None)
+        if user_id is not None:
+            stale = [t for t, (uid, _) in _session_cache.items() if uid == user_id]
+            for t in stale:
+                _session_cache.pop(t, None)
+
+
 def _cleanup_session_cache():
     """Простая очистка кэша: если размер превышен, удаляем самые старые записи."""
     now = time.time()
     with _session_cache_lock:
+        expired = [t for t, (_, ts) in _session_cache.items() if now - ts >= SESSION_CACHE_TTL]
+        for t in expired:
+            _session_cache.pop(t, None)
         if len(_session_cache) > MAX_SESSION_CACHE_SIZE:
             sorted_items = sorted(_session_cache.items(), key=lambda x: x[1][1])
             to_remove = sorted_items[:len(sorted_items) // 2]
-            for token, _ in to_remove:
-                _session_cache.pop(token, None)
+            for t, _ in to_remove:
+                _session_cache.pop(t, None)
             logger.debug(f"🧹 Session cache cleaned: {len(_session_cache)} entries left")
 
 
@@ -145,24 +159,20 @@ async def _extract_token(request):
       3) query (?token= / ?webToken=)    — для скачивания файлов
       4) body JSON {webToken|token}      — LEGACY, для index.html/timesheet.html
     """
-    # 1. Authorization: Bearer
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         token = auth_header[7:].strip()
         if token:
             return token
 
-    # 2. X-Token
     x_token = request.headers.get("X-Token", "").strip()
     if x_token:
         return x_token
 
-    # 3. Query params
     token = request.query.get("token") or request.query.get("webToken")
     if token:
         return token
 
-    # 4. Body JSON (legacy)
     if request.method == "POST":
         ctype = request.headers.get("Content-Type", "")
         if "application/json" in ctype:
@@ -202,8 +212,10 @@ async def get_auth_user(request):
 
     user = await _run(_sync_get_user, user_id)
     if not user:
+        invalidate_session_cache(token=token)
         return None, 401
     if user.get("is_fired"):
+        invalidate_session_cache(token=token, user_id=user_id)
         return None, "fired"
     return user, None
 

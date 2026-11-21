@@ -116,8 +116,8 @@ def run_migrations():
 
 # Мусорные пути от сканеров — не логируем
 _SPAM_PATHS = (
-    '/wp-admin', '/wp-login', '/wp-content', '/wp-includes', '/xmlrpc.php',
     '/phpmyadmin', '/pma', '/phpMyAdmin',
+    '/wp-admin', '/wp-login', '/wp-content', '/wp-includes', '/xmlrpc.php',
     '/.env', '/.git', '/.svn',
     '/actuator', '/actuator/health',
     '/api/v1/', '/swagger', '/swagger-ui',
@@ -142,6 +142,9 @@ _PWA_PATHS = (
 async def error_middleware(request, handler):
     # Пропускаем мусорные пути — не логируем
     if any(request.path.startswith(sp) for sp in _SPAM_PATHS):
+        return await handler(request)
+    # Статика /static/ — не логируем ошибки (PWA иконки и т.п.)
+    if request.path.startswith('/static/'):
         return await handler(request)
     # POST-only API эндпоинты — игнорируем GET запросы (сканеры/bots)
     if request.method == 'GET' and request.path in _POST_ONLY_API_PATHS:

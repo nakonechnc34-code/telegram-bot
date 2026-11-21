@@ -326,6 +326,23 @@ async def handle_admin_citizenship_add(request):
     if not new_c: return web.json_response({"ok": False, "error": "duplicate"}, status=409)
     return web.json_response({"ok": True, "citizenship": dict(new_c)})
 
+@routes.post('/api/admin/citizenship/delete')
+async def handle_admin_citizenship_delete(request):
+    admin, err = await get_admin_user(request)
+    if err: return denied(err)
+    perm_err = require_perm(admin, "citizenships_edit")
+    if perm_err: return perm_err
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "invalid_json"}, status=400)
+    cid = int(body.get("id", 0))
+    if cid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM citizenships WHERE id = %s", (cid,))
+    await _run(_sync)
+    return web.json_response({"ok": True})
+
 def _sync_list_admins():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:

@@ -801,11 +801,12 @@ async function loadFaq() {
     const tbody = $('faq-table');
     tbody.innerHTML = items.map(f => `
       <tr>
-        <td style="font-weight:600;color:var(--text);max-width:300px;">${esc(f.question||'—')}</td>
+        <td style="font-weight:600;color:var(--text);max-width:200px;" title="${esc(f.question||'—')}">${esc(f.question||'—')}</td>
         <td><span class="tag tag--blue">${esc(f.category||'—')}</span></td>
-        <td style="color:var(--text-sec);max-width:300px;">${esc(f.answer||'—')}</td>
+        <td style="color:var(--text-sec);max-width:200px;" title="${esc(f.answer||'—')}">${esc(f.answer||'—')}</td>
         <td style="display:flex;gap:4px;">
-          ${hasPerm('faq_edit') ? `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="deleteFaq(${f.id})">🗑️</button>` : ''}
+          ${hasPerm('faq_edit') ? `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="editFaq(${f.id},'${esc(f.question||'')}','${esc(f.answer||'')}')">✏️</button>` : ''}
+          ${hasPerm('faq_edit') ? `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--pink);" onclick="deleteFaq(${f.id})">🗑️</button>` : ''}
         </td>
       </tr>
     `).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-terc);padding:40px;">Нет вопросов</td></tr>';
@@ -829,6 +830,26 @@ async function openAddFaq() {
     try {
       await api('/api/admin/faq/add', { question: q, answer: a });
       toast('Добавлено', 'success'); closeModal(); navigate('faq');
+    } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+  });
+}
+
+async function editFaq(id, question, answer) {
+  openModal('Редактировать FAQ', `
+    <div class="form-group"><label>Вопрос</label><input class="form-input" id="ed-faq-question" value="${esc(question)}" maxlength="500"></div>
+    <div class="form-group"><label>Ответ</label><textarea class="form-textarea" id="ed-faq-answer" rows="4" maxlength="2000">${esc(answer)}</textarea></div>
+    <div class="form-hint" id="ed-faq-error"></div>
+  `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="ed-faq-save">Сохранить</button>`);
+  $('ed-faq-save').addEventListener('click', async () => {
+    const errEl = $('ed-faq-error');
+    errEl.textContent = '';
+    const q = $('ed-faq-question').value.trim();
+    const a = $('ed-faq-answer').value.trim();
+    if (!q || !a) { errEl.textContent = 'Заполните все поля'; return; }
+    try {
+      await api('/api/admin/faq/update', { id, field: 'question', value: q });
+      await api('/api/admin/faq/update', { id, field: 'answer', value: a });
+      toast('Сохранено', 'success'); closeModal(); navigate('faq');
     } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
   });
 }
@@ -862,10 +883,13 @@ async function loadRestaurants() {
     const tbody = $('restaurants-table');
     tbody.innerHTML = restaurants.map((r, i) => {
       const statusTag = r.force_status === 'open' ? 'tag--green' : 'tag--amber';
-      const statusText = r.force_status === 'open' ? 'Открыт' : r.force_status || 'Открыт';
+      const statusText = r.force_status === 'open' ? 'Открыт' : (r.force_status || 'Открыт');
       let actions = '';
       if (hasPerm('restaurant_edit')) {
         actions += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="editRestaurant('${esc(r.key)}')">✏️</button>`;
+      }
+      if (hasPerm('restaurant_edit')) {
+        actions += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--amber);" onclick="changeRestaurantStatus('${esc(r.key)}','${esc(r.force_status||'open')}')">🔄</button>`;
       }
       if (hasPerm('restaurant_tu')) {
         actions += `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="assignTU('${esc(r.key)}')">👤</button>`;
@@ -952,6 +976,15 @@ async function assignTU(key) {
       toast('ТУ назначен', 'success'); closeModal(); navigate('restaurants');
     } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
   });
+}
+
+async function changeRestaurantStatus(key, currentStatus) {
+  const newStatus = currentStatus === 'open' ? 'closed' : 'open';
+  if (!confirm(`Переключить статус на ${newStatus === 'open' ? 'Открыт' : 'Закрыт'}?`)) return;
+  try {
+    await api('/api/admin/restaurant/status', { key, status: newStatus });
+    toast('Статус обновлён', 'success'); navigate('restaurants');
+  } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
 }
 
 // ═══ CERTIFICATION (FULL CRUD) ═══
@@ -1260,6 +1293,165 @@ async function loadAudit() {
   }
 }
 
+// ═══ CITIZENSHIPS ═══
+async function loadCitizenships() {
+  $('page-content').innerHTML = `
+    <div class="neu-card">
+      <div class="neu-card__header">
+        <div class="neu-card__header-title">Гражданства</div>
+        ${hasPerm('citizenships_edit') ? `<button class="btn btn--primary" onclick="openAddCitizenship()">+ Добавить</button>` : ''}
+      </div>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Название</th><th>Действия</th></tr></thead>
+          <tbody id="citizenships-table"><tr><td colspan="2" style="text-align:center;color:var(--text-terc);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  try {
+    const data = await cachedApi('/api/admin/citizenships', {});
+    const items = data.citizenships || [];
+    const tbody = $('citizenships-table');
+    tbody.innerHTML = items.map(c => `
+      <tr>
+        <td style="font-weight:600;color:var(--text);">${esc(c.name||'—')}</td>
+        <td>
+          ${hasPerm('citizenships_edit') ? `<button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--pink);" onclick="deleteCitizenship(${c.id})">🗑️</button>` : ''}
+        </td>
+      </tr>
+    `).join('') || '<tr><td colspan="2" style="text-align:center;color:var(--text-terc);padding:40px;">Нет записей</td></tr>';
+  } catch (e) {
+    $('citizenships-table').innerHTML = `<tr><td colspan="2" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+  }
+}
+
+async function openAddCitizenship() {
+  openModal('Добавить гражданство', `
+    <div class="form-group"><label>Название</label><input class="form-input" id="cit-name" maxlength="50"></div>
+    <div class="form-hint" id="cit-error"></div>
+  `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="cit-save">Добавить</button>`);
+  $('cit-save').addEventListener('click', async () => {
+    const errEl = $('cit-error');
+    errEl.textContent = '';
+    const name = $('cit-name').value.trim();
+    if (!name) { errEl.textContent = 'Введите название'; return; }
+    try {
+      await api('/api/admin/citizenship/add', { name });
+      toast('Добавлено', 'success'); closeModal(); navigate('citizenships');
+    } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+  });
+}
+
+async function deleteCitizenship(id) {
+  if (!confirm('Удалить гражданство?')) return;
+  try { await api('/api/admin/citizenship/delete', { id }); toast('Удалено', 'success'); navigate('citizenships'); }
+  catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+}
+
+// ═══ MEDBOOK DIRECTORIES ═══
+async function loadMedbookDirs() {
+  $('page-content').innerHTML = `
+    <div class="neu-card">
+      <div class="neu-card__header">
+        <div class="neu-card__header-title">Справочники медкнижки</div>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <button class="btn btn--primary" onclick="openAddMedDir('doctor')">+ Врач</button>
+        <button class="btn btn--primary" style="background:var(--blue);" onclick="openAddMedDir('test')">+ Анализ</button>
+        <button class="btn btn--primary" style="background:var(--green);" onclick="openAddMedDir('vaccine')">+ Вакцина</button>
+      </div>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Тип</th><th>Название</th><th>Срок (мес)</th><th>Обяз.</th><th>Действия</th></tr></thead>
+          <tbody id="medbook-dirs-table"><tr><td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;"><div class="loading">Загрузка...</div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  try {
+    const data = await api('/api/admin/medbooks', {});
+    const doctors = data.doctors || [];
+    const tests = data.tests || [];
+    const vaccines = data.vaccines || [];
+    const allItems = [
+      ...doctors.map(d => ({...d, type: 'doctor', typeLabel: 'Врач'})),
+      ...tests.map(t => ({...t, type: 'test', typeLabel: 'Анализ'})),
+      ...vaccines.map(v => ({...v, type: 'vaccine', typeLabel: 'Вакцина'})),
+    ];
+    const tbody = $('medbook-dirs-table');
+    const typeColors = { doctor: 'var(--purple)', test: 'var(--blue)', vaccine: 'var(--green)' };
+    tbody.innerHTML = allItems.map((item, i) => `
+      <tr>
+        <td><span class="tag" style="background:${typeColors[item.type]||'var(--text-terc)'}20;color:${typeColors[item.type]||'var(--text-terc)'};">${item.typeLabel}</span></td>
+        <td style="font-weight:600;color:var(--text);">${esc(item.name||'—')}</td>
+        <td>${item.validity_months||'—'}</td>
+        <td>${item.required ? '<span class="tag tag--green">Да</span>' : '<span class="tag tag--amber">Нет</span>'}</td>
+        <td>
+          <button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;" onclick="editMedDirItem(${item.id},'${esc(item.type)}','${esc(item.name)}',${item.validity_months||0},${item.required})">✏️</button>
+          <button class="btn btn--ghost" style="padding:4px 8px;font-size:11px;color:var(--pink);" onclick="deleteMedDirItem('${esc(item.type)}',${item.id})">🗑️</button>
+        </td>
+      </tr>
+    `).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;">Нет записей</td></tr>';
+  } catch (e) {
+    $('medbook-dirs-table').innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-terc);padding:40px;">Ошибка: ${esc(e.message)}</td></tr>`;
+  }
+}
+
+async function openAddMedDir(type) {
+  const typeLabels = { doctor: 'Врач', test: 'Анализ', vaccine: 'Вакцина' };
+  openModal(`Добавить ${typeLabels[type]}`, `
+    <div class="form-group"><label>Название</label><input class="form-input" id="med-dir-name" maxlength="100"></div>
+    <div class="form-group"><label>Срок действия (месяцев)</label><input class="form-input" id="med-dir-months" type="number" value="12" min="1" max="120"></div>
+    <label style="display:flex;align-items:center;gap:8px;margin-bottom:16px;cursor:pointer;">
+      <input type="checkbox" id="med-dir-required" checked> <span style="font-size:13px;">Обязательный</span>
+    </label>
+    <div class="form-hint" id="med-dir-error"></div>
+  `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="med-dir-save">Добавить</button>`);
+  $('med-dir-save').addEventListener('click', async () => {
+    const errEl = $('med-dir-error');
+    errEl.textContent = '';
+    const name = $('med-dir-name').value.trim();
+    const months = parseInt($('med-dir-months').value) || 12;
+    const required = $('med-dir-required').checked;
+    if (!name) { errEl.textContent = 'Введите название'; return; }
+    try {
+      await api('/api/admin/medbook/reference/add', { type, name, validity_months: months, required });
+      toast('Добавлено', 'success'); closeModal(); navigate('medbook-dirs');
+    } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+  });
+}
+
+async function editMedDirItem(id, type, name, months, required) {
+  const typeLabels = { doctor: 'Врач', test: 'Анализ', vaccine: 'Вакцина' };
+  openModal(`Редактировать ${typeLabels[type]}`, `
+    <div class="form-group"><label>Название</label><input class="form-input" id="ed-med-dir-name" value="${esc(name)}" maxlength="100"></div>
+    <div class="form-group"><label>Срок действия (месяцев)</label><input class="form-input" id="ed-med-dir-months" type="number" value="${months}" min="1" max="120"></div>
+    <label style="display:flex;align-items:center;gap:8px;margin-bottom:16px;cursor:pointer;">
+      <input type="checkbox" id="ed-med-dir-required" ${required ? 'checked' : ''}> <span style="font-size:13px;">Обязательный</span>
+    </label>
+    <div class="form-hint" id="ed-med-dir-error"></div>
+  `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="ed-med-dir-save">Сохранить</button>`);
+  $('ed-med-dir-save').addEventListener('click', async () => {
+    const errEl = $('ed-med-dir-error');
+    errEl.textContent = '';
+    const name = $('ed-med-dir-name').value.trim();
+    const months = parseInt($('ed-med-dir-months').value) || 12;
+    const required = $('ed-med-dir-required').checked;
+    if (!name) { errEl.textContent = 'Введите название'; return; }
+    try {
+      await api('/api/admin/medbook/reference/update', { type, id, name, validity_months: months, required });
+      toast('Сохранено', 'success'); closeModal(); navigate('medbook-dirs');
+    } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+  });
+}
+
+async function deleteMedDirItem(type, id) {
+  if (!confirm('Удалить запись?')) return;
+  try { await api('/api/admin/medbook/reference/delete', { type, id }); toast('Удалено', 'success'); navigate('medbook-dirs'); }
+  catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+}
+
 // ═══ Page Loaders Registry ═══
 const PAGE_LOADERS = {
   dashboard: loadDashboard,
@@ -1271,6 +1463,8 @@ const PAGE_LOADERS = {
   faq: loadFaq,
   restaurants: loadRestaurants,
   positions: loadPositions,
+  citizenships: loadCitizenships,
+  'medbook-dirs': loadMedbookDirs,
   questions: loadQuestions,
   admins: loadAdmins,
   reports: loadReports,

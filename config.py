@@ -24,6 +24,14 @@ ENABLE_PUSH = bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY)
 if not ENABLE_PUSH:
     logging.warning("⚠️ VAPID ключи не заданы. Push-уведомления работать не будут.")
 
+# DeepSeek API
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "").strip()
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+ENABLE_AI = bool(DEEPSEEK_API_KEY)
+if not ENABLE_AI:
+    logging.warning("⚠️ DEEPSEEK_API_KEY не задан. AI-функции бота работать не будут.")
+
 ADMIN_LOGIN = os.getenv("ADMIN_LOGIN", "adm01").strip().lower()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 if not ADMIN_PASSWORD:

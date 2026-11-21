@@ -162,17 +162,27 @@ async def security_headers_middleware(request, handler):
         response.headers["Pragma"] = "no-cache"
     return response
 
+# Мусорные пути от сканеров — не логируем
+_SPAM_PATHS = (
+    '/wp-admin', '/wp-login', '/wp-content', '/wp-includes', '/xmlrpc.php',
+    '/phpmyadmin', '/pma', '/phpMyAdmin',
+    '/.env', '/.git', '/.svn',
+    '/actuator', '/actuator/health',
+    '/api/v1/', '/swagger', '/swagger-ui',
+)
+
 @web.middleware
 async def request_logging_middleware(request, handler):
-    """Middleware: логирует каждый HTTP запрос."""
+    """Middleware: логирует каждый HTTP запрос, пропуская мусор."""
     start = time.time()
     try:
         response = await handler(request)
         duration = time.time() - start
         method = request.method
         path = request.path
-        # Пропускаем статику
-        if path.startswith('/static/') or path in ('/favicon.ico', '/.well-known/assetlinks.json'):
+        # Пропускаем статику и мусорные пути
+        if (path.startswith('/static/') or path in ('/favicon.ico', '/.well-known/assetlinks.json')
+                or any(path.startswith(sp) for sp in _SPAM_PATHS)):
             return response
         user_id = request.get('user', {}).get('user_id', '-') if 'user' in request else '-'
         status = response.status if hasattr(response, 'status') else '?'

@@ -9,7 +9,7 @@ import traceback
 import logging
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-from utils.common import safe_int as _safe_int, safe_float as _safe_float
+from utils.common import safe_int, safe_float
 
 routes = web.RouteTableDef()
 
@@ -37,13 +37,6 @@ def _check_can_edit_user(editor_user, target_uid):
                 return cur.fetchone() is not None
     return False
 
-# Автоматически добавляем колонки для времени прихода/ухода
-def _ensure_timesheet_schema():
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("ALTER TABLE timesheet_records ADD COLUMN IF NOT EXISTS start_time TIME")
-            cur.execute("ALTER TABLE timesheet_records ADD COLUMN IF NOT EXISTS end_time TIME")
-
 @routes.post('/api/timesheet/restaurants')
 async def handle_timesheet_restaurants(request):
     user, err = await get_auth_user(request)
@@ -63,7 +56,6 @@ async def handle_timesheet_restaurants(request):
     return web.json_response({"restaurants": rests})
 
 def _sync_timesheet_matrix(user_id, date_from, date_to):
-    _ensure_timesheet_schema()
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
@@ -128,8 +120,8 @@ async def handle_timesheet_matrix(request):
     date_from = body.get("date_from")
     date_to = body.get("date_to")
     if not date_from or not date_to:
-        month = _safe_int(body.get("month", datetime.now().month))
-        year = _safe_int(body.get("year", datetime.now().year))
+        month = safe_int(body.get("month", datetime.now().month))
+        year = safe_int(body.get("year", datetime.now().year))
         last_day = calendar.monthrange(year, month)[1]
         date_from = f"{year}-{month:02d}-01"
         date_to = f"{year}-{month:02d}-{last_day:02d}"
@@ -138,7 +130,6 @@ async def handle_timesheet_matrix(request):
     return web.json_response({"employees": employees})
 
 def _sync_save_cell(user_id, target_uid, work_date, hours, status, restaurant_key=None, start_time=None, end_time=None):
-    _ensure_timesheet_schema()
     hours = round(hours, 2)
     
     with get_conn() as conn:
@@ -163,9 +154,9 @@ async def handle_timesheet_save_cell(request):
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
-    target_uid = _safe_int(body.get("user_id"))
+    target_uid = safe_int(body.get("user_id"))
     work_date = body.get("work_date")
-    hours = _safe_float(body.get("hours", 0))
+    hours = safe_float(body.get("hours", 0))
     status = body.get("status", "work")
     restaurant_key = body.get("restaurant_key") 
     start_time = body.get("start_time")
@@ -188,7 +179,6 @@ def _parse_date(val):
     return None
 
 def _sync_import_attendance(user_id, rows, default_rest_key=None):
-    _ensure_timesheet_schema()
     success = 0
     errors = []
     
@@ -429,8 +419,8 @@ async def handle_timesheet_reports(request):
     date_from = body.get("date_from")
     date_to = body.get("date_to")
     if not date_from or not date_to:
-        month = _safe_int(body.get("month", datetime.now().month))
-        year = _safe_int(body.get("year", datetime.now().year))
+        month = safe_int(body.get("month", datetime.now().month))
+        year = safe_int(body.get("year", datetime.now().year))
         last_day = calendar.monthrange(year, month)[1]
         date_from = f"{year}-{month:02d}-01"
         date_to = f"{year}-{month:02d}-{last_day:02d}"
@@ -535,7 +525,7 @@ async def handle_timesheet_settings_save(request):
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
     position_name = (body.get("position_name") or "").strip()
-    rate = _safe_float(body.get("rate", 0))
+    rate = safe_float(body.get("rate", 0))
     if not position_name: return web.json_response({"error": "invalid_position"}, status=400)
     
     def _sync():
@@ -546,28 +536,6 @@ async def handle_timesheet_settings_save(request):
     await _run(_sync)
     return web.json_response({"ok": True})
 
-def _ensure_payments_table():
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS payments (
-                    id SERIAL PRIMARY KEY,
-                    user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,
-                    amount NUMERIC(10,2) NOT NULL,
-                    comment TEXT NOT NULL,
-                    payment_date DATE DEFAULT CURRENT_DATE,
-                    created_at TIMESTAMPTZ DEFAULT NOW(),
-                    created_by BIGINT,
-                    record_type TEXT DEFAULT 'payout',
-                    status TEXT DEFAULT 'approved',
-                    proposed_by_name TEXT,
-                    approved_by_name TEXT
-                )
-            """)
-            cur.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'approved'")
-            cur.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS proposed_by_name TEXT")
-            cur.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS approved_by_name TEXT")
-
 @routes.post('/api/payments/add')
 async def handle_payment_add(request):
     user, err = await get_auth_user(request)
@@ -577,8 +545,8 @@ async def handle_payment_add(request):
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
-    target_uid = _safe_int(body.get("user_id"))
-    amount = _safe_float(body.get("amount", 0))
+    target_uid = safe_int(body.get("user_id"))
+    amount = safe_float(body.get("amount", 0))
     comment = (body.get("comment") or "").strip()
     payment_date = body.get("payment_date")
     
@@ -587,7 +555,6 @@ async def handle_payment_add(request):
     if not comment: return web.json_response({"error": "Комментарий обязателен"}, status=400)
         
     def _sync():
-        _ensure_payments_table()
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
@@ -606,8 +573,8 @@ async def handle_accrual_add(request):
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
-    target_uid = _safe_int(body.get("user_id"))
-    amount = _safe_float(body.get("amount", 0))
+    target_uid = safe_int(body.get("user_id"))
+    amount = safe_float(body.get("amount", 0))
     comment = (body.get("comment") or "").strip()
     payment_date = body.get("payment_date")
     
@@ -620,7 +587,6 @@ async def handle_accrual_add(request):
     proposed_by_name = None if is_hr_or_super else user.get("full_name")
 
     def _sync():
-        _ensure_payments_table()
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
@@ -639,7 +605,7 @@ async def handle_accrual_approve(request):
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
-    pid = _safe_int(body.get("id"))
+    pid = safe_int(body.get("id"))
     if pid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
 
     def _sync():
@@ -658,7 +624,7 @@ async def handle_accrual_reject(request):
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
-    pid = _safe_int(body.get("id"))
+    pid = safe_int(body.get("id"))
     if pid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
 
     def _sync():
@@ -679,7 +645,7 @@ async def handle_payment_delete(request):
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
     
-    pid = _safe_int(body.get("id"))
+    pid = safe_int(body.get("id"))
     if pid <= 0: return web.json_response({"error": "invalid_id"}, status=400)
 
     def _sync():
@@ -703,7 +669,6 @@ async def handle_payments_list(request):
     if not date_from or not date_to:
         return web.json_response({"error": "invalid_dates"}, status=400)
 
-    # Валидация что даты реалистичны и date_from <= date_to
     try:
         from datetime import datetime as _dt
         df = _dt.strptime(date_from[:10], "%Y-%m-%d")
@@ -714,7 +679,6 @@ async def handle_payments_list(request):
         return web.json_response({"error": "invalid_date_format"}, status=400)
 
     def _sync():
-        _ensure_payments_table()
         with get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("SELECT * FROM users WHERE user_id = %s", (user["user_id"],))
@@ -797,7 +761,7 @@ async def handle_employee_finance(request):
     try: body = await request.json()
     except Exception: return web.json_response({"error": "invalid_json"}, status=400)
 
-    target_uid = _safe_int(body.get("user_id"))
+    target_uid = safe_int(body.get("user_id"))
     date_from = body.get("date_from")
     date_to = body.get("date_to")
     
@@ -813,7 +777,6 @@ async def handle_employee_finance(request):
             return web.json_response({"error": "forbidden"}, status=403)
 
     def _sync():
-        _ensure_payments_table()
         with get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""

@@ -232,6 +232,8 @@ async def request_logging_middleware(request, handler):
             user_id
         )
         return response
+    except web.HTTPException:
+        raise
     except Exception as e:
         duration = time.time() - start
         logging.error("Unhandled %s %s: %s", request.method, request.path, str(e)[:100])

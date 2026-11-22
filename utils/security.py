@@ -97,6 +97,7 @@ def sanitize_html(html_str):
 # Standards accept pasted formatting, but only a narrowly allowed set of CSS
 # properties. The general sanitizer above remains unchanged for other content.
 from bleach.css_sanitizer import CSSSanitizer
+import re
 
 _STANDARDS_CSS = CSSSanitizer(allowed_css_properties=[
     'color', 'background-color', 'font-size', 'font-weight', 'font-style',
@@ -104,6 +105,46 @@ _STANDARDS_CSS = CSSSanitizer(allowed_css_properties=[
     'white-space', 'margin', 'margin-top', 'margin-bottom',
     'padding', 'padding-left', 'text-indent',
 ])
+
+
+_SAFE_FONT_COLOR = re.compile(r'^(?:#[0-9a-fA-F]{3,8}|[a-zA-Z]{1,24}|rgb\\(\\s*\\d{1,3}\\s*,\\s*\\d{1,3}\\s*,\\s*\\d{1,3}\\s*\\))
+    """Preserve safe document styling without allowing executable HTML/CSS."""
+    if not html_str:
+        return ""
+    return bleach.clean(
+        html_str,
+        tags=[*ALLOWED_TAGS, 'font'],
+        attributes=_standard_attribute_filter,
+        protocols=ALLOWED_PROTOCOLS,
+        css_sanitizer=_STANDARDS_CSS,
+        strip=True,
+    )
+
+
+# ============= JSON СЕРИАЛИЗАТОР =============
+from datetime import datetime, date
+from decimal import Decimal
+
+
+def _json_default(obj):
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    if isinstance(obj, Decimal):
+        return float(obj)
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
+def _json_dumps(data):
+    return json.dumps(data, ensure_ascii=False, default=_json_default)
+)
+
+
+def _standard_attribute_filter(tag, name, value):
+    if name in ALLOWED_ATTRS.get(tag, []) or name in ('class', 'style'):
+        return True
+    if tag == 'font' and name == 'color':
+        return bool(_SAFE_FONT_COLOR.fullmatch(value.strip()))
+    return False
 
 
 def sanitize_standard_html(html_str):

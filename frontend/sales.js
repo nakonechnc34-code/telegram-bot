@@ -40,7 +40,40 @@
         DOM.toastContainer = document.getElementById('toast-container');
     }
 
-    function getToken() { return localStorage.getItem('wokker_admin_token') || null; }
+    function getToken() { return sessionStorage.getItem('wokker_sales_token') || null; }
+    function showSalesLogin(message='') {
+        sessionStorage.removeItem('wokker_sales_token');
+        state.token = null;
+        document.getElementById('sales-app-shell').hidden = true;
+        document.getElementById('sales-login-screen').hidden = false;
+        document.getElementById('sales-login-error').textContent = message;
+    }
+    function showSalesApp() {
+        document.getElementById('sales-login-screen').hidden = true;
+        document.getElementById('sales-app-shell').hidden = false;
+    }
+    async function submitSalesLogin(event) {
+        event.preventDefault();
+        const login = document.getElementById('sales-login-name').value.trim();
+        const password = document.getElementById('sales-login-password').value;
+        const errorEl = document.getElementById('sales-login-error');
+        errorEl.textContent = '';
+        try {
+            const response = await fetch('/api/sales/login', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({login,password})
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.error || 'Ошибка входа');
+            sessionStorage.setItem('wokker_sales_token', result.token);
+            document.getElementById('sales-login-password').value = '';
+            await startSales();
+        } catch (error) { errorEl.textContent = error.message; }
+    }
+    async function salesLogout() {
+        try { await apiFetch('/api/sales/logout', {method:'POST',body:'{}'}); } catch (_) {}
+        showSalesLogin();
+    }
     const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
     function formatCurrency(value) {
@@ -73,7 +106,7 @@
             ...options,
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token, ...(options.headers || {}) },
         });
-        if (res.status === 401) { window.location.href = '/'; throw new Error('unauthorized'); }
+        if (res.status === 401 || res.status === 403) { showSalesLogin('Сессия завершена или право доступа отозвано'); throw new Error('unauthorized'); }
         if (!res.ok) { let msg = 'error'; try { const j = await res.json(); msg = j.error || msg; } catch (e) {} throw new Error(msg); }
         return responseType === "blob" ? res.blob() : res.json();
     }
@@ -531,16 +564,14 @@
         });
     }
 
-    async function init() {
-        cacheDOM();
+    async function startSales() {
         state.token = getToken();
-        if (!state.token) { window.location.href = '/'; return; }
-
+        if (!state.token) { showSalesLogin(); return; }
         try {
-            const meRes = await apiFetch('/api/admin/me', { method: 'POST' });
-            if (meRes.profile) DOM.adminAvatar.textContent = (meRes.profile.full_name || 'A').charAt(0).toUpperCase();
-        } catch (e) {}
-
+            const meRes = await apiFetch('/api/sales/me', {method:'POST',body:'{}'});
+            DOM.adminAvatar.textContent = (meRes.full_name || 'W').charAt(0).toUpperCase();
+        } catch (_) { showSalesLogin('Войдите по логину и паролю'); return; }
+        showSalesApp();
         const moscow = new Date(new Date().toLocaleString('en-US', {timeZone:'Europe/Moscow'}));
         const pad=n=>String(n).padStart(2,'0');
         DOM.comparisonDate.value=moscow.getFullYear()+'-'+pad(moscow.getMonth()+1)+'-'+pad(moscow.getDate());
@@ -548,11 +579,21 @@
         DOM.comparisonHour.value=String(moscow.getHours());
         await loadRestaurants();
         loadDashboard();
-        bindEvents();
+        if (!state.eventsBound) {
+            bindEvents();
+            state.eventsBound = true;
+            window.addEventListener('resize', () => {
+                if (state.dashboardData) renderDashboard(state.dashboardData);
+            });
+        }
+    }
 
-        window.addEventListener('resize', () => {
-            if (state.dashboardData) renderDashboard(state.dashboardData);
-        });
+    async function init() {
+        cacheDOM();
+        document.getElementById('sales-login-form').addEventListener('submit',submitSalesLogin);
+        document.getElementById('sales-logout').addEventListener('click',salesLogout);
+        if (!getToken()) { showSalesLogin(); return; }
+        await startSales();
     }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

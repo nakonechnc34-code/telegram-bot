@@ -199,3 +199,19 @@ def test_sales_settings_migration_runs_on_startup():
     assert app.index('"002_create_sales_tables.sql"') < app.index('"004_sales_order_type_settings.sql"')
     assert "CREATE TABLE IF NOT EXISTS sales_order_type_settings" in migration
     assert "id INTEGER PRIMARY KEY" in migration
+
+
+def test_iiko_restaurant_matching_normalizes_mall_and_punctuation():
+    import re
+    def normalize(value):
+        value = str(value or "").casefold().replace("ё", "е")
+        value = re.sub(r"^\s*(?:wokker|воккер)\s*[-–—:]\s*", "", value)
+        value = re.sub(r"[^\w\s]", " ", value)
+        value = " ".join(value.split())
+        return re.sub(r"^мега\s+", "", value)
+    assert normalize("Белая дача") == normalize("Мега Белая Дача")
+    assert normalize("Москва Сити") == normalize("Москва-Сити")
+    assert normalize("WOKKER - Мега Белая Дача") == normalize("Белая дача")
+    source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
+    assert 'return re.sub(r"^мега\\s+", "", value)' in source
+    assert 'if len(candidates) != 1:' in source

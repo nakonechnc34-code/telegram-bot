@@ -6,7 +6,7 @@ from utils.common import safe_int
 from utils.security import sanitize_html, sanitize_standard_html
 import json
 from utils.standard_docx import convert_standard_docx
-from zipfile import BadZipFile
+from zipfile import BadZipFile, ZipFile
 
 routes = web.RouteTableDef()
 
@@ -442,6 +442,9 @@ async def handle_admin_standard_import_docx(request):
         data = await part.read(decode=False)
         if len(data) > 3 * 1024 * 1024 or not data.startswith(b'PK'):
             return web.json_response({"error": "invalid_docx_or_too_large"}, status=400)
+        with ZipFile(__import__('io').BytesIO(data)) as archive:
+            if len(archive.infolist()) > 1000 or sum(info.file_size for info in archive.infolist()) > 15 * 1024 * 1024:
+                return web.json_response({"error": "document_too_large"}, status=413)
         html = convert_standard_docx(data)
         if len(html) > 100000:
             return web.json_response({"error": "document_too_large"}, status=413)

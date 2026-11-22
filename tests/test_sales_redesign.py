@@ -32,3 +32,19 @@ def test_mobile_layout_and_accessible_navigation():
     assert "@media(max-width:850px)" in CSS
     assert "@media(max-width:520px)" in CSS
     assert 'aria-label="Разделы Sales"' in HTML
+
+def test_product_aggregation_scoped_and_bounded():
+    source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
+    section = source.split('async def sales_products(', 1)[1].split('@routes.post("/api/sales/records")', 1)[0]
+    assert 'key not in allowed' in section
+    assert 'sr.restaurant_key = ANY($2)' in section
+    assert 'LIMIT 100' in section
+    assert 'LIMIT 50' in section
+    assert 'GROUP BY sr.product_name' in section
+
+
+def test_products_and_records_are_real_api_backed_views():
+    assert "'/api/sales/products'" in JS
+    assert 'async function loadInlineRecords(' in JS
+    assert "'/api/sales/records'" in JS
+    assert 'esc(r.product_name' in JS

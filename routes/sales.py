@@ -4,6 +4,7 @@ Routes для дашборда Товарооборот.
 """
 
 import io
+import hashlib
 import csv
 import json
 import os
@@ -302,13 +303,25 @@ async def upload_sales_file(request: web.Request) -> web.Response:
         return web.json_response({"error": "Максимальный размер файла — 10 МБ"}, status=413)
     if not data:
         return web.json_response({"error": "Пустой файл"}, status=400)
-    with open(path, "wb") as fp: fp.write(data)
-
+    file_hash = hashlib.sha256(data).hexdigest()
+    # Database uniqueness protects against concurrent uploads of the same bytes.
+    # Failed imports are excluded from the index and may be retried.
     async with pool.acquire() as conn:
-        import_id = (await conn.fetchrow(
-            "INSERT INTO sales_imports (restaurant_key, filename, file_path, uploaded_by, status) "
-            "VALUES ($1, $2, $3, $4, 'processing') RETURNING id",
-            key, filename, path, user["user_id"]))["id"]
+        row = await conn.fetchrow(
+            """INSERT INTO sales_imports
+               (restaurant_key, filename, file_path, uploaded_by, status, file_hash)
+               VALUES ($1, $2, $3, $4, 'processing', $5)
+               ON CONFLICT (file_hash)
+               WHERE file_hash IS NOT NULL AND status IN ('processing', 'completed')
+               DO NOTHING RETURNING id""",
+            key, filename, path, user["user_id"], file_hash)
+    if row is None:
+        return web.json_response(
+            {"error": "Этот файл уже загружен или обрабатывается. Проверьте историю загрузок.",
+             "duplicate": True}, status=409)
+    import_id = row["id"]
+    with open(path, "wb") as fp:
+        fp.write(data)
 
     try:
         records = (await asyncio.to_thread(_parse_excel, io.BytesIO(data))

@@ -119,11 +119,14 @@
         return rows.map(imp => '<tr><td><strong>'+esc(imp.filename)+'</strong></td><td>'+esc(state.restaurants.find(r=>r.key===imp.restaurant_key)?.name||imp.restaurant_key)+'</td><td>'+formatNumber(imp.rows_count)+'</td><td>'+formatDate(imp.upload_date)+'</td><td><span class="status-pill '+(imp.status==='completed'?'':'pending')+'">'+esc(imp.status==='completed'?'Загружен':imp.status)+'</span></td></tr>').join('');
     }
     function renderDashboard(data) {
-        const {overview:o, daily_trend:trend=[], by_restaurant:restaurants=[], hourly_revenue:hourly=[], imports=[]} = data;
+        const {overview:o, daily_trend:trend=[], by_restaurant:restaurants=[], hourly_revenue:hourly=[], by_order_type:orderTypes=[], imports=[]} = data;
         const view=state.view;
         const intro = (title,subtitle,tag='ДАННЫЕ ИЗ ОТЧЁТОВ') => '<div class="intro"><div><h2>'+title+'</h2><p>'+subtitle+'</p></div><span class="eyebrow-tag">'+tag+'</span></div>';
         const table=(title,heads,rows,empty='Нет данных за выбранный период')=>'<section class="table-wrap"><div class="table-title">'+title+'</div><table class="table"><thead><tr>'+heads.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+(rows||'<tr><td colspan="'+heads.length+'" class="text-center">'+empty+'</td></tr>')+'</tbody></table></section>';
-        if(view==='restaurants') {
+        if(view==='settings') {
+            DOM.content.innerHTML=intro('Настройки типов заказа','Назначьте каждому способу оплаты тип заказа: Зал, Доставка или Не распределено.')+'<section class="panel"><div class="loading">Загрузка настроек…</div></section>';
+            loadOrderTypeSettings();
+        } else if(view==='restaurants') {
             DOM.content.innerHTML=intro('Результаты ресторанов','Сравнение доступных ресторанов по выручке, прибыли и доле прибыли.')+
             table('Рейтинг ресторанов',['№','Ресторан','Выручка','Прибыль по отчёту','Доля прибыли'],restRows(restaurants));
         } else if(view==='imports') {
@@ -141,6 +144,7 @@
             document.getElementById('inline-search').addEventListener('click',()=>loadInlineRecords(1));
             loadInlineRecords(1);
         } else {
+            const typeRows=orderTypes.map(t=>'<tr><td><strong>'+esc(t.type)+'</strong></td><td>'+money(t.sales)+'</td><td>'+formatNumber(t.checks)+'</td></tr>').join('');
             const hourlyMax=Math.max(1,...hourly.map(h=>h.sales||0));
             const hourlyRows=hourly.map(h=>'<div class="progress-item"><div class="pi-header"><span>'+String(h.hour).padStart(2,'0')+':00–'+String((h.hour+1)%24).padStart(2,'0')+':00</span><span>'+money(h.sales)+' · '+formatNumber(h.checks)+' чеков</span></div><div class="pi-bar-bg"><div class="pi-bar-fill" style="width:'+Math.max(0,Math.min(100,100*h.sales/hourlyMax))+'%"></div></div></div>').join('');
             const avg=o.total_items_sold>0?money(o.total_sales/o.total_items_sold):'—';
@@ -151,10 +155,36 @@
             '<section class="kpi-grid">'+cards.map(c=>'<div class="kpi-card"><div class="kpi-label">'+c[0]+'</div><div class="kpi-value">'+c[1]+'</div><div class="kpi-trend">'+c[2]+'</div></div>').join('')+'</section>'+
             '<div class="charts-row"><section class="chart-card"><div class="chart-header"><span class="chart-title">Динамика выручки</span><span class="chart-note">По дням</span></div>'+(trend.length?'<div class="chart-canvas-wrapper"><canvas id="chart-daily-trend" aria-label="График выручки"></canvas></div>':'<div class="empty-state"><strong>Пока нет данных</strong>Загрузите отчёт iiko для построения графика</div>')+'</section>'+
             '<section class="chart-card"><div class="chart-header"><span class="chart-title">Лидеры по выручке</span><span class="chart-note">Рестораны</span></div><div class="progress-list">'+(bars||'<div class="empty-state">Нет данных</div>')+'</div></section></div>'+
+            table('Выручка по типу заказа',['Тип заказа','Выручка','Количество чеков'],typeRows,'Нет данных')+
             '<section class="chart-card"><div class="chart-header"><span class="chart-title">Почасовая выручка</span><span class="chart-note">Час открытия чека · выбранный период и ресторан</span></div><div class="progress-list">'+(hourlyRows||'<div class="empty-state">Нет почасовых данных. Загрузите дневной отчёт iiko с колонкой «Час открытия».</div>')+'</div></section>'+ 
             table('Последние загрузки',['Файл','Ресторан','Строк','Дата','Статус'],importRows(imports.slice(0,5)),'Загрузок пока нет');
             requestAnimationFrame(()=>renderDailyTrendChart(trend));
         }
+    }
+
+    async function loadOrderTypeSettings() {
+        try {
+            const res=await apiFetch('/api/sales/order-type-settings',{method:'POST',body:JSON.stringify({action:'get'})});
+            if(state.view!=='settings')return;
+            const d=res.data||{}, mapping=d.mapping||{}, methods=d.methods||[];
+            DOM.content.innerHTML='<div class="intro"><div><h2>Типы заказов</h2><p>Каждый способ оплаты из отчёта iiko относится к Залу, Доставке или нераспределённым. Изменения применяются к ранее загруженным данным.</p></div></div>'+
+                '<section class="panel"><h3>Распределение способов оплаты</h3><p class="section-note">Неизвестные способы оплаты остаются нераспределёнными, пока администратор не назначит тип.</p>'+
+                '<div class="table-wrap"><table class="table"><thead><tr><th>Способ оплаты iiko</th><th>Тип заказа</th></tr></thead><tbody>'+
+                methods.map((m,i)=>'<tr><td>'+esc(m)+'</td><td><select class="form-input order-type-select" data-method="'+esc(m)+'" '+(d.can_edit?'':'disabled')+'>'+
+                    ['Зал','Доставка','Не распределено'].map(t=>'<option value="'+t+'" '+((mapping[m]||'Не распределено')===t?'selected':'')+'>'+t+'</option>').join('')+'</select></td></tr>').join('')+
+                '</tbody></table></div>'+(d.can_edit?'<button class="btn btn-primary" id="save-order-types">Сохранить настройки</button>':'<p class="section-note">Редактирование доступно администратору сети.</p>')+'</section>';
+            if(d.can_edit)document.getElementById('save-order-types').addEventListener('click',async()=>{
+                const updated={};
+                document.querySelectorAll('.order-type-select').forEach(select=>{updated[select.dataset.method]=select.value;});
+                const btn=document.getElementById('save-order-types');btn.disabled=true;
+                try{
+                    await apiFetch('/api/sales/order-type-settings',{method:'POST',body:JSON.stringify({action:'save',mapping:updated})});
+                    state.dashboardData=null;
+                    showToast('Настройки типов заказа сохранены');
+                }catch(e){showToast('Ошибка сохранения: '+e.message,'error');}
+                finally{btn.disabled=false;}
+            });
+        }catch(e){if(state.view==='settings')DOM.content.innerHTML='<section class="panel"><div class="empty-state">Не удалось загрузить настройки: '+esc(e.message)+'</div></section>';}
     }
 
     async function loadProducts() {
@@ -382,7 +412,8 @@
             document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b===button));
             document.getElementById('view-title').textContent=button.textContent.trim();
             document.getElementById('sales-sidebar').classList.remove('open');
-            if(state.dashboardData) renderDashboard(state.dashboardData); else loadDashboard();
+            if(state.view==='settings') renderDashboard(state.dashboardData||{overview:{},daily_trend:[],by_restaurant:[],imports:[]});
+            else if(state.dashboardData) renderDashboard(state.dashboardData); else loadDashboard();
         }));
         document.getElementById('menu-toggle').addEventListener('click',()=>document.getElementById('sales-sidebar').classList.toggle('open'));
 

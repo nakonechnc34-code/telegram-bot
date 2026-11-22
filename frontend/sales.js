@@ -21,6 +21,8 @@
         DOM.content = document.getElementById('sales-page-content');
         DOM.restaurantSelect = document.getElementById('restaurant-select');
         DOM.periodSelect = document.getElementById('period-select');
+        DOM.dateFrom = document.getElementById('sales-date-from');
+        DOM.dateTo = document.getElementById('sales-date-to');
         DOM.adminAvatar = document.getElementById('sales-topbar-avatar');
         DOM.uploadModal = document.getElementById('upload-modal');
         DOM.detailModal = document.getElementById('detail-modal');
@@ -91,11 +93,19 @@
         const requestId = ++state.dashboardRequest;
         const restaurantKey = DOM.restaurantSelect.value || null;
         const period = DOM.periodSelect.value;
+        if (period === 'custom' && (!DOM.dateFrom.value || !DOM.dateTo.value)) {
+            DOM.content.innerHTML = '<div class="loading">Выберите начало и конец периода</div>';
+            return;
+        }
+        if (period === 'custom' && DOM.dateFrom.value > DOM.dateTo.value) {
+            DOM.content.innerHTML = '<div class="loading">Дата начала должна быть не позднее даты окончания</div>';
+            return;
+        }
 
         try {
             const res = await apiFetch('/api/sales/dashboard', {
                 method: 'POST',
-                body: JSON.stringify({ restaurant_key: restaurantKey, period }),
+                body: JSON.stringify({ restaurant_key: restaurantKey, period, date_from: DOM.dateFrom.value, date_to: DOM.dateTo.value }),
             });
 
             if (requestId !== state.dashboardRequest) return;
@@ -419,7 +429,15 @@
         }));
         document.getElementById('menu-toggle').addEventListener('click',()=>document.getElementById('sales-sidebar').classList.toggle('open'));
 
-        DOM.periodSelect.addEventListener('change', loadDashboard);
+        function updateDateControls() {
+            const custom = DOM.periodSelect.value === 'custom';
+            document.getElementById('custom-from-field').hidden = !custom;
+            document.getElementById('custom-to-field').hidden = !custom;
+            loadDashboard();
+        }
+        DOM.periodSelect.addEventListener('change', updateDateControls);
+        DOM.dateFrom.addEventListener('change', () => { if (DOM.periodSelect.value === 'custom') loadDashboard(); });
+        DOM.dateTo.addEventListener('change', () => { if (DOM.periodSelect.value === 'custom') loadDashboard(); });
         DOM.restaurantSelect.addEventListener('change', loadDashboard);
 
         // Одна кнопка загрузки отчёта iiko
@@ -454,7 +472,9 @@
                     method: 'POST',
                     body: JSON.stringify({
                         restaurant_key: DOM.restaurantSelect.value,
-                        period: DOM.periodSelect.value
+                        period: DOM.periodSelect.value,
+                        date_from: DOM.dateFrom.value,
+                        date_to: DOM.dateTo.value
                     })
                 }, 'blob');
                 const url = URL.createObjectURL(file);

@@ -9,6 +9,8 @@ import json
 import os
 import asyncio
 import uuid
+import secrets
+import hashlib
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 from functools import wraps
@@ -18,24 +20,108 @@ import openpyxl
 from asyncpg.exceptions import UndefinedTableError
 
 import db
-from middleware.auth import require_admin
-from utils.auth_helpers import get_admin_user, denied, _is_tu, _sync_get_tu_rests
+from middleware.rate_limit import get_client_ip
+from utils.security import validate_login_data, verify_password, _check_rate_limit, _reset_rate_limit
+from routes.auth import _sync_get_user_by_login
+from utils.auth_helpers import _is_tu, _sync_get_tu_rests
 
 routes = web.RouteTableDef()
 
 
 # ==================== ХЕЛПЕРЫ ====================
 
-def admin_required(handler):
-    """Декоратор: требует админа + кладёт его в request['admin']."""
+def _sales_allowed(user):
+    """Sales access is explicitly assigned in WOKKER Control, including for admins."""
+    if not user or user.get("is_fired") or not (user.get("is_admin") or user.get("is_super_admin")):
+        return False
+    perms = user.get("permissions") or {}
+    if isinstance(perms, str):
+        try:
+            perms = json.loads(perms)
+        except (ValueError, TypeError):
+            return False
+    return isinstance(perms, dict) and perms.get("sales_access") is True
+
+
+def _sales_token(request):
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return None
+    token = auth[7:].strip()
+    return token if len(token) >= 32 and len(token) <= 256 else None
+
+
+async def _sales_user(request):
+    token = _sales_token(request)
+    if not token:
+        return None
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    pool = db.get_pool(request.app)
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("""
+            SELECT u.* FROM sales_sessions ss
+            JOIN users u ON u.user_id = ss.user_id
+            WHERE ss.token_hash=$1 AND ss.expires_at > NOW()
+        """, token_hash)
+    user = dict(row) if row else None
+    return user if _sales_allowed(user) else None
+
+
+def sales_required(handler):
     @wraps(handler)
     async def wrapper(request):
-        admin, err = await get_admin_user(request)
-        if err:
-            return denied(err)
-        request['admin'] = admin
+        user = await _sales_user(request)
+        if not user:
+            return web.json_response({"error": "Sales: требуется вход или право доступа"}, status=403)
+        request["admin"] = user
+        request["user"] = user
         return await handler(request)
     return wrapper
+
+
+@routes.post("/api/sales/login")
+async def sales_login(request: web.Request) -> web.Response:
+    try:
+        body = await request.json()
+    except (ValueError, TypeError):
+        return web.json_response({"error": "Некорректный запрос"}, status=400)
+    data, err = validate_login_data(body)
+    if err:
+        return web.json_response({"error": "Некорректный логин или пароль"}, status=400)
+    ip = get_client_ip(request)
+    if not _check_rate_limit(ip):
+        return web.json_response({"error": "Слишком много попыток. Повторите позже"}, status=429)
+    user = await db._run(_sync_get_user_by_login, data["login"])
+    if not user or not verify_password(data["password"], user.get("password_hash") or ""):
+        return web.json_response({"error": "Неверный логин или пароль"}, status=401)
+    if not _sales_allowed(user):
+        return web.json_response({"error": "Доступ к Sales не назначен в админ-панели"}, status=403)
+    _reset_rate_limit(ip)
+    token = secrets.token_urlsafe(48)
+    pool = db.get_pool(request.app)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO sales_sessions(token_hash, user_id) VALUES($1,$2)",
+            hashlib.sha256(token.encode("utf-8")).hexdigest(), user["user_id"])
+    return web.json_response({"success": True, "token": token, "full_name": user.get("full_name") or ""}, headers={"Cache-Control": "no-store"})
+
+
+@routes.post("/api/sales/logout")
+async def sales_logout(request: web.Request) -> web.Response:
+    token = _sales_token(request)
+    if token:
+        pool = db.get_pool(request.app)
+        async with pool.acquire() as conn:
+            await conn.execute("DELETE FROM sales_sessions WHERE token_hash=$1",
+                               hashlib.sha256(token.encode("utf-8")).hexdigest())
+    return web.json_response({"success": True}, headers={"Cache-Control": "no-store"})
+
+
+@routes.post("/api/sales/me")
+@sales_required
+async def sales_me(request: web.Request) -> web.Response:
+    user = request["user"]
+    return web.json_response({"success": True, "full_name": user.get("full_name") or ""}, headers={"Cache-Control": "no-store"})
 
 
 def _to_date(val):
@@ -271,7 +357,7 @@ async def _recalc_summary(conn, restaurant_key):
 # ==================== РОУТЫ ====================
 
 @routes.post("/api/sales/upload")
-@require_admin
+@sales_required
 async def upload_sales_file(request: web.Request) -> web.Response:
     user = request["user"]
     reader = await request.post()
@@ -406,7 +492,7 @@ async def _order_type_mapping(conn):
 
 
 @routes.post("/api/sales/order-type-settings")
-@admin_required
+@sales_required
 async def sales_order_type_settings(request: web.Request) -> web.Response:
     user = request["admin"]
     body = await request.json()
@@ -446,7 +532,7 @@ async def sales_order_type_settings(request: web.Request) -> web.Response:
 
 
 @routes.post("/api/sales/imports/delete")
-@admin_required
+@sales_required
 async def delete_sales_import(request: web.Request) -> web.Response:
     """Remove an import and only the sales rows still owned by that import."""
     user = request["admin"]
@@ -482,7 +568,7 @@ async def delete_sales_import(request: web.Request) -> web.Response:
 
 
 @routes.post("/api/sales/dashboard")
-@admin_required
+@sales_required
 async def sales_dashboard(request: web.Request) -> web.Response:
     user = request['admin']
     body = await request.json()
@@ -707,7 +793,7 @@ async def sales_dashboard(request: web.Request) -> web.Response:
 
 
 @routes.post("/api/sales/products")
-@admin_required
+@sales_required
 async def sales_products(request: web.Request) -> web.Response:
     """Aggregated products and categories, scoped to authorized restaurants."""
     user = request["admin"]
@@ -756,7 +842,7 @@ async def sales_products(request: web.Request) -> web.Response:
 
 
 @routes.post("/api/sales/records")
-@admin_required
+@sales_required
 async def sales_records(request: web.Request) -> web.Response:
     user = request['admin']
     body = await request.json()
@@ -806,7 +892,7 @@ def _rec_to_json(r):
 
 
 @routes.post("/api/sales/restaurants")
-@admin_required
+@sales_required
 async def sales_restaurants(request: web.Request) -> web.Response:
     user = request['admin']
     allowed = await _allowed_rests(user)
@@ -833,7 +919,7 @@ async def sales_restaurants(request: web.Request) -> web.Response:
 
 
 @routes.post("/api/sales/export")
-@admin_required
+@sales_required
 async def export_sales(request: web.Request) -> web.Response:
     user = request['admin']
     body = await request.json()
@@ -887,7 +973,7 @@ async def export_sales(request: web.Request) -> web.Response:
 
 
 @routes.get("/api/sales/template")
-@require_admin
+@sales_required
 async def sales_template(request: web.Request) -> web.Response:
     def make():
         from openpyxl.styles import Font, PatternFill

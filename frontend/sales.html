@@ -3,16 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sales — WOKKER Control</title>
+    <title>WOKKER Sales</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/sales.css">
 </head>
 <body>
-<div class="app-shell">
+<div id="sales-login-screen" class="sales-login-screen" hidden>
+  <form id="sales-login-form" class="sales-login-card">
+    <div class="brand"><span class="brand-mark">W</span><span>WOKKER <small>SALES</small></span></div>
+    <h1>Вход в WOKKER Sales</h1>
+    <p>Используйте логин и пароль, выданные в административной панели. Доступ предоставляется отдельно.</p>
+    <label for="sales-login-name">Логин</label>
+    <input id="sales-login-name" type="text" autocomplete="username" required>
+    <label for="sales-login-password">Пароль</label>
+    <input id="sales-login-password" type="password" autocomplete="current-password" required>
+    <p id="sales-login-error" role="alert" aria-live="polite"></p>
+    <button class="btn btn-primary" type="submit">Войти</button>
+  </form>
+</div>
+<div class="app-shell" id="sales-app-shell" hidden>
   <aside class="sidebar" id="sales-sidebar">
-    <a class="brand" href="/admin"><span class="brand-mark">W</span><span>WOKKER <small>CONTROL</small></span></a>
+    <div class="brand"><span class="brand-mark">W</span><span>WOKKER <small>SALES</small></span></div>
     <div class="nav-caption">АНАЛИТИКА ПРОДАЖ</div>
     <nav class="side-nav" aria-label="Разделы Sales">
       <button class="nav-link active" data-view="overview"><span>◫</span> Обзор сети</button>
@@ -20,7 +33,7 @@
       <button class="nav-link" data-view="imports"><span>⇧</span> Отчёты и импорт</button>
       <button class="nav-link" data-view="settings"><span>⚙</span> Настройки</button>
     </nav>
-    <div class="sidebar-bottom"><a href="/admin">← Вернуться в WOKKER Control</a><span>Sales · Управленческая аналитика</span></div>
+    <div class="sidebar-bottom"><span>WOKKER Sales · Отдельная система</span><button class="btn btn-secondary" id="sales-logout">Выйти из Sales</button></div>
   </aside>
   <div class="workspace">
     <header class="topbar">

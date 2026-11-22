@@ -94,7 +94,8 @@ def test_hourly_iiko_parser_carries_hour_and_skips_subtotals():
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.append(["Учетный день", "Торговое предприятие", "Час открытия", "Тип оплаты", "Сумма со скидкой", "Чеков"])
-    ws.append(["22.11.2026", "Беляево", 12, "ВТБ БАНК", 100, 2])
+    from datetime import datetime
+    ws.append([datetime(2026, 11, 22), "Беляево", 12, "ВТБ БАНК", 100, 2])
     ws.append([None, None, None, "Наличные", 50, 1])
     ws.append([None, None, "12 всего", None, 150, 3])
     ws.append([None, None, 13, "Яндекс.Еда", 200, 4])

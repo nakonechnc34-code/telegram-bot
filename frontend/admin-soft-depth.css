@@ -81,3 +81,82 @@ body { background: radial-gradient(ellipse at 95% 0%, #E9EFFF, transparent 38%),
 .sidebar .nav-item--active .nav-icon { color:#3157C7; }
 .sidebar .nav-item:focus-visible,.sd-link:focus-visible,.sd-refresh:focus-visible { outline:3px solid #7F9EED; outline-offset:2px; }
 @media (prefers-reduced-motion: reduce) { .sidebar .nav-item { transition:none; } }
+
+/* Phase 3 — employee and medical-book views. Scoped to avoid changing other screens. */
+#page-content:is([data-page="users"],[data-page="medbooks"]) > .neu-card {
+  border:1px solid #E2E9F8; border-radius:22px;
+  box-shadow:0 4px 12px rgba(35,63,130,.04),0 22px 46px rgba(35,63,130,.07);
+  background:linear-gradient(165deg,#FFFFFF 0%,#FDFEFF 100%);
+}
+#page-content:is([data-page="users"],[data-page="medbooks"]) .subtabs {
+  display:flex; flex-wrap:wrap; gap:5px; padding:5px !important;
+  background:#EFF3FD !important; border:1px solid #E3EAF9 !important;
+  border-radius:14px;
+}
+#page-content:is([data-page="users"],[data-page="medbooks"]) .subtab {
+  border-radius:10px; min-height:39px; padding:9px 16px;
+  color:#5A6987; font-weight:700;
+}
+#page-content:is([data-page="users"],[data-page="medbooks"]) .subtab.active {
+  color:#2346A5; background:#FFF; border-color:#DFE7F8;
+  box-shadow:0 2px 9px rgba(37,69,146,.10);
+}
+#page-content:is([data-page="users"],[data-page="medbooks"]) .table-wrap {
+  overflow-x:auto; border:1px solid #E5EBF8; border-radius:16px;
+  background:#FFF; -webkit-overflow-scrolling:touch;
+}
+#page-content:is([data-page="users"],[data-page="medbooks"]) table.t {
+  width:100%; min-width:660px; border-collapse:collapse;
+}
+#page-content:is([data-page="users"],[data-page="medbooks"]) table.t thead {
+  background:#F3F6FD;
+}
+#page-content:is([data-page="users"],[data-page="medbooks"]) table.t th {
+  color:#566786; font-size:11px; text-transform:uppercase;
+  letter-spacing:.6px; font-weight:800;
+}
+#page-content:is([data-page="users"],[data-page="medbooks"]) table.t td {
+  border-color:#ECF0F8;
+}
+#page-content:is([data-page="users"],[data-page="medbooks"]) table.t tbody tr:hover {
+  background:#F7F9FF;
+}
+#page-content:is([data-page="users"],[data-page="medbooks"]) .form-input {
+  background:#FFF; border:1px solid #DCE5F7; border-radius:12px !important;
+  min-height:42px;
+}
+#page-content:is([data-page="users"],[data-page="medbooks"]) .form-input:focus {
+  border-color:#5575DC; box-shadow:0 0 0 3px rgba(70,104,214,.13);
+}
+#page-content:is([data-page="users"],[data-page="medbooks"]) .btn--primary {
+  background:linear-gradient(135deg,#456CE1,#2B50C4);
+  border-radius:12px; box-shadow:0 6px 15px rgba(43,80,196,.17);
+}
+#page-content:is([data-page="users"],[data-page="medbooks"]) .btn--outline {
+  color:#2D50B3; border-color:#D7E1F8; background:#F9FBFF;
+}
+#page-content:is([data-page="users"],[data-page="medbooks"]) .btn--outline:hover {
+  background:#EAF0FF;
+}
+#page-content[data-page="medbooks"] .neu-card--stat {
+  border-radius:16px; background:#F8FAFF; border:1px solid #E5EBF8;
+  box-shadow:none;
+}
+#page-content[data-page="medbooks"] .neu-card--stat .neu-card__label {
+  color:#526480; opacity:1;
+}
+#page-content[data-page="medbooks"] .neu-card--stat.green {
+  background:#F0F7F4; border-color:#DCEBE2;
+}
+#page-content[data-page="medbooks"] .neu-card--stat.yellow {
+  background:#FFFAED; border-color:#F4E9C9;
+}
+#page-content[data-page="medbooks"] .neu-card--stat.pink {
+  background:#FFF4F3; border-color:#F5DEDC;
+}
+@media (max-width:720px) {
+  #page-content:is([data-page="users"],[data-page="medbooks"]) > .neu-card { padding:14px; }
+  #page-content:is([data-page="users"],[data-page="medbooks"]) .neu-card__header { gap:12px; flex-wrap:wrap; }
+  #page-content:is([data-page="users"],[data-page="medbooks"]) #users-search { width:100% !important; max-width:100%; }
+  #page-content:is([data-page="users"],[data-page="medbooks"]) .stats-grid { grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; }
+}

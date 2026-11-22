@@ -375,13 +375,6 @@ DEFAULT_ORDER_TYPES = {
 
 
 async def _order_type_mapping(conn):
-    await conn.execute("""
-        CREATE TABLE IF NOT EXISTS sales_order_type_settings (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
-            mapping JSONB NOT NULL,
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-    """)
     saved = await conn.fetchval("SELECT mapping FROM sales_order_type_settings WHERE id = 1")
     return (json.loads(saved) if isinstance(saved, str) else dict(saved)) if saved is not None else dict(DEFAULT_ORDER_TYPES)
 
@@ -405,7 +398,6 @@ async def sales_order_type_settings(request: web.Request) -> web.Response:
                     v not in ("Зал", "Доставка", "Не распределено")
                     for k, v in mapping.items())):
                 return web.json_response({"error": "Некорректные настройки"}, status=400)
-            await _order_type_mapping(conn)
             await conn.execute("""
                 INSERT INTO sales_order_type_settings (id, mapping, updated_at)
                 VALUES (1, $1::jsonb, NOW())

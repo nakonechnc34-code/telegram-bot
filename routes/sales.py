@@ -324,7 +324,7 @@ async def upload_sales_file(request: web.Request) -> web.Response:
             def norm_name(value):
                 import re
                 value = str(value or "").casefold().replace("ё", "е")
-                value = re.sub(r"^\\s*(?:wokker|воккер)\\s*[-–—:]\\s*", "", value)
+                value = re.sub(r"^\s*(?:wokker|воккер)\s*[-–—:]\s*", "", value)
                 return " ".join(value.split())
             matches = {}
             for restaurant in db_rests:

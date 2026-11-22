@@ -14,6 +14,7 @@ from functools import wraps
 
 from aiohttp import web
 import openpyxl
+from asyncpg.exceptions import UndefinedTableError
 
 import db
 from middleware.auth import require_admin
@@ -375,7 +376,11 @@ DEFAULT_ORDER_TYPES = {
 
 
 async def _order_type_mapping(conn):
-    saved = await conn.fetchval("SELECT mapping FROM sales_order_type_settings WHERE id = 1")
+    try:
+        saved = await conn.fetchval("SELECT mapping FROM sales_order_type_settings WHERE id = 1")
+    except UndefinedTableError:
+        # Migration 004 is not applied yet; keep the dashboard readable.
+        return dict(DEFAULT_ORDER_TYPES)
     return (json.loads(saved) if isinstance(saved, str) else dict(saved)) if saved is not None else dict(DEFAULT_ORDER_TYPES)
 
 
@@ -398,11 +403,14 @@ async def sales_order_type_settings(request: web.Request) -> web.Response:
                     v not in ("Зал", "Доставка", "Не распределено")
                     for k, v in mapping.items())):
                 return web.json_response({"error": "Некорректные настройки"}, status=400)
-            await conn.execute("""
+            try:
+                await conn.execute("""
                 INSERT INTO sales_order_type_settings (id, mapping, updated_at)
                 VALUES (1, $1::jsonb, NOW())
                 ON CONFLICT (id) DO UPDATE SET mapping=EXCLUDED.mapping, updated_at=NOW()
-            """, json.dumps(mapping, ensure_ascii=False))
+                """, json.dumps(mapping, ensure_ascii=False))
+            except UndefinedTableError:
+                return web.json_response({"error": "Требуется миграция database/004_sales_order_type_settings.sql"}, status=503)
         mapping = await _order_type_mapping(conn)
         # Discover methods actually present in accessible Sales records.
         allowed = await _allowed_rests(user)
@@ -473,10 +481,10 @@ async def sales_dashboard(request: web.Request) -> web.Response:
         ]
         hour_where, _ = _where(hour_conditions, params)
         hourly = await conn.fetch(
-            f"""SELECT (sr.extra_data::jsonb->>'opening_hour')::int hour,
+            f"""SELECT (sr.extra_data::jsonb->>'opening_hour')::int AS opening_hour,
                        SUM(sr.total_amount) sales, SUM(sr.quantity) checks
                 FROM sales_records sr {hour_where}
-                GROUP BY hour ORDER BY hour""", *params)
+                GROUP BY 1 ORDER BY 1""", *params)
 
         order_mapping = await _order_type_mapping(conn)
         order_rows = await conn.fetch(
@@ -517,7 +525,7 @@ async def sales_dashboard(request: web.Request) -> web.Response:
                          "cost": float(r["c"] or 0), "profit": float(r["p"] or 0),
                          "items": int(r["q"] or 0)} for r in daily_trend],
         "by_order_type": list(order_types.values()),
-        "hourly_revenue": [{"hour": int(r["hour"]), "sales": float(r["sales"] or 0),
+        "hourly_revenue": [{"hour": int(r["opening_hour"]), "sales": float(r["sales"] or 0),
                             "checks": int(r["checks"] or 0)} for r in hourly],
         "by_restaurant": [{"key": r["key"], "name": r["name"],
                            "total_sales": float(r["total"] or 0), "profit": float(r["profit"] or 0)} for r in by_rest],

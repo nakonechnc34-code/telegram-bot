@@ -110,7 +110,7 @@ def test_hourly_iiko_parser_carries_hour_and_skips_subtotals():
 
 def test_hourly_dashboard_uses_scoped_sales_and_real_check_counts():
     source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
-    assert "GROUP BY hour ORDER BY hour" in source
+    assert "GROUP BY 1 ORDER BY 1" in source
     assert "sr.extra_data::jsonb->>'opening_hour'" in source
     assert '"hourly_revenue":' in source
     assert 'hourly_revenue:hourly=[]' in JS
@@ -165,3 +165,28 @@ def test_order_type_schema_is_migrated_not_created_on_requests():
     assert "CREATE TABLE IF NOT EXISTS sales_order_type_settings" in migration
     assert "CREATE TABLE IF NOT EXISTS sales_order_type_settings" not in source
     assert "SELECT mapping FROM sales_order_type_settings" in source
+
+
+def test_hourly_query_uses_valid_postgres_alias():
+    source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
+    assert "::int AS opening_hour" in source
+    assert 'int(r["opening_hour"])' in source
+    assert "GROUP BY 1 ORDER BY 1" in source
+
+
+def test_order_type_mapping_defaults_if_migration_missing():
+    import asyncio
+    from asyncpg.exceptions import UndefinedTableError
+    from routes.sales import _order_type_mapping, DEFAULT_ORDER_TYPES
+
+    class MissingSettings:
+        async def fetchval(self, *_args):
+            raise UndefinedTableError('relation "sales_order_type_settings" does not exist')
+
+    assert asyncio.run(_order_type_mapping(MissingSettings())) == DEFAULT_ORDER_TYPES
+
+
+def test_settings_save_explains_missing_migration():
+    source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
+    assert 'Требуется миграция database/004_sales_order_type_settings.sql' in source
+    assert 'status=503' in source

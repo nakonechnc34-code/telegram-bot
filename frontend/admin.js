@@ -206,6 +206,8 @@ function navigate(page) {
         item.classList.toggle('nav-item--active', item.dataset.page === page);
     });
     $('page-title').textContent = PAGE_TITLES[page] || page;
+    // Presentation hook for page-specific styling; routing and permissions stay unchanged.
+    $('page-content').dataset.page = page;
     $('page-content').innerHTML = '<div class="loading">Загрузка...</div>';
     const loader = PAGE_LOADERS[page];
     if (loader) {

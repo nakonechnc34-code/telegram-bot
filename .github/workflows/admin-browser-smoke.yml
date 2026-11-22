@@ -1,0 +1,29 @@
+name: Admin browser smoke
+on:
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - 'tests/browser/**'
+      - '.github/workflows/admin-browser-smoke.yml'
+  workflow_dispatch:
+jobs:
+  chromium-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: tests/browser
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: admin-playwright-traces
+          path: tests/browser/test-results/
+          retention-days: 7

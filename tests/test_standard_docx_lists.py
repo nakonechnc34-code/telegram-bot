@@ -70,7 +70,7 @@ def test_numbered_list_has_exact_six_sequential_labels():
 def test_markers_keep_hanging_indent_after_sanitization():
     doc = Document()
     p = doc.add_paragraph()
-    p.add_run('\\uf0b7')
+    p.add_run('\uf0b7')
     p.add_run('  ')
     p.add_run('Перед началом').bold = True
     buf = BytesIO(); doc.save(buf)

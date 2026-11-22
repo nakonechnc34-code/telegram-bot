@@ -355,8 +355,24 @@ async def upload_sales_file(request: web.Request) -> web.Response:
                 for rest_key in sorted(by_key):
                     await conn.fetchval("SELECT key FROM restaurants WHERE key = $1 FOR UPDATE", rest_key)
                 for rest_key, grouped in by_key.items():
+                    # One authoritative snapshot per restaurant and report date.
+                    # Replace only dates included in this file, preserving all
+                    # other dates, restaurants and the import audit history.
+                    report_dates = sorted({d for rec in grouped
+                                           if (d := _to_date(rec.get("sale_date"))) is not None})
+                    if not report_dates:
+                        raise ValueError("В отчёте отсутствуют корректные даты продаж")
+                    await conn.execute(
+                        "DELETE FROM sales_records WHERE restaurant_key=$1 AND sale_date=ANY($2::date[])",
+                        rest_key, report_dates)
                     await _save_records(conn, import_id, rest_key, grouped)
                     await _recalc_summary(conn, rest_key)
+                # Mark fully superseded imports; retain their audit records.
+                await conn.execute("""
+                    UPDATE sales_imports si SET status='replaced'
+                    WHERE si.status='completed'
+                      AND NOT EXISTS (SELECT 1 FROM sales_records sr WHERE sr.import_id=si.id)
+                """)
                 await conn.execute(
                     "UPDATE sales_imports SET status='completed', rows_count=$1, processed_at=NOW() WHERE id=$2",
                     len(records), import_id,

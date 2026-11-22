@@ -143,13 +143,30 @@ async def upload_sales_file(request: web.Request) -> web.Response:
 
 
 # =============================================================================
-# Парсеры
+# Парсеры (Адаптированы под iiko и англ. шаблоны)
 # =============================================================================
 
 def _parse_excel(file_obj: io.BytesIO) -> list[dict]:
-    """Парсит Excel файл. Ожидает колонки в первой строке (заголовки)."""
+    """Парсит Excel файл. Поддерживает русские заголовки iiko и английские."""
     wb = openpyxl.load_workbook(file_obj, read_only=True, data_only=True)
     ws = wb.active
+
+    header_map = {
+        "дата": "sale_date",
+        "дата продажи": "sale_date",
+        "категория": "category",
+        "группа": "category",
+        "блюдо": "product_name",
+        "наименование": "product_name",
+        "товар": "product_name",
+        "количество": "quantity",
+        "кол-во": "quantity",
+        "сумма": "total_amount",
+        "сумма продажи": "total_amount",
+        "себестоимость": "cost_amount",
+        "оплата": "payment_method",
+        "скидка": "discount_amount",
+    }
 
     records = []
     headers = None
@@ -160,13 +177,21 @@ def _parse_excel(file_obj: io.BytesIO) -> list[dict]:
             continue
 
         if headers is None:
-            headers = [str(h).lower().strip() if h else "" for h in values]
+            headers = []
+            for h in values:
+                if not h:
+                    headers.append("")
+                    continue
+                h_str = str(h).lower().strip()
+                headers.append(header_map.get(h_str, h_str))
             continue
 
         record = {}
         for i, val in enumerate(values):
             if i < len(headers):
                 header = headers[i]
+                if not header:
+                    continue
                 if val is None:
                     record[header] = None
                 elif header in ("quantity", "shift_number"):
@@ -187,7 +212,6 @@ def _parse_excel(file_obj: io.BytesIO) -> list[dict]:
         if "sale_date" in record and "total_amount" in record:
             record.setdefault("quantity", 1)
             record.setdefault("unit_price", record.get("total_amount", 0))
-            record.setdefault("total_amount", 0)
             record.setdefault("category", None)
             record.setdefault("product_name", None)
             record.setdefault("payment_method", None)
@@ -198,7 +222,23 @@ def _parse_excel(file_obj: io.BytesIO) -> list[dict]:
 
 
 def _parse_csv(text: str) -> list[dict]:
-    """Парсит CSV файл. Первая строка — заголовки."""
+    """Парсит CSV файл. Поддерживает русские заголовки iiko и английские."""
+    header_map = {
+        "дата": "sale_date",
+        "дата продажи": "sale_date",
+        "категория": "category",
+        "группа": "category",
+        "блюдо": "product_name",
+        "наименование": "product_name",
+        "товар": "product_name",
+        "количество": "quantity",
+        "кол-во": "quantity",
+        "сумма": "total_amount",
+        "сумма продажи": "total_amount",
+        "себестоимость": "cost_amount",
+        "оплата": "payment_method",
+        "скидка": "discount_amount",
+    }
     reader = csv.DictReader(text.splitlines())
     records = []
 
@@ -207,7 +247,8 @@ def _parse_csv(text: str) -> list[dict]:
         for key, val in row.items():
             k = key.lower().strip() if key else ""
             if k:
-                cleaned[k] = val.strip() if val else None
+                mapped = header_map.get(k, k)
+                cleaned[mapped] = val.strip() if val else None
 
         if not cleaned:
             continue
@@ -228,20 +269,13 @@ def _parse_csv(text: str) -> list[dict]:
                     cleaned[money_field] = 0.0
 
         if "sale_date" in cleaned and cleaned["sale_date"]:
-            parsed = None
-            for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y", "%Y/%m/%d"):
-                try:
-                    parsed = datetime.strptime(cleaned["sale_date"], fmt).date()
-                    break
-                except ValueError:
-                    continue
+            parsed = _to_date(cleaned["sale_date"])
             if parsed is not None:
                 cleaned["sale_date"] = parsed
 
         if "sale_date" in cleaned and "total_amount" in cleaned:
             cleaned.setdefault("quantity", 1)
             cleaned.setdefault("unit_price", cleaned.get("total_amount", 0))
-            cleaned.setdefault("total_amount", 0)
             cleaned.setdefault("category", None)
             cleaned.setdefault("product_name", None)
             cleaned.setdefault("payment_method", None)
@@ -264,7 +298,8 @@ async def _save_sales_records(pool, import_id: int, restaurant_key: str, records
                 extra = {k: v for k, v in rec.items() if k not in extra_keys}
                 sale_date = _to_date(rec.get("sale_date"))
                 if sale_date is None:
-                    continue
+                    continue  # Пропускаем строки без валидной даты
+                    
                 await conn.execute(
                     """
                     INSERT INTO sales_records (
@@ -383,6 +418,7 @@ async def sales_dashboard(request: web.Request) -> web.Response:
     results = {}
 
     days = {"7d": 7, "30d": 30, "90d": 90}.get(period, 30)
+    # ИСПРАВЛЕНО: передаём объект date, а не isoformat строку
     date_from = (datetime.utcnow().date() - timedelta(days=days))
 
     async with pool.acquire() as conn:
@@ -641,8 +677,11 @@ async def sales_records(request: web.Request) -> web.Response:
     allowed_rests = await _get_allowed_restaurants(user)
     body = await request.json()
     restaurant_key = body.get("restaurant_key")
+    
+    # ИСПРАВЛЕНО: передаём date-объекты
     date_from = _to_date(body.get("date_from"))
     date_to = _to_date(body.get("date_to"))
+    
     category = body.get("category")
     product_name = body.get("product_name")
     page = max(1, int(body.get("page", 1) or 1))
@@ -809,6 +848,8 @@ async def export_sales_data(request: web.Request) -> web.Response:
     allowed_rests = await _get_allowed_restaurants(user)
     body = await request.json()
     restaurant_key = body.get("restaurant_key")
+    
+    # ИСПРАВЛЕНО: передаём date-объекты
     date_from = _to_date(body.get("date_from"))
     date_to = _to_date(body.get("date_to"))
 

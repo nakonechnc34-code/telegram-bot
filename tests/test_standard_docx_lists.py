@@ -36,13 +36,14 @@ def test_word_numbered_items_are_not_bullets():
 def test_private_use_bullet_is_readable():
     doc = Document()
     p = doc.add_paragraph()
-    p.add_run('\\uf0b7')
+    p.add_run('\uf0b7')
     p.add_run('  ')
     p.add_run('Перед началом').bold = True
     buffer = BytesIO(); doc.save(buffer)
     html = convert_standard_docx(buffer.getvalue())
-    assert '•' in html
-    assert '\\uf0b7' not in html
+    assert '• <span style="font-weight:bold;">Перед началом</span>' in html
+    assert '&#xf0b7;' not in html
+    assert '\uf0b7' not in html
     assert 'font-weight:bold' in html
 
 

@@ -125,9 +125,9 @@ def test_order_type_mapping_is_persistent_and_authorized():
     assert 'if action == "save" and not user.get("is_super_admin"):' in source
     assert '"Не распределено"' in source
     assert 'order_mapping.get(method, "Не распределено")' in source
-    assert '"by_order_type": list(order_types.values())' in source
+    assert '"by_order_type": [{**v, "previous_sales": previous_types[k]}' in source
     assert 'loadOrderTypeSettings()' in JS
-    assert 'Выручка по типу заказа' in JS
+    assert 'ТО по типу заказа: что выросло и упало' in JS
 
 
 def test_multi_restaurant_name_prefix_normalization():

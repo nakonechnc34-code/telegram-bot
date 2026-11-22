@@ -8,7 +8,7 @@ CSS = (ROOT / "frontend/sales.css").read_text(encoding="utf-8")
 
 
 def test_sales_views_have_navigation():
-    for view in ("overview", "restaurants", "products", "imports", "records"):
+    for view in ("overview", "restaurants", "products", "imports", "records", "settings"):
         assert f'data-view="{view}"' in HTML
     assert "state.view=button.dataset.view" in JS
 
@@ -115,3 +115,14 @@ def test_hourly_dashboard_uses_scoped_sales_and_real_check_counts():
     assert '"hourly_revenue":' in source
     assert 'hourly_revenue:hourly=[]' in JS
     assert 'Почасовая выручка' in JS
+
+
+def test_order_type_mapping_is_persistent_and_authorized():
+    source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
+    assert 'CREATE TABLE IF NOT EXISTS sales_order_type_settings' in source
+    assert 'if action == "save" and _is_tu(user)' in source
+    assert '"Не распределено"' in source
+    assert 'order_mapping.get(method, "Не распределено")' in source
+    assert '"by_order_type": list(order_types.values())' in source
+    assert 'loadOrderTypeSettings()' in JS
+    assert 'Выручка по типу заказа' in JS

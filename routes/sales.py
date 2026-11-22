@@ -178,7 +178,12 @@ def _parse_excel(file_obj: io.BytesIO) -> list[dict]:
 
 
 def _parse_csv(text: str) -> list[dict]:
-    reader = csv.DictReader(text.splitlines())
+    sample = text[:4096]
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;\\t")
+        reader = csv.DictReader(io.StringIO(text), dialect=dialect)
+    except csv.Error:
+        reader = csv.DictReader(io.StringIO(text))
     return [rec for row in reader if (rec := _normalize(row))]
 
 
@@ -274,7 +279,12 @@ async def upload_sales_file(request: web.Request) -> web.Response:
     os.makedirs(_upload_dir(), exist_ok=True)
     stored = f"{datetime.utcnow():%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:8]}{ext}"
     path = os.path.join(_upload_dir(), stored)
-    data = await asyncio.to_thread(f.file.read)
+    # Bound uploads before parsing: large XLSX/CSV can exhaust worker memory.
+    data = await asyncio.to_thread(f.file.read, 10 * 1024 * 1024 + 1)
+    if len(data) > 10 * 1024 * 1024:
+        return web.json_response({"error": "Максимальный размер файла — 10 МБ"}, status=413)
+    if not data:
+        return web.json_response({"error": "Пустой файл"}, status=400)
     with open(path, "wb") as fp: fp.write(data)
 
     async with pool.acquire() as conn:
@@ -286,6 +296,8 @@ async def upload_sales_file(request: web.Request) -> web.Response:
     try:
         records = (await asyncio.to_thread(_parse_excel, io.BytesIO(data))
                    if ext == ".xlsx" else _parse_csv(data.decode("utf-8-sig")))
+        if not records:
+            raise ValueError("В файле нет распознанных строк продаж")
         async with pool.acquire() as conn:
             async with conn.transaction():
                 # Serialise imports and summary rebuilds for this restaurant.
@@ -314,59 +326,64 @@ async def sales_dashboard(request: web.Request) -> web.Response:
     period = body.get("period", "30d")
     key = body.get("restaurant_key")
     allowed = await _allowed_rests(user)
-    if allowed is not None:
-        if key and key not in allowed: return web.json_response({"error": "Forbidden"}, status=403)
-        key = key or (allowed[0] if allowed else "__none__")
-
+    if allowed is not None and key and key not in allowed:
+        return web.json_response({"error": "Forbidden"}, status=403)
+    # None means all restaurants (unrestricted admin). An empty list means no
+    # restaurants. Never silently replace "all" with the TU's first restaurant.
+    scoped_keys = [key] if key else allowed
     days = {"7d": 7, "30d": 30, "90d": 90}.get(period, 30)
-    date_from = (datetime.utcnow().date() - timedelta(days=days))
+    date_from = datetime.utcnow().date() - timedelta(days=days - 1)
+    conditions = ["sr.sale_date >= $1"]
+    params = [date_from]
+    if scoped_keys is not None:
+        conditions.append("sr.restaurant_key = ANY($2)")
+        params.append(scoped_keys)
+    w, _ = _where(conditions, params)
 
     pool = db.get_pool(request.app)
     async with pool.acquire() as conn:
-        cond, params = (["sr.restaurant_key = $1", "sr.sale_date >= $2"], [key, date_from]) if key \
-            else (["sr.sale_date >= $1"], [date_from])
-        w, p = _where(cond, params)
-
-        # ИСПРАВЛЕНО: Один запрос вместо asyncio.gather (решает ошибку InterfaceError)
         row = await conn.fetchrow(
-            f"SELECT COALESCE(SUM(total_amount), 0) AS s, COALESCE(SUM(cost_amount), 0) AS c, "
-            f"COALESCE(SUM(profit_amount), 0) AS p, COALESCE(SUM(quantity), 0) AS i "
-            f"FROM sales_records sr {w}", *p
-        )
+            f"SELECT COALESCE(SUM(sr.total_amount), 0) AS s, COALESCE(SUM(sr.cost_amount), 0) AS c, "
+            f"COALESCE(SUM(sr.profit_amount), 0) AS p, COALESCE(SUM(sr.quantity), 0) AS i "
+            f"FROM sales_records sr {w}", *params)
         ts, tc, tp, ti = float(row["s"]), float(row["c"]), float(row["p"]), int(row["i"])
-
         overview = {
             "total_sales": ts, "total_cost": tc, "total_profit": tp,
-            "avg_margin": round(tp * 100 / max(ts, 1), 2),
+            "avg_margin": round(tp * 100 / ts, 2) if ts else 0,
             "total_items_sold": ti, "period_days": days,
         }
-
         daily_trend = await conn.fetch(
-            f"SELECT sale_date, SUM(total_amount) s, SUM(cost_amount) c, SUM(profit_amount) p, SUM(quantity) q "
-            f"FROM sales_records {w} GROUP BY sale_date ORDER BY sale_date", *p)
+            f"SELECT sr.sale_date, SUM(sr.total_amount) s, SUM(sr.cost_amount) c, "
+            f"SUM(sr.profit_amount) p, SUM(sr.quantity) q "
+            f"FROM sales_records sr {w} GROUP BY sr.sale_date ORDER BY sr.sale_date", *params)
 
+        # Restrict both the LEFT JOIN and restaurant rows to the same scope.
+        rest_filter = "WHERE r.key = ANY($2)" if scoped_keys is not None else ""
+        join_filter = "AND sr.restaurant_key = ANY($2)" if scoped_keys is not None else ""
         by_rest = await conn.fetch(f"""
-            SELECT r.name, r.key, COALESCE(SUM(sr.total_amount),0) total, COALESCE(SUM(sr.profit_amount),0) profit
+            SELECT r.name, r.key, COALESCE(SUM(sr.total_amount),0) total,
+                   COALESCE(SUM(sr.profit_amount),0) profit
             FROM restaurants r LEFT JOIN sales_records sr
-              ON sr.restaurant_key = r.key AND sr.sale_date >= ${2 if key else 1}
-              {('AND sr.restaurant_key = $1' if key else '')}
-            {('WHERE r.key = $1' if key else '')}
-            GROUP BY r.key, r.name ORDER BY total DESC""", *([key, date_from] if key else [date_from]))
+              ON sr.restaurant_key = r.key AND sr.sale_date >= $1 {join_filter}
+            {rest_filter}
+            GROUP BY r.key, r.name ORDER BY total DESC""", *params)
 
         by_payment = await conn.fetch(
-            f"SELECT COALESCE(payment_method,'Не указан') method, SUM(total_amount) total, COUNT(*) c "
-            f"FROM sales_records {w} GROUP BY payment_method ORDER BY total DESC", *p)
+            f"SELECT COALESCE(sr.payment_method,'Не указан') method, "
+            f"SUM(sr.total_amount) total, COUNT(*) c "
+            f"FROM sales_records sr {w} GROUP BY sr.payment_method ORDER BY total DESC", *params)
 
+        import_filter = "WHERE si.restaurant_key = ANY($1)" if scoped_keys is not None else ""
         imports = await conn.fetch(f"""
             SELECT si.*, u.full_name uploader_name FROM sales_imports si
             LEFT JOIN users u ON u.user_id = si.uploaded_by
-            {('WHERE si.restaurant_key = $1' if key else '')}
-            ORDER BY si.upload_date DESC LIMIT 20""", *([key] if key else []))
+            {import_filter} ORDER BY si.upload_date DESC LIMIT 20""",
+            *([scoped_keys] if scoped_keys is not None else []))
 
+        summary_filter = "AND restaurant_key = ANY($2)" if scoped_keys is not None else ""
         summaries = await conn.fetch(
-            f"SELECT * FROM sales_daily_summary "
-            f"{('WHERE restaurant_key = $1 AND summary_date >= $2' if key else 'WHERE summary_date >= $1')} "
-            f"ORDER BY summary_date DESC LIMIT 30", *([key, date_from] if key else [date_from]))
+            f"SELECT * FROM sales_daily_summary WHERE summary_date >= $1 {summary_filter} "
+            f"ORDER BY summary_date DESC LIMIT 30", *params)
 
     return web.json_response({"success": True, "data": {
         "overview": overview,

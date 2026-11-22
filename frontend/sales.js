@@ -33,6 +33,7 @@
     }
 
     function getToken() { return localStorage.getItem('wokker_admin_token') || null; }
+    const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
     function formatCurrency(value) {
         if (value == null || isNaN(value)) return '0 ₽';
@@ -74,9 +75,9 @@
             const res = await apiFetch('/api/sales/restaurants', { method: 'POST', body: JSON.stringify({}) });
             if (res.success && res.data) {
                 state.restaurants = res.data;
-                const options = '<option value="">Все рестораны</option>' + state.restaurants.map(r => `<option value="${r.key}">${r.name}</option>`).join('');
+                const options = '<option value="">Все рестораны</option>' + state.restaurants.map(r => `<option value="${esc(r.key)}">${esc(r.name)}</option>`).join('');
                 DOM.restaurantSelect.innerHTML = options;
-                DOM.uploadRestaurant.innerHTML = options;
+                DOM.uploadRestaurant.innerHTML = '<option value="">Выберите ресторан</option>' + state.restaurants.map(r => `<option value="${esc(r.key)}">${esc(r.name)}</option>`).join('');
             }
         } catch (e) { console.error(e); }
     }
@@ -99,13 +100,13 @@
                 DOM.content.innerHTML = '<div class="loading">Ошибка загрузки данных</div>';
             }
         } catch (e) {
-            DOM.content.innerHTML = `<div class="loading">Ошибка: ${e.message}</div>`;
+            DOM.content.innerHTML = `<div class="loading">Ошибка: ${esc(e.message)}</div>`;
         }
     }
 
     function renderDashboard(data) {
         const { overview, daily_trend, by_restaurant } = data;
-        const avgCheck = overview.total_sales / Math.max(overview.total_items_sold, 1);
+        const revenuePerUnit = overview.total_items_sold > 0 ? overview.total_sales / overview.total_items_sold : null;
 
         const maxRestSales = Math.max(...by_restaurant.map(r => r.total_sales || 0), 1);
         const topRestHtml = by_restaurant.slice(0, 5).map((r, i) => {
@@ -113,7 +114,7 @@
             const colors = ['blue', 'green', 'yellow', 'red'];
             return `
                 <div class="progress-item">
-                    <div class="pi-header"><span>${r.name}</span><span>${formatCurrency(r.total_sales)}</span></div>
+                    <div class="pi-header"><span>${esc(r.name)}</span><span>${formatCurrency(r.total_sales)}</span></div>
                     <div class="pi-bar-bg"><div class="pi-bar-fill ${colors[i % colors.length]}" style="width: ${pct}%"></div></div>
                 </div>
             `;
@@ -124,22 +125,22 @@
                 <div class="kpi-card">
                     <div class="kpi-label">Общая выручка</div>
                     <div class="kpi-value">${formatCurrency(overview.total_sales)}</div>
-                    <div class="kpi-trend up">+10%</div>
+                    
                 </div>
                 <div class="kpi-card">
                     <div class="kpi-label">Себестоимость</div>
                     <div class="kpi-value">${formatCurrency(overview.total_cost)}</div>
-                    <div class="kpi-trend down">-5%</div>
+                    
                 </div>
                 <div class="kpi-card">
-                    <div class="kpi-label">Чистая прибыль</div>
+                    <div class="kpi-label">Прибыль по отчёту</div>
                     <div class="kpi-value">${formatCurrency(overview.total_profit)}</div>
-                    <div class="kpi-trend up">+15%</div>
+                    
                 </div>
                 <div class="kpi-card">
-                    <div class="kpi-label">Средний чек</div>
-                    <div class="kpi-value">${formatCurrency(avgCheck)}</div>
-                    <div class="kpi-trend neutral">0%</div>
+                    <div class="kpi-label">Выручка на единицу / чек*</div>
+                    <div class="kpi-value">${revenuePerUnit == null ? "—" : formatCurrency(revenuePerUnit)}</div>
+                    <div class="kpi-trend neutral">*По полю количества в отчёте</div>
                 </div>
             </div>
 
@@ -160,10 +161,10 @@
                     <tbody>
                         ${(data.imports || []).slice(0, 5).map(imp => `
                             <tr>
-                                <td>${imp.filename}</td>
+                                <td>${esc(imp.filename)}</td>
                                 <td>${imp.rows_count}</td>
                                 <td>${formatDate(imp.upload_date)}</td>
-                                <td>${imp.status === 'completed' ? '✅ Готов' : imp.status}</td>
+                                <td>${esc(imp.status === 'completed' ? '✅ Готов' : imp.status)}</td>
                             </tr>
                         `).join('') || '<tr><td colspan="4" class="text-center">Нет загрузок</td></tr>'}
                     </tbody>
@@ -266,6 +267,12 @@
 
     function handleFileSelect(file) {
         if (!file) return;
+        if (!/\.(xlsx|csv)$/i.test(file.name) || file.size > 10 * 1024 * 1024) {
+            state.uploadFile = null;
+            DOM.btnUpload.disabled = true;
+            showToast('Допустимы файлы XLSX/CSV до 10 МБ', 'error');
+            return;
+        }
         state.uploadFile = file;
         DOM.fileInfo.textContent = `✅ ${file.name} (${(file.size / 1024).toFixed(1)} КБ)`;
         DOM.btnUpload.disabled = !DOM.uploadRestaurant.value;
@@ -307,7 +314,13 @@
         try {
             const res = await apiFetch('/api/sales/records', {
                 method: 'POST',
-                body: JSON.stringify({ restaurant_key: DOM.restaurantSelect.value || null, page, limit: 50 }),
+                body: JSON.stringify({
+                    restaurant_key: DOM.restaurantSelect.value || null, page, limit: 50,
+                    product_name: document.getElementById('detail-search-product').value.trim() || null,
+                    category: document.getElementById('detail-search-category').value.trim() || null,
+                    date_from: document.getElementById('detail-date-from').value || null,
+                    date_to: document.getElementById('detail-date-to').value || null,
+                }),
             });
             if (res.success && res.data) renderRecords(res.data);
         } catch (e) { console.error(e); }
@@ -319,8 +332,8 @@
             ? records.map(r => `
                 <tr>
                     <td>${formatDate(r.sale_date)}</td>
-                    <td>${r.restaurant_name || r.restaurant_key}</td>
-                    <td>${r.product_name || '—'}</td>
+                    <td>${esc(r.restaurant_name || r.restaurant_key)}</td>
+                    <td>${esc(r.product_name || '—')}</td>
                     <td>${r.quantity || 0}</td>
                     <td>${formatCurrency(r.total_amount)}</td>
                     <td>${formatCurrency(r.profit_amount)}</td>

@@ -309,7 +309,10 @@ async def upload_sales_file(request: web.Request) -> web.Response:
             async with pool.acquire() as conn:
                 db_rests = await conn.fetch("SELECT key, name FROM restaurants")
             def norm_name(value):
-                return " ".join(str(value or "").casefold().replace("ё", "е").split())
+                import re
+                value = str(value or "").casefold().replace("ё", "е")
+                value = re.sub(r"^\\s*(?:wokker|воккер)\\s*[-–—:]\\s*", "", value)
+                return " ".join(value.split())
             matches = {}
             for restaurant in db_rests:
                 matches.setdefault(norm_name(restaurant["name"]), []).append(restaurant["key"])

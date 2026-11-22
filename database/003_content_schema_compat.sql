@@ -2,6 +2,11 @@
 -- Additive and repeatable: no table drops, no destructive rewrites.
 ALTER TABLE news ADD COLUMN IF NOT EXISTS restaurant_key TEXT;
 ALTER TABLE standards ADD COLUMN IF NOT EXISTS restaurant_key TEXT;
+-- Legacy production standards table may predate the category column.
+ALTER TABLE standards ADD COLUMN IF NOT EXISTS category TEXT;
+-- Existing group_name values represent the same category in the current API.
+UPDATE standards SET category = group_name
+WHERE category IS NULL AND group_name IS NOT NULL;
 
 ALTER TABLE certification_questions ADD COLUMN IF NOT EXISTS options JSONB;
 ALTER TABLE certification_questions ADD COLUMN IF NOT EXISTS correct_index INTEGER;

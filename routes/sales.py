@@ -506,6 +506,29 @@ async def sales_dashboard(request: web.Request) -> web.Response:
                 FROM sales_records sr {hour_where}
                 GROUP BY 1 ORDER BY 1""", *params)
 
+        # Previous equal-length period: turnover and Hall/Delivery comparison.
+        previous_from = date_from - timedelta(days=days)
+        previous_conditions = [
+            "sr.sale_date >= $1",
+            "sr.sale_date < $2",
+        ]
+        previous_params = [previous_from, date_from]
+        if scoped_keys is not None:
+            previous_conditions.append("sr.restaurant_key = ANY($3)")
+            previous_params.append(scoped_keys)
+        previous_where, _ = _where(previous_conditions, previous_params)
+        previous_rows = await conn.fetch(
+            f"""SELECT sr.payment_method method, SUM(sr.total_amount) sales
+                FROM sales_records sr {previous_where}
+                GROUP BY sr.payment_method""", *previous_params)
+
+        # Hour-by-hour breakdown by payment method, then map to order type.
+        hourly_methods = await conn.fetch(
+            f"""SELECT (sr.extra_data::jsonb->>'opening_hour')::int AS opening_hour,
+                       sr.payment_method method, SUM(sr.total_amount) sales
+                FROM sales_records sr {hour_where}
+                GROUP BY 1, 2 ORDER BY 1""", *params)
+
         order_mapping = await _order_type_mapping(conn)
         order_rows = await conn.fetch(
             f"""SELECT sr.payment_method method, SUM(sr.total_amount) sales,
@@ -521,6 +544,20 @@ async def sales_dashboard(request: web.Request) -> web.Response:
                 category = "Не распределено"
             order_types[category]["sales"] += float(item["sales"] or 0)
             order_types[category]["checks"] += int(item["checks"] or 0)
+
+        previous_types = {name: 0.0 for name in order_types}
+        for item in previous_rows:
+            category = order_mapping.get(item["method"] or "", "Не распределено")
+            previous_types[category if category in previous_types else "Не распределено"] += float(item["sales"] or 0)
+        hourly_types = {}
+        for item in hourly_methods:
+            hour = int(item["opening_hour"])
+            category = order_mapping.get(item["method"] or "", "Не распределено")
+            if category not in previous_types:
+                category = "Не распределено"
+            hourly_types.setdefault(hour, {"hour": hour, "Зал": 0.0,
+                                            "Доставка": 0.0, "Не распределено": 0.0})
+            hourly_types[hour][category] += float(item["sales"] or 0)
 
         by_payment = await conn.fetch(
             f"SELECT COALESCE(sr.payment_method,'Не указан') method, "
@@ -544,7 +581,9 @@ async def sales_dashboard(request: web.Request) -> web.Response:
         "daily_trend": [{"date": str(r["sale_date"]), "sales": float(r["s"] or 0),
                          "cost": float(r["c"] or 0), "profit": float(r["p"] or 0),
                          "items": int(r["q"] or 0)} for r in daily_trend],
-        "by_order_type": list(order_types.values()),
+        "by_order_type": [{**v, "previous_sales": previous_types[k]} for k, v in order_types.items()],
+        "previous_total_sales": sum(previous_types.values()),
+        "hourly_by_order_type": [hourly_types[k] for k in sorted(hourly_types)],
         "hourly_revenue": [{"hour": int(r["opening_hour"]), "sales": float(r["sales"] or 0),
                             "checks": int(r["checks"] or 0)} for r in hourly],
         "by_restaurant": [{"key": r["key"], "name": r["name"],

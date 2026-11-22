@@ -190,3 +190,12 @@ def test_settings_save_explains_missing_migration():
     source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
     assert 'Требуется миграция database/004_sales_order_type_settings.sql' in source
     assert 'status=503' in source
+
+
+def test_sales_settings_migration_runs_on_startup():
+    app = (ROOT / "app.py").read_text(encoding="utf-8")
+    migration = (ROOT / "database/004_sales_order_type_settings.sql").read_text(encoding="utf-8")
+    assert 'cur.execute((migrations / "004_sales_order_type_settings.sql").read_text(encoding="utf-8"))' in app
+    assert app.index('"002_create_sales_tables.sql"') < app.index('"004_sales_order_type_settings.sql"')
+    assert "CREATE TABLE IF NOT EXISTS sales_order_type_settings" in migration
+    assert "id INTEGER PRIMARY KEY" in migration

@@ -178,7 +178,12 @@ def _parse_excel(file_obj: io.BytesIO) -> list[dict]:
 
 
 def _parse_csv(text: str) -> list[dict]:
-    reader = csv.DictReader(text.splitlines())
+    sample = text[:4096]
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;\\t")
+        reader = csv.DictReader(io.StringIO(text), dialect=dialect)
+    except csv.Error:
+        reader = csv.DictReader(io.StringIO(text))
     return [rec for row in reader if (rec := _normalize(row))]
 
 
@@ -274,7 +279,12 @@ async def upload_sales_file(request: web.Request) -> web.Response:
     os.makedirs(_upload_dir(), exist_ok=True)
     stored = f"{datetime.utcnow():%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:8]}{ext}"
     path = os.path.join(_upload_dir(), stored)
-    data = await asyncio.to_thread(f.file.read)
+    # Bound uploads before parsing: large XLSX/CSV can exhaust worker memory.
+    data = await asyncio.to_thread(f.file.read, 10 * 1024 * 1024 + 1)
+    if len(data) > 10 * 1024 * 1024:
+        return web.json_response({"error": "Максимальный размер файла — 10 МБ"}, status=413)
+    if not data:
+        return web.json_response({"error": "Пустой файл"}, status=400)
     with open(path, "wb") as fp: fp.write(data)
 
     async with pool.acquire() as conn:
@@ -286,6 +296,8 @@ async def upload_sales_file(request: web.Request) -> web.Response:
     try:
         records = (await asyncio.to_thread(_parse_excel, io.BytesIO(data))
                    if ext == ".xlsx" else _parse_csv(data.decode("utf-8-sig")))
+        if not records:
+            raise ValueError("В файле нет распознанных строк продаж")
         async with pool.acquire() as conn:
             async with conn.transaction():
                 # Serialise imports and summary rebuilds for this restaurant.

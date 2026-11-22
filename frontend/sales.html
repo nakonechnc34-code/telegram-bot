@@ -30,7 +30,7 @@
 
         <div class="sidebar-promo">
             <div class="promo-title">Управление данными</div>
-            <div class="promo-text">Загрузите Excel-файл с товарооборотом, чтобы увидеть актуальную статистику.</div>
+            <div class="promo-text">Загрузите отчёт iiko, чтобы увидеть актуальную статистику.</div>
             <button class="btn-promo" id="btn-open-upload">📤 Загрузить файл</button>
         </div>
     </aside>
@@ -53,7 +53,8 @@
                     <option value="90d">90 дней</option>
                 </select>
                 
-                <button class="btn btn-secondary" id="btn-export">📥 Экспорт</button>
+                <button class="btn btn-secondary" id="btn-import-iiko">📥 Импорт из iiko</button>
+                <button class="btn btn-secondary" id="btn-export">📤 Экспорт</button>
                 <button class="btn btn-primary" id="btn-detail">📋 Детализация</button>
                 
                 <div class="avatar" id="sales-topbar-avatar">A</div>
@@ -86,7 +87,7 @@
                 <div class="file-upload-area" id="file-drop-zone">
                     <div class="file-upload-icon">📁</div>
                     <div class="file-upload-text">Перетащите файл сюда или нажмите</div>
-                    <div class="file-upload-hint">Форматы: .xlsx, .xls, .csv</div>
+                    <div class="file-upload-hint">Поддерживаются отчёты iiko «Продажи по товарам» в формате .xlsx</div>
                     <input type="file" id="file-input" accept=".xlsx,.xls,.csv" style="display:none;">
                 </div>
                 <div id="file-info" class="file-info-text"></div>

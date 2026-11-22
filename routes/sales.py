@@ -474,13 +474,35 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             {rest_filter}
             GROUP BY r.key, r.name ORDER BY total DESC""", *params)
 
-        # Hourly revenue is available only in iiko daily reports with opening_hour.
+        # Aggregate only records that carry a valid opening hour.
+        hour_conditions = conditions + [
+            "sr.extra_data IS NOT NULL",
+            "(sr.extra_data::jsonb->>'opening_hour') ~ '^(?:[0-9]|1[0-9]|2[0-3])$'"
+        ]
+        hour_where, _ = _where(hour_conditions, params)
         hourly = await conn.fetch(
             f"""SELECT (sr.extra_data::jsonb->>'opening_hour')::int hour,
                        SUM(sr.total_amount) sales, SUM(sr.quantity) checks
+                FROM sales_records sr {hour_where}
+                GROUP BY hour ORDER BY hour""", *params)
+
+        order_mapping = await _order_type_mapping(conn)
+        order_rows = await conn.fetch(
+            f"""SELECT sr.payment_method method, SUM(sr.total_amount) sales,
+                       SUM(sr.quantity) checks
                 FROM sales_records sr {w}
-                  AND sr.extra_data IS NOT NULL
-                  AND (sr.extra_data::jsonb->>'opening_hour') ~ '^(?:[0-9]|1[0-9]|2[0-3])
+                GROUP BY sr.payment_method""", *params)
+        order_types = {name: {"type": name, "sales": 0.0, "checks": 0}
+                       for name in ("Зал", "Доставка", "Не распределено")}
+        for item in order_rows:
+            method = item["method"] or ""
+            category = order_mapping.get(method, "Не распределено")
+            if category not in order_types:
+                category = "Не распределено"
+            order_types[category]["sales"] += float(item["sales"] or 0)
+            order_types[category]["checks"] += int(item["checks"] or 0)
+
+        by_payment = await conn.fetch(
             f"SELECT COALESCE(sr.payment_method,'Не указан') method, "
             f"SUM(sr.total_amount) total, COUNT(*) c "
             f"FROM sales_records sr {w} GROUP BY sr.payment_method ORDER BY total DESC", *params)

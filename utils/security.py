@@ -94,6 +94,34 @@ def sanitize_html(html_str):
     )
 
 
+# Standards accept pasted formatting, but only a narrowly allowed set of CSS
+# properties. The general sanitizer above remains unchanged for other content.
+from bleach.css_sanitizer import CSSSanitizer
+
+_STANDARDS_CSS = CSSSanitizer(allowed_css_properties=[
+    'color', 'background-color', 'font-size', 'font-weight', 'font-style',
+    'font-family', 'text-align', 'text-decoration', 'line-height',
+    'white-space', 'margin', 'margin-top', 'margin-bottom',
+    'padding', 'padding-left', 'text-indent',
+])
+
+
+def sanitize_standard_html(html_str):
+    """Preserve safe document styling without allowing executable HTML/CSS."""
+    if not html_str:
+        return ""
+    attrs = dict(ALLOWED_ATTRS)
+    attrs['*'] = ['class', 'style']
+    return bleach.clean(
+        html_str,
+        tags=ALLOWED_TAGS,
+        attributes=attrs,
+        protocols=ALLOWED_PROTOCOLS,
+        css_sanitizer=_STANDARDS_CSS,
+        strip=True,
+    )
+
+
 # ============= JSON СЕРИАЛИЗАТОР =============
 from datetime import datetime, date
 from decimal import Decimal

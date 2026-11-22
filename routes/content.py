@@ -3,7 +3,7 @@ from psycopg2.extras import RealDictCursor
 from db import get_conn, _run
 from utils.auth_helpers import get_auth_user, get_admin_user, denied, require_perm, _is_tu, _sync_get_tu_rests, _is_hr_or_super
 from utils.common import safe_int
-from utils.security import sanitize_html
+from utils.security import sanitize_html, sanitize_standard_html
 import json
 
 routes = web.RouteTableDef()
@@ -436,7 +436,7 @@ async def handle_admin_standard_add(request):
         return web.json_response({"error": "invalid_json"}, status=400)
 
     title = (body.get("title") or "").strip()
-    text = sanitize_html((body.get("body") or "").strip())
+    text = sanitize_standard_html((body.get("body") or "").strip())
     number = (body.get("number") or "").strip() or None
     group_name = (body.get("group_name") or "Общее").strip()[:100]
     content_type = body.get("content_type") if body.get("content_type") in ("text", "table") else "text"
@@ -520,7 +520,7 @@ async def handle_admin_standard_update(request):
         return web.json_response({"error": "forbidden"}, status=403)
 
     title = (body.get("title") or "").strip()
-    text = sanitize_html((body.get("body") or "").strip())
+    text = sanitize_standard_html((body.get("body") or "").strip())
     number = body.get("number")
     group_name = body.get("group_name")
     category = body.get("category")

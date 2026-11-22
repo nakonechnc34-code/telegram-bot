@@ -3,6 +3,7 @@
 Keep these tests independent of database configuration and app startup.
 """
 import ast
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -61,16 +62,18 @@ def _asset_app():
     return app
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("url,filename,content_type,handler", ASSETS)
-async def test_soft_blue_asset_http_response(url, filename, content_type, handler):
+def test_soft_blue_asset_http_response(url, filename, content_type, handler):
     from aiohttp.test_utils import TestClient, TestServer
 
-    async with TestClient(TestServer(_asset_app())) as client:
-        response = await client.get(url)
-        assert response.status == 200
-        assert response.content_type == content_type
-        assert await response.read() == (ROOT / "frontend" / filename).read_bytes()
+    async def run():
+        async with TestClient(TestServer(_asset_app())) as client:
+            response = await client.get(url)
+            assert response.status == 200
+            assert response.content_type == content_type
+            assert await response.read() == (ROOT / "frontend" / filename).read_bytes()
+
+    asyncio.run(run())
 
 
 def test_admin_html_references_soft_blue_assets():

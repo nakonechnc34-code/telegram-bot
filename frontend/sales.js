@@ -9,6 +9,8 @@
         dashboardData: null,
         uploadFile: null,
         detailPage: 1,
+        view: 'overview',
+        dashboardRequest: 0,
     };
 
     const DOM = {};
@@ -83,7 +85,8 @@
     }
 
     async function loadDashboard() {
-        DOM.content.innerHTML = '<div class="loading">Загрузка...</div>';
+        DOM.content.innerHTML = '<div class="loading">Загрузка аналитики…</div>';
+        const requestId = ++state.dashboardRequest;
         const restaurantKey = DOM.restaurantSelect.value || null;
         const period = DOM.periodSelect.value;
 
@@ -93,6 +96,7 @@
                 body: JSON.stringify({ restaurant_key: restaurantKey, period }),
             });
 
+            if (requestId !== state.dashboardRequest) return;
             if (res.success && res.data) {
                 state.dashboardData = res.data;
                 renderDashboard(res.data);
@@ -100,80 +104,52 @@
                 DOM.content.innerHTML = '<div class="loading">Ошибка загрузки данных</div>';
             }
         } catch (e) {
-            DOM.content.innerHTML = `<div class="loading">Ошибка: ${esc(e.message)}</div>`;
+            if (requestId === state.dashboardRequest) DOM.content.innerHTML = `<div class="loading">Ошибка: ${esc(e.message)} <button class="btn btn-secondary" id="retry-sales">Повторить</button></div>`;
+            document.getElementById('retry-sales')?.addEventListener('click',loadDashboard);
         }
     }
 
+    const money = formatCurrency;
+    function restRows(rows) {
+        return rows.map((r,i) => '<tr><td>' + (i+1) + '</td><td><strong>' + esc(r.name) + '</strong></td><td>' + money(r.total_sales) + '</td><td>' + money(r.profit) + '</td><td>' + (r.total_sales > 0 ? (100*r.profit/r.total_sales).toFixed(1)+'%' : '—') + '</td></tr>').join('');
+    }
+    function importRows(rows) {
+        return rows.map(imp => '<tr><td><strong>'+esc(imp.filename)+'</strong></td><td>'+esc(state.restaurants.find(r=>r.key===imp.restaurant_key)?.name||imp.restaurant_key)+'</td><td>'+formatNumber(imp.rows_count)+'</td><td>'+formatDate(imp.upload_date)+'</td><td><span class="status-pill '+(imp.status==='completed'?'':'pending')+'">'+esc(imp.status==='completed'?'Загружен':imp.status)+'</span></td></tr>').join('');
+    }
     function renderDashboard(data) {
-        const { overview, daily_trend, by_restaurant } = data;
-        const revenuePerUnit = overview.total_items_sold > 0 ? overview.total_sales / overview.total_items_sold : null;
-
-        const maxRestSales = Math.max(...by_restaurant.map(r => r.total_sales || 0), 1);
-        const topRestHtml = by_restaurant.slice(0, 5).map((r, i) => {
-            const pct = ((r.total_sales || 0) / maxRestSales * 100).toFixed(0);
-            const colors = ['blue', 'green', 'yellow', 'red'];
-            return `
-                <div class="progress-item">
-                    <div class="pi-header"><span>${esc(r.name)}</span><span>${formatCurrency(r.total_sales)}</span></div>
-                    <div class="pi-bar-bg"><div class="pi-bar-fill ${colors[i % colors.length]}" style="width: ${pct}%"></div></div>
-                </div>
-            `;
-        }).join('');
-
-        DOM.content.innerHTML = `
-            <div class="kpi-grid">
-                <div class="kpi-card">
-                    <div class="kpi-label">Общая выручка</div>
-                    <div class="kpi-value">${formatCurrency(overview.total_sales)}</div>
-                    
-                </div>
-                <div class="kpi-card">
-                    <div class="kpi-label">Себестоимость</div>
-                    <div class="kpi-value">${formatCurrency(overview.total_cost)}</div>
-                    
-                </div>
-                <div class="kpi-card">
-                    <div class="kpi-label">Прибыль по отчёту</div>
-                    <div class="kpi-value">${formatCurrency(overview.total_profit)}</div>
-                    
-                </div>
-                <div class="kpi-card">
-                    <div class="kpi-label">Выручка на единицу / чек*</div>
-                    <div class="kpi-value">${revenuePerUnit == null ? "—" : formatCurrency(revenuePerUnit)}</div>
-                    <div class="kpi-trend neutral">*По полю количества в отчёте</div>
-                </div>
-            </div>
-
-            <div class="charts-row">
-                <div class="chart-card">
-                    <div class="chart-header"><div class="chart-title">Динамика выручки</div></div>
-                    <div class="chart-canvas-wrapper"><canvas id="chart-daily-trend"></canvas></div>
-                </div>
-                <div class="chart-card">
-                    <div class="chart-header"><div class="chart-title">Топ ресторанов</div></div>
-                    <div class="progress-list">${topRestHtml || '<div class="loading">Нет данных</div>'}</div>
-                </div>
-            </div>
-
-            <div class="table-wrap">
-                <table class="table">
-                    <thead><tr><th>Последние загрузки</th><th>Строк</th><th>Дата</th><th>Статус</th></tr></thead>
-                    <tbody>
-                        ${(data.imports || []).slice(0, 5).map(imp => `
-                            <tr>
-                                <td>${esc(imp.filename)}</td>
-                                <td>${imp.rows_count}</td>
-                                <td>${formatDate(imp.upload_date)}</td>
-                                <td>${esc(imp.status === 'completed' ? '✅ Готов' : imp.status)}</td>
-                            </tr>
-                        `).join('') || '<tr><td colspan="4" class="text-center">Нет загрузок</td></tr>'}
-                    </tbody>
-                </table>
-            </div>
-        `;
-
-        // Рисуем график после вставки HTML
-        requestAnimationFrame(() => renderDailyTrendChart(daily_trend));
+        const {overview:o, daily_trend:trend=[], by_restaurant:restaurants=[], imports=[]} = data;
+        const view=state.view;
+        const intro = (title,subtitle,tag='ДАННЫЕ ИЗ ОТЧЁТОВ') => '<div class="intro"><div><h2>'+title+'</h2><p>'+subtitle+'</p></div><span class="eyebrow-tag">'+tag+'</span></div>';
+        const table=(title,heads,rows,empty='Нет данных за выбранный период')=>'<section class="table-wrap"><div class="table-title">'+title+'</div><table class="table"><thead><tr>'+heads.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+(rows||'<tr><td colspan="'+heads.length+'" class="text-center">'+empty+'</td></tr>')+'</tbody></table></section>';
+        if(view==='restaurants') {
+            DOM.content.innerHTML=intro('Результаты ресторанов','Сравнение доступных ресторанов по выручке, прибыли и доле прибыли.')+
+            table('Рейтинг ресторанов',['№','Ресторан','Выручка','Прибыль по отчёту','Доля прибыли'],restRows(restaurants));
+        } else if(view==='imports') {
+            DOM.content.innerHTML=intro('Загрузка и история','Импортируйте XLSX/CSV из iiko и отслеживайте последние загрузки.')+
+            '<section class="panel"><h3>Новый отчёт</h3><p class="section-note">Выберите ресторан и загрузите файл до 10 МБ. Данные будут добавлены в аналитику.</p><button class="btn btn-primary" id="import-from-panel">＋ Загрузить файл iiko</button></section>'+
+            table('История загрузок',['Файл','Ресторан','Строк','Дата','Статус'],importRows(imports),'Загрузок пока нет');
+            document.getElementById('import-from-panel').addEventListener('click',openUploadModal);
+        } else if(view==='products') {
+            DOM.content.innerHTML=intro('Товарная аналитика','Детализация товарных продаж из загруженных отчётов.')+
+            '<section class="panel"><h3>Продажи по товарам</h3><p class="section-note">Используйте поиск по названию товара или категории. Показатели доступны только если соответствующие поля есть в исходном файле.</p><button class="btn btn-primary" id="open-products-detail">Открыть поиск по товарам</button></section>'+
+            '<section class="panel"><h3>Что можно анализировать</h3><p class="section-note">Количество, выручку, себестоимость и прибыль по товарам. Для сводного ТОП товаров потребуется отдельная серверная агрегация.</p></section>';
+            document.getElementById('open-products-detail').addEventListener('click',()=>{DOM.detailModal.classList.add('active');loadRecords(1);});
+        } else if(view==='records') {
+            DOM.content.innerHTML=intro('Детализация продаж','Поиск исходных записей с фильтрами по товарам, категориям и датам.')+
+            '<section class="panel"><h3>Журнал продаж</h3><p class="section-note">Откройте таблицу с постраничной навигацией и фильтрами.</p><button class="btn btn-primary" id="open-records">Открыть журнал продаж</button></section>';
+            document.getElementById('open-records').addEventListener('click',()=>{DOM.detailModal.classList.add('active');loadRecords(1);});
+        } else {
+            const avg=o.total_items_sold>0?money(o.total_sales/o.total_items_sold):'—';
+            const cards=[['Выручка',money(o.total_sales),'За выбранный период'],['Себестоимость',money(o.total_cost),'По загруженным отчётам'],['Прибыль по отчёту',money(o.total_profit),'Не равна чистой прибыли'],['На единицу / чек*',avg,'*В зависимости от типа отчёта']];
+            const max=Math.max(1,...restaurants.map(r=>r.total_sales||0));
+            const bars=restaurants.slice(0,6).map((r,i)=>'<div class="progress-item"><div class="pi-header"><span>'+esc(r.name)+'</span><span>'+money(r.total_sales)+'</span></div><div class="pi-bar-bg"><div class="pi-bar-fill '+['','green','yellow','red'][i%4]+'" style="width:'+Math.max(0,Math.min(100,100*r.total_sales/max))+'%"></div></div></div>').join('');
+            DOM.content.innerHTML=intro('Продажи под контролем','Ключевые показатели сети на основе загруженных отчётов.')+
+            '<section class="kpi-grid">'+cards.map(c=>'<div class="kpi-card"><div class="kpi-label">'+c[0]+'</div><div class="kpi-value">'+c[1]+'</div><div class="kpi-trend">'+c[2]+'</div></div>').join('')+'</section>'+
+            '<div class="charts-row"><section class="chart-card"><div class="chart-header"><span class="chart-title">Динамика выручки</span><span class="chart-note">По дням</span></div>'+(trend.length?'<div class="chart-canvas-wrapper"><canvas id="chart-daily-trend" aria-label="График выручки"></canvas></div>':'<div class="empty-state"><strong>Пока нет данных</strong>Загрузите отчёт iiko для построения графика</div>')+'</section>'+
+            '<section class="chart-card"><div class="chart-header"><span class="chart-title">Лидеры по выручке</span><span class="chart-note">Рестораны</span></div><div class="progress-list">'+(bars||'<div class="empty-state">Нет данных</div>')+'</div></section></div>'+
+            table('Последние загрузки',['Файл','Ресторан','Строк','Дата','Статус'],importRows(imports.slice(0,5)),'Загрузок пока нет');
+            requestAnimationFrame(()=>renderDailyTrendChart(trend));
+        }
     }
 
     function renderDailyTrendChart(trend) {
@@ -227,7 +203,7 @@
             const h = ((t.sales || 0) / maxVal) * chartH;
             const y = padding.top + chartH - h;
 
-            ctx.fillStyle = '#0066FF';
+            ctx.fillStyle = '#c92c35';
             ctx.beginPath();
             if (ctx.roundRect) {
                 ctx.roundRect(x - barWidth / 2, y, barWidth, h, [4, 4, 0, 0]);
@@ -355,6 +331,15 @@
     window._salesNextPage = () => loadRecords(state.detailPage + 1);
 
     function bindEvents() {
+        document.querySelectorAll('[data-view]').forEach(button=>button.addEventListener('click',()=>{
+            state.view=button.dataset.view;
+            document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b===button));
+            document.getElementById('view-title').textContent=button.textContent.trim();
+            document.getElementById('sales-sidebar').classList.remove('open');
+            if(state.dashboardData) renderDashboard(state.dashboardData); else loadDashboard();
+        }));
+        document.getElementById('menu-toggle').addEventListener('click',()=>document.getElementById('sales-sidebar').classList.toggle('open'));
+
         DOM.periodSelect.addEventListener('change', loadDashboard);
         DOM.restaurantSelect.addEventListener('change', loadDashboard);
 

@@ -8,9 +8,11 @@ CSS = (ROOT / "frontend/sales.css").read_text(encoding="utf-8")
 
 
 def test_sales_views_have_navigation():
-    for view in ("overview", "restaurants", "products", "imports", "records", "settings"):
+    for view in ("overview", "restaurants", "imports", "settings"):
         assert f'data-view="{view}"' in HTML
     assert "state.view=button.dataset.view" in JS
+    assert 'data-view="products"' not in HTML
+    assert 'data-view="records"' not in HTML
 
 
 def test_existing_sales_controls_preserved():
@@ -215,3 +217,24 @@ def test_iiko_restaurant_matching_normalizes_mall_and_punctuation():
     source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
     assert 'return re.sub(r"^мега\\s+", "", value)' in source
     assert 'if len(candidates) != 1:' in source
+
+
+def test_reimport_replaces_existing_restaurant_dates_transactionally():
+    source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
+    upload = source.split("async def upload_sales_file(", 1)[1].split(
+        '@routes.post("/api/sales/dashboard")', 1)[0]
+    assert "async with conn.transaction():" in upload
+    assert "FOR UPDATE" in upload
+    assert "DELETE FROM sales_records WHERE restaurant_key=$1 AND sale_date=ANY($2::date[])" in upload
+    assert upload.index("DELETE FROM sales_records WHERE restaurant_key=$1") < upload.index("await _save_records(conn, import_id")
+    assert "status='replaced'" in upload
+
+
+def test_turnover_comparison_and_hourly_order_types():
+    source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
+    assert '"previous_total_sales":' in source
+    assert '"hourly_by_order_type":' in source
+    assert "previous_from = date_from - timedelta(days=days)" in source
+    assert "Почасовой ТО: зал и доставка" in JS
+    assert "Предыдущий период" in JS
+    assert "Прибыль по отчёту',money(o.total_profit)" not in JS

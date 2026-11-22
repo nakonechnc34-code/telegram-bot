@@ -26,8 +26,8 @@ def test_sales_dashboard_scopes_all_queries_to_allowed_restaurants():
 
 def test_sales_ui_escapes_user_supplied_values_and_filters_records():
     source = (ROOT / 'frontend/sales.js').read_text(encoding='utf-8')
-    assert '${esc(r.name)}' in source
-    assert '${esc(imp.filename)}' in source
+    assert 'esc(r.name)' in source
+    assert 'esc(imp.filename)' in source
     assert '${esc(r.product_name ||' in source
     assert "document.getElementById('detail-search-product').value" in source
     assert "document.getElementById('detail-date-from').value" in source

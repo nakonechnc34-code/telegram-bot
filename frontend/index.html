@@ -380,6 +380,14 @@ function sanitizeStandardHtml(html) {
     'H1', 'H2', 'H3', 'H4', 'UL', 'OL', 'LI',
     'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD', 'BLOCKQUOTE'
   ]);
+  // The backend already sanitizes standard HTML. Preserve only the same
+  // explicitly permitted presentation properties on the staff side.
+  const allowedStyles = new Set([
+    'color', 'background-color', 'font-size', 'font-weight', 'font-style',
+    'font-family', 'text-align', 'text-decoration', 'line-height',
+    'white-space', 'margin', 'margin-top', 'margin-bottom',
+    'padding', 'padding-left', 'text-indent'
+  ]);
   const template = document.createElement('template');
   template.innerHTML = String(html);
 
@@ -399,6 +407,16 @@ function sanitizeStandardHtml(html) {
       return frag;
     }
     const el = document.createElement(tag.toLowerCase());
+    // Never copy arbitrary attributes, event handlers, URLs or CSS from input.
+    // Browser CSSOM parses declarations, so semicolons and comments cannot
+    // smuggle extra properties into the allowed style list.
+    if (node.hasAttribute('style')) {
+      for (const property of allowedStyles) {
+        const value = node.style.getPropertyValue(property);
+        if (!value || /[<>\\\\]/.test(value) || /url\\s*\\(|expression\\s*\\(|@import/i.test(value)) continue;
+        el.style.setProperty(property, value);
+      }
+    }
     for (const child of Array.from(node.childNodes)) {
       el.appendChild(cleanNode(child));
     }

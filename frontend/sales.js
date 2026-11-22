@@ -104,13 +104,10 @@
     }
 
     function renderDashboard(data) {
-        const { overview, daily_trend, by_restaurant, by_category, by_payment } = data;
-
-        // Считаем средний чек
+        const { overview, daily_trend, by_restaurant } = data;
         const avgCheck = overview.total_sales / Math.max(overview.total_items_sold, 1);
-
-        // Генерируем Топ ресторанов (прогресс-бары справа)
         const maxRestSales = Math.max(...by_restaurant.map(r => r.total_sales || 0), 1);
+        
         const topRestHtml = by_restaurant.slice(0, 5).map((r, i) => {
             const pct = ((r.total_sales || 0) / maxRestSales * 100).toFixed(0);
             const colors = ['blue', 'green', 'yellow', 'red'];
@@ -128,7 +125,6 @@
         }).join('');
 
         DOM.content.innerHTML = `
-            <!-- ROW 1: Карточки -->
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-header">Общая выручка <span>💰</span></div>
@@ -152,36 +148,23 @@
                 </div>
             </div>
 
-            <!-- ROW 2: График и Топ ресторанов -->
             <div class="main-row">
                 <div class="chart-card">
-                    <div class="chart-header">
-                        <div class="chart-title">Динамика выручки и прибыли</div>
-                    </div>
-                    <div class="chart-canvas-wrapper">
-                        <canvas id="chart-daily-trend"></canvas>
-                    </div>
+                    <div class="chart-header"><div class="chart-title">Динамика выручки</div></div>
+                    <div class="chart-canvas-wrapper"><canvas id="chart-daily-trend"></canvas></div>
                 </div>
-
                 <div class="chart-card">
-                    <div class="chart-header">
-                        <div class="chart-title">Топ ресторанов</div>
-                    </div>
-                    <div class="top-list">
-                        ${topRestHtml || '<div class="loading">Нет данных</div>'}
-                    </div>
+                    <div class="chart-header"><div class="chart-title">Топ ресторанов</div></div>
+                    <div class="top-list">${topRestHtml || '<div class="loading">Нет данных</div>'}</div>
                 </div>
             </div>
         `;
-
-        // Рисуем график
         setTimeout(() => renderDailyTrendChart(daily_trend), 50);
     }
 
     function renderDailyTrendChart(trend) {
         const canvas = document.getElementById('chart-daily-trend');
         if (!canvas || !trend || trend.length === 0) return;
-
         const ctx = canvas.getContext('2d');
         const rect = canvas.parentElement.getBoundingClientRect();
         canvas.width = rect.width * 2;
@@ -189,63 +172,45 @@
         ctx.scale(2, 2);
         const W = rect.width;
         const H = rect.height;
-
         const padding = { top: 20, right: 20, bottom: 40, left: 60 };
         const chartW = W - padding.left - padding.right;
         const chartH = H - padding.top - padding.bottom;
-
         const maxVal = Math.max(...trend.map(t => Math.max(t.sales, t.profit)), 1);
-
         ctx.clearRect(0, 0, W, H);
-
-        // Сетка
+        
         ctx.strokeStyle = '#E5E7EB';
         ctx.lineWidth = 1;
         for (let i = 0; i <= 4; i++) {
             const y = padding.top + (chartH / 4) * i;
-            ctx.beginPath();
-            ctx.moveTo(padding.left, y);
-            ctx.lineTo(W - padding.right, y);
-            ctx.stroke();
-
+            ctx.beginPath(); ctx.moveTo(padding.left, y); ctx.lineTo(W - padding.right, y); ctx.stroke();
             const val = maxVal - (maxVal / 4) * i;
-            ctx.fillStyle = '#6B7280';
-            ctx.font = '11px Inter, sans-serif';
-            ctx.textAlign = 'right';
+            ctx.fillStyle = '#6B7280'; ctx.font = '11px Inter, sans-serif'; ctx.textAlign = 'right';
             ctx.fillText(formatNumber(val), padding.left - 10, y + 4);
         }
-
-        // Рисуем столбцы (Выручка)
-        const barWidth = Math.max(4, (chartW / trend.length) * 0.4);
         
+        const barWidth = Math.max(4, (chartW / trend.length) * 0.4);
         trend.forEach((t, i) => {
             const x = padding.left + (i / Math.max(trend.length - 1, 1)) * chartW;
-            
-            // Sales Bar
             const hSales = ((t.sales || 0) / maxVal) * chartH;
             const ySales = padding.top + chartH - hSales;
-            
             ctx.fillStyle = '#0066FF';
             ctx.beginPath();
             ctx.roundRect(x - barWidth, ySales, barWidth, hSales, [4, 4, 0, 0]);
             ctx.fill();
         });
-
-        // Метки X (Даты)
+        
         const step = Math.max(1, Math.floor(trend.length / 7));
         trend.forEach((t, i) => {
             if (i % step === 0 || i === trend.length - 1) {
                 const x = padding.left + (i / Math.max(trend.length - 1, 1)) * chartW;
-                ctx.fillStyle = '#6B7280';
-                ctx.font = '11px Inter, sans-serif';
-                ctx.textAlign = 'center';
+                ctx.fillStyle = '#6B7280'; ctx.font = '11px Inter, sans-serif'; ctx.textAlign = 'center';
                 const d = new Date(t.date);
                 ctx.fillText(`${d.getDate()}.${d.getMonth() + 1}`, x, H - padding.bottom + 20);
             }
         });
     }
 
-    // Загрузка файла
+    // --- MODALS ---
     function openUploadModal() {
         state.uploadFile = null;
         DOM.fileInfo.textContent = '';
@@ -297,7 +262,6 @@
         }
     }
 
-    // Детализация
     async function loadRecords(page = 1) {
         state.detailPage = page;
         try {
@@ -337,15 +301,17 @@
     window._salesPrevPage = () => loadRecords(state.detailPage - 1);
     window._salesNextPage = () => loadRecords(state.detailPage + 1);
 
-    // Init
     function bindEvents() {
         DOM.periodSelect.addEventListener('change', loadDashboard);
         DOM.restaurantSelect.addEventListener('change', loadDashboard);
+
         document.getElementById('btn-open-upload').addEventListener('click', openUploadModal);
+        document.getElementById('btn-import-iiko').addEventListener('click', openUploadModal); // <-- Новая кнопка
+
         document.getElementById('close-upload-modal').addEventListener('click', closeUploadModal);
         document.getElementById('btn-cancel-upload').addEventListener('click', closeUploadModal);
-        
         DOM.uploadModal.addEventListener('click', (e) => { if (e.target === DOM.uploadModal) closeUploadModal(); });
+        
         DOM.fileDropZone.addEventListener('click', () => DOM.fileInput.click());
         DOM.fileDropZone.addEventListener('dragover', (e) => { e.preventDefault(); DOM.fileDropZone.classList.add('dragover'); });
         DOM.fileDropZone.addEventListener('dragleave', () => DOM.fileDropZone.classList.remove('dragover'));
@@ -374,12 +340,10 @@
         cacheDOM();
         state.token = getToken();
         if (!state.token) { window.location.href = '/'; return; }
-
         try {
             const meRes = await apiFetch('/api/admin/me', { method: 'POST' });
             if (meRes.profile) DOM.adminAvatar.textContent = (meRes.profile.full_name || 'A').charAt(0).toUpperCase();
         } catch (e) {}
-
         await loadRestaurants();
         loadDashboard();
         bindEvents();

@@ -11,6 +11,7 @@
         detailPage: 1,
         view: 'overview',
         dashboardRequest: 0,
+        productsRequest: 0,
     };
 
     const DOM = {};
@@ -130,14 +131,14 @@
             table('История загрузок',['Файл','Ресторан','Строк','Дата','Статус'],importRows(imports),'Загрузок пока нет');
             document.getElementById('import-from-panel').addEventListener('click',openUploadModal);
         } else if(view==='products') {
-            DOM.content.innerHTML=intro('Товарная аналитика','Детализация товарных продаж из загруженных отчётов.')+
-            '<section class="panel"><h3>Продажи по товарам</h3><p class="section-note">Используйте поиск по названию товара или категории. Показатели доступны только если соответствующие поля есть в исходном файле.</p><button class="btn btn-primary" id="open-products-detail">Открыть поиск по товарам</button></section>'+
-            '<section class="panel"><h3>Что можно анализировать</h3><p class="section-note">Количество, выручку, себестоимость и прибыль по товарам. Для сводного ТОП товаров потребуется отдельная серверная агрегация.</p></section>';
-            document.getElementById('open-products-detail').addEventListener('click',()=>{DOM.detailModal.classList.add('active');loadRecords(1);});
+            DOM.content.innerHTML=intro('Товарная аналитика','Рейтинг блюд и категорий по данным загруженных отчётов.')+
+            '<section class="panel"><div class="loading">Загрузка товаров…</div></section>';
+            loadProducts();
         } else if(view==='records') {
-            DOM.content.innerHTML=intro('Детализация продаж','Поиск исходных записей с фильтрами по товарам, категориям и датам.')+
-            '<section class="panel"><h3>Журнал продаж</h3><p class="section-note">Откройте таблицу с постраничной навигацией и фильтрами.</p><button class="btn btn-primary" id="open-records">Открыть журнал продаж</button></section>';
-            document.getElementById('open-records').addEventListener('click',()=>{DOM.detailModal.classList.add('active');loadRecords(1);});
+            DOM.content.innerHTML=intro('Детализация продаж','Журнал продаж с поиском по товарам, категориям и датам.')+
+            '<section class="panel"><div class="detail-filters"><input type="text" class="form-input" placeholder="Название товара" id="inline-product"><input type="text" class="form-input" placeholder="Категория" id="inline-category"><input type="date" class="form-input" id="inline-from"><input type="date" class="form-input" id="inline-to"><button class="btn btn-primary" id="inline-search">Найти</button></div><div id="inline-results" aria-live="polite"><div class="loading">Загрузка записей…</div></div><div class="pagination" id="inline-pagination"></div></section>';
+            document.getElementById('inline-search').addEventListener('click',()=>loadInlineRecords(1));
+            loadInlineRecords(1);
         } else {
             const avg=o.total_items_sold>0?money(o.total_sales/o.total_items_sold):'—';
             const cards=[['Выручка',money(o.total_sales),'За выбранный период'],['Себестоимость',money(o.total_cost),'По загруженным отчётам'],['Прибыль по отчёту',money(o.total_profit),'Не равна чистой прибыли'],['На единицу / чек*',avg,'*В зависимости от типа отчёта']];
@@ -150,6 +151,44 @@
             table('Последние загрузки',['Файл','Ресторан','Строк','Дата','Статус'],importRows(imports.slice(0,5)),'Загрузок пока нет');
             requestAnimationFrame(()=>renderDailyTrendChart(trend));
         }
+    }
+
+    async function loadProducts() {
+        const requestId=++state.productsRequest;
+        try {
+            const result=await apiFetch('/api/sales/products',{method:'POST',body:JSON.stringify({restaurant_key:DOM.restaurantSelect.value||null,period:DOM.periodSelect.value})});
+            if(requestId!==state.productsRequest||state.view!=='products')return;
+            const data=result.data||{}, products=data.products||[], categories=data.categories||[];
+            const row=(r,i)=>'<tr><td>'+(i+1)+'</td><td><strong>'+esc(r.name)+'</strong></td><td>'+esc(r.category||'—')+'</td><td>'+formatNumber(r.quantity)+'</td><td>'+money(r.sales)+'</td><td>'+money(r.profit)+'</td></tr>';
+            const categoryRow=(r,i)=>'<tr><td>'+(i+1)+'</td><td><strong>'+esc(r.name)+'</strong></td><td>'+formatNumber(r.quantity)+'</td><td>'+money(r.sales)+'</td><td>'+money(r.profit)+'</td></tr>';
+            DOM.content.innerHTML='<div class="intro"><div><h2>Продажи по товарам</h2><p>Топ-100 товаров и топ-50 категорий по выручке за выбранный период.</p></div></div>'+
+                '<section class="table-wrap"><div class="table-title">Рейтинг товаров</div><table class="table"><thead><tr><th>№</th><th>Товар</th><th>Категория</th><th>Количество</th><th>Выручка</th><th>Прибыль по отчёту</th></tr></thead><tbody>'+(products.map(row).join('')||'<tr><td colspan="6" class="text-center">Товарных данных нет. Загрузите отчёт с названиями товаров.</td></tr>')+'</tbody></table></section>'+
+                '<section class="table-wrap"><div class="table-title">Категории</div><table class="table"><thead><tr><th>№</th><th>Категория</th><th>Количество</th><th>Выручка</th><th>Прибыль по отчёту</th></tr></thead><tbody>'+(categories.map(categoryRow).join('')||'<tr><td colspan="5" class="text-center">Нет категорий</td></tr>')+'</tbody></table></section>';
+        }catch(e){if(requestId===state.productsRequest&&state.view==='products')DOM.content.innerHTML='<section class="panel"><div class="empty-state"><strong>Не удалось загрузить товары</strong>'+esc(e.message)+'</div><button class="btn btn-secondary" id="retry-products">Повторить</button></section>',document.getElementById('retry-products').addEventListener('click',loadProducts);}
+    }
+
+    async function loadInlineRecords(page=1) {
+        if(state.view!=='records')return;
+        state.detailPage=page;
+        const target=document.getElementById('inline-results');
+        target.innerHTML='<div class="loading">Загрузка…</div>';
+        try{
+            const res=await apiFetch('/api/sales/records',{method:'POST',body:JSON.stringify({
+                restaurant_key:DOM.restaurantSelect.value||null,page,limit:50,
+                product_name:document.getElementById('inline-product').value.trim()||null,
+                category:document.getElementById('inline-category').value.trim()||null,
+                date_from:document.getElementById('inline-from').value||null,
+                date_to:document.getElementById('inline-to').value||null
+            })});
+            if(state.view!=='records')return;
+            const d=res.data||{}, rows=d.records||[];
+            target.innerHTML='<div class="table-wrap"><table class="table"><thead><tr><th>Дата</th><th>Ресторан</th><th>Товар</th><th>Категория</th><th>Количество</th><th>Выручка</th><th>Прибыль</th></tr></thead><tbody>'+
+                (rows.map(r=>'<tr><td>'+formatDate(r.sale_date)+'</td><td>'+esc(r.restaurant_name||r.restaurant_key)+'</td><td>'+esc(r.product_name||'—')+'</td><td>'+esc(r.category||'—')+'</td><td>'+formatNumber(r.quantity)+'</td><td>'+money(r.total_amount)+'</td><td>'+money(r.profit_amount)+'</td></tr>').join('')||'<tr><td colspan="7" class="text-center">По выбранным фильтрам записей нет</td></tr>')+'</tbody></table></div>';
+            const pager=document.getElementById('inline-pagination');pager.replaceChildren();
+            const info=document.createElement('span');info.textContent='Записей: '+formatNumber(d.total||0)+' · Страница '+page+' из '+(d.pages||1);pager.appendChild(info);
+            if(page>1){const prev=document.createElement('button');prev.className='btn btn-secondary';prev.textContent='← Назад';prev.addEventListener('click',()=>loadInlineRecords(page-1));pager.appendChild(prev);}
+            if(page<(d.pages||1)){const next=document.createElement('button');next.className='btn btn-secondary';next.textContent='Далее →';next.addEventListener('click',()=>loadInlineRecords(page+1));pager.appendChild(next);}
+        }catch(e){target.innerHTML='<div class="empty-state"><strong>Ошибка загрузки</strong>'+esc(e.message)+'</div>';}
     }
 
     function renderDailyTrendChart(trend) {

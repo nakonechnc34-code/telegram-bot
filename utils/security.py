@@ -107,7 +107,18 @@ _STANDARDS_CSS = CSSSanitizer(allowed_css_properties=[
 ])
 
 
-_SAFE_FONT_COLOR = re.compile(r'^(?:#[0-9a-fA-F]{3,8}|[a-zA-Z]{1,24}|rgb\\(\\s*\\d{1,3}\\s*,\\s*\\d{1,3}\\s*,\\s*\\d{1,3}\\s*\\))
+_SAFE_FONT_COLOR = re.compile(r'^(?:#[0-9a-fA-F]{3,8}|[a-zA-Z]{1,24}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\))$')
+
+
+def _standard_attribute_filter(tag, name, value):
+    if name in ALLOWED_ATTRS.get(tag, []) or name in ('class', 'style'):
+        return True
+    if tag == 'font' and name == 'color':
+        return bool(_SAFE_FONT_COLOR.fullmatch(value.strip()))
+    return False
+
+
+def sanitize_standard_html(html_str):
     """Preserve safe document styling without allowing executable HTML/CSS."""
     if not html_str:
         return ""

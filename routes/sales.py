@@ -27,6 +27,20 @@ def _get_sales_upload_dir():
     return os.path.join(base_dir, "uploads", "sales")
 
 
+def _to_date(val):
+    """Преобразует строку 'YYYY-MM-DD' (или datetime/date) в datetime.date."""
+    if val is None or val == "":
+        return None
+    if isinstance(val, date) and not isinstance(val, datetime):
+        return val
+    if isinstance(val, datetime):
+        return val.date()
+    try:
+        return datetime.strptime(str(val).strip()[:10], "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return None
+
+
 async def _get_allowed_restaurants(user):
     if _is_tu(user):
         return await db._run(_sync_get_tu_rests, user["user_id"])
@@ -166,7 +180,7 @@ def _parse_excel(file_obj: io.BytesIO) -> list[dict]:
                     elif isinstance(val, date):
                         record[header] = val
                     else:
-                        record[header] = val
+                        record[header] = _to_date(val) or val
                 else:
                     record[header] = str(val) if val else None
 
@@ -214,12 +228,15 @@ def _parse_csv(text: str) -> list[dict]:
                     cleaned[money_field] = 0.0
 
         if "sale_date" in cleaned and cleaned["sale_date"]:
+            parsed = None
             for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y", "%Y/%m/%d"):
                 try:
-                    cleaned["sale_date"] = datetime.strptime(cleaned["sale_date"], fmt).date()
+                    parsed = datetime.strptime(cleaned["sale_date"], fmt).date()
                     break
                 except ValueError:
                     continue
+            if parsed is not None:
+                cleaned["sale_date"] = parsed
 
         if "sale_date" in cleaned and "total_amount" in cleaned:
             cleaned.setdefault("quantity", 1)
@@ -245,6 +262,9 @@ async def _save_sales_records(pool, import_id: int, restaurant_key: str, records
         async with conn.transaction():
             for rec in records:
                 extra = {k: v for k, v in rec.items() if k not in extra_keys}
+                sale_date = _to_date(rec.get("sale_date"))
+                if sale_date is None:
+                    continue
                 await conn.execute(
                     """
                     INSERT INTO sales_records (
@@ -256,7 +276,7 @@ async def _save_sales_records(pool, import_id: int, restaurant_key: str, records
                     """,
                     import_id,
                     restaurant_key,
-                    rec.get("sale_date"),
+                    sale_date,
                     rec.get("category"),
                     rec.get("subcategory"),
                     rec.get("product_name"),
@@ -363,7 +383,7 @@ async def sales_dashboard(request: web.Request) -> web.Response:
     results = {}
 
     days = {"7d": 7, "30d": 30, "90d": 90}.get(period, 30)
-    date_from = (datetime.utcnow().date() - timedelta(days=days)).isoformat()
+    date_from = (datetime.utcnow().date() - timedelta(days=days))
 
     async with pool.acquire() as conn:
         if restaurant_key:
@@ -621,8 +641,8 @@ async def sales_records(request: web.Request) -> web.Response:
     allowed_rests = await _get_allowed_restaurants(user)
     body = await request.json()
     restaurant_key = body.get("restaurant_key")
-    date_from = body.get("date_from")
-    date_to = body.get("date_to")
+    date_from = _to_date(body.get("date_from"))
+    date_to = _to_date(body.get("date_to"))
     category = body.get("category")
     product_name = body.get("product_name")
     page = max(1, int(body.get("page", 1) or 1))
@@ -789,8 +809,8 @@ async def export_sales_data(request: web.Request) -> web.Response:
     allowed_rests = await _get_allowed_restaurants(user)
     body = await request.json()
     restaurant_key = body.get("restaurant_key")
-    date_from = body.get("date_from")
-    date_to = body.get("date_to")
+    date_from = _to_date(body.get("date_from"))
+    date_to = _to_date(body.get("date_to"))
 
     pool = db.get_pool(request.app)
     conditions = []

@@ -64,7 +64,10 @@ async def handle_academy_course_detail(request):
     def _sync():
         with get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT * FROM academy_courses WHERE id = %s", (cid,))
+                cur.execute(
+                    "SELECT * FROM academy_courses WHERE id = %s AND COALESCE(is_published, TRUE)",
+                    (cid,),
+                )
                 course = cur.fetchone()
                 if not course:
                     return None, [], []
@@ -103,6 +106,12 @@ async def handle_academy_submit_test(request):
     def _sync():
         with get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT id FROM academy_courses WHERE id = %s AND COALESCE(is_published, TRUE) FOR SHARE",
+                    (cid,),
+                )
+                if cur.fetchone() is None:
+                    return None
                 cur.execute("SELECT id, correct_index FROM academy_questions WHERE course_id = %s ORDER BY id", (cid,))
                 rows = cur.fetchall()
                 total = len(rows)
@@ -125,7 +134,10 @@ async def handle_academy_submit_test(request):
                     conn.rollback()
                 return correct, total, passed
 
-    correct, total, passed = await _run(_sync)
+    result = await _run(_sync)
+    if result is None:
+        return web.json_response({"error": "not_found"}, status=404)
+    correct, total, passed = result
     score = round((correct / total) * 100) if total else 0
     return web.json_response({
         "ok": True,
@@ -194,8 +206,8 @@ async def handle_admin_academy_course_save(request):
                         (title, description, category, is_published, cid)
                     )
                 else:
-                    cur.execute("SELECT COALESCE(MAX(sort), 0) + 1 FROM academy_courses")
-                    sort_val = cur.fetchone()[0]
+                    cur.execute("SELECT COALESCE(MAX(sort), 0) + 1 AS next_sort FROM academy_courses")
+                    sort_val = cur.fetchone()["next_sort"]
                     cur.execute(
                         "INSERT INTO academy_courses (title, description, category, is_published, sort) VALUES (%s, %s, %s, %s, %s) RETURNING *",
                         (title, description, category, is_published, sort_val)
@@ -271,8 +283,8 @@ async def handle_admin_academy_lesson_save(request):
                         (cid, title, content, video_url, lid)
                     )
                 else:
-                    cur.execute("SELECT COALESCE(MAX(sort), 0) + 1 FROM academy_lessons WHERE course_id = %s", (cid,))
-                    sort_val = cur.fetchone()[0]
+                    cur.execute("SELECT COALESCE(MAX(sort), 0) + 1 AS next_sort FROM academy_lessons WHERE course_id = %s", (cid,))
+                    sort_val = cur.fetchone()["next_sort"]
                     cur.execute(
                         "INSERT INTO academy_lessons (course_id, title, content, video_url, sort) VALUES (%s, %s, %s, %s, %s) RETURNING *",
                         (cid, title, content, video_url, sort_val)

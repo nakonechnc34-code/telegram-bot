@@ -1,7 +1,7 @@
 from aiohttp import web
 from psycopg2.extras import RealDictCursor
 from db import get_conn, _run
-from utils.auth_helpers import get_auth_user, get_admin_user, denied, require_perm, _is_tu, _sync_get_tu_rests
+from utils.auth_helpers import get_auth_user, get_admin_user, denied, require_perm, _is_tu, _sync_get_tu_rests, _is_hr_or_super
 from utils.common import safe_int
 from utils.security import sanitize_html
 import json
@@ -277,7 +277,7 @@ async def handle_admin_news_approve(request):
     admin, err = await get_admin_user(request)
     if err:
         return denied(err)
-    if not (admin.get("is_super_admin") or (admin.get("position") or "").strip().upper() == "HR"):
+    if not _is_hr_or_super(admin):
         return web.json_response({"error": "forbidden"}, status=403)
     try:
         body = await request.json()
@@ -301,7 +301,7 @@ async def handle_admin_news_reject(request):
     admin, err = await get_admin_user(request)
     if err:
         return denied(err)
-    if not (admin.get("is_super_admin") or (admin.get("position") or "").strip().upper() == "HR"):
+    if not _is_hr_or_super(admin):
         return web.json_response({"error": "forbidden"}, status=403)
     try:
         body = await request.json()
@@ -445,7 +445,7 @@ async def handle_admin_standard_add(request):
     file_url = (body.get("file_url") or "").strip() or None
     file_name = (body.get("file_name") or "").strip() or None
     restaurant_key = (body.get("restaurant_key") or "").strip() or None
-    status = "published" if (admin.get("is_super_admin") or (admin.get("position") or "").strip().upper() == "HR") else "pending"
+    status = "published" if _is_hr_or_super(admin) else "pending"
 
     if not title:
         return web.json_response({"error": "empty_title"}, status=400)
@@ -656,7 +656,7 @@ async def handle_admin_standard_approve(request):
     admin, err = await get_admin_user(request)
     if err:
         return denied(err)
-    if not (admin.get("is_super_admin") or (admin.get("position") or "").strip().upper() == "HR"):
+    if not _is_hr_or_super(admin):
         return web.json_response({"error": "forbidden"}, status=403)
     try:
         body = await request.json()
@@ -680,7 +680,7 @@ async def handle_admin_standard_reject(request):
     admin, err = await get_admin_user(request)
     if err:
         return denied(err)
-    if not (admin.get("is_super_admin") or (admin.get("position") or "").strip().upper() == "HR"):
+    if not _is_hr_or_super(admin):
         return web.json_response({"error": "forbidden"}, status=403)
     try:
         body = await request.json()
@@ -746,8 +746,8 @@ async def handle_admin_faq_save(request):
                         (question, answer, category, fid)
                     )
                 else:
-                    cur.execute("SELECT COALESCE(MAX(sort), 0) + 1 FROM faq")
-                    sort_val = cur.fetchone()[0]
+                    cur.execute("SELECT COALESCE(MAX(sort), 0) + 1 AS next_sort FROM faq")
+                    sort_val = cur.fetchone()["next_sort"]
                     cur.execute(
                         "INSERT INTO faq (question, answer, category, sort) VALUES (%s, %s, %s, %s) RETURNING *",
                         (question, answer, category, sort_val)

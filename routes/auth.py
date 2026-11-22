@@ -1,9 +1,10 @@
 from aiohttp import web
+from middleware.rate_limit import get_client_ip
 from psycopg2.extras import RealDictCursor
 from db import get_conn, _run
 from utils.security import validate_login_data, verify_password, _check_rate_limit, _reset_rate_limit
 from utils.auth_helpers import (
-    _sync_create_session, _sync_delete_session, get_admin_user, denied
+    _extract_token, _sync_create_session, _sync_delete_session
 )
 from middleware.auth import require_admin
 
@@ -14,13 +15,6 @@ def _sync_get_user_by_login(login):
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT * FROM users WHERE LOWER(login) = LOWER(%s)", (login,))
             return cur.fetchone()
-
-def _get_client_ip(request):
-    """Получает реальный IP клиента за прокси (Amvera)."""
-    x_forwarded_for = request.headers.get("X-Forwarded-For")
-    if x_forwarded_for:
-        return x_forwarded_for.split(",")[0].strip()
-    return request.remote or "unknown"
 
 # ============= СТАФФ (СОТРУДНИК) =============
 @routes.post('/api/auth/login')
@@ -35,7 +29,7 @@ async def handle_auth_login_staff(request):
         return web.json_response({"error": err}, status=400)
 
     login, password = data["login"], data["password"]
-    ip = _get_client_ip(request)
+    ip = get_client_ip(request)
 
     if not _check_rate_limit(ip):
         return web.json_response({"error": "too_many_attempts"}, status=429)
@@ -54,16 +48,11 @@ async def handle_auth_login_staff(request):
         "ok": True,
         "token": token,
         "is_admin": bool(user.get("is_admin") or user.get("is_super_admin"))
-    })
+    }, headers={"Cache-Control": "no-store"})
 
 @routes.post('/api/auth/logout')
 async def handle_auth_logout(request):
-    try:
-        data = await request.json()
-    except Exception:
-        data = {}
-
-    token = data.get("webToken") or ""
+    token = await _extract_token(request, allow_query=False)
     if token:
         await _run(_sync_delete_session, token)
 
@@ -82,7 +71,7 @@ async def handle_auth_login_admin(request):
         return web.json_response({"error": err}, status=400)
 
     login, password = data["login"], data["password"]
-    ip = _get_client_ip(request)
+    ip = get_client_ip(request)
 
     if not _check_rate_limit(ip):
         return web.json_response({"error": "too_many_attempts"}, status=429)
@@ -104,7 +93,7 @@ async def handle_auth_login_admin(request):
         "ok": True,
         "token": token,
         "is_admin": True
-    })
+    }, headers={"Cache-Control": "no-store"})
 
 @routes.post('/api/admin/me')
 @require_admin

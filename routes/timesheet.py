@@ -1,10 +1,12 @@
 from aiohttp import web
 from psycopg2.extras import RealDictCursor
 from db import get_conn, _run
-from utils.auth_helpers import get_auth_user, denied, _is_hr_or_super, _is_tu, _sync_user_has_perm
+from utils.auth_helpers import get_auth_user, denied, _is_hr_or_super, _is_tu, _sync_user_has_perm, _sync_get_tu_rests
 import calendar
 from datetime import datetime, date, time
 import io
+import math
+import re
 import traceback
 import logging
 from openpyxl import Workbook, load_workbook
@@ -19,8 +21,54 @@ def _require_timesheet_access(user):
         raise web.HTTPForbidden(text='{"error": "forbidden"}', content_type='application/json')
 
 
+def _positive_id(value):
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        return 0
+    value = safe_int(value)
+    return value if 0 < value <= 2**63 - 1 else 0
+
+
+def _date_range(body):
+    date_from, date_to = body.get("date_from"), body.get("date_to")
+    if date_from is None and date_to is None:
+        today = date.today()
+        month = _positive_id(body.get("month", today.month))
+        year = _positive_id(body.get("year", today.year))
+        date_from = date(year, month, 1).isoformat()
+        date_to = date(year, month, calendar.monthrange(year, month)[1]).isoformat()
+    start, end = date.fromisoformat(date_from), date.fromisoformat(date_to)
+    if start > end:
+        raise ValueError("invalid date range")
+    return start.isoformat(), end.isoformat()
+
+
+def _finite_number(value):
+    if isinstance(value, bool):
+        raise ValueError("invalid number")
+    number = safe_float(value, default=float("nan"))
+    if not math.isfinite(number):
+        raise ValueError("invalid number")
+    return number
+
+
+def _shift_time(value):
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?", value):
+        raise ValueError("invalid time")
+    return time(*map(int, value.split(":")))
+
+
+def _restaurant_in_scope(user, key, territory_keys):
+    if _is_hr_or_super(user):
+        return True
+    if _is_tu(user):
+        return key in territory_keys
+    return bool(key) and key == user.get("restaurant_key")
+
+
 def _check_can_edit_user(editor_user, target_uid):
-    if editor_user["is_super_admin"] or (editor_user.get("position") or "").strip().upper() == "HR":
+    if _is_hr_or_super(editor_user):
         return True
     if editor_user["user_id"] == target_uid:
         return True
@@ -36,7 +84,7 @@ def _check_can_edit_user(editor_user, target_uid):
             if not target:
                 return False
             if is_us:
-                return target["restaurant_key"] == editor_user.get("restaurant_key")
+                return _restaurant_in_scope(editor_user, target["restaurant_key"], ())
             elif is_tu:
                 cur.execute(
                     "SELECT key FROM restaurants WHERE territory_manager_id = %s AND key = %s",
@@ -138,15 +186,13 @@ async def handle_timesheet_matrix(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
+    if not isinstance(body, dict):
+        return web.json_response({"error": "invalid_json"}, status=400)
 
-    date_from = body.get("date_from")
-    date_to = body.get("date_to")
-    if not date_from or not date_to:
-        month = safe_int(body.get("month", datetime.now().month))
-        year = safe_int(body.get("year", datetime.now().year))
-        last_day = calendar.monthrange(year, month)[1]
-        date_from = f"{year}-{month:02d}-01"
-        date_to = f"{year}-{month:02d}-{last_day:02d}"
+    try:
+        date_from, date_to = _date_range(body)
+    except (ValueError, TypeError, OverflowError):
+        return web.json_response({"error": "invalid_dates"}, status=400)
 
     employees = await _run(_sync_timesheet_matrix, user["user_id"], date_from, date_to)
     return web.json_response({"employees": employees})
@@ -181,20 +227,32 @@ async def handle_timesheet_save_cell(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
+    if not isinstance(body, dict):
+        return web.json_response({"error": "invalid_json"}, status=400)
 
-    target_uid = safe_int(body.get("user_id"))
-    work_date = body.get("work_date")
-    hours = safe_float(body.get("hours", 0))
+    target_uid = _positive_id(body.get("user_id"))
     status = body.get("status", "work")
     restaurant_key = body.get("restaurant_key")
-    start_time = body.get("start_time")
-    end_time = body.get("end_time")
-
-    if not work_date or target_uid <= 0:
+    try:
+        work_date = date.fromisoformat(body.get("work_date")).isoformat()
+        hours = _finite_number(body.get("hours", 0))
+        start_time = _shift_time(body.get("start_time"))
+        end_time = _shift_time(body.get("end_time"))
+    except (ValueError, TypeError):
         return web.json_response({"error": "invalid_data"}, status=400)
+    if (not target_uid or not 0 <= hours <= 24
+            or status not in ("work", "vacation", "sick", "absent")
+            or (restaurant_key is not None and not isinstance(restaurant_key, str))):
+        return web.json_response({"error": "invalid_data"}, status=400)
+    restaurant_key = restaurant_key or None
     allowed = await _run(_check_can_edit_user, user, target_uid)
     if not allowed:
         return web.json_response({"error": "forbidden_edit_other"}, status=403)
+
+    if restaurant_key:
+        territory_keys = await _run(_sync_get_tu_rests, user["user_id"]) if _is_tu(user) else ()
+        if not _restaurant_in_scope(user, restaurant_key, territory_keys):
+            return web.json_response({"error": "forbidden_restaurant"}, status=403)
 
     await _run(_sync_save_cell, user["user_id"], target_uid, work_date, hours, status, restaurant_key, start_time, end_time)
     return web.json_response({"ok": True})
@@ -212,7 +270,7 @@ def _parse_date(val):
     return None
 
 
-def _sync_import_attendance(user_id, rows, default_rest_key=None):
+def _sync_import_attendance(user, rows, default_rest_key=None):
     success = 0
     errors = []
 
@@ -225,9 +283,12 @@ def _sync_import_attendance(user_id, rows, default_rest_key=None):
             """)
             users_map = {str(u["personnel_number"]).strip(): u for u in cur.fetchall()}
 
-            cur.execute("SELECT key, name FROM restaurants")
+            cur.execute("SELECT key, name, territory_manager_id FROM restaurants")
             restaurants = cur.fetchall()
             rest_map = {r["name"].strip().lower(): r["key"] for r in restaurants}
+            known_keys = set(rest_map.values())
+            territory_keys = {r["key"] for r in restaurants if r["territory_manager_id"] == user["user_id"]}
+            is_shift_manager = "управляющий сменой" in (user.get("position") or "").lower()
 
             for row in rows:
                 try:
@@ -244,40 +305,36 @@ def _sync_import_attendance(user_id, rows, default_rest_key=None):
                         errors.append(f"Сотрудник с таб. номером '{personnel_number}' не найден")
                         continue
 
-                    hours = 0
-                    status = 'work'
-                    start_time = None
-                    end_time = None
+                    if (target_user["user_id"] != user["user_id"] and not _is_hr_or_super(user)
+                            and not ((_is_tu(user) or is_shift_manager)
+                                     and _restaurant_in_scope(user, target_user["restaurant_key"], territory_keys))):
+                        errors.append("Нет доступа к сотруднику в строке табеля")
+                        continue
 
-                    if raw_val in ('В', 'Б', 'Н'):
-                        status = {'В': 'vacation', 'Б': 'sick', 'Н': 'absent'}[raw_val]
-                        hours = 8 if status in ('vacation', 'sick') else 0
-                    elif '-' in raw_val:
-                        parts = raw_val.split('-')
-                        st_str = parts[0].strip()
-                        et_str = parts[1].strip()
-                        try:
-                            sh, sm = map(int, st_str.split(':'))
-                            eh, em = map(int, et_str.split(':'))
-                            start_min = sh * 60 + sm
-                            end_min = eh * 60 + em
-                            if end_min < start_min:
-                                end_min += 24 * 60
-                            hours = round((end_min - start_min) / 60.0, 2)
-                            start_time = f"{sh:02d}:{sm:02d}:00"
-                            end_time = f"{eh:02d}:{em:02d}:00"
-                        except Exception:
-                            continue
+                    date_str = date.fromisoformat(date_str).isoformat()
+                    status = "work"
+                    start_time = end_time = None
+                    if raw_val in ("В", "Б", "Н"):
+                        status = {"В": "vacation", "Б": "sick", "Н": "absent"}[raw_val]
+                        hours = 0 if status == "absent" else 8
+                    elif "-" in raw_val:
+                        start, end = raw_val.split("-")
+                        start_time = _shift_time(start.strip())
+                        end_time = _shift_time(end.strip())
+                        start_seconds = start_time.hour * 3600 + start_time.minute * 60 + start_time.second
+                        end_seconds = end_time.hour * 3600 + end_time.minute * 60 + end_time.second
+                        hours = (end_seconds - start_seconds) % 86400 / 3600
+                    elif ":" in raw_val:
+                        if raw_val in ("24:00", "24:00:00"):
+                            hours = 24
+                        else:
+                            parsed = _shift_time(raw_val)
+                            hours = parsed.hour + parsed.minute / 60 + parsed.second / 3600
                     else:
-                        try:
-                            if ':' in raw_val:
-                                parts = raw_val.split(':')
-                                hours = float(parts[0]) + float(parts[1]) / 60.0
-                            else:
-                                hours = float(raw_val.replace(',', '.'))
-                            hours = round(hours, 2)
-                        except Exception:
-                            continue
+                        hours = _finite_number(raw_val)
+                    if not 0 <= hours <= 24:
+                        raise ValueError("invalid hours")
+                    hours = round(hours, 2)
 
                     r_key = None
                     if rest_name:
@@ -290,6 +347,10 @@ def _sync_import_attendance(user_id, rows, default_rest_key=None):
                                     break
                     if not r_key:
                         r_key = default_rest_key or target_user["restaurant_key"]
+
+                    if r_key and (r_key not in known_keys or not _restaurant_in_scope(user, r_key, territory_keys)):
+                        errors.append("Недопустимый ресторан в строке табеля")
+                        continue
 
                     if hours <= 0 and status == 'work':
                         cur.execute("DELETE FROM timesheet_records WHERE user_id = %s AND work_date = %s",
@@ -305,8 +366,8 @@ def _sync_import_attendance(user_id, rows, default_rest_key=None):
                             (target_user["user_id"], date_str, hours, status, r_key, start_time, end_time)
                         )
                     success += 1
-                except Exception as e:
-                    errors.append(f"Ошибка в строке {row}: {str(e)}")
+                except (ValueError, TypeError, AttributeError):
+                    errors.append("Недопустимые дата, часы или время в строке табеля")
 
     return success, errors[:10]
 
@@ -406,7 +467,11 @@ async def handle_import_attendance(request):
         if part is None:
             break
         if part.name == 'file':
-            file_data = await part.read()
+            file_data = bytearray()
+            while chunk := await part.read_chunk():
+                file_data.extend(chunk)
+                if request.client_max_size and len(file_data) > request.client_max_size:
+                    return web.json_response({"error": "Файл слишком большой"}, status=413)
             break
 
     if not file_data:
@@ -414,10 +479,10 @@ async def handle_import_attendance(request):
 
     try:
         rows = await _run(_parse_excel_rows, file_data)
-    except Exception as e:
-        return web.json_response({"error": f"Не удалось прочитать Excel: {str(e)}"}, status=400)
+    except Exception:
+        return web.json_response({"error": "Не удалось прочитать Excel"}, status=400)
 
-    success, errors = await _run(_sync_import_attendance, user["user_id"], rows, default_rest)
+    success, errors = await _run(_sync_import_attendance, user, rows, default_rest)
     return web.json_response({"ok": True, "success_count": success, "errors": errors})
 
 
@@ -476,15 +541,13 @@ async def handle_timesheet_reports(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
+    if not isinstance(body, dict):
+        return web.json_response({"error": "invalid_json"}, status=400)
 
-    date_from = body.get("date_from")
-    date_to = body.get("date_to")
-    if not date_from or not date_to:
-        month = safe_int(body.get("month", datetime.now().month))
-        year = safe_int(body.get("year", datetime.now().year))
-        last_day = calendar.monthrange(year, month)[1]
-        date_from = f"{year}-{month:02d}-01"
-        date_to = f"{year}-{month:02d}-{last_day:02d}"
+    try:
+        date_from, date_to = _date_range(body)
+    except (ValueError, TypeError, OverflowError):
+        return web.json_response({"error": "invalid_dates"}, status=400)
 
     # ИСПРАВЛЕНО: Передаем True в only_me, чтобы каждый видел только свою зарплату в личном кабинете
     report = await _run(_sync_reports, user["user_id"], date_from, date_to, True)
@@ -500,8 +563,12 @@ async def handle_timesheet_export_excel(request):
 
     date_from = request.query.get("date_from")
     date_to = request.query.get("date_to")
-    if not date_from or not date_to:
-        return web.Response(text="Укажите даты", status=400)
+    try:
+        if not date_from or not date_to:
+            raise ValueError("missing date")
+        date_from, date_to = _date_range({"date_from": date_from, "date_to": date_to})
+    except (ValueError, TypeError):
+        return web.Response(text="Укажите корректные даты", status=400)
 
     # Если сотрудник качает из профиля, он передает only_me=true. Иначе (из табеля админа) качаем всех доступных.
     only_me = request.query.get("only_me") == "true"
@@ -599,11 +666,20 @@ async def handle_timesheet_settings_save(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
+    if not isinstance(body, dict):
+        return web.json_response({"error": "invalid_json"}, status=400)
 
-    position_name = (body.get("position_name") or "").strip()
-    rate = safe_float(body.get("rate", 0))
-    if not position_name:
+    position_name = body.get("position_name")
+    if not isinstance(position_name, str) or not position_name.strip():
         return web.json_response({"error": "invalid_position"}, status=400)
+
+    position_name = position_name.strip()
+    try:
+        rate = _finite_number(body.get("rate", 0))
+        if rate < 0:
+            raise ValueError("invalid rate")
+    except ValueError:
+        return web.json_response({"error": "invalid_rate"}, status=400)
 
     def _sync():
         with get_conn() as conn:
@@ -630,18 +706,27 @@ async def handle_payment_add(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
+    if not isinstance(body, dict):
+        return web.json_response({"error": "invalid_json"}, status=400)
 
-    target_uid = safe_int(body.get("user_id"))
-    amount = safe_float(body.get("amount", 0))
-    comment = (body.get("comment") or "").strip()
+    target_uid = _positive_id(body.get("user_id"))
+    comment = body.get("comment")
     payment_date = body.get("payment_date")
+    try:
+        amount = _finite_number(body.get("amount", 0))
+        payment_date = date.fromisoformat(payment_date).isoformat() if payment_date else None
+    except (ValueError, TypeError):
+        return web.json_response({"error": "invalid_data"}, status=400)
 
     if target_uid <= 0:
         return web.json_response({"error": "Выберите сотрудника"}, status=400)
     if amount <= 0:
         return web.json_response({"error": "Сумма должна быть больше нуля"}, status=400)
-    if not comment:
+    if not isinstance(comment, str) or not comment.strip():
         return web.json_response({"error": "Комментарий обязателен"}, status=400)
+    comment = comment.strip()
+    if not await _run(_check_can_edit_user, user, target_uid):
+        return web.json_response({"error": "forbidden_edit_other"}, status=403)
 
     def _sync():
         with get_conn() as conn:
@@ -667,18 +752,27 @@ async def handle_accrual_add(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
+    if not isinstance(body, dict):
+        return web.json_response({"error": "invalid_json"}, status=400)
 
-    target_uid = safe_int(body.get("user_id"))
-    amount = safe_float(body.get("amount", 0))
-    comment = (body.get("comment") or "").strip()
+    target_uid = _positive_id(body.get("user_id"))
+    comment = body.get("comment")
     payment_date = body.get("payment_date")
+    try:
+        amount = _finite_number(body.get("amount", 0))
+        payment_date = date.fromisoformat(payment_date).isoformat() if payment_date else None
+    except (ValueError, TypeError):
+        return web.json_response({"error": "invalid_data"}, status=400)
 
     if target_uid <= 0:
         return web.json_response({"error": "Выберите сотрудника"}, status=400)
     if amount <= 0:
         return web.json_response({"error": "Сумма должна быть больше нуля"}, status=400)
-    if not comment:
+    if not isinstance(comment, str) or not comment.strip():
         return web.json_response({"error": "Комментарий обязателен"}, status=400)
+    comment = comment.strip()
+    if not await _run(_check_can_edit_user, user, target_uid):
+        return web.json_response({"error": "forbidden_edit_other"}, status=403)
 
     is_hr_or_super = _is_hr_or_super(user)
     status = 'approved' if is_hr_or_super else 'pending'
@@ -708,8 +802,10 @@ async def handle_accrual_approve(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
+    if not isinstance(body, dict):
+        return web.json_response({"error": "invalid_json"}, status=400)
 
-    pid = safe_int(body.get("id"))
+    pid = _positive_id(body.get("id"))
     if pid <= 0:
         return web.json_response({"error": "invalid_id"}, status=400)
 
@@ -737,8 +833,10 @@ async def handle_accrual_reject(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
+    if not isinstance(body, dict):
+        return web.json_response({"error": "invalid_json"}, status=400)
 
-    pid = safe_int(body.get("id"))
+    pid = _positive_id(body.get("id"))
     if pid <= 0:
         return web.json_response({"error": "invalid_id"}, status=400)
 

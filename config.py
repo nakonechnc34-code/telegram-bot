@@ -1,6 +1,7 @@
 import os
 import logging
 import re
+from ipaddress import ip_network
 
 # Load .env file if present
 try:
@@ -33,8 +34,12 @@ APP_ENV = os.getenv("ENV", "development").lower()
 SENTRY_DSN = os.getenv("SENTRY_DSN")  # Optional: https://sentry.io/dsn
 LOGIN_RE = re.compile(r"^[a-z]{3}\d{2}$")
 SESSION_TTL_DAYS = 30
-SESSION_CACHE_TTL = int(os.getenv("SESSION_CACHE_TTL", "300"))  # секунд, по умолчанию 5 мин
-MAX_SESSION_CACHE_SIZE = int(os.getenv("MAX_SESSION_CACHE_SIZE", "5000"))  # макс. записей
+# Указывайте только сети прокси, которые дописывают IP клиента в X-Forwarded-For.
+TRUSTED_PROXY_NETWORKS = tuple(
+    ip_network(value.strip())
+    for value in os.getenv("TRUSTED_PROXY_CIDRS", "").split(",")
+    if value.strip()
+)
 
 # Rate limiting
 API_RATE_LIMIT_PER_MINUTE = int(os.getenv("API_RATE_LIMIT_PER_MINUTE", "100"))  # запросов в минуту

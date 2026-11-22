@@ -73,7 +73,7 @@ def _sync_bootstrap(user_id):
             vaccines = [dict(r) for r in cur.fetchall()]
 
             pos_lower = (user.get("position") or "").lower()
-            is_hr = pos_lower.strip() == "hr"
+            is_hr = _is_hr_or_super(user)
             is_tu = "территориальный" in pos_lower
             is_us = "управляющий сменой" in pos_lower
             can_see_team = is_hr or is_tu or is_us
@@ -524,7 +524,7 @@ async def handle_admin_reports(request):
     admin, err = await get_admin_user(request)
     if err:
         return denied(err)
-    stats = await _run(_sync_dashboard_stats)
+    stats = await _run(_sync_dashboard_stats, admin)
     return web.json_response({"report": stats})
 
 

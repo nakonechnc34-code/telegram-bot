@@ -198,54 +198,51 @@ INSERT_SQL = """
 """
 
 
-async def _save_records(pool, import_id, restaurant_key, records):
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            for rec in records:
-                sale_date = _to_date(rec.get("sale_date"))
-                if sale_date is None: continue
-                extra = {k: v for k, v in rec.items() if k not in EXTRA_KEYS}
-                await conn.execute(INSERT_SQL,
-                    import_id, restaurant_key, sale_date,
-                    rec.get("category"), rec.get("subcategory"), rec.get("product_name"), rec.get("sku"),
-                    rec.get("quantity", 1), rec.get("unit_price", 0), rec.get("total_amount", 0),
-                    rec.get("cost_amount", 0), rec.get("profit_amount", 0), rec.get("profit_margin"),
-                    rec.get("payment_method"), rec.get("shift_number"), rec.get("employee_name"),
-                    rec.get("discount_amount", 0), json.dumps(extra) if extra else None)
+async def _save_records(conn, import_id, restaurant_key, records):
+    for rec in records:
+        sale_date = _to_date(rec.get("sale_date"))
+        if sale_date is None: continue
+        extra = {k: v for k, v in rec.items() if k not in EXTRA_KEYS}
+        await conn.execute(INSERT_SQL,
+            import_id, restaurant_key, sale_date,
+            rec.get("category"), rec.get("subcategory"), rec.get("product_name"), rec.get("sku"),
+            rec.get("quantity", 1), rec.get("unit_price", 0), rec.get("total_amount", 0),
+            rec.get("cost_amount", 0), rec.get("profit_amount", 0), rec.get("profit_margin"),
+            rec.get("payment_method"), rec.get("shift_number"), rec.get("employee_name"),
+            rec.get("discount_amount", 0), json.dumps(extra) if extra else None)
 
 
-async def _recalc_summary(pool, restaurant_key):
+async def _recalc_summary(conn, restaurant_key):
     """Пересчитывает дневные сводки."""
-    async with pool.acquire() as conn:
-        await conn.execute("DELETE FROM sales_daily_summary WHERE restaurant_key = $1", restaurant_key)
-        rows = await conn.fetch("""
-            SELECT sale_date,
-                SUM(total_amount) AS total_sales, SUM(cost_amount) AS total_cost,
-                SUM(profit_amount) AS total_profit,
-                CASE WHEN SUM(total_amount) > 0
-                     THEN ROUND(SUM(profit_amount)*100.0 / NULLIF(SUM(total_amount),0), 2)
-                     ELSE 0 END AS avg_margin,
-                SUM(quantity) AS total_items_sold,
-                COUNT(DISTINCT id) AS total_transactions,
-                SUM(CASE WHEN payment_method IN ('Наличные','cash') THEN total_amount ELSE 0 END) AS cash_sales,
-                SUM(CASE WHEN payment_method IN ('Карта','card','ВТБ БАНК') THEN total_amount ELSE 0 END) AS card_sales,
-                SUM(CASE WHEN payment_method IN ('Онлайн','online') OR payment_method LIKE 'Яндекс%' THEN total_amount ELSE 0 END) AS online_sales,
-                COUNT(DISTINCT product_name) AS unique_products
-            FROM sales_records WHERE restaurant_key = $1 GROUP BY sale_date ORDER BY sale_date
-        """, restaurant_key)
-        for r in rows:
-            ts = float(r["total_sales"] or 0); items = r["total_items_sold"] or 0
-            await conn.execute("""
-                INSERT INTO sales_daily_summary
-                (restaurant_key, summary_date, total_sales, total_cost, total_profit,
-                 avg_margin, total_items_sold, total_transactions, avg_check,
-                 cash_sales, card_sales, online_sales, unique_products)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-            """, restaurant_key, r["sale_date"], ts, float(r["total_cost"] or 0), float(r["total_profit"] or 0),
-                float(r["avg_margin"] or 0), items, r["total_transactions"] or 0,
-                round(ts / items, 2) if items else 0,
-                float(r["cash_sales"] or 0), float(r["card_sales"] or 0), float(r["online_sales"] or 0),
-                r["unique_products"] or 0)
+    await conn.execute("DELETE FROM sales_daily_summary WHERE restaurant_key = $1", restaurant_key)
+    rows = await conn.fetch("""
+        SELECT sale_date,
+            SUM(total_amount) AS total_sales, SUM(cost_amount) AS total_cost,
+            SUM(profit_amount) AS total_profit,
+            CASE WHEN SUM(total_amount) > 0
+                 THEN ROUND(SUM(profit_amount)*100.0 / NULLIF(SUM(total_amount),0), 2)
+                 ELSE 0 END AS avg_margin,
+            SUM(quantity) AS total_items_sold,
+            COUNT(DISTINCT id) AS total_transactions,
+            SUM(CASE WHEN payment_method IN ('Наличные','cash') THEN total_amount ELSE 0 END) AS cash_sales,
+            SUM(CASE WHEN payment_method IN ('Карта','card','ВТБ БАНК') THEN total_amount ELSE 0 END) AS card_sales,
+            SUM(CASE WHEN payment_method IN ('Онлайн','online') OR payment_method LIKE 'Яндекс%' THEN total_amount ELSE 0 END) AS online_sales,
+            COUNT(DISTINCT product_name) AS unique_products
+        FROM sales_records WHERE restaurant_key = $1 GROUP BY sale_date ORDER BY sale_date
+    """, restaurant_key)
+    for r in rows:
+        ts = float(r["total_sales"] or 0); items = r["total_items_sold"] or 0
+        await conn.execute("""
+            INSERT INTO sales_daily_summary
+            (restaurant_key, summary_date, total_sales, total_cost, total_profit,
+             avg_margin, total_items_sold, total_transactions, avg_check,
+             cash_sales, card_sales, online_sales, unique_products)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        """, restaurant_key, r["sale_date"], ts, float(r["total_cost"] or 0), float(r["total_profit"] or 0),
+            float(r["avg_margin"] or 0), items, r["total_transactions"] or 0,
+            round(ts / items, 2) if items else 0,
+            float(r["cash_sales"] or 0), float(r["card_sales"] or 0), float(r["online_sales"] or 0),
+            r["unique_products"] or 0)
 
 
 # ==================== РОУТЫ ====================
@@ -253,11 +250,10 @@ async def _recalc_summary(pool, restaurant_key):
 @routes.post("/api/sales/upload")
 @require_admin
 async def upload_sales_file(request: web.Request) -> web.Response:
-    user, err = await get_auth_user(request)
-    if err: return denied(err)
+    user = request["user"]
     reader = await request.post()
     f = reader.get("file")
-    if not f or not f.filename: return web.json_response({"error": "Файл не найден"}, status=400)
+    if not isinstance(f, web.FileField) or not f.filename: return web.json_response({"error": "Файл не найден"}, status=400)
     key = (reader.get("restaurant_key") or "").strip()
     if not key: return web.json_response({"error": "Укажите restaurant_key"}, status=400)
 
@@ -272,13 +268,13 @@ async def upload_sales_file(request: web.Request) -> web.Response:
 
     filename = os.path.basename(f.filename)
     ext = os.path.splitext(filename)[1].lower()
-    if ext not in (".xlsx", ".xls", ".csv"):
-        return web.json_response({"error": "Форматы: .xlsx, .xls, .csv"}, status=400)
+    if ext not in (".xlsx", ".csv"):
+        return web.json_response({"error": "Форматы: .xlsx, .csv"}, status=400)
 
     os.makedirs(_upload_dir(), exist_ok=True)
     stored = f"{datetime.utcnow():%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:8]}{ext}"
     path = os.path.join(_upload_dir(), stored)
-    data = await f.read()
+    data = await asyncio.to_thread(f.file.read)
     with open(path, "wb") as fp: fp.write(data)
 
     async with pool.acquire() as conn:
@@ -289,13 +285,17 @@ async def upload_sales_file(request: web.Request) -> web.Response:
 
     try:
         records = (await asyncio.to_thread(_parse_excel, io.BytesIO(data))
-                   if ext in (".xlsx", ".xls") else _parse_csv(data.decode("utf-8-sig")))
-        await _save_records(pool, import_id, key, records)
+                   if ext == ".xlsx" else _parse_csv(data.decode("utf-8-sig")))
         async with pool.acquire() as conn:
-            await conn.execute(
-                "UPDATE sales_imports SET status='completed', rows_count=$1, processed_at=NOW() WHERE id=$2",
-                len(records), import_id)
-        await _recalc_summary(pool, key)
+            async with conn.transaction():
+                # Serialise imports and summary rebuilds for this restaurant.
+                await conn.fetchval("SELECT key FROM restaurants WHERE key = $1 FOR UPDATE", key)
+                await _save_records(conn, import_id, key, records)
+                await _recalc_summary(conn, key)
+                await conn.execute(
+                    "UPDATE sales_imports SET status='completed', rows_count=$1, processed_at=NOW() WHERE id=$2",
+                    len(records), import_id,
+                )
         return web.json_response({"success": True, "import_id": import_id, "rows_count": len(records),
                                   "message": f"Загружено {len(records)} записей"})
     except Exception as e:
@@ -475,6 +475,9 @@ async def export_sales(request: web.Request) -> web.Response:
     body = await request.json()
     key = body.get("restaurant_key")
     df, dt = _to_date(body.get("date_from")), _to_date(body.get("date_to"))
+    if not df and isinstance(body.get("period"), str):
+        days = {"7d": 7, "30d": 30, "90d": 90}.get(body["period"], 30)
+        df = datetime.utcnow().date() - timedelta(days=days)
     allowed = await _allowed_rests(user)
 
     cond, params, idx = [], [], 1

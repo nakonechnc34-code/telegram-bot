@@ -1,8 +1,9 @@
-const CACHE_NAME = 'wokker-cache-v4'; // Подняли версию, чтобы обновить кэш
+const CACHE_NAME = 'wokker-cache-v5'; // Подняли версию, чтобы обновить кэш
 const ASSETS = [
     '/',              // Главная (index.html)
     '/admin',         // Админка (admin.html)
     '/timesheet',     // Табель
+    '/timesheet.js',
     '/academy',       // Академия
     '/manifest.json',
     '/static/icon-192.svg',

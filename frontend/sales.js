@@ -58,7 +58,7 @@
         setTimeout(() => toast.remove(), 4000);
     }
 
-    async function apiFetch(url, options = {}) {
+    async function apiFetch(url, options = {}, responseType = "json") {
         const token = getToken() || '';
         const res = await fetch(url, {
             ...options,
@@ -66,7 +66,7 @@
         });
         if (res.status === 401) { window.location.href = '/'; throw new Error('unauthorized'); }
         if (!res.ok) { let msg = 'error'; try { const j = await res.json(); msg = j.error || msg; } catch (e) {} throw new Error(msg); }
-        return res.json();
+        return responseType === "blob" ? res.blob() : res.json();
     }
 
     async function loadRestaurants() {
@@ -371,8 +371,24 @@
         document.getElementById('close-detail-modal').addEventListener('click', () => DOM.detailModal.classList.remove('active'));
         DOM.detailModal.addEventListener('click', (e) => { if (e.target === DOM.detailModal) DOM.detailModal.classList.remove('active'); });
         DOM.btnSearchDetail.addEventListener('click', () => loadRecords(1));
-        document.getElementById('btn-export').addEventListener('click', () => {
-            window.open(`/api/sales/export?restaurant_key=${DOM.restaurantSelect.value || ''}&webToken=${encodeURIComponent(getToken() || '')}`, '_blank');
+        document.getElementById('btn-export').addEventListener('click', async () => {
+            try {
+                const file = await apiFetch('/api/sales/export', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        restaurant_key: DOM.restaurantSelect.value,
+                        period: DOM.periodSelect.value
+                    })
+                }, 'blob');
+                const url = URL.createObjectURL(file);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'sales.xlsx';
+                link.click();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
         });
     }
 

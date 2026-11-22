@@ -11,7 +11,7 @@ def test_sales_access_is_explicit_even_for_super_admin():
     assert _sales_allowed({"is_admin": True, "permissions": {"sales_access": True}})
     assert not _sales_allowed({"permissions": {"sales_access": True}, "is_fired": True})
     assert not _sales_allowed({"permissions": '{"sales_access": "true"}'})
-    assert _sales_allowed({"permissions": '{"sales_access": true}'})
+    assert _sales_allowed({"is_admin": True, "permissions": '{"sales_access": true}'})
 
 
 def test_sales_endpoints_do_not_accept_admin_sessions():

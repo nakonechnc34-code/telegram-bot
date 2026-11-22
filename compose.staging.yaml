@@ -1,0 +1,39 @@
+# Isolated local staging only. Never point this stack to production resources.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: wokker_staging
+      POSTGRES_USER: wokker_staging
+      POSTGRES_PASSWORD: ${STAGING_DB_PASSWORD:?Set STAGING_DB_PASSWORD}
+    volumes:
+      - staging_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wokker_staging -d wokker_staging"]
+      interval: 5s
+      retries: 15
+    networks: [staging]
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://wokker_staging:${STAGING_DB_PASSWORD:?Set STAGING_DB_PASSWORD}@db:5432/wokker_staging
+      ADMIN_LOGIN: ${STAGING_ADMIN_LOGIN:?Set STAGING_ADMIN_LOGIN}
+      ADMIN_PASSWORD: ${STAGING_ADMIN_PASSWORD:?Set STAGING_ADMIN_PASSWORD}
+      ENV: staging
+      PORT: "8080"
+      RUN_MIGRATIONS: "true"
+      TRUSTED_PROXY_CIDRS: ""
+    ports:
+      - "127.0.0.1:18080:8080"
+    volumes:
+      - staging_uploads:/data
+    networks: [staging]
+networks:
+  staging:
+    internal: true
+volumes:
+  staging_db:
+  staging_uploads:

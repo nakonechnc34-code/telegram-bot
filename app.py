@@ -77,10 +77,15 @@ def run_migrations():
 
         with get_conn() as conn:
             with conn.cursor() as cur:
+                # Timesheet
                 cur.execute("ALTER TABLE timesheet_records ADD COLUMN IF NOT EXISTS restaurant_key TEXT;")
                 cur.execute("ALTER TABLE timesheet_records ADD COLUMN IF NOT EXISTS start_time TIME;")
                 cur.execute("ALTER TABLE timesheet_records ADD COLUMN IF NOT EXISTS end_time TIME;")
+                
+                # Users
                 cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS personnel_number VARCHAR(50);")
+                
+                # Payments
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS payments (
                         id SERIAL PRIMARY KEY,
@@ -96,6 +101,21 @@ def run_migrations():
                         approved_by_name TEXT
                     )
                 """)
+                # Добавляем колонки, если таблица была создана ранее без них
+                cur.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS record_type TEXT DEFAULT 'payout';")
+                cur.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'approved';")
+                cur.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS proposed_by_name TEXT;")
+                cur.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS approved_by_name TEXT;")
+
+                # Position rates (нужна для расчета зарплаты)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS position_rates (
+                        position_name TEXT PRIMARY KEY,
+                        rate NUMERIC DEFAULT 0
+                    )
+                """)
+
+                # Индексы
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_web_sessions_token ON web_sessions(token);")
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_users_login ON users(LOWER(login));")
                 cur.execute("DROP INDEX IF EXISTS idx_timesheet_records_date;")
@@ -104,6 +124,7 @@ def run_migrations():
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_standards_status ON standards(status);")
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_payments_date ON payments(payment_date, status);")
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_payments_user_date ON payments(user_id, payment_date);")
+                
                 logging.info("✅ Миграция БД: колонки, таблицы и индексы проверены/добавлены.")
     except Exception as e:
         logging.error(f"❌ Ошибка миграции/создания папок: {e}")

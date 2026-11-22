@@ -67,10 +67,10 @@ def convert_standard_docx(data):
             # ol/ul markers, so browser-generated bullets/numbers are unreliable.
             if kind == 'ol':
                 list_counters[list_id] = list_counters.get(list_id, 0) + 1
-                marker = str(list_counters[list_id]) + '. '
+                marker = str(list_counters[list_id]) + '.&nbsp;'
             else:
-                marker = '• '
-            output.append('<p style="margin-top:0;margin-bottom:0">' + marker + content + '</p>')
+                marker = '•&nbsp;'
+            output.append('<p style="margin-top:0;margin-bottom:0;padding-left:24px;text-indent:-24px">' + marker + content + '</p>')
             continue
         if not para.text.strip():
             output.append('<p>&nbsp;</p>')
@@ -94,8 +94,9 @@ def convert_standard_docx(data):
         # a real bullet, keeping the following bold text and other formatting.
         if para.text.startswith('\uf0b7'):
             # Symbol-font bullet U+F0B7 is not a printable glyph in browsers.
-            content = '• ' + content.lstrip()
-            styles.append('padding-left:12px')
+            content = '•&nbsp;' + content.lstrip()
+            styles.append('padding-left:24px')
+            styles.append('text-indent:-16px')
         attr = ' style="' + ';'.join(styles) + '"' if styles else ''
         output.append('<p' + attr + '>' + content + '</p>')
     return sanitize_standard_html(''.join(output))

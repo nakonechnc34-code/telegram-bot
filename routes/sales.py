@@ -326,7 +326,11 @@ async def upload_sales_file(request: web.Request) -> web.Response:
                 import re
                 value = str(value or "").casefold().replace("ё", "е")
                 value = re.sub(r"^\s*(?:wokker|воккер)\s*[-–—:]\s*", "", value)
-                return " ".join(value.split())
+                # iiko may omit the shopping-centre prefix and use spaces
+                # instead of hyphens (e.g. "Белая дача" / "Мега Белая Дача").
+                value = re.sub(r"[^\w\s]", " ", value)
+                value = " ".join(value.split())
+                return re.sub(r"^мега\s+", "", value)
             matches = {}
             for restaurant in db_rests:
                 matches.setdefault(norm_name(restaurant["name"]), []).append(restaurant["key"])

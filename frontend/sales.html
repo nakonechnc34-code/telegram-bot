@@ -17,9 +17,7 @@
     <nav class="side-nav" aria-label="Разделы Sales">
       <button class="nav-link active" data-view="overview"><span>◫</span> Обзор сети</button>
       <button class="nav-link" data-view="restaurants"><span>▦</span> Рестораны</button>
-      <button class="nav-link" data-view="products"><span>▤</span> Товарная аналитика</button>
       <button class="nav-link" data-view="imports"><span>⇧</span> Отчёты и импорт</button>
-      <button class="nav-link" data-view="records"><span>☷</span> Детализация</button>
       <button class="nav-link" data-view="settings"><span>⚙</span> Настройки</button>
     </nav>
     <div class="sidebar-bottom"><a href="/admin">← Вернуться в WOKKER Control</a><span>Sales · Управленческая аналитика</span></div>
@@ -29,9 +27,10 @@
       <div class="topbar-left"><button id="menu-toggle" class="mobile-menu" aria-label="Открыть меню">☰</button><div class="eyebrow">WOKKER / SALES</div><h1 class="page-title" id="view-title">Обзор сети</h1></div>
       <div class="topbar-right">
         <label class="filter-field"><span>Ресторан</span><select class="topbar-select" id="restaurant-select"><option value="">Все доступные рестораны</option></select></label>
-        <label class="filter-field"><span>Период</span><select class="topbar-select" id="period-select"><option value="7d">7 дней</option><option value="30d" selected>30 дней</option><option value="90d">90 дней</option></select></label>
+        <label class="filter-field"><span>Период</span><select class="topbar-select" id="period-select"><option value="7d">7 дней</option><option value="30d" selected>30 дней</option><option value="90d">90 дней</option><option value="custom">Свои даты</option></select></label><label class="filter-field" id="custom-from-field" hidden><span>С даты</span><input class="topbar-select" type="date" id="sales-date-from"></label><label class="filter-field" id="custom-to-field" hidden><span>По дату</span><input class="topbar-select" type="date" id="sales-date-to"></label>
+        <label class="filter-field"><span>День сравнения</span><input class="topbar-select" type="date" id="comparison-date"></label><label class="filter-field"><span>По времени</span><select class="topbar-select" id="comparison-hour"></select></label>
         <button class="btn btn-primary" id="btn-import-iiko">＋ Загрузить отчёт</button>
-        <button class="btn btn-secondary" id="btn-detail">Детализация</button>
+        <button class="btn btn-secondary" id="btn-detail" hidden>Детализация</button>
         <button class="btn btn-secondary" id="btn-export">Экспорт</button>
         <div class="avatar" id="sales-topbar-avatar">W</div>
       </div>
@@ -53,13 +52,13 @@
                     <option value="">Выберите ресторан</option>
                 </select>
             </div>
-            <p class="section-note">Для сводного «Дневного отчёта Воккер» продажи автоматически распределяются по ресторанам из файла. Выбранный ресторан используется для записи в историю загрузок. Все рестораны файла должны быть доступны вам.</p>
+            <p class="section-note">Повторная загрузка за ту же дату заменяет предыдущие продажи соответствующих ресторанов. Для сводного «Дневного отчёта Воккер» продажи автоматически распределяются по ресторанам из файла. Выбранный ресторан используется для записи в историю загрузок. Все рестораны файла должны быть доступны вам.</p>
             <div class="form-group">
                 <label>Файл отчёта (.xlsx / .csv) *</label>
                 <div class="file-upload-area" id="file-drop-zone">
                     <div class="file-upload-icon">📁</div>
                     <div class="file-upload-text">Перетащите файл сюда или нажмите</div>
-                    <div class="file-upload-hint">Отчёт iiko «Продажи по товарам» или «Дневной отчёт Воккер» (.xlsx / .csv)</div>
+                    <div class="file-upload-hint">Дневной отчёт Воккер или отчёт iiko (.xlsx / .csv)</div>
                     <input type="file" id="file-input" accept=".xlsx,.csv" style="display:none;">
                 </div>
                 <div id="file-info" class="file-info-text"></div>

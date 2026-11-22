@@ -19,9 +19,11 @@ def test_sales_dashboard_scopes_all_queries_to_allowed_restaurants():
     assert 'key = key or (allowed[0]' not in dashboard
     assert 'scoped_keys = [key] if key else allowed' in dashboard
     assert 'sr.restaurant_key = ANY($2)' in dashboard
-    assert 'WHERE r.key = ANY($2)' in dashboard
+    assert 'WHERE r.key = ANY($3)' in dashboard
     assert 'WHERE si.restaurant_key = ANY($1)' in dashboard
-    assert 'AND restaurant_key = ANY($2)' in dashboard
+    assert 'AND restaurant_key = ANY($3)' in dashboard
+    assert 'sr.sale_date < $2' in dashboard
+    assert 'compare_filter = "AND sr.restaurant_key = ANY($4)"' in dashboard
 
 
 def test_sales_ui_escapes_user_supplied_values_and_filters_records():

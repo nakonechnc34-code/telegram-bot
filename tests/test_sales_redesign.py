@@ -8,9 +8,11 @@ CSS = (ROOT / "frontend/sales.css").read_text(encoding="utf-8")
 
 
 def test_sales_views_have_navigation():
-    for view in ("overview", "restaurants", "products", "imports", "records", "settings"):
+    for view in ("overview", "restaurants", "imports", "settings"):
         assert f'data-view="{view}"' in HTML
     assert "state.view=button.dataset.view" in JS
+    assert 'data-view="products"' not in HTML
+    assert 'data-view="records"' not in HTML
 
 
 def test_existing_sales_controls_preserved():
@@ -123,9 +125,9 @@ def test_order_type_mapping_is_persistent_and_authorized():
     assert 'if action == "save" and not user.get("is_super_admin"):' in source
     assert '"Не распределено"' in source
     assert 'order_mapping.get(method, "Не распределено")' in source
-    assert '"by_order_type": list(order_types.values())' in source
+    assert '"by_order_type": [{**v, "previous_sales": previous_types[k]}' in source
     assert 'loadOrderTypeSettings()' in JS
-    assert 'Выручка по типу заказа' in JS
+    assert 'ТО по типу заказа: что выросло и упало' in JS
 
 
 def test_multi_restaurant_name_prefix_normalization():
@@ -215,3 +217,53 @@ def test_iiko_restaurant_matching_normalizes_mall_and_punctuation():
     source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
     assert 'return re.sub(r"^мега\\s+", "", value)' in source
     assert 'if len(candidates) != 1:' in source
+
+
+def test_reimport_replaces_existing_restaurant_dates_transactionally():
+    source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
+    upload = source.split("async def upload_sales_file(", 1)[1].split(
+        '@routes.post("/api/sales/dashboard")', 1)[0]
+    assert "async with conn.transaction():" in upload
+    assert "FOR UPDATE" in upload
+    assert "DELETE FROM sales_records WHERE restaurant_key=$1 AND sale_date=ANY($2::date[])" in upload
+    assert upload.index("DELETE FROM sales_records WHERE restaurant_key=$1") < upload.index("await _save_records(conn, import_id")
+    assert "status='replaced'" in upload
+
+
+def test_turnover_comparison_and_hourly_order_types():
+    source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
+    assert '"previous_total_sales":' in source
+    assert '"hourly_by_order_type":' in source
+    assert "previous_from = date_from - timedelta(days=days)" in source
+    assert "Почасовой ТО: зал и доставка" in JS
+    assert "Предыдущий период" in JS
+    assert "Прибыль по отчёту',money(o.total_profit)" not in JS
+
+
+def test_custom_date_range_controls_and_backend_validation():
+    html = (ROOT / "frontend/sales.html").read_text(encoding="utf-8")
+    backend = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
+    assert 'value="custom"' in html
+    assert 'id="sales-date-from"' in html
+    assert 'id="sales-date-to"' in html
+    assert "DOM.dateFrom.addEventListener('change'" in JS
+    assert "DOM.dateTo.addEventListener('change'" in JS
+    assert "date_from: DOM.dateFrom.value, date_to: DOM.dateTo.value" in JS
+    assert 'if period == "custom":' in backend
+    assert 'date.fromisoformat(body["date_from"])' in backend
+    assert 'date.fromisoformat(body["date_to"])' in backend
+    assert '"sr.sale_date >= $1", "sr.sale_date < $2"' in backend
+
+
+def test_same_weekday_hourly_comparison_is_scoped_and_cutoff_exclusive():
+    backend = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
+    html = (ROOT / "frontend/sales.html").read_text(encoding="utf-8")
+    assert 'id="comparison-date"' in html
+    assert 'id="comparison-hour"' in html
+    assert 'last_week_day = comparison_day - timedelta(days=7)' in backend
+    assert "opening_hour')::int < $3" in backend
+    assert 'compare_filter = "AND sr.restaurant_key = ANY($4)"' in backend
+    assert '"same_weekday_comparison": day_comparison' in backend
+    assert "weekCompare.current[type]" in JS
+    assert "weekCompare.previous[type]" in JS
+    assert "compareReady=weekCompare?.has_current && weekCompare?.has_previous" in JS

@@ -10,6 +10,7 @@ import os
 import asyncio
 import uuid
 from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
 from functools import wraps
 
 from aiohttp import web
@@ -355,8 +356,24 @@ async def upload_sales_file(request: web.Request) -> web.Response:
                 for rest_key in sorted(by_key):
                     await conn.fetchval("SELECT key FROM restaurants WHERE key = $1 FOR UPDATE", rest_key)
                 for rest_key, grouped in by_key.items():
+                    # One authoritative snapshot per restaurant and report date.
+                    # Replace only dates included in this file, preserving all
+                    # other dates, restaurants and the import audit history.
+                    report_dates = sorted({d for rec in grouped
+                                           if (d := _to_date(rec.get("sale_date"))) is not None})
+                    if not report_dates:
+                        raise ValueError("В отчёте отсутствуют корректные даты продаж")
+                    await conn.execute(
+                        "DELETE FROM sales_records WHERE restaurant_key=$1 AND sale_date=ANY($2::date[])",
+                        rest_key, report_dates)
                     await _save_records(conn, import_id, rest_key, grouped)
                     await _recalc_summary(conn, rest_key)
+                # Mark fully superseded imports; retain their audit records.
+                await conn.execute("""
+                    UPDATE sales_imports si SET status='replaced'
+                    WHERE si.status='completed'
+                      AND NOT EXISTS (SELECT 1 FROM sales_records sr WHERE sr.import_id=si.id)
+                """)
                 await conn.execute(
                     "UPDATE sales_imports SET status='completed', rows_count=$1, processed_at=NOW() WHERE id=$2",
                     len(records), import_id,
@@ -441,12 +458,24 @@ async def sales_dashboard(request: web.Request) -> web.Response:
     # None means all restaurants (unrestricted admin). An empty list means no
     # restaurants. Never silently replace "all" with the TU's first restaurant.
     scoped_keys = [key] if key else allowed
-    days = {"7d": 7, "30d": 30, "90d": 90}.get(period, 30)
-    date_from = datetime.utcnow().date() - timedelta(days=days - 1)
-    conditions = ["sr.sale_date >= $1"]
-    params = [date_from]
+    if period == "custom":
+        try:
+            date_from = date.fromisoformat(body["date_from"])
+            date_to = date.fromisoformat(body["date_to"])
+        except (ValueError, TypeError, KeyError):
+            return web.json_response({"error": "Укажите корректные даты начала и окончания"}, status=400)
+        if date_to < date_from or (date_to - date_from).days > 366:
+            return web.json_response({"error": "Период должен быть от 1 до 367 дней"}, status=400)
+        days = (date_to - date_from).days + 1
+    else:
+        days = {"7d": 7, "30d": 30, "90d": 90}.get(period, 30)
+        date_to = datetime.utcnow().date()
+        date_from = date_to - timedelta(days=days - 1)
+    end_exclusive = date_to + timedelta(days=1)
+    conditions = ["sr.sale_date >= $1", "sr.sale_date < $2"]
+    params = [date_from, end_exclusive]
     if scoped_keys is not None:
-        conditions.append("sr.restaurant_key = ANY($2)")
+        conditions.append("sr.restaurant_key = ANY($3)")
         params.append(scoped_keys)
     w, _ = _where(conditions, params)
 
@@ -468,13 +497,13 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             f"FROM sales_records sr {w} GROUP BY sr.sale_date ORDER BY sr.sale_date", *params)
 
         # Restrict both the LEFT JOIN and restaurant rows to the same scope.
-        rest_filter = "WHERE r.key = ANY($2)" if scoped_keys is not None else ""
-        join_filter = "AND sr.restaurant_key = ANY($2)" if scoped_keys is not None else ""
+        rest_filter = "WHERE r.key = ANY($3)" if scoped_keys is not None else ""
+        join_filter = "AND sr.restaurant_key = ANY($3)" if scoped_keys is not None else ""
         by_rest = await conn.fetch(f"""
             SELECT r.name, r.key, COALESCE(SUM(sr.total_amount),0) total,
                    COALESCE(SUM(sr.profit_amount),0) profit
             FROM restaurants r LEFT JOIN sales_records sr
-              ON sr.restaurant_key = r.key AND sr.sale_date >= $1 {join_filter}
+              ON sr.restaurant_key = r.key AND sr.sale_date >= $1 AND sr.sale_date < $2 {join_filter}
             {rest_filter}
             GROUP BY r.key, r.name ORDER BY total DESC""", *params)
 
@@ -490,6 +519,59 @@ async def sales_dashboard(request: web.Request) -> web.Response:
                 FROM sales_records sr {hour_where}
                 GROUP BY 1 ORDER BY 1""", *params)
 
+        # Previous equal-length period: turnover and Hall/Delivery comparison.
+        previous_from = date_from - timedelta(days=days)
+        previous_conditions = [
+            "sr.sale_date >= $1",
+            "sr.sale_date < $2",
+        ]
+        previous_params = [previous_from, date_from]
+        if scoped_keys is not None:
+            previous_conditions.append("sr.restaurant_key = ANY($3)")
+            previous_params.append(scoped_keys)
+        previous_where, _ = _where(previous_conditions, previous_params)
+        previous_rows = await conn.fetch(
+            f"""SELECT sr.payment_method method, SUM(sr.total_amount) sales
+                FROM sales_records sr {previous_where}
+                GROUP BY sr.payment_method""", *previous_params)
+
+        # Hour-by-hour breakdown by payment method, then map to order type.
+        hourly_methods = await conn.fetch(
+            f"""SELECT (sr.extra_data::jsonb->>'opening_hour')::int AS opening_hour,
+                       sr.payment_method method, SUM(sr.total_amount) sales
+                FROM sales_records sr {hour_where}
+                GROUP BY 1, 2 ORDER BY 1""", *params)
+
+        # Compare one selected day with the same weekday seven days earlier.
+        # Cutoff is exclusive: 16:00 means sales through 15:59.
+        try:
+            comparison_day = date.fromisoformat(body.get("comparison_date") or str(datetime.now(ZoneInfo("Europe/Moscow")).date()))
+            cutoff_hour = int(body.get("comparison_hour", datetime.now(ZoneInfo("Europe/Moscow")).hour))
+        except (TypeError, ValueError):
+            return web.json_response({"error": "Некорректная дата или час сравнения"}, status=400)
+        if not 0 <= cutoff_hour <= 24:
+            return web.json_response({"error": "Час сравнения должен быть от 0 до 24"}, status=400)
+        last_week_day = comparison_day - timedelta(days=7)
+        compare_filter = "AND sr.restaurant_key = ANY($4)" if scoped_keys is not None else ""
+        compare_args = [comparison_day, last_week_day, cutoff_hour]
+        if scoped_keys is not None:
+            compare_args.append(scoped_keys)
+        compare_rows = await conn.fetch(f"""
+            SELECT sr.sale_date, (sr.extra_data::jsonb->>'opening_hour')::int AS opening_hour,
+                   sr.payment_method AS method, SUM(sr.total_amount) AS sales
+            FROM sales_records sr
+            WHERE sr.sale_date IN ($1, $2)
+              AND sr.extra_data IS NOT NULL
+              AND (sr.extra_data::jsonb->>'opening_hour') ~ '^(?:[0-9]|1[0-9]|2[0-3])$'
+              AND (sr.extra_data::jsonb->>'opening_hour')::int < $3
+              {compare_filter}
+            GROUP BY 1, 2, 3 ORDER BY 1, 2
+        """, *compare_args)
+        comparison_days_present = await conn.fetch(
+            "SELECT DISTINCT sale_date FROM sales_records WHERE sale_date IN ($1, $2)"
+            + (" AND restaurant_key = ANY($3)" if scoped_keys is not None else ""),
+            *([comparison_day, last_week_day, scoped_keys]
+              if scoped_keys is not None else [comparison_day, last_week_day]))
         order_mapping = await _order_type_mapping(conn)
         order_rows = await conn.fetch(
             f"""SELECT sr.payment_method method, SUM(sr.total_amount) sales,
@@ -506,6 +588,41 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             order_types[category]["sales"] += float(item["sales"] or 0)
             order_types[category]["checks"] += int(item["checks"] or 0)
 
+        day_comparison = {
+            "date": str(comparison_day), "previous_date": str(last_week_day),
+            "cutoff_hour": cutoff_hour,
+            "has_current": comparison_day in {r["sale_date"] for r in comparison_days_present},
+            "has_previous": last_week_day in {r["sale_date"] for r in comparison_days_present},
+            "current": {"Зал": 0.0, "Доставка": 0.0, "Не распределено": 0.0},
+            "previous": {"Зал": 0.0, "Доставка": 0.0, "Не распределено": 0.0},
+            "hours": {},
+        }
+        for item in compare_rows:
+            bucket = "current" if item["sale_date"] == comparison_day else "previous"
+            category = order_mapping.get(item["method"] or "", "Не распределено")
+            if category not in day_comparison[bucket]:
+                category = "Не распределено"
+            amount = float(item["sales"] or 0)
+            day_comparison[bucket][category] += amount
+            hour = int(item["opening_hour"])
+            slot = day_comparison["hours"].setdefault(hour, {"hour": hour, "current": 0.0, "previous": 0.0})
+            slot[bucket] += amount
+        day_comparison["hours"] = [day_comparison["hours"][h] for h in sorted(day_comparison["hours"])]
+
+        previous_types = {name: 0.0 for name in order_types}
+        for item in previous_rows:
+            category = order_mapping.get(item["method"] or "", "Не распределено")
+            previous_types[category if category in previous_types else "Не распределено"] += float(item["sales"] or 0)
+        hourly_types = {}
+        for item in hourly_methods:
+            hour = int(item["opening_hour"])
+            category = order_mapping.get(item["method"] or "", "Не распределено")
+            if category not in previous_types:
+                category = "Не распределено"
+            hourly_types.setdefault(hour, {"hour": hour, "Зал": 0.0,
+                                            "Доставка": 0.0, "Не распределено": 0.0})
+            hourly_types[hour][category] += float(item["sales"] or 0)
+
         by_payment = await conn.fetch(
             f"SELECT COALESCE(sr.payment_method,'Не указан') method, "
             f"SUM(sr.total_amount) total, COUNT(*) c "
@@ -518,9 +635,9 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             {import_filter} ORDER BY si.upload_date DESC LIMIT 20""",
             *([scoped_keys] if scoped_keys is not None else []))
 
-        summary_filter = "AND restaurant_key = ANY($2)" if scoped_keys is not None else ""
+        summary_filter = "AND restaurant_key = ANY($3)" if scoped_keys is not None else ""
         summaries = await conn.fetch(
-            f"SELECT * FROM sales_daily_summary WHERE summary_date >= $1 {summary_filter} "
+            f"SELECT * FROM sales_daily_summary WHERE summary_date >= $1 AND summary_date < $2 {summary_filter} "
             f"ORDER BY summary_date DESC LIMIT 30", *params)
 
     return web.json_response({"success": True, "data": {
@@ -528,7 +645,10 @@ async def sales_dashboard(request: web.Request) -> web.Response:
         "daily_trend": [{"date": str(r["sale_date"]), "sales": float(r["s"] or 0),
                          "cost": float(r["c"] or 0), "profit": float(r["p"] or 0),
                          "items": int(r["q"] or 0)} for r in daily_trend],
-        "by_order_type": list(order_types.values()),
+        "by_order_type": [{**v, "previous_sales": previous_types[k]} for k, v in order_types.items()],
+        "previous_total_sales": sum(previous_types.values()),
+        "same_weekday_comparison": day_comparison,
+        "hourly_by_order_type": [hourly_types[k] for k in sorted(hourly_types)],
         "hourly_revenue": [{"hour": int(r["opening_hour"]), "sales": float(r["sales"] or 0),
                             "checks": int(r["checks"] or 0)} for r in hourly],
         "by_restaurant": [{"key": r["key"], "name": r["name"],

@@ -21,6 +21,10 @@
         DOM.content = document.getElementById('sales-page-content');
         DOM.restaurantSelect = document.getElementById('restaurant-select');
         DOM.periodSelect = document.getElementById('period-select');
+        DOM.dateFrom = document.getElementById('sales-date-from');
+        DOM.dateTo = document.getElementById('sales-date-to');
+        DOM.comparisonDate = document.getElementById('comparison-date');
+        DOM.comparisonHour = document.getElementById('comparison-hour');
         DOM.adminAvatar = document.getElementById('sales-topbar-avatar');
         DOM.uploadModal = document.getElementById('upload-modal');
         DOM.detailModal = document.getElementById('detail-modal');
@@ -91,11 +95,19 @@
         const requestId = ++state.dashboardRequest;
         const restaurantKey = DOM.restaurantSelect.value || null;
         const period = DOM.periodSelect.value;
+        if (period === 'custom' && (!DOM.dateFrom.value || !DOM.dateTo.value)) {
+            DOM.content.innerHTML = '<div class="loading">Выберите начало и конец периода</div>';
+            return;
+        }
+        if (period === 'custom' && DOM.dateFrom.value > DOM.dateTo.value) {
+            DOM.content.innerHTML = '<div class="loading">Дата начала должна быть не позднее даты окончания</div>';
+            return;
+        }
 
         try {
             const res = await apiFetch('/api/sales/dashboard', {
                 method: 'POST',
-                body: JSON.stringify({ restaurant_key: restaurantKey, period }),
+                body: JSON.stringify({ restaurant_key: restaurantKey, period, date_from: DOM.dateFrom.value, date_to: DOM.dateTo.value, comparison_date: DOM.comparisonDate.value, comparison_hour: Number(DOM.comparisonHour.value) }),
             });
 
             if (requestId !== state.dashboardRequest) return;
@@ -113,13 +125,13 @@
 
     const money = formatCurrency;
     function restRows(rows) {
-        return rows.map((r,i) => '<tr><td>' + (i+1) + '</td><td><strong>' + esc(r.name) + '</strong></td><td>' + money(r.total_sales) + '</td><td>' + money(r.profit) + '</td><td>' + (r.total_sales > 0 ? (100*r.profit/r.total_sales).toFixed(1)+'%' : '—') + '</td></tr>').join('');
+        return rows.map((r,i) => '<tr><td>'+(i+1)+'</td><td><strong>'+esc(r.name)+'</strong></td><td>'+money(r.total_sales)+'</td></tr>').join('');
     }
     function importRows(rows) {
         return rows.map(imp => '<tr><td><strong>'+esc(imp.filename)+'</strong></td><td>'+esc(state.restaurants.find(r=>r.key===imp.restaurant_key)?.name||imp.restaurant_key)+'</td><td>'+formatNumber(imp.rows_count)+'</td><td>'+formatDate(imp.upload_date)+'</td><td><span class="status-pill '+(imp.status==='completed'?'':'pending')+'">'+esc(imp.status==='completed'?'Загружен':imp.status)+'</span></td></tr>').join('');
     }
     function renderDashboard(data) {
-        const {overview:o, daily_trend:trend=[], by_restaurant:restaurants=[], hourly_revenue:hourly=[], by_order_type:orderTypes=[], imports=[]} = data;
+        const {overview:o, daily_trend:trend=[], by_restaurant:restaurants=[], hourly_revenue:hourly=[], hourly_by_order_type:hourlyTypes=[], by_order_type:orderTypes=[], previous_total_sales:previousSales=0, same_weekday_comparison:weekCompare=null, imports=[]} = data;
         const view=state.view;
         const intro = (title,subtitle,tag='ДАННЫЕ ИЗ ОТЧЁТОВ') => '<div class="intro"><div><h2>'+title+'</h2><p>'+subtitle+'</p></div><span class="eyebrow-tag">'+tag+'</span></div>';
         const table=(title,heads,rows,empty='Нет данных за выбранный период')=>'<section class="table-wrap"><div class="table-title">'+title+'</div><table class="table"><thead><tr>'+heads.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+(rows||'<tr><td colspan="'+heads.length+'" class="text-center">'+empty+'</td></tr>')+'</tbody></table></section>';
@@ -127,11 +139,11 @@
             DOM.content.innerHTML=intro('Настройки типов заказа','Назначьте каждому способу оплаты тип заказа: Зал, Доставка или Не распределено.')+'<section class="panel"><div class="loading">Загрузка настроек…</div></section>';
             loadOrderTypeSettings();
         } else if(view==='restaurants') {
-            DOM.content.innerHTML=intro('Результаты ресторанов','Сравнение доступных ресторанов по выручке, прибыли и доле прибыли.')+
-            table('Рейтинг ресторанов',['№','Ресторан','Выручка','Прибыль по отчёту','Доля прибыли'],restRows(restaurants));
+            DOM.content.innerHTML=intro('ТО ресторанов','Сравнение ресторанов по товарообороту.')+
+            table('Рейтинг ресторанов',['№','Ресторан','ТО'],restRows(restaurants));
         } else if(view==='imports') {
             DOM.content.innerHTML=intro('Загрузка и история','Импортируйте XLSX/CSV из iiko и отслеживайте последние загрузки.')+
-            '<section class="panel"><h3>Новый отчёт</h3><p class="section-note">Выберите ресторан и загрузите файл до 10 МБ. Данные будут добавлены в аналитику.</p><button class="btn btn-primary" id="import-from-panel">＋ Загрузить файл iiko</button></section>'+
+            '<section class="panel"><h3>Новый отчёт</h3><p class="section-note">Выберите ресторан и загрузите файл до 10 МБ. Данные за совпадающие даты и рестораны будут заменены, а не сложены.</p><button class="btn btn-primary" id="import-from-panel">＋ Загрузить файл iiko</button></section>'+
             table('История загрузок',['Файл','Ресторан','Строк','Дата','Статус'],importRows(imports),'Загрузок пока нет');
             document.getElementById('import-from-panel').addEventListener('click',openUploadModal);
         } else if(view==='products') {
@@ -144,18 +156,32 @@
             document.getElementById('inline-search').addEventListener('click',()=>loadInlineRecords(1));
             loadInlineRecords(1);
         } else {
-            const typeRows=orderTypes.map(t=>'<tr><td><strong>'+esc(t.type)+'</strong></td><td>'+money(t.sales)+'</td><td>'+formatNumber(t.checks)+'</td></tr>').join('');
+            const change=(current,previous)=>previous>0?((current-previous)*100/previous).toFixed(1)+'%':(current>0?'Новый объём':'—');
+            const compareTotal=side=>Object.values(weekCompare?.[side]||{}).reduce((sum,n)=>sum+Number(n||0),0);
+            const todayCompare=compareTotal('current'), lastWeekCompare=compareTotal('previous');
+            const compareReady=weekCompare?.has_current && weekCompare?.has_previous;
+            const comparePct=lastWeekCompare>0?((todayCompare-lastWeekCompare)*100/lastWeekCompare).toFixed(1)+'%':(todayCompare>0?'Нет базы':'0%');
+            const compareTable=weekCompare?table('ТО по типам заказа к прошлой неделе',['Тип','Выбранный день','Прошлая неделя','Изменение'],
+                ['Зал','Доставка','Не распределено'].map(type=>'<tr><td>'+type+'</td><td>'+money(weekCompare.current[type])+'</td><td>'+money(weekCompare.previous[type])+'</td><td>'+(compareReady?change(weekCompare.current[type],weekCompare.previous[type]):'—')+'</td></tr>').join('')):'';
+            const compareHours=weekCompare?.hours||[];
+            const compareHourlyTable=table('По часам: этот день / прошлый вторник (тот же день недели)',['Час','Этот день','Неделю назад','Изменение'],
+                compareHours.map(h=>'<tr><td>'+String(h.hour).padStart(2,'0')+':00</td><td>'+money(h.current)+'</td><td>'+money(h.previous)+'</td><td>'+(compareReady?change(h.current,h.previous):'—')+'</td></tr>').join(''));
+            const comparePanel=weekCompare?'<section class="panel"><h3>Сравнение с тем же днём прошлой недели до '+String(weekCompare.cutoff_hour).padStart(2,'0')+':00</h3><p class="section-note">'+esc(weekCompare.date)+' против '+esc(weekCompare.previous_date)+' · только завершённые часы</p>'+
+                (compareReady?'<div class="kpi-grid"><div class="kpi-card"><div class="kpi-label">Выбранный день</div><div class="kpi-value">'+money(todayCompare)+'</div></div><div class="kpi-card"><div class="kpi-label">Неделю назад</div><div class="kpi-value">'+money(lastWeekCompare)+'</div></div><div class="kpi-card"><div class="kpi-label">Рост / падение</div><div class="kpi-value">'+comparePct+'</div><div class="kpi-trend">'+money(todayCompare-lastWeekCompare)+'</div></div></div>':'<p class="section-note">Недостаточно данных за один из сравниваемых дней. Загрузите отчёты за обе даты.</p>')+'</section>':'';
+            const typeRows=orderTypes.map(t=>'<tr><td><strong>'+esc(t.type)+'</strong></td><td>'+money(t.sales)+'</td><td>'+money(t.previous_sales)+'</td><td>'+change(t.sales,t.previous_sales)+'</td></tr>').join('');
             const hourlyMax=Math.max(1,...hourly.map(h=>h.sales||0));
             const hourlyRows=hourly.map(h=>'<div class="progress-item"><div class="pi-header"><span>'+String(h.hour).padStart(2,'0')+':00–'+String((h.hour+1)%24).padStart(2,'0')+':00</span><span>'+money(h.sales)+' · '+formatNumber(h.checks)+' чеков</span></div><div class="pi-bar-bg"><div class="pi-bar-fill" style="width:'+Math.max(0,Math.min(100,100*h.sales/hourlyMax))+'%"></div></div></div>').join('');
             const avg=o.total_items_sold>0?money(o.total_sales/o.total_items_sold):'—';
-            const cards=[['Выручка',money(o.total_sales),'За выбранный период'],['Себестоимость',money(o.total_cost),'По загруженным отчётам'],['Прибыль по отчёту',money(o.total_profit),'Не равна чистой прибыли'],['На единицу / чек*',avg,'*В зависимости от типа отчёта']];
+            const cards=[['Товарооборот',money(o.total_sales),'Текущий период'],['Предыдущий период',money(previousSales),'Такая же длительность'],['Изменение ТО',change(o.total_sales,previousSales),'К предыдущему периоду']];
             const max=Math.max(1,...restaurants.map(r=>r.total_sales||0));
             const bars=restaurants.slice(0,6).map((r,i)=>'<div class="progress-item"><div class="pi-header"><span>'+esc(r.name)+'</span><span>'+money(r.total_sales)+'</span></div><div class="pi-bar-bg"><div class="pi-bar-fill '+['','green','yellow','red'][i%4]+'" style="width:'+Math.max(0,Math.min(100,100*r.total_sales/max))+'%"></div></div></div>').join('');
             DOM.content.innerHTML=intro('Продажи под контролем','Ключевые показатели сети на основе загруженных отчётов.')+
+            comparePanel+(compareReady?compareTable+compareHourlyTable:'')+
             '<section class="kpi-grid">'+cards.map(c=>'<div class="kpi-card"><div class="kpi-label">'+c[0]+'</div><div class="kpi-value">'+c[1]+'</div><div class="kpi-trend">'+c[2]+'</div></div>').join('')+'</section>'+
             '<div class="charts-row"><section class="chart-card"><div class="chart-header"><span class="chart-title">Динамика выручки</span><span class="chart-note">По дням</span></div>'+(trend.length?'<div class="chart-canvas-wrapper"><canvas id="chart-daily-trend" aria-label="График выручки"></canvas></div>':'<div class="empty-state"><strong>Пока нет данных</strong>Загрузите отчёт iiko для построения графика</div>')+'</section>'+
             '<section class="chart-card"><div class="chart-header"><span class="chart-title">Лидеры по выручке</span><span class="chart-note">Рестораны</span></div><div class="progress-list">'+(bars||'<div class="empty-state">Нет данных</div>')+'</div></section></div>'+
-            table('Выручка по типу заказа',['Тип заказа','Выручка','Количество чеков'],typeRows,'Нет данных')+
+            table('ТО по типу заказа: что выросло и упало',['Тип заказа','Текущий ТО','Предыдущий ТО','Изменение'],typeRows,'Нет данных')+
+            table('Почасовой ТО: зал и доставка',['Час','Зал','Доставка','Не распределено'],hourlyTypes.map(h=>'<tr><td>'+String(h.hour).padStart(2,'0')+':00</td><td>'+money(h['Зал'])+'</td><td>'+money(h['Доставка'])+'</td><td>'+money(h['Не распределено'])+'</td></tr>').join(''),'Нет почасовых данных')+
             '<section class="chart-card"><div class="chart-header"><span class="chart-title">Почасовая выручка</span><span class="chart-note">Час открытия чека · выбранный период и ресторан</span></div><div class="progress-list">'+(hourlyRows||'<div class="empty-state">Нет почасовых данных. Загрузите дневной отчёт iiko с колонкой «Час открытия».</div>')+'</div></section>'+ 
             table('Последние загрузки',['Файл','Ресторан','Строк','Дата','Статус'],importRows(imports.slice(0,5)),'Загрузок пока нет');
             requestAnimationFrame(()=>renderDailyTrendChart(trend));
@@ -417,8 +443,18 @@
         }));
         document.getElementById('menu-toggle').addEventListener('click',()=>document.getElementById('sales-sidebar').classList.toggle('open'));
 
-        DOM.periodSelect.addEventListener('change', loadDashboard);
+        function updateDateControls() {
+            const custom = DOM.periodSelect.value === 'custom';
+            document.getElementById('custom-from-field').hidden = !custom;
+            document.getElementById('custom-to-field').hidden = !custom;
+            loadDashboard();
+        }
+        DOM.periodSelect.addEventListener('change', updateDateControls);
+        DOM.dateFrom.addEventListener('change', () => { if (DOM.periodSelect.value === 'custom') loadDashboard(); });
+        DOM.dateTo.addEventListener('change', () => { if (DOM.periodSelect.value === 'custom') loadDashboard(); });
         DOM.restaurantSelect.addEventListener('change', loadDashboard);
+        DOM.comparisonDate.addEventListener('change', loadDashboard);
+        DOM.comparisonHour.addEventListener('change', loadDashboard);
 
         // Одна кнопка загрузки отчёта iiko
         document.getElementById('btn-import-iiko').addEventListener('click', openUploadModal);
@@ -452,7 +488,9 @@
                     method: 'POST',
                     body: JSON.stringify({
                         restaurant_key: DOM.restaurantSelect.value,
-                        period: DOM.periodSelect.value
+                        period: DOM.periodSelect.value,
+                        date_from: DOM.dateFrom.value,
+                        date_to: DOM.dateTo.value
                     })
                 }, 'blob');
                 const url = URL.createObjectURL(file);
@@ -477,6 +515,11 @@
             if (meRes.profile) DOM.adminAvatar.textContent = (meRes.profile.full_name || 'A').charAt(0).toUpperCase();
         } catch (e) {}
 
+        const moscow = new Date(new Date().toLocaleString('en-US', {timeZone:'Europe/Moscow'}));
+        const pad=n=>String(n).padStart(2,'0');
+        DOM.comparisonDate.value=moscow.getFullYear()+'-'+pad(moscow.getMonth()+1)+'-'+pad(moscow.getDate());
+        DOM.comparisonHour.innerHTML=Array.from({length:25},(_,hour)=>'<option value="'+hour+'">До '+pad(hour)+':00</option>').join('');
+        DOM.comparisonHour.value=String(moscow.getHours());
         await loadRestaurants();
         loadDashboard();
         bindEvents();

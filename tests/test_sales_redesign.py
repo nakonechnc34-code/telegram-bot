@@ -135,3 +135,22 @@ def test_multi_restaurant_name_prefix_normalization():
     pattern = r"^\s*(?:wokker|воккер)\s*[-–—:]\s*"
     assert re.sub(pattern, "", "WOKKER - Белая дача", flags=re.I) == "Белая дача"
     assert re.sub(pattern, "", "Воккер: Беляево", flags=re.I) == "Беляево"
+
+
+def test_order_type_mapping_accepts_postgres_jsonb_text_and_dict():
+    import asyncio
+    from routes.sales import _order_type_mapping
+
+    class Conn:
+        def __init__(self, value):
+            self.value = value
+
+        async def execute(self, *_args):
+            return None
+
+        async def fetchval(self, *_args):
+            return self.value
+
+    expected = {"Наличные": "Зал", "Яндекс.Еда": "Доставка"}
+    assert asyncio.run(_order_type_mapping(Conn('{"Наличные":"Зал","Яндекс.Еда":"Доставка"}'))) == expected
+    assert asyncio.run(_order_type_mapping(Conn(expected))) == expected

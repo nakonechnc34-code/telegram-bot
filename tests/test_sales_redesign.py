@@ -86,3 +86,31 @@ def test_multi_restaurant_upload_enforces_permissions_and_recalculates_each_rest
     assert 'if len(candidates) != 1:' in upload
     assert 'for rest_key, grouped in by_key.items():' in upload
     assert 'await _recalc_summary(conn, rest_key)' in upload
+
+
+def test_hourly_iiko_parser_carries_hour_and_skips_subtotals():
+    import openpyxl
+    from routes.sales import _parse_iiko_daily
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Учетный день", "Торговое предприятие", "Час открытия", "Тип оплаты", "Сумма со скидкой", "Чеков"])
+    ws.append(["22.11.2026", "Беляево", 12, "ВТБ БАНК", 100, 2])
+    ws.append([None, None, None, "Наличные", 50, 1])
+    ws.append([None, None, "12 всего", None, 150, 3])
+    ws.append([None, None, 13, "Яндекс.Еда", 200, 4])
+    ws.append([None, "Беляево всего", None, None, 350, 7])
+    ws.append([None, "Вернадка", 15, "ВТБ БАНК", 70, 1])
+    rows = _parse_iiko_daily(ws)
+    assert len(rows) == 4
+    assert [r["opening_hour"] for r in rows] == [12, 12, 13, 15]
+    assert sum(r["total_amount"] for r in rows) == 420
+    assert rows[-1]["source_restaurant"] == "Вернадка"
+
+
+def test_hourly_dashboard_uses_scoped_sales_and_real_check_counts():
+    source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
+    assert "GROUP BY hour ORDER BY hour" in source
+    assert "sr.extra_data::jsonb->>'opening_hour'" in source
+    assert '"hourly_revenue":' in source
+    assert 'hourly_revenue:hourly=[]' in JS
+    assert 'Почасовая выручка' in JS

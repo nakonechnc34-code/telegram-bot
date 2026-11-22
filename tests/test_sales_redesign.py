@@ -126,3 +126,12 @@ def test_order_type_mapping_is_persistent_and_authorized():
     assert '"by_order_type": list(order_types.values())' in source
     assert 'loadOrderTypeSettings()' in JS
     assert 'Выручка по типу заказа' in JS
+
+
+def test_multi_restaurant_name_prefix_normalization():
+    import re
+    source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
+    assert 'r"^\\s*(?:wokker|воккер)\\s*[-–—:]\\s*"' in source
+    pattern = r"^\s*(?:wokker|воккер)\s*[-–—:]\s*"
+    assert re.sub(pattern, "", "WOKKER - Белая дача", flags=re.I) == "Белая дача"
+    assert re.sub(pattern, "", "Воккер: Беляево", flags=re.I) == "Беляево"

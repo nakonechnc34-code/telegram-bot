@@ -106,104 +106,144 @@
     function renderDashboard(data) {
         const { overview, daily_trend, by_restaurant } = data;
         const avgCheck = overview.total_sales / Math.max(overview.total_items_sold, 1);
+
         const maxRestSales = Math.max(...by_restaurant.map(r => r.total_sales || 0), 1);
-        
         const topRestHtml = by_restaurant.slice(0, 5).map((r, i) => {
             const pct = ((r.total_sales || 0) / maxRestSales * 100).toFixed(0);
             const colors = ['blue', 'green', 'yellow', 'red'];
             return `
-                <div class="top-list-item">
-                    <div class="tl-header">
-                        <span>${r.name}</span>
-                        <span class="tl-value">${formatCurrency(r.total_sales)}</span>
-                    </div>
-                    <div class="tl-bar-bg">
-                        <div class="tl-bar-fill ${colors[i % colors.length]}" style="width: ${pct}%"></div>
-                    </div>
+                <div class="progress-item">
+                    <div class="pi-header"><span>${r.name}</span><span>${formatCurrency(r.total_sales)}</span></div>
+                    <div class="pi-bar-bg"><div class="pi-bar-fill ${colors[i % colors.length]}" style="width: ${pct}%"></div></div>
                 </div>
             `;
         }).join('');
 
         DOM.content.innerHTML = `
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-header">Общая выручка <span>💰</span></div>
-                    <div class="stat-value">${formatCurrency(overview.total_sales)}</div>
-                    <div><span class="stat-trend up">+10%</span> с прошлого периода</div>
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-label">Общая выручка</div>
+                    <div class="kpi-value">${formatCurrency(overview.total_sales)}</div>
+                    <div class="kpi-trend up">+10%</div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-header">Себестоимость <span>📉</span></div>
-                    <div class="stat-value">${formatCurrency(overview.total_cost)}</div>
-                    <div><span class="stat-trend down">-5%</span> с прошлого периода</div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Себестоимость</div>
+                    <div class="kpi-value">${formatCurrency(overview.total_cost)}</div>
+                    <div class="kpi-trend down">-5%</div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-header">Чистая прибыль <span>📈</span></div>
-                    <div class="stat-value">${formatCurrency(overview.total_profit)}</div>
-                    <div><span class="stat-trend up">+15%</span> с прошлого периода</div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Чистая прибыль</div>
+                    <div class="kpi-value">${formatCurrency(overview.total_profit)}</div>
+                    <div class="kpi-trend up">+15%</div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-header">Средний чек <span>🧾</span></div>
-                    <div class="stat-value">${formatCurrency(avgCheck)}</div>
-                    <div><span class="stat-trend neutral">0%</span> без изменений</div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Средний чек</div>
+                    <div class="kpi-value">${formatCurrency(avgCheck)}</div>
+                    <div class="kpi-trend neutral">0%</div>
                 </div>
             </div>
 
-            <div class="main-row">
+            <div class="charts-row">
                 <div class="chart-card">
                     <div class="chart-header"><div class="chart-title">Динамика выручки</div></div>
                     <div class="chart-canvas-wrapper"><canvas id="chart-daily-trend"></canvas></div>
                 </div>
                 <div class="chart-card">
                     <div class="chart-header"><div class="chart-title">Топ ресторанов</div></div>
-                    <div class="top-list">${topRestHtml || '<div class="loading">Нет данных</div>'}</div>
+                    <div class="progress-list">${topRestHtml || '<div class="loading">Нет данных</div>'}</div>
                 </div>
             </div>
+
+            <div class="table-wrap">
+                <table class="table">
+                    <thead><tr><th>Последние загрузки</th><th>Строк</th><th>Дата</th><th>Статус</th></tr></thead>
+                    <tbody>
+                        ${(data.imports || []).slice(0, 5).map(imp => `
+                            <tr>
+                                <td>${imp.filename}</td>
+                                <td>${imp.rows_count}</td>
+                                <td>${formatDate(imp.upload_date)}</td>
+                                <td>${imp.status === 'completed' ? '✅ Готов' : imp.status}</td>
+                            </tr>
+                        `).join('') || '<tr><td colspan="4" class="text-center">Нет загрузок</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
         `;
-        setTimeout(() => renderDailyTrendChart(daily_trend), 50);
+
+        // Рисуем график после вставки HTML
+        requestAnimationFrame(() => renderDailyTrendChart(daily_trend));
     }
 
     function renderDailyTrendChart(trend) {
         const canvas = document.getElementById('chart-daily-trend');
         if (!canvas || !trend || trend.length === 0) return;
+
+        const container = canvas.parentElement;
+        const rect = container.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return;
+
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        canvas.style.width = rect.width + 'px';
+        canvas.style.height = rect.height + 'px';
+
         const ctx = canvas.getContext('2d');
-        const rect = canvas.parentElement.getBoundingClientRect();
-        canvas.width = rect.width * 2;
-        canvas.height = rect.height * 2;
-        ctx.scale(2, 2);
+        ctx.scale(dpr, dpr);
         const W = rect.width;
         const H = rect.height;
+
         const padding = { top: 20, right: 20, bottom: 40, left: 60 };
         const chartW = W - padding.left - padding.right;
         const chartH = H - padding.top - padding.bottom;
-        const maxVal = Math.max(...trend.map(t => Math.max(t.sales, t.profit)), 1);
+
+        const maxVal = Math.max(...trend.map(t => t.sales || 0), 1);
+
         ctx.clearRect(0, 0, W, H);
-        
+
+        // Сетка
         ctx.strokeStyle = '#E5E7EB';
         ctx.lineWidth = 1;
         for (let i = 0; i <= 4; i++) {
             const y = padding.top + (chartH / 4) * i;
-            ctx.beginPath(); ctx.moveTo(padding.left, y); ctx.lineTo(W - padding.right, y); ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(padding.left, y);
+            ctx.lineTo(W - padding.right, y);
+            ctx.stroke();
+
             const val = maxVal - (maxVal / 4) * i;
-            ctx.fillStyle = '#6B7280'; ctx.font = '11px Inter, sans-serif'; ctx.textAlign = 'right';
+            ctx.fillStyle = '#6B7280';
+            ctx.font = '11px Inter, sans-serif';
+            ctx.textAlign = 'right';
             ctx.fillText(formatNumber(val), padding.left - 10, y + 4);
         }
-        
-        const barWidth = Math.max(4, (chartW / trend.length) * 0.4);
+
+        // Столбцы
+        const barWidth = Math.max(4, (chartW / trend.length) * 0.5);
         trend.forEach((t, i) => {
             const x = padding.left + (i / Math.max(trend.length - 1, 1)) * chartW;
-            const hSales = ((t.sales || 0) / maxVal) * chartH;
-            const ySales = padding.top + chartH - hSales;
+            const h = ((t.sales || 0) / maxVal) * chartH;
+            const y = padding.top + chartH - h;
+
             ctx.fillStyle = '#0066FF';
             ctx.beginPath();
-            ctx.roundRect(x - barWidth, ySales, barWidth, hSales, [4, 4, 0, 0]);
+            if (ctx.roundRect) {
+                ctx.roundRect(x - barWidth / 2, y, barWidth, h, [4, 4, 0, 0]);
+            } else {
+                ctx.rect(x - barWidth / 2, y, barWidth, h);
+            }
             ctx.fill();
         });
-        
+
+        // Подписи дат
         const step = Math.max(1, Math.floor(trend.length / 7));
         trend.forEach((t, i) => {
             if (i % step === 0 || i === trend.length - 1) {
                 const x = padding.left + (i / Math.max(trend.length - 1, 1)) * chartW;
-                ctx.fillStyle = '#6B7280'; ctx.font = '11px Inter, sans-serif'; ctx.textAlign = 'center';
+                ctx.fillStyle = '#6B7280';
+                ctx.font = '11px Inter, sans-serif';
+                ctx.textAlign = 'center';
                 const d = new Date(t.date);
                 ctx.fillText(`${d.getDate()}.${d.getMonth() + 1}`, x, H - padding.bottom + 20);
             }
@@ -236,7 +276,7 @@
         const formData = new FormData();
         formData.append('file', state.uploadFile);
         formData.append('restaurant_key', DOM.uploadRestaurant.value);
-        
+
         DOM.btnUpload.disabled = true;
         DOM.btnUpload.textContent = 'Загрузка…';
 
@@ -305,22 +345,22 @@
         DOM.periodSelect.addEventListener('change', loadDashboard);
         DOM.restaurantSelect.addEventListener('change', loadDashboard);
 
-        document.getElementById('btn-open-upload').addEventListener('click', openUploadModal);
-        document.getElementById('btn-import-iiko').addEventListener('click', openUploadModal); // <-- Новая кнопка
+        // Одна кнопка загрузки отчёта iiko
+        document.getElementById('btn-import-iiko').addEventListener('click', openUploadModal);
 
         document.getElementById('close-upload-modal').addEventListener('click', closeUploadModal);
         document.getElementById('btn-cancel-upload').addEventListener('click', closeUploadModal);
         DOM.uploadModal.addEventListener('click', (e) => { if (e.target === DOM.uploadModal) closeUploadModal(); });
-        
+
         DOM.fileDropZone.addEventListener('click', () => DOM.fileInput.click());
         DOM.fileDropZone.addEventListener('dragover', (e) => { e.preventDefault(); DOM.fileDropZone.classList.add('dragover'); });
         DOM.fileDropZone.addEventListener('dragleave', () => DOM.fileDropZone.classList.remove('dragover'));
         DOM.fileDropZone.addEventListener('drop', (e) => { e.preventDefault(); DOM.fileDropZone.classList.remove('dragover'); handleFileSelect(e.dataTransfer.files[0]); });
         DOM.fileInput.addEventListener('change', () => handleFileSelect(DOM.fileInput.files[0]));
-        
+
         DOM.uploadRestaurant.addEventListener('change', () => { DOM.btnUpload.disabled = !DOM.uploadRestaurant.value || !state.uploadFile; });
         DOM.btnUpload.addEventListener('click', uploadFile);
-        
+
         DOM.btnDownloadTemplate.addEventListener('click', () => window.open('/api/sales/template?webToken=' + encodeURIComponent(getToken() || ''), '_blank'));
 
         document.getElementById('btn-detail').addEventListener('click', () => {
@@ -340,13 +380,19 @@
         cacheDOM();
         state.token = getToken();
         if (!state.token) { window.location.href = '/'; return; }
+
         try {
             const meRes = await apiFetch('/api/admin/me', { method: 'POST' });
             if (meRes.profile) DOM.adminAvatar.textContent = (meRes.profile.full_name || 'A').charAt(0).toUpperCase();
         } catch (e) {}
+
         await loadRestaurants();
         loadDashboard();
         bindEvents();
+
+        window.addEventListener('resize', () => {
+            if (state.dashboardData) renderDashboard(state.dashboardData);
+        });
     }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

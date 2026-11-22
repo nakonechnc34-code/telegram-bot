@@ -48,3 +48,41 @@ def test_products_and_records_are_real_api_backed_views():
     assert 'async function loadInlineRecords(' in JS
     assert "'/api/sales/records'" in JS
     assert 'esc(r.product_name' in JS
+
+
+def test_iiko_daily_report_skips_hour_restaurant_and_day_totals():
+    from datetime import datetime
+    from openpyxl import Workbook
+    from routes.sales import _parse_iiko_daily
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Дневной отчет Воккер"])
+    ws.append(["Название ресторана: Wokker - ЦО"])
+    ws.append(["Период: с 22.11.2026 по 30.11.2026"])
+    ws.append([None, None, None, None, "Итого"])
+    ws.append(["Учетный день", "Торговое предприятие", "Час открытия",
+               "Тип оплаты", "Сумма со скидкой, р.", "Чеков"])
+    ws.append([datetime(2026, 11, 22), "Белая дача", "10", "ВТБ БАНК", 299, 1])
+    ws.append([None, None, "12", "ВТБ БАНК", 7384, 8])
+    ws.append([None, None, "12 всего", None, 7384, 8])
+    ws.append([None, "Белая дача всего", None, None, 7683, 9])
+    ws.append([None, "Беляево", "10", "Наличные", 1005, 1])
+    ws.append(["22.11.2026 всего", None, None, None, 8688, 10])
+    records = _parse_iiko_daily(ws)
+    assert len(records) == 3
+    assert sum(r["total_amount"] for r in records) == 8688
+    assert sum(r["quantity"] for r in records) == 10
+    assert [r["source_restaurant"] for r in records] == [
+        "Белая дача", "Белая дача", "Беляево"]
+    assert records[0]["opening_hour"] == "10"
+    assert all(r["product_name"] is None for r in records)
+
+
+def test_multi_restaurant_upload_enforces_permissions_and_recalculates_each_restaurant():
+    source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
+    upload = source.split("async def upload_sales_file(", 1)[1].split(
+        '@routes.post("/api/sales/dashboard")', 1)[0]
+    assert 'if allowed is not None and rest_key not in allowed:' in upload
+    assert 'if len(candidates) != 1:' in upload
+    assert 'for rest_key, grouped in by_key.items():' in upload
+    assert 'await _recalc_summary(conn, rest_key)' in upload

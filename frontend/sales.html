@@ -11,68 +11,34 @@
 </head>
 <body>
 
-<div class="layout">
-    <!-- Sidebar -->
-    <aside class="sidebar">
-        <div class="sidebar-logo">
-            <div class="logo-icon">🍜</div>
-            <span>Wokker Sales</span>
-        </div>
-        
-        <nav class="sidebar-nav">
-            <a href="/sales" class="nav-item active">
-                <span class="nav-icon">📊</span> Обзор
-            </a>
-            <a href="/admin" class="nav-item">
-                <span class="nav-icon">⚙️</span> Админ-панель
-            </a>
-        </nav>
+<header class="topbar">
+    <div class="topbar-left">
+        <h1 class="page-title">Товарооборот</h1>
+    </div>
+    <div class="topbar-right">
+        <select class="topbar-select" id="restaurant-select">
+            <option value="">Все рестораны</option>
+        </select>
+        <select class="topbar-select" id="period-select">
+            <option value="7d">7 дней</option>
+            <option value="30d" selected>30 дней</option>
+            <option value="90d">90 дней</option>
+        </select>
+        <button class="btn btn-primary" id="btn-import-iiko">📥 Загрузить отчёт iiko</button>
+        <button class="btn btn-secondary" id="btn-export">📤 Экспорт</button>
+        <div class="avatar" id="sales-topbar-avatar">A</div>
+    </div>
+</header>
 
-        <div class="sidebar-promo">
-            <div class="promo-title">Управление данными</div>
-            <div class="promo-text">Загрузите отчёт iiko, чтобы увидеть актуальную статистику.</div>
-            <button class="btn-promo" id="btn-open-upload">📤 Загрузить файл</button>
-        </div>
-    </aside>
-
-    <!-- Main Content -->
-    <main class="main-content">
-        <!-- Topbar -->
-        <header class="topbar">
-            <div class="topbar-left">
-                <h1 class="page-title">Товарооборот</h1>
-            </div>
-            
-            <div class="topbar-right">
-                <select class="topbar-select" id="restaurant-select">
-                    <option value="">Все рестораны</option>
-                </select>
-                <select class="topbar-select" id="period-select">
-                    <option value="7d">7 дней</option>
-                    <option value="30d" selected>30 дней</option>
-                    <option value="90d">90 дней</option>
-                </select>
-                
-                <button class="btn btn-secondary" id="btn-import-iiko">📥 Импорт из iiko</button>
-                <button class="btn btn-secondary" id="btn-export">📤 Экспорт</button>
-                <button class="btn btn-primary" id="btn-detail">📋 Детализация</button>
-                
-                <div class="avatar" id="sales-topbar-avatar">A</div>
-            </div>
-        </header>
-
-        <!-- Dashboard Content -->
-        <div class="content" id="sales-page-content">
-            <div class="loading">Загрузка дашборда…</div>
-        </div>
-    </main>
-</div>
+<main class="content" id="sales-page-content">
+    <div class="loading">Загрузка дашборда…</div>
+</main>
 
 <!-- Модальное окно загрузки -->
 <div class="modal-overlay" id="upload-modal">
     <div class="modal">
         <div class="modal-header">
-            <h3>Загрузка товарооборота</h3>
+            <h3>Загрузка отчёта iiko</h3>
             <button class="modal-close" id="close-upload-modal">&times;</button>
         </div>
         <div class="modal-body">
@@ -83,11 +49,11 @@
                 </select>
             </div>
             <div class="form-group">
-                <label>Файл (Excel или CSV) *</label>
+                <label>Файл отчёта (.xlsx) *</label>
                 <div class="file-upload-area" id="file-drop-zone">
                     <div class="file-upload-icon">📁</div>
                     <div class="file-upload-text">Перетащите файл сюда или нажмите</div>
-                    <div class="file-upload-hint">Поддерживаются отчёты iiko «Продажи по товарам» в формате .xlsx</div>
+                    <div class="file-upload-hint">Отчёт iiko «Продажи по товарам» (.xlsx)</div>
                     <input type="file" id="file-input" accept=".xlsx,.xls,.csv" style="display:none;">
                 </div>
                 <div id="file-info" class="file-info-text"></div>
@@ -141,7 +107,6 @@
     </div>
 </div>
 
-<!-- Тосты -->
 <div class="toast-container" id="toast-container"></div>
 
 <script src="/sales.js"></script>

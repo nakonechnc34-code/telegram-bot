@@ -32,7 +32,7 @@ routes = web.RouteTableDef()
 
 def _sales_allowed(user):
     """Sales access is explicitly assigned in WOKKER Control, including for admins."""
-    if not user or user.get("is_fired"):
+    if not user or user.get("is_fired") or not (user.get("is_admin") or user.get("is_super_admin")):
         return False
     perms = user.get("permissions") or {}
     if isinstance(perms, str):

@@ -32,7 +32,7 @@
       '</div><div class="sd-row__body"><div class="sd-row__title">' + esc(title) +
       '</div><div class="sd-row__detail">' + esc(detail) + '</div></div></div>';
   }
-  window.loadDashboard = async function loadSoftDepthDashboard() {
+  const loadSoftDepthDashboard = async function () {
     const root = $('page-content');
     root.innerHTML = dashboardMarkup();
     const current = root.querySelector('.sd-dashboard');
@@ -73,4 +73,5 @@
       console.error('Soft Depth dashboard:', e);
     }
   };
+  PAGE_LOADERS.dashboard = loadSoftDepthDashboard;
 })();

@@ -79,5 +79,6 @@ PERMISSIONS_LIST = [
     {"key": "certification_edit", "label": "Управлять вопросами сертификации"},
     {"key": "academy_edit", "label": "Управлять Академией"},
     {"key": "timesheet_access", "label": "Доступ к Табелю"},
+    {"key": "sales_access", "label": "Доступ к WOKKER Sales"},
 ]
 PERM_KEYS = [p["key"] for p in PERMISSIONS_LIST]

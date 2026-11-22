@@ -238,3 +238,18 @@ def test_turnover_comparison_and_hourly_order_types():
     assert "Почасовой ТО: зал и доставка" in JS
     assert "Предыдущий период" in JS
     assert "Прибыль по отчёту',money(o.total_profit)" not in JS
+
+
+def test_custom_date_range_controls_and_backend_validation():
+    html = (ROOT / "frontend/sales.html").read_text(encoding="utf-8")
+    backend = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
+    assert 'value="custom"' in html
+    assert 'id="sales-date-from"' in html
+    assert 'id="sales-date-to"' in html
+    assert "DOM.dateFrom.addEventListener('change'" in JS
+    assert "DOM.dateTo.addEventListener('change'" in JS
+    assert "date_from: DOM.dateFrom.value, date_to: DOM.dateTo.value" in JS
+    assert 'if period == "custom":' in backend
+    assert 'date.fromisoformat(body["date_from"])' in backend
+    assert 'date.fromisoformat(body["date_to"])' in backend
+    assert '"sr.sale_date >= $1", "sr.sale_date < $2"' in backend

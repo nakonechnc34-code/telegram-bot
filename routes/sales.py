@@ -367,6 +367,63 @@ async def upload_sales_file(request: web.Request) -> web.Response:
         return web.json_response({"error": f"Ошибка: {str(e)[:500]}", "import_id": import_id}, status=500)
 
 
+# Configurable payment-method mapping. Persisted centrally for every Sales user.
+DEFAULT_ORDER_TYPES = {
+    "ВТБ БАНК": "Зал", "Наличные": "Зал", "Starter": "Зал",
+    "Магнит": "Зал", "Яндекс.Еда": "Доставка", "Я.Бейдж!": "Доставка",
+}
+
+
+async def _order_type_mapping(conn):
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS sales_order_type_settings (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            mapping JSONB NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """)
+    saved = await conn.fetchval("SELECT mapping FROM sales_order_type_settings WHERE id = 1")
+    return dict(saved) if saved is not None else dict(DEFAULT_ORDER_TYPES)
+
+
+@routes.post("/api/sales/order-type-settings")
+@admin_required
+async def sales_order_type_settings(request: web.Request) -> web.Response:
+    user = request["admin"]
+    body = await request.json()
+    action = body.get("action", "get")
+    if action not in ("get", "save"):
+        return web.json_response({"error": "Неизвестное действие"}, status=400)
+    if action == "save" and _is_tu(user):
+        return web.json_response({"error": "Редактирование доступно администратору сети"}, status=403)
+    pool = db.get_pool(request.app)
+    async with pool.acquire() as conn:
+        if action == "save":
+            mapping = body.get("mapping")
+            if (not isinstance(mapping, dict) or len(mapping) > 200 or
+                any(not isinstance(k, str) or not k.strip() or len(k) > 120 or
+                    v not in ("Зал", "Доставка", "Не распределено")
+                    for k, v in mapping.items())):
+                return web.json_response({"error": "Некорректные настройки"}, status=400)
+            await _order_type_mapping(conn)
+            await conn.execute("""
+                INSERT INTO sales_order_type_settings (id, mapping, updated_at)
+                VALUES (1, $1::jsonb, NOW())
+                ON CONFLICT (id) DO UPDATE SET mapping=EXCLUDED.mapping, updated_at=NOW()
+            """, json.dumps(mapping, ensure_ascii=False))
+        mapping = await _order_type_mapping(conn)
+        # Discover methods actually present in accessible Sales records.
+        allowed = await _allowed_rests(user)
+        if allowed is None:
+            rows = await conn.fetch("SELECT DISTINCT payment_method FROM sales_records WHERE payment_method IS NOT NULL ORDER BY payment_method")
+        else:
+            rows = await conn.fetch("SELECT DISTINCT payment_method FROM sales_records WHERE restaurant_key = ANY($1) AND payment_method IS NOT NULL ORDER BY payment_method", allowed)
+    methods = sorted(set(mapping) | {r["payment_method"] for r in rows})
+    return web.json_response({"success": True, "data": {
+        "mapping": mapping, "methods": methods, "can_edit": not _is_tu(user),
+    }})
+
+
 @routes.post("/api/sales/dashboard")
 @admin_required
 async def sales_dashboard(request: web.Request) -> web.Response:
@@ -445,6 +502,7 @@ async def sales_dashboard(request: web.Request) -> web.Response:
         "daily_trend": [{"date": str(r["sale_date"]), "sales": float(r["s"] or 0),
                          "cost": float(r["c"] or 0), "profit": float(r["p"] or 0),
                          "items": int(r["q"] or 0)} for r in daily_trend],
+        "by_order_type": list(order_types.values()),
         "hourly_revenue": [{"hour": int(r["hour"]), "sales": float(r["sales"] or 0),
                             "checks": int(r["checks"] or 0)} for r in hourly],
         "by_restaurant": [{"key": r["key"], "name": r["name"],
@@ -668,6 +726,22 @@ async def sales_template(request: web.Request) -> web.Response:
         headers={"Content-Disposition": "attachment; filename=sales_template.xlsx"})
 
                 GROUP BY hour ORDER BY hour""", *params)
+
+        order_mapping = await _order_type_mapping(conn)
+        order_rows = await conn.fetch(
+            f"""SELECT sr.payment_method method, SUM(sr.total_amount) sales,
+                       SUM(sr.quantity) checks
+                FROM sales_records sr {w}
+                GROUP BY sr.payment_method""", *params)
+        order_types = {name: {"type": name, "sales": 0.0, "checks": 0}
+                       for name in ("Зал", "Доставка", "Не распределено")}
+        for item in order_rows:
+            method = item["method"] or ""
+            category = order_mapping.get(method, "Не распределено")
+            if category not in order_types:
+                category = "Не распределено"
+            order_types[category]["sales"] += float(item["sales"] or 0)
+            order_types[category]["checks"] += int(item["checks"] or 0)
 
         by_payment = await conn.fetch(
             f"SELECT COALESCE(sr.payment_method,'Не указан') method, "

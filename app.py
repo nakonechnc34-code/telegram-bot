@@ -331,6 +331,14 @@ async def handle_admin_js(request):
     )
 
 
+async def handle_admin_soft_depth_css(request):
+    return await _send_static_file("admin-soft-depth.css", "text/css")
+
+
+async def handle_admin_dashboard_soft_depth_js(request):
+    return await _send_static_file("admin-dashboard-soft-depth.js", "application/javascript")
+
+
 async def handle_sales_css(request):
     data, mtime = _serve_file(
         "sales.css",
@@ -510,6 +518,8 @@ app.router.add_get("/admin", handle_admin_page)
 app.router.add_get("/admin/", handle_admin_page)
 app.router.add_get("/admin.css", handle_admin_css)
 app.router.add_get("/admin.js", handle_admin_js)
+app.router.add_get("/admin-soft-depth.css", handle_admin_soft_depth_css)
+app.router.add_get("/admin-dashboard-soft-depth.js", handle_admin_dashboard_soft_depth_js)
 app.router.add_get("/academy", handle_academy_page)
 app.router.add_get("/academy/", handle_academy_page)
 app.router.add_get("/timesheet", handle_timesheet_page)

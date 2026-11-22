@@ -12,6 +12,7 @@
         view: 'overview',
         dashboardRequest: 0,
         productsRequest: 0,
+        recordsRequest: 0,
     };
 
     const DOM = {};
@@ -170,6 +171,7 @@
     async function loadInlineRecords(page=1) {
         if(state.view!=='records')return;
         state.detailPage=page;
+        const requestId=++state.recordsRequest;
         const target=document.getElementById('inline-results');
         target.innerHTML='<div class="loading">Загрузка…</div>';
         try{
@@ -180,7 +182,7 @@
                 date_from:document.getElementById('inline-from').value||null,
                 date_to:document.getElementById('inline-to').value||null
             })});
-            if(state.view!=='records')return;
+            if(state.view!=='records'||requestId!==state.recordsRequest)return;
             const d=res.data||{}, rows=d.records||[];
             target.innerHTML='<div class="table-wrap"><table class="table"><thead><tr><th>Дата</th><th>Ресторан</th><th>Товар</th><th>Категория</th><th>Количество</th><th>Выручка</th><th>Прибыль</th></tr></thead><tbody>'+
                 (rows.map(r=>'<tr><td>'+formatDate(r.sale_date)+'</td><td>'+esc(r.restaurant_name||r.restaurant_key)+'</td><td>'+esc(r.product_name||'—')+'</td><td>'+esc(r.category||'—')+'</td><td>'+formatNumber(r.quantity)+'</td><td>'+money(r.total_amount)+'</td><td>'+money(r.profit_amount)+'</td></tr>').join('')||'<tr><td colspan="7" class="text-center">По выбранным фильтрам записей нет</td></tr>')+'</tbody></table></div>';
@@ -188,7 +190,7 @@
             const info=document.createElement('span');info.textContent='Записей: '+formatNumber(d.total||0)+' · Страница '+page+' из '+(d.pages||1);pager.appendChild(info);
             if(page>1){const prev=document.createElement('button');prev.className='btn btn-secondary';prev.textContent='← Назад';prev.addEventListener('click',()=>loadInlineRecords(page-1));pager.appendChild(prev);}
             if(page<(d.pages||1)){const next=document.createElement('button');next.className='btn btn-secondary';next.textContent='Далее →';next.addEventListener('click',()=>loadInlineRecords(page+1));pager.appendChild(next);}
-        }catch(e){target.innerHTML='<div class="empty-state"><strong>Ошибка загрузки</strong>'+esc(e.message)+'</div>';}
+        }catch(e){if(state.view==='records'&&requestId===state.recordsRequest)target.innerHTML='<div class="empty-state"><strong>Ошибка загрузки</strong>'+esc(e.message)+'</div>';}
     }
 
     function renderDailyTrendChart(trend) {
@@ -372,6 +374,8 @@
     function bindEvents() {
         document.querySelectorAll('[data-view]').forEach(button=>button.addEventListener('click',()=>{
             state.view=button.dataset.view;
+            ++state.recordsRequest;
+            ++state.productsRequest;
             document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b===button));
             document.getElementById('view-title').textContent=button.textContent.trim();
             document.getElementById('sales-sidebar').classList.remove('open');

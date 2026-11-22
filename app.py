@@ -103,6 +103,9 @@ def run_migrations():
                 cur.execute("ALTER TABLE standards ADD COLUMN IF NOT EXISTS image_url TEXT;")
                 cur.execute("ALTER TABLE standards ADD COLUMN IF NOT EXISTS file_name TEXT;")
 
+                # Compatibility with pre-existing news, standards and certification tables.
+                cur.execute((migrations / "003_content_schema_compat.sql").read_text(encoding="utf-8"))
+
                 # Payments
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS payments (

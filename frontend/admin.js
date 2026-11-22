@@ -789,6 +789,44 @@ function preserveStandardClipboardColors(html) {
     return doc.body.innerHTML;
 }
 
+function bindStandardDocxImport() {
+    const editor = $('std-body');
+    const fileInput = $('std-docx-file');
+    const button = $('std-docx-import');
+    if (!editor || !fileInput || !button) return;
+    button.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async () => {
+        const file = fileInput.files?.[0];
+        if (!file) return;
+        if (!file.name.toLowerCase().endsWith('.docx') || file.size > 3 * 1024 * 1024) {
+            toast('Выберите файл Word .docx размером до 3 МБ', 'error');
+            fileInput.value = '';
+            return;
+        }
+        if (editor.innerText.trim() && !confirm('Заменить текущий текст содержимым Word?')) {
+            fileInput.value = '';
+            return;
+        }
+        const form = new FormData();
+        form.append('file', file);
+        button.disabled = true;
+        try {
+            const response = await fetch('/api/admin/standard/import-docx', {
+                method: 'POST', headers: { 'X-Token': getToken() }, body: form
+            });
+            const data = await response.json();
+            if (!response.ok || !data.ok) throw new Error(data.error || 'Ошибка импорта Word');
+            editor.innerHTML = cleanHTML(data.html);
+            toast('Документ Word импортирован. Проверьте текст и нажмите «Сохранить».', 'success');
+        } catch (err) {
+            toast(err.message || 'Ошибка импорта Word', 'error');
+        } finally {
+            button.disabled = false;
+            fileInput.value = '';
+        }
+    });
+}
+
 function bindStandardRichPaste() {
     const editor = $('std-body');
     if (!editor) return;
@@ -1209,7 +1247,7 @@ async function openAddStandard() {
         <div class="form-group"><label>Заголовок</label><input class="form-input" id="std-title" maxlength="150"></div>
         <div class="form-group"><label>Тип контента</label><select class="form-select" id="std-content-type" onchange="switchContentTypeUI(this.value)"><option value="text">Текст</option><option value="table">Таблица</option></select></div>
         <div id="std-text-area">
-            <div class="form-group"><label>Текст стандарта</label><div contenteditable="true" id="std-body" class="rich-editor"></div></div>
+            <div class="form-group"><label>Текст стандарта</label><input type="file" id="std-docx-file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none;"><button type="button" class="btn btn--ghost" id="std-docx-import" style="margin-bottom:10px;">Импортировать из Word (.docx)</button><div contenteditable="true" id="std-body" class="rich-editor"></div></div>
         </div>
         <div id="std-table-area" style="display:none;margin-bottom:24px;">
             <div class="form-group" style="background:var(--green-bg);padding:16px;border-radius:8px;border:1px dashed #6ee7b7;">
@@ -1225,6 +1263,7 @@ async function openAddStandard() {
 
     bindTablePasteHandler();
     bindStandardRichPaste();
+    bindStandardDocxImport();
 
     $('std-image-btn').addEventListener('click', () => $('std-image-file').click());
     $('std-image-file').addEventListener('change', async (e) => {
@@ -1331,7 +1370,7 @@ async function openStdEdit(sid) {
         <div class="form-group"><label>Заголовок</label><input class="form-input" id="std-title" value="${esc(std.title || '')}"></div>
         <div class="form-group"><label>Тип контента</label><select class="form-select" id="std-content-type" onchange="switchContentTypeUI(this.value)"><option value="text" ${std.content_type !== 'table' ? 'selected' : ''}>Текст</option><option value="table" ${std.content_type === 'table' ? 'selected' : ''}>Таблица</option></select></div>
         <div id="std-text-area" style="display:${std.content_type === 'table' ? 'none' : 'block'};">
-            <div class="form-group"><label>Текст</label><div contenteditable="true" id="std-body" class="rich-editor">${cleanHTML(std.body || '')}</div></div>
+            <div class="form-group"><label>Текст</label><input type="file" id="std-docx-file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none;"><button type="button" class="btn btn--ghost" id="std-docx-import" style="margin-bottom:10px;">Импортировать из Word (.docx)</button><div contenteditable="true" id="std-body" class="rich-editor">${cleanHTML(std.body || '')}</div></div>
         </div>
         <div id="std-table-area" style="display:${std.content_type === 'table' ? 'block' : 'none'};margin-bottom:24px;">
             <div class="form-group" style="background:var(--green-bg);padding:16px;border-radius:8px;border:1px dashed #6ee7b7;">
@@ -1348,6 +1387,7 @@ async function openStdEdit(sid) {
     }
     bindTablePasteHandler();
     bindStandardRichPaste();
+    bindStandardDocxImport();
 
     $('std-image-btn').addEventListener('click', () => $('std-image-file').click());
     $('std-image-file').addEventListener('change', async (e) => {

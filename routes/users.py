@@ -4,7 +4,7 @@ from psycopg2 import sql
 from db import get_conn, _run
 from utils.auth_helpers import get_admin_user, denied, require_perm, _is_tu, _sync_get_tu_rests
 from utils.security import hash_password
-from routes.medbooks import compute_medbook_status, _sync_get_medbook_refs
+from routes.medbooks import _can_read_medbooks, compute_medbook_status, _sync_get_medbook_refs
 from utils.common import safe_int, generate_login_for
 
 routes = web.RouteTableDef()
@@ -78,7 +78,7 @@ def _sync_get_user_by_id(user_id):
                 """SELECT u.user_id, u.login, u.full_name, u.personnel_number, u.phone, u.birth_date, u.position, u.restaurant_key, r.name AS restaurant_name,
                        COALESCE(u.is_admin, FALSE) AS is_admin, COALESCE(u.is_super_admin, FALSE) AS is_super_admin,
                        COALESCE(u.is_fired, FALSE) AS is_fired, COALESCE(u.is_certified, FALSE) AS is_certified,
-                       u.medbook, u.created_at, u.last_seen_at, u.fired_at, u.fired_by, u.permissions,
+                       u.created_at, u.last_seen_at, u.fired_at, u.fired_by, u.permissions,
                        u.hire_date, u.citizenship_id, c.name AS citizenship_name, u.payment_type
                 FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key
                 LEFT JOIN citizenships c ON u.citizenship_id = c.id WHERE u.user_id = %s""",
@@ -117,10 +117,12 @@ async def handle_admin_users(request):
 
     users = await _run(_sync_list_users, search, fired, tu_rests)
 
-    doctors, tests, vaccines = await _run(_sync_get_medbook_refs)
+    can_read_medbooks = _can_read_medbooks(user)
+    if can_read_medbooks:
+        doctors, tests, vaccines = await _run(_sync_get_medbook_refs)
     for u in users:
-        mb = u.get("medbook") or {}
-        if u.get("is_admin"):
+        mb = u.pop("medbook", None) or {}
+        if not can_read_medbooks or u.get("is_admin"):
             u["medbook_status"] = "—"
         else:
             u["medbook_status"] = compute_medbook_status(mb, doctors, tests, vaccines)
@@ -239,6 +241,7 @@ def _sync_update_user(uid, updates):
                     cur.execute(query, (v, uid))
             if "password" in updates and updates["password"]:
                 cur.execute("UPDATE users SET password_hash = %s WHERE user_id = %s", (hash_password(updates["password"]), uid))
+                cur.execute("DELETE FROM web_sessions WHERE user_id = %s", (uid,))
             if "is_admin" in updates:
                 cur.execute("UPDATE users SET is_admin = %s WHERE user_id = %s", (bool(updates["is_admin"]), uid))
                 if not updates["is_admin"]:
@@ -367,7 +370,7 @@ async def handle_admin_user_restore(request):
     return web.json_response({"ok": True})
 
 
-def _sync_dashboard_stats():
+def _sync_dashboard_stats(admin):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM users WHERE COALESCE(is_admin, FALSE) = FALSE AND COALESCE(is_fired, FALSE) = FALSE AND login IS NOT NULL")
@@ -385,13 +388,22 @@ def _sync_dashboard_stats():
             cur.execute("SELECT COUNT(*) FROM standards WHERE status = 'pending'")
             standards_pending = cur.fetchone()[0] or 0
 
-            doctors, tests, vaccines = _sync_get_medbook_refs()
-            cur.execute("SELECT medbook FROM users WHERE login IS NOT NULL AND COALESCE(is_fired, FALSE) = FALSE AND COALESCE(is_admin, FALSE) = FALSE AND medbook IS NOT NULL")
             mb_alerts = 0
-            for row in cur.fetchall():
-                st = compute_medbook_status(row[0] or {}, doctors, tests, vaccines)
-                if st in ('invalid', 'expiring'):
-                    mb_alerts += 1
+            if _can_read_medbooks(admin):
+                doctors, tests, vaccines = _sync_get_medbook_refs()
+                query = ("SELECT medbook FROM users WHERE login IS NOT NULL "
+                         "AND COALESCE(is_fired, FALSE) = FALSE AND COALESCE(is_admin, FALSE) = FALSE "
+                         "AND medbook IS NOT NULL")
+                params = ()
+                if _is_tu(admin):
+                    query += (" AND restaurant_key IN "
+                              "(SELECT key FROM restaurants WHERE territory_manager_id = %s)")
+                    params = (admin["user_id"],)
+                cur.execute(query, params)
+                for row in cur.fetchall():
+                    status = compute_medbook_status(row[0], doctors, tests, vaccines)
+                    if status in ("invalid", "expiring"):
+                        mb_alerts += 1
     return {
         "total": total,
         "active": active,
@@ -409,7 +421,7 @@ async def handle_admin_dashboard(request):
     user, err = await get_admin_user(request)
     if err:
         return denied(err)
-    stats = await _run(_sync_dashboard_stats)
+    stats = await _run(_sync_dashboard_stats, user)
     return web.json_response({"stats": stats})
 
 
@@ -418,7 +430,7 @@ async def handle_admin_reports(request):
     admin, err = await get_admin_user(request)
     if err:
         return denied(err)
-    stats = await _run(_sync_dashboard_stats)
+    stats = await _run(_sync_dashboard_stats, admin)
     return web.json_response({"report": stats})
 
 
@@ -458,18 +470,25 @@ async def handle_admin_dashboard_summary(request):
                 cur.execute("SELECT user_id, full_name, position FROM users WHERE login IS NOT NULL AND COALESCE(is_fired, FALSE) = FALSE AND COALESCE(is_admin, FALSE) = FALSE ORDER BY created_at DESC LIMIT 4")
                 new_users = [dict(r) for r in cur.fetchall()]
 
-                doctors, tests, vaccines = _sync_get_medbook_refs()
-                cur.execute("SELECT full_name, medbook FROM users WHERE login IS NOT NULL AND COALESCE(is_fired, FALSE) = FALSE AND COALESCE(is_admin, FALSE) = FALSE AND medbook IS NOT NULL")
-                users_with_mb = cur.fetchall()
-
                 total_mb_alerts = 0
                 mb_alerts = []
-                for u in users_with_mb:
-                    st = compute_medbook_status(u.get("medbook") or {}, doctors, tests, vaccines)
-                    if st in ('invalid', 'expiring'):
-                        total_mb_alerts += 1
-                        if len(mb_alerts) < 5:
-                            mb_alerts.append({"full_name": u["full_name"], "status": st})
+                if _can_read_medbooks(user):
+                    doctors, tests, vaccines = _sync_get_medbook_refs()
+                    query = ("SELECT full_name, medbook FROM users WHERE login IS NOT NULL "
+                             "AND COALESCE(is_fired, FALSE) = FALSE AND COALESCE(is_admin, FALSE) = FALSE "
+                             "AND medbook IS NOT NULL")
+                    params = ()
+                    if _is_tu(user):
+                        query += (" AND restaurant_key IN "
+                                  "(SELECT key FROM restaurants WHERE territory_manager_id = %s)")
+                        params = (user["user_id"],)
+                    cur.execute(query, params)
+                    for employee in cur.fetchall():
+                        status = compute_medbook_status(employee["medbook"], doctors, tests, vaccines)
+                        if status in ("invalid", "expiring"):
+                            total_mb_alerts += 1
+                            if len(mb_alerts) < 5:
+                                mb_alerts.append({"full_name": employee["full_name"], "status": status})
 
                 stats["medbooks_alert"] = total_mb_alerts
 

@@ -17,6 +17,10 @@ _REF_CONFIG = {
 }
 
 
+def _can_read_medbooks(admin):
+    return _is_tu(admin) or _sync_user_has_perm(admin, "medbook_edit")
+
+
 def _require_ref_manage_perm(admin, rtype):
     cfg = _REF_CONFIG.get(rtype)
     if not cfg:
@@ -56,7 +60,10 @@ def entry_status(date_str, validity_months):
     d = parse_date_ddmmYYYY(date_str)
     if not d:
         return "invalid_date"
-    exp = add_months(d, validity_months)
+    try:
+        exp = add_months(d, validity_months)
+    except (ValueError, OverflowError):
+        return "invalid_date"
     today = datetime.datetime.utcnow().date()
     if exp < today:
         return "expired"
@@ -72,13 +79,15 @@ def _mb_items(medbook, doctors, tests, vaccines):
             mb = json.loads(mb)
         except Exception:
             mb = {}
+    if not isinstance(mb, dict):
+        mb = {}
     items = []
-    for d in doctors:
-        items.append((mb.get("doctors", {}).get(str(d["id"])), d["validity_months"]))
-    for t in tests:
-        items.append((mb.get("tests", {}).get(str(t["id"])), t["validity_months"]))
-    for v in vaccines:
-        items.append((mb.get("vaccines", {}).get(str(v["id"])), v["validity_months"]))
+    for section, refs in (("doctors", doctors), ("tests", tests), ("vaccines", vaccines)):
+        entries = mb.get(section)
+        if not isinstance(entries, dict):
+            entries = {}
+        for ref in refs:
+            items.append((entries.get(str(ref["id"])), ref["validity_months"]))
     return items
 
 
@@ -136,6 +145,8 @@ async def handle_admin_medbooks(request):
     admin, err = await get_admin_user(request)
     if err:
         return denied(err)
+    if not _can_read_medbooks(admin):
+        return denied(403)
     doctors, tests, vaccines, users = await _run(_sync_medbooks_full, admin["user_id"], _is_tu(admin))
     return web.json_response({"doctors": doctors, "tests": tests, "vaccines": vaccines, "users": users})
 
@@ -145,21 +156,25 @@ async def handle_admin_medbook_get(request):
     admin, err = await get_admin_user(request)
     if err:
         return denied(err)
+    if not _can_read_medbooks(admin):
+        return denied(403)
     try:
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
-    uid = safe_int(body.get("user_id"))
+    uid = safe_int(body.get("user_id")) if isinstance(body, dict) else 0
     if uid <= 0:
         return web.json_response({"error": "invalid_id"}, status=400)
 
     def _sync():
+        scope = " AND r.territory_manager_id = %s" if _is_tu(admin) else ""
+        params = (uid, admin["user_id"]) if scope else (uid,)
         with get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(
                     "SELECT u.user_id, u.full_name, u.position, u.medbook, r.name AS restaurant_name "
-                    "FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key WHERE u.user_id = %s",
-                    (uid,)
+                    "FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key WHERE u.user_id = %s" + scope,
+                    params
                 )
                 return cur.fetchone()
 
@@ -194,18 +209,32 @@ async def handle_admin_medbook_save(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
-    uid = safe_int(body.get("user_id"))
+    uid = safe_int(body.get("user_id")) if isinstance(body, dict) else 0
     if uid <= 0:
         return web.json_response({"error": "invalid_id"}, status=400)
 
-    mb = body.get("medbook") or {"doctors": {}, "tests": {}, "vaccines": {}}
+    mb = body.get("medbook")
+    if mb is None:
+        mb = {"doctors": {}, "tests": {}, "vaccines": {}}
+    if not isinstance(mb, dict) or any(
+        not isinstance(mb.get(section, {}), dict) for section in ("doctors", "tests", "vaccines")
+    ):
+        return web.json_response({"error": "invalid_medbook"}, status=400)
 
     def _sync():
+        query = "UPDATE users SET medbook = %s WHERE user_id = %s"
+        params = (Json(mb), uid)
+        if _is_tu(admin):
+            query += (" AND restaurant_key IN "
+                      "(SELECT key FROM restaurants WHERE territory_manager_id = %s)")
+            params += (admin["user_id"],)
         with get_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute("UPDATE users SET medbook = %s WHERE user_id = %s", (Json(mb), uid))
+                cur.execute(query, params)
+                return cur.rowcount > 0
 
-    await _run(_sync)
+    if not await _run(_sync):
+        return web.json_response({"error": "not_found"}, status=404)
     return web.json_response({"ok": True})
 
 

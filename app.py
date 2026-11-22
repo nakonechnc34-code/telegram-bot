@@ -527,7 +527,7 @@ async def main():
     else:
         logging.info("⏳ Миграции пропущены (RUN_MIGRATIONS=false)")
 
-    runner = web.AppRunner(app)
+    runner = web.AppRunner(app, access_log=None)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()

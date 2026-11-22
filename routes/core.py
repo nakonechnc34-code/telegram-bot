@@ -524,7 +524,7 @@ async def handle_admin_reports(request):
     admin, err = await get_admin_user(request)
     if err:
         return denied(err)
-    stats = await _run(_sync_dashboard_stats)
+    stats = await _run(_sync_dashboard_stats, admin)
     return web.json_response({"report": stats})
 
 

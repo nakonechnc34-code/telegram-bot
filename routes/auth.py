@@ -1,9 +1,12 @@
+from ipaddress import ip_address
+
 from aiohttp import web
+from config import TRUSTED_PROXY_NETWORKS
 from psycopg2.extras import RealDictCursor
 from db import get_conn, _run
 from utils.security import validate_login_data, verify_password, _check_rate_limit, _reset_rate_limit
 from utils.auth_helpers import (
-    _sync_create_session, _sync_delete_session, get_admin_user, denied
+    _extract_token, _sync_create_session, _sync_delete_session
 )
 from middleware.auth import require_admin
 
@@ -16,11 +19,22 @@ def _sync_get_user_by_login(login):
             return cur.fetchone()
 
 def _get_client_ip(request):
-    """Получает реальный IP клиента за прокси (Amvera)."""
-    x_forwarded_for = request.headers.get("X-Forwarded-For")
-    if x_forwarded_for:
-        return x_forwarded_for.split(",")[0].strip()
-    return request.remote or "unknown"
+    # remote читается из транспорта aiohttp. Заголовок проверяется только за доверенным прокси.
+    try:
+        peer = ip_address(request.remote or "")
+    except ValueError:
+        return "unknown"
+    peer = getattr(peer, "ipv4_mapped", None) or peer
+    if any(peer in network for network in TRUSTED_PROXY_NETWORKS):
+        forwarded = request.headers.getall("X-Forwarded-For", [])
+        if len(forwarded) == 1:
+            try:
+                client = ip_address(forwarded[0].rsplit(",", 1)[-1].strip())
+                if getattr(client, "scope_id", None) is None:
+                    return str(getattr(client, "ipv4_mapped", None) or client)
+            except ValueError:
+                pass
+    return str(peer)
 
 # ============= СТАФФ (СОТРУДНИК) =============
 @routes.post('/api/auth/login')
@@ -54,16 +68,11 @@ async def handle_auth_login_staff(request):
         "ok": True,
         "token": token,
         "is_admin": bool(user.get("is_admin") or user.get("is_super_admin"))
-    })
+    }, headers={"Cache-Control": "no-store"})
 
 @routes.post('/api/auth/logout')
 async def handle_auth_logout(request):
-    try:
-        data = await request.json()
-    except Exception:
-        data = {}
-
-    token = data.get("webToken") or ""
+    token = await _extract_token(request, allow_query=False)
     if token:
         await _run(_sync_delete_session, token)
 
@@ -104,7 +113,7 @@ async def handle_auth_login_admin(request):
         "ok": True,
         "token": token,
         "is_admin": True
-    })
+    }, headers={"Cache-Control": "no-store"})
 
 @routes.post('/api/admin/me')
 @require_admin

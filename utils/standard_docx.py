@@ -1,4 +1,4 @@
-"""Convert uploaded Word standards into safely styled HTML without clipboard loss."""
+"""Convert Word standards to sanitized HTML with colors and true list numbering."""
 from html import escape
 from io import BytesIO
 from docx import Document
@@ -11,13 +11,15 @@ def _run_html(run):
     value = run.text
     if not value:
         return ''
+    # Symbol-font bullets are stored as private-use U+F0B7 in some Word files.
+    value = value.replace('\\uf0b7', '•')
     value = escape(value).replace('\\n', '<br>')
     styles = []
     if run.font.color and run.font.color.rgb:
         styles.append('color:#' + str(run.font.color.rgb))
     if run.font.size:
         styles.append('font-size:' + str(round(run.font.size.pt, 2)) + 'pt')
-    if run.font.name:
+    if run.font.name and not (run.text.startswith('\\uf0b7')):
         styles.append('font-family:' + escape(run.font.name, quote=True))
     if run.bold:
         styles.append('font-weight:bold')
@@ -30,14 +32,53 @@ def _run_html(run):
     return value
 
 
+def _list_kind(para, numbering):
+    props = para._p.pPr
+    if props is None or props.numPr is None or props.numPr.numId is None:
+        return None, None
+    num_id = props.numPr.numId.val
+    for num in numbering.findall(qn('w:num')):
+        if int(num.get(qn('w:numId'))) != num_id:
+            continue
+        abstract_id = num.find(qn('w:abstractNumId'))
+        if abstract_id is None:
+            break
+        for abstract in numbering.findall(qn('w:abstractNum')):
+            if abstract.get(qn('w:abstractNumId')) != abstract_id.get(qn('w:val')):
+                continue
+            level = props.numPr.ilvl.val if props.numPr.ilvl is not None else 0
+            for lvl in abstract.findall(qn('w:lvl')):
+                if int(lvl.get(qn('w:ilvl'))) == level:
+                    fmt = lvl.find(qn('w:numFmt'))
+                    return ('ul' if fmt is not None and fmt.get(qn('w:val')) == 'bullet' else 'ol'), num_id
+    return 'ol', num_id
+
+
 def convert_standard_docx(data):
     document = Document(BytesIO(data))
+    numbering = document.part.numbering_part.element
     output = []
+    active_list = None
     for para in document.paragraphs:
+        kind, list_id = _list_kind(para, numbering)
+        current_list = (kind, list_id) if kind else None
+        if active_list != current_list:
+            if active_list:
+                output.append('</' + active_list[0] + '>')
+            if current_list:
+                output.append('<' + kind + ' style="padding-left:28px;margin-top:0;margin-bottom:8px">')
+            active_list = current_list
+
         content = ''.join(_run_html(run) for run in para.runs)
-        if not content and not para.text.strip():
+        if kind:
+            output.append('<li>' + content + '</li>')
+            continue
+        if not para.text.strip():
             output.append('<p>&nbsp;</p>')
             continue
+        # Word documents often use trailing spaces to position text; do not
+        # reproduce those as visible horizontal indentation in the editor.
+        content = content.rstrip()
         styles = []
         alignment = {
             WD_ALIGN_PARAGRAPH.CENTER: 'center',
@@ -50,9 +91,12 @@ def convert_standard_docx(data):
             styles.append('margin-top:' + str(round(para.paragraph_format.space_before.pt, 2)) + 'pt')
         if para.paragraph_format.space_after:
             styles.append('margin-bottom:' + str(round(para.paragraph_format.space_after.pt, 2)) + 'pt')
-        is_list = para._p.pPr is not None and para._p.pPr.find(qn('w:numPr')) is not None
-        if is_list:
-            content = '&#8226; ' + content
+        # Word uses the private-use glyph for manual bullets. Normalize it to
+        # a real bullet, keeping the following bold text and other formatting.
+        if para.text.startswith('\\uf0b7'):
+            styles.append('padding-left:12px')
         attr = ' style="' + ';'.join(styles) + '"' if styles else ''
         output.append('<p' + attr + '>' + content + '</p>')
+    if active_list:
+        output.append('</' + active_list[0] + '>')
     return sanitize_standard_html(''.join(output))

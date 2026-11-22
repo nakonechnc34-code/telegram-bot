@@ -21,8 +21,8 @@ def test_all_navigation_destinations_and_loaders():
     titles = JS.split("const PAGE_TITLES =", 1)[1].split("};", 1)[0]
     loaders = JS.split("const PAGE_LOADERS =", 1)[1].split("};", 1)[0]
     for page in PAGES:
-        assert re.search(rf"\\b{page}\\s*:", titles)
-        assert re.search(rf"\\b{page}\\s*:", loaders)
+        assert re.search(rf"\b{page}\s*:", titles)
+        assert re.search(rf"\b{page}\s*:", loaders)
 
 def test_auth_and_permissions_remain_wired():
     assert "/api/admin/login" in JS

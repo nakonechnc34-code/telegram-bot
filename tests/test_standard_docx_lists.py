@@ -41,7 +41,7 @@ def test_private_use_bullet_is_readable():
     p.add_run('Перед началом').bold = True
     buffer = BytesIO(); doc.save(buffer)
     html = convert_standard_docx(buffer.getvalue())
-    assert '• Перед началом' in html
+    assert '• <span style="font-weight:bold;">Перед началом</span>' in html
     assert '&#xf0b7;' not in html
     assert '\uf0b7' not in html
     assert 'font-weight:bold' in html

@@ -164,10 +164,10 @@ async def security_headers_middleware(request, handler):
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     csp = (
         "default-src 'self'; script-src 'self' 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline' [https://fonts.googleapis.com](https://fonts.googleapis.com); "
-        "font-src 'self' [https://fonts.gstatic.com](https://fonts.gstatic.com); "
-        "img-src 'self' data: [https://images.unsplash.com](https://images.unsplash.com); "
-        "connect-src 'self' [https://fonts.googleapis.com](https://fonts.googleapis.com); "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data: https://images.unsplash.com; "
+        "connect-src 'self' https://fonts.googleapis.com; "
         "frame-ancestors 'none'; child-src 'none';"
     )
     response.headers["Content-Security-Policy"] = csp
@@ -185,6 +185,7 @@ _INDEX_CACHE = {"data": None, "mtime": 0.0}
 _ADMIN_CACHE = {"data": None, "mtime": 0.0}
 _ACADEMY_CACHE = {"data": None, "mtime": 0.0}
 _TIMESHEET_CACHE = {"data": None, "mtime": 0.0}
+_SALES_CACHE = {"data": None, "mtime": 0.0}
 _STATIC_FILES_CACHE = {}
 
 
@@ -241,6 +242,10 @@ async def handle_timesheet_page(request):
     return await _handle_html("timesheet.html", _TIMESHEET_CACHE)
 
 
+async def handle_sales_page(request):
+    return await _handle_html("sales.html", _SALES_CACHE)
+
+
 async def handle_admin_css(request):
     data, mtime = _serve_file(
         "admin.css",
@@ -266,6 +271,42 @@ async def handle_admin_js(request):
     )
     if not data:
         return web.Response(text="admin.js not found", status=404)
+    return web.Response(
+        body=data,
+        content_type="application/javascript",
+        charset="utf-8",
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "Last-Modified": formatdate(mtime, usegmt=True),
+        }
+    )
+
+
+async def handle_sales_css(request):
+    data, mtime = _serve_file(
+        "sales.css",
+        _STATIC_FILES_CACHE.setdefault("sales.css", {"data": None, "mtime": 0.0})
+    )
+    if not data:
+        return web.Response(text="sales.css not found", status=404)
+    return web.Response(
+        body=data,
+        content_type="text/css",
+        charset="utf-8",
+        headers={
+            "Cache-Control": "public, max-age=31536000",
+            "Last-Modified": formatdate(mtime, usegmt=True),
+        }
+    )
+
+
+async def handle_sales_js(request):
+    data, mtime = _serve_file(
+        "sales.js",
+        _STATIC_FILES_CACHE.setdefault("sales.js", {"data": None, "mtime": 0.0})
+    )
+    if not data:
+        return web.Response(text="sales.js not found", status=404)
     return web.Response(
         body=data,
         content_type="application/javascript",
@@ -420,6 +461,10 @@ app.router.add_get("/academy", handle_academy_page)
 app.router.add_get("/academy/", handle_academy_page)
 app.router.add_get("/timesheet", handle_timesheet_page)
 app.router.add_get("/timesheet/", handle_timesheet_page)
+app.router.add_get("/sales", handle_sales_page)
+app.router.add_get("/sales/", handle_sales_page)
+app.router.add_get("/sales.css", handle_sales_css)
+app.router.add_get("/sales.js", handle_sales_js)
 app.router.add_get("/favicon.ico", handle_favicon)
 app.router.add_get("/api/health", handle_health)
 app.router.add_get("/manifest.json", handle_manifest)

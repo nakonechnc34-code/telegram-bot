@@ -1679,4 +1679,289 @@ function openEditRestaurant(key) {
             <div class="form-group"><label>Телефон</label><input class="form-input" id="er-phone" value="${esc(r.phone || '')}"></div>
             <div class="form-group"><label>Часы</label><input class="form-input" id="er-hours" value="${esc(r.hours || '')}"></div>
         </div>
-        <div class="form-group"><label>Организация</label><input class="form-input" id
+        <div class="form-group"><label>Организация</label><input class="form-input" id="er-org" value="${esc(r.org || '')}"></div>
+        <div class="form-hint" id="er-error"></div>
+    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="er-save">Сохранить</button>`);
+    $('er-save').addEventListener('click', async () => {
+        const errEl = $('er-error'); errEl.textContent = '';
+        try {
+            await api('/api/admin/restaurant/update', {
+                key,
+                updates: {
+                    name: $('er-name').value.trim(),
+                    address: $('er-address').value.trim(),
+                    phone: $('er-phone').value.trim(),
+                    hours: $('er-hours').value.trim(),
+                    org: $('er-org').value.trim(),
+                }
+            });
+            clearCache();
+            toast('Сохранено', 'success'); closeModal(); loadRestaurants();
+        } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+    });
+}
+
+function openTURestaurant(key, currentTu) {
+    const tus = window._tuCandidates || [];
+    const opts = '<option value="">— Не назначен —</option>' + tus.map(t =>
+        `<option value="${t.user_id}" ${t.user_id === currentTu ? 'selected' : ''}>${esc(t.full_name)}</option>`
+    ).join('');
+    openModal('Территориальный управляющий', `
+        <div class="form-group"><label>ТУ</label><select class="form-select" id="tu-select">${opts}</select></div>
+        <div class="form-hint" id="tu-error"></div>
+    `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="tu-save">Сохранить</button>`);
+    $('tu-save').addEventListener('click', async () => {
+        const errEl = $('tu-error'); errEl.textContent = '';
+        try {
+            const val = $('tu-select').value;
+            await api('/api/admin/restaurant/tu', { key, territory_manager_id: val ? parseInt(val) : null });
+            clearCache();
+            toast('Сохранено', 'success'); closeModal(); loadRestaurants();
+        } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+    });
+}
+
+async function toggleRestaurantStatus(key, currentStatus) {
+    const newStatus = currentStatus === 'closed' ? 'open' : 'closed';
+    try {
+        await api('/api/admin/restaurant/status', { key, status: newStatus });
+        clearCache();
+        toast('Статус обновлён', 'success');
+        loadRestaurants();
+    } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+}
+
+// ═══════════════════════════════════════════
+// QUESTIONS
+// ═══════════════════════════════════════════
+async function loadQuestions() {
+    $('page-content').innerHTML = `
+        <div class="neu-card">
+            <div class="neu-card__header"><div class="neu-card__header-title">Вопросы от сотрудников</div></div>
+            <div id="q-list"><div class="loading">Загрузка...</div></div>
+        </div>`;
+    try {
+        const data = await cachedApi('/api/admin/questions', {});
+        const list = data.questions || [];
+        $('q-list').innerHTML = list.map(q => `
+            <div class="neu-card" style="margin-bottom:16px; box-shadow: none; border: 1px solid var(--border);">
+                <div style="display:flex;justify-content:space-between;gap:16px;">
+                    <div style="flex:1;">
+                        <div style="font-weight:700;margin-bottom:8px; font-size:15px;">${esc(q.full_name || 'Сотрудник')}</div>
+                        <div style="font-size:14px;color:var(--text-sec);white-space:pre-wrap;">${esc(q.text)}</div>
+                        <div style="font-size:12px;color:var(--text-sec);margin-top:8px;">${fmtDate(q.created_at, true)}</div>
+                    </div>
+                    <div>${q.replied ? '<span class="tag tag--green">Отвечен</span>' : '<span class="tag tag--amber">Ожидает</span>'}</div>
+                </div>
+            </div>
+        `).join('') || '<div class="empty">Нет вопросов</div>';
+    } catch (e) { $('q-list').innerHTML = `<div class="empty">Ошибка: ${esc(e.message)}</div>`; }
+}
+
+// ═══════════════════════════════════════════
+// ADMINS
+// ═══════════════════════════════════════════
+async function loadAdmins() {
+    $('page-content').innerHTML = `
+        <div class="neu-card">
+            <div class="neu-card__header"><div class="neu-card__header-title">Администраторы</div></div>
+            <div id="admins-list"><div class="loading">Загрузка...</div></div>
+        </div>`;
+    try {
+        const data = await api('/api/admin/admins', {});
+        const admins = data.admins || [];
+        _adminPermsMap = {};
+        $('admins-list').innerHTML = `<div class="table-wrap"><table class="t"><thead><tr><th>ФИО</th><th>Логин</th><th>Роль</th><th>Действия</th></tr></thead><tbody>
+        ${admins.map(a => {
+            let acts = '';
+            if (isSuperAdmin() && !a.is_super_admin) {
+                let parsedPerms = {};
+                try {
+                    parsedPerms = typeof a.permissions === 'string' ? JSON.parse(a.permissions || '{}') : (a.permissions || {});
+                } catch (e) {}
+                _adminPermsMap[a.user_id] = {
+                    name: a.full_name || '',
+                    permissions: parsedPerms,
+                };
+                acts = `<button class="btn btn--sm btn--outline" onclick="openEditPermissions(${a.user_id})">Права</button>`;
+            }
+            return `<tr>
+                <td style="font-weight:600;">${esc(a.full_name || '—')}</td>
+                <td>@${esc(a.login || '')}</td>
+                <td>${a.is_super_admin ? '<span class="tag tag--purple">Суперадмин</span>' : '<span class="tag tag--blue">Админ</span>'}</td>
+                <td>
+                    <div style="display:flex; gap:8px; white-space:nowrap;">
+                        ${acts}
+                    </div>
+                </td>
+            </tr>`;
+        }).join('')}
+        </tbody></table></div>`;
+    } catch (e) { $('admins-list').innerHTML = `<div class="empty">Ошибка: ${esc(e.message)}</div>`; }
+}
+
+async function openEditPermissions(uid) {
+    const meta = _adminPermsMap[uid] || { name: '', permissions: {} };
+    const name = meta.name;
+    const activePerms = meta.permissions || {};
+
+    let permsList = [];
+    try {
+        const data = await api('/api/admin/permissions-list', {});
+        permsList = data.permissions || [];
+    } catch (e) { toast('Ошибка загрузки списка прав', 'error'); return; }
+
+    let html = `<div class="form-group">
+        <label style="margin-bottom:16px; display:block; font-size:15px;">Права для: <strong>${esc(name)}</strong></label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">`;
+
+    permsList.forEach(p => {
+        const checked = activePerms[p.key] ? 'checked' : '';
+        html += `<label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;cursor:pointer;line-height:1.3;padding:8px; border:1px solid var(--border); border-radius:6px; background:#f8fafc;">
+            <input type="checkbox" class="perm-checkbox" value="${esc(p.key)}" ${checked} style="margin-top:2px;">
+            <span>${esc(p.label)}</span>
+        </label>`;
+    });
+
+    html += `</div></div><div class="form-hint error" id="perm-error"></div>`;
+
+    openModal('Настройка прав администратора', html, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="perm-save">Сохранить</button>`);
+
+    $('perm-save').addEventListener('click', async () => {
+        const errEl = $('perm-error'); errEl.textContent = '';
+        const newPerms = {};
+        document.querySelectorAll('.perm-checkbox:checked').forEach(cb => {
+            newPerms[cb.value] = true;
+        });
+
+        try {
+            await api('/api/admin/set-permissions', { user_id: uid, permissions: newPerms });
+            clearCache();
+            toast('Права обновлены', 'success');
+            closeModal();
+            loadAdmins();
+        } catch (e) {
+            errEl.textContent = 'Ошибка: ' + e.message;
+        }
+    });
+}
+
+// ═══════════════════════════════════════════
+// REPORTS
+// ═══════════════════════════════════════════
+async function loadReports() {
+    $('page-content').innerHTML = '<div class="loading">Загрузка...</div>';
+    try {
+        const data = await api('/api/admin/reports', {});
+        const r = data.report || {};
+        $('page-content').innerHTML = `
+            <div class="stats-grid">
+                <div class="neu-card neu-card--stat purple"><div class="neu-card__label">Активные сотрудники</div><div class="neu-card__value">${r.active || 0}</div></div>
+                <div class="neu-card neu-card--stat yellow"><div class="neu-card__label">На модерации</div><div class="neu-card__value">${(r.news_pending || 0) + (r.standards_pending || 0)}</div></div>
+                <div class="neu-card neu-card--stat blue"><div class="neu-card__label">Медкнижки</div><div class="neu-card__value">${r.medbooks_alert || 0}</div></div>
+                <div class="neu-card neu-card--stat green"><div class="neu-card__label">Вопросы</div><div class="neu-card__value">${r.questions_open || 0}</div></div>
+            </div>`;
+    } catch (e) {
+        $('page-content').innerHTML = `<div class="empty">Ошибка: ${esc(e.message)}</div>`;
+    }
+}
+
+// ═══════════════════════════════════════════
+// AUDIT
+// ═══════════════════════════════════════════
+async function loadAudit() {
+    $('page-content').innerHTML = `
+        <div class="neu-card">
+            <div class="neu-card__header"><div class="neu-card__header-title">История действий</div></div>
+            <div id="audit-list"><div class="loading">Загрузка...</div></div>
+        </div>`;
+    try {
+        const data = await api('/api/admin/audit', {});
+        const list = data.audit || [];
+        $('audit-list').innerHTML = `<div class="table-wrap"><table class="t"><thead><tr><th>Дата</th><th>Действие</th><th>Объект</th><th>Детали</th></tr></thead><tbody>
+        ${list.map(a => `<tr>
+            <td style="white-space:nowrap; color:var(--text-sec); font-size:12px;">${fmtDate(a.created_at, true)}</td>
+            <td style="font-weight:600;">${esc(a.action || '—')}</td>
+            <td><span class="tag">${esc((a.target_type || '') + ' ' + (a.target_id || ''))}</span></td>
+            <td style="font-size:13px;color:var(--text-sec);">${esc(a.details || '')}</td>
+        </tr>`).join('')}
+        </tbody></table></div>`;
+    } catch (e) { $('audit-list').innerHTML = `<div class="empty">Ошибка: ${esc(e.message)}</div>`; }
+}
+
+// ═══════════════════════════════════════════
+// PAGE LOADERS
+// ═══════════════════════════════════════════
+const PAGE_LOADERS = {
+    dashboard: loadDashboard,
+    users: loadUsers,
+    medbooks: loadMedbooks,
+    news: loadNews,
+    standards: loadStandards,
+    certification: loadCertification,
+    faq: loadFAQ,
+    restaurants: loadRestaurants,
+    positions: loadPositions,
+    citizenships: loadCitizenships,
+    questions: loadQuestions,
+    admins: loadAdmins,
+    reports: loadReports,
+    audit: loadAudit,
+};
+
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+    // Login
+    $('login-btn')?.addEventListener('click', doLogin);
+    $('login-password')?.addEventListener('keypress', e => { if (e.key === 'Enter') doLogin(); });
+    $('login-login')?.addEventListener('input', e => {
+        e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5);
+    });
+
+    // Logout
+    $('logout-btn')?.addEventListener('click', async () => {
+        try { await api('/api/auth/logout', { webToken: getToken() }); } catch (e) {}
+        clearToken(); clearCache(); showLogin();
+    });
+
+    // Change password
+    $('change-password-btn')?.addEventListener('click', () => {
+        openModal('Сменить пароль', `
+            <div class="form-group"><label>Текущий пароль</label><input class="form-input" id="cp-old" type="password"></div>
+            <div class="form-group"><label>Новый пароль</label><input class="form-input" id="cp-new" type="password"></div>
+            <div class="form-hint" id="cp-error"></div>
+        `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="cp-save">Сохранить</button>`);
+        $('cp-save').addEventListener('click', async () => {
+            const errEl = $('cp-error'); errEl.textContent = '';
+            try {
+                await api('/api/admin/change-password', { old_password: $('cp-old').value, new_password: $('cp-new').value });
+                toast('Пароль изменён', 'success'); closeModal();
+            } catch (e) { errEl.textContent = 'Ошибка: ' + e.message; }
+        });
+    });
+
+    // Nav
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.addEventListener('click', () => {
+            navigate(item.dataset.page);
+            closeSidebar();
+        });
+    });
+
+    // Sidebar
+    $('hamburger')?.addEventListener('click', openSidebar);
+    $('overlay')?.addEventListener('click', closeSidebar);
+
+    // Modal close
+    $('modal-close')?.addEventListener('click', closeModal);
+    $('modal-overlay')?.addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
+
+    // Auto-init
+    if (getToken()) {
+        checkAdminAndLoad();
+    } else {
+        showLogin();
+    }
+});

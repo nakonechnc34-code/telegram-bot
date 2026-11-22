@@ -80,11 +80,12 @@ def _parse_iiko_daily(ws) -> list[dict]:
 
     i_date, i_rest, i_pay = col("учетный день", "дата"), col("торговое предприятие", "ресторан"), col("тип оплаты", "оплата")
     i_sum, i_chk = col("сумма со скидкой", "сумма"), col("чеков", "кол-во")
+    i_hour = col("час открытия")
 
-    if i_sum == -1 or i_pay == -1:
+    if i_sum == -1 or i_pay == -1 or i_rest == -1 or i_date == -1:
         return []
 
-    records, cur_date, cur_rest = [], None, None
+    records, cur_date, cur_rest, cur_hour = [], None, None, None
     for row in rows[header_idx + 1:]:
         if not row or all(v is None or str(v).strip() == "" for v in row):
             continue
@@ -95,9 +96,23 @@ def _parse_iiko_daily(ws) -> list[dict]:
         if raw_date and "всего" in str(raw_date).lower(): continue
 
         cur_date = _to_date(raw_date) or cur_date
-        cur_rest = str(raw_rest).strip() if raw_rest else cur_rest
+        if raw_rest:
+            cur_rest = str(raw_rest).strip()
+            cur_hour = None
+        raw_hour = get(i_hour)
+        if raw_hour is not None and str(raw_hour).strip():
+            hour_text = str(raw_hour).strip()
+            if 'всего' in hour_text.lower():
+                cur_hour = None
+                continue
+            try:
+                hour = int(float(hour_text.split(':')[0].replace(',', '.')))
+                cur_hour = hour if 0 <= hour <= 23 else None
+            except (ValueError, TypeError):
+                cur_hour = None
 
         if raw_pay is None or raw_sum is None or cur_date is None: continue
+        if "всего" in str(raw_pay).lower(): continue
         try: total = float(str(raw_sum).replace(",", ".").strip())
         except (ValueError, TypeError): continue
         try: checks = int(float(str(raw_chk).replace(",", "."))) if raw_chk else 0
@@ -108,7 +123,8 @@ def _parse_iiko_daily(ws) -> list[dict]:
             "total_amount": total, "quantity": checks or 1,
             "category": None, "product_name": None,
             "cost_amount": 0, "profit_amount": 0,
-            "extra_data": {"restaurant_name": cur_rest} if cur_rest else None,
+            "source_restaurant": cur_rest,
+            "opening_hour": cur_hour,
         })
     return records
 
@@ -298,17 +314,50 @@ async def upload_sales_file(request: web.Request) -> web.Response:
                    if ext == ".xlsx" else _parse_csv(data.decode("utf-8-sig")))
         if not records:
             raise ValueError("В файле нет распознанных строк продаж")
+        # Route every restaurant in a multi-restaurant iiko daily report to
+        # its own database key; reject unknown/ambiguous or unauthorized names.
+        daily = any("source_restaurant" in rec for rec in records)
+        by_key = {}
+        if daily:
+            async with pool.acquire() as conn:
+                db_rests = await conn.fetch("SELECT key, name FROM restaurants")
+            def norm_name(value):
+                import re
+                value = str(value or "").casefold().replace("ё", "е")
+                value = re.sub(r"^\s*(?:wokker|воккер)\s*[-–—:]\s*", "", value)
+                return " ".join(value.split())
+            matches = {}
+            for restaurant in db_rests:
+                matches.setdefault(norm_name(restaurant["name"]), []).append(restaurant["key"])
+            unknown = []
+            for rec in records:
+                name = rec.get("source_restaurant")
+                candidates = matches.get(norm_name(name), [])
+                if len(candidates) != 1:
+                    unknown.append(name or "(без названия)")
+                    continue
+                rest_key = candidates[0]
+                if allowed is not None and rest_key not in allowed:
+                    raise PermissionError("Нет прав на ресторан: " + str(name))
+                by_key.setdefault(rest_key, []).append(rec)
+            if unknown:
+                raise ValueError("Не удалось однозначно сопоставить рестораны: " + ", ".join(sorted(set(unknown))))
+        else:
+            by_key[key] = records
+
         async with pool.acquire() as conn:
             async with conn.transaction():
-                # Serialise imports and summary rebuilds for this restaurant.
-                await conn.fetchval("SELECT key FROM restaurants WHERE key = $1 FOR UPDATE", key)
-                await _save_records(conn, import_id, key, records)
-                await _recalc_summary(conn, key)
+                for rest_key in sorted(by_key):
+                    await conn.fetchval("SELECT key FROM restaurants WHERE key = $1 FOR UPDATE", rest_key)
+                for rest_key, grouped in by_key.items():
+                    await _save_records(conn, import_id, rest_key, grouped)
+                    await _recalc_summary(conn, rest_key)
                 await conn.execute(
                     "UPDATE sales_imports SET status='completed', rows_count=$1, processed_at=NOW() WHERE id=$2",
                     len(records), import_id,
                 )
         return web.json_response({"success": True, "import_id": import_id, "rows_count": len(records),
+                                  "restaurants_count": len(by_key),
                                   "message": f"Загружено {len(records)} записей"})
     except Exception as e:
         async with pool.acquire() as conn:
@@ -316,6 +365,55 @@ async def upload_sales_file(request: web.Request) -> web.Response:
                 "UPDATE sales_imports SET status='error', error_message=$1 WHERE id=$2",
                 str(e)[:1000], import_id)
         return web.json_response({"error": f"Ошибка: {str(e)[:500]}", "import_id": import_id}, status=500)
+
+
+# Configurable payment-method mapping. Persisted centrally for every Sales user.
+DEFAULT_ORDER_TYPES = {
+    "ВТБ БАНК": "Зал", "Наличные": "Зал", "Starter": "Зал",
+    "Магнит": "Зал", "Яндекс.Еда": "Доставка", "Я.Бейдж!": "Доставка",
+}
+
+
+async def _order_type_mapping(conn):
+    saved = await conn.fetchval("SELECT mapping FROM sales_order_type_settings WHERE id = 1")
+    return (json.loads(saved) if isinstance(saved, str) else dict(saved)) if saved is not None else dict(DEFAULT_ORDER_TYPES)
+
+
+@routes.post("/api/sales/order-type-settings")
+@admin_required
+async def sales_order_type_settings(request: web.Request) -> web.Response:
+    user = request["admin"]
+    body = await request.json()
+    action = body.get("action", "get")
+    if action not in ("get", "save"):
+        return web.json_response({"error": "Неизвестное действие"}, status=400)
+    if action == "save" and not user.get("is_super_admin"):
+        return web.json_response({"error": "Редактирование доступно администратору сети"}, status=403)
+    pool = db.get_pool(request.app)
+    async with pool.acquire() as conn:
+        if action == "save":
+            mapping = body.get("mapping")
+            if (not isinstance(mapping, dict) or len(mapping) > 200 or
+                any(not isinstance(k, str) or not k.strip() or len(k) > 120 or
+                    v not in ("Зал", "Доставка", "Не распределено")
+                    for k, v in mapping.items())):
+                return web.json_response({"error": "Некорректные настройки"}, status=400)
+            await conn.execute("""
+                INSERT INTO sales_order_type_settings (id, mapping, updated_at)
+                VALUES (1, $1::jsonb, NOW())
+                ON CONFLICT (id) DO UPDATE SET mapping=EXCLUDED.mapping, updated_at=NOW()
+            """, json.dumps(mapping, ensure_ascii=False))
+        mapping = await _order_type_mapping(conn)
+        # Discover methods actually present in accessible Sales records.
+        allowed = await _allowed_rests(user)
+        if allowed is None:
+            rows = await conn.fetch("SELECT DISTINCT payment_method FROM sales_records WHERE payment_method IS NOT NULL ORDER BY payment_method")
+        else:
+            rows = await conn.fetch("SELECT DISTINCT payment_method FROM sales_records WHERE restaurant_key = ANY($1) AND payment_method IS NOT NULL ORDER BY payment_method", allowed)
+    methods = sorted(set(mapping) | {r["payment_method"] for r in rows})
+    return web.json_response({"success": True, "data": {
+        "mapping": mapping, "methods": methods, "can_edit": bool(user.get("is_super_admin")),
+    }})
 
 
 @routes.post("/api/sales/dashboard")
@@ -368,6 +466,34 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             {rest_filter}
             GROUP BY r.key, r.name ORDER BY total DESC""", *params)
 
+        # Aggregate only records that carry a valid opening hour.
+        hour_conditions = conditions + [
+            "sr.extra_data IS NOT NULL",
+            "(sr.extra_data::jsonb->>'opening_hour') ~ '^(?:[0-9]|1[0-9]|2[0-3])$'"
+        ]
+        hour_where, _ = _where(hour_conditions, params)
+        hourly = await conn.fetch(
+            f"""SELECT (sr.extra_data::jsonb->>'opening_hour')::int hour,
+                       SUM(sr.total_amount) sales, SUM(sr.quantity) checks
+                FROM sales_records sr {hour_where}
+                GROUP BY hour ORDER BY hour""", *params)
+
+        order_mapping = await _order_type_mapping(conn)
+        order_rows = await conn.fetch(
+            f"""SELECT sr.payment_method method, SUM(sr.total_amount) sales,
+                       SUM(sr.quantity) checks
+                FROM sales_records sr {w}
+                GROUP BY sr.payment_method""", *params)
+        order_types = {name: {"type": name, "sales": 0.0, "checks": 0}
+                       for name in ("Зал", "Доставка", "Не распределено")}
+        for item in order_rows:
+            method = item["method"] or ""
+            category = order_mapping.get(method, "Не распределено")
+            if category not in order_types:
+                category = "Не распределено"
+            order_types[category]["sales"] += float(item["sales"] or 0)
+            order_types[category]["checks"] += int(item["checks"] or 0)
+
         by_payment = await conn.fetch(
             f"SELECT COALESCE(sr.payment_method,'Не указан') method, "
             f"SUM(sr.total_amount) total, COUNT(*) c "
@@ -390,6 +516,9 @@ async def sales_dashboard(request: web.Request) -> web.Response:
         "daily_trend": [{"date": str(r["sale_date"]), "sales": float(r["s"] or 0),
                          "cost": float(r["c"] or 0), "profit": float(r["p"] or 0),
                          "items": int(r["q"] or 0)} for r in daily_trend],
+        "by_order_type": list(order_types.values()),
+        "hourly_revenue": [{"hour": int(r["hour"]), "sales": float(r["sales"] or 0),
+                            "checks": int(r["checks"] or 0)} for r in hourly],
         "by_restaurant": [{"key": r["key"], "name": r["name"],
                            "total_sales": float(r["total"] or 0), "profit": float(r["profit"] or 0)} for r in by_rest],
         "by_payment": [{"method": r["method"], "total_sales": float(r["total"] or 0),
@@ -405,6 +534,56 @@ async def sales_dashboard(request: web.Request) -> web.Response:
                              "cash_sales": float(s["cash_sales"] or 0), "card_sales": float(s["card_sales"] or 0),
                              "online_sales": float(s["online_sales"] or 0),
                              "unique_products": int(s["unique_products"] or 0)} for s in summaries],
+    }})
+
+
+
+@routes.post("/api/sales/products")
+@admin_required
+async def sales_products(request: web.Request) -> web.Response:
+    """Aggregated products and categories, scoped to authorized restaurants."""
+    user = request["admin"]
+    body = await request.json()
+    key = body.get("restaurant_key")
+    allowed = await _allowed_rests(user)
+    if allowed is not None and key and key not in allowed:
+        return web.json_response({"error": "Forbidden"}, status=403)
+
+    days = {"7d": 7, "30d": 30, "90d": 90}.get(body.get("period"), 30)
+    since = datetime.utcnow().date() - timedelta(days=days - 1)
+    scoped = [key] if key else allowed
+    conditions = ["sr.sale_date >= $1", "NULLIF(TRIM(sr.product_name), '') IS NOT NULL"]
+    params = [since]
+    if scoped is not None:
+        conditions.append("sr.restaurant_key = ANY($2)")
+        params.append(scoped)
+    where, _ = _where(conditions, params)
+    pool = db.get_pool(request.app)
+    async with pool.acquire() as conn:
+        products = await conn.fetch(
+            f"""SELECT sr.product_name name, COALESCE(sr.category, 'Без категории') category,
+                 SUM(sr.quantity) quantity, SUM(sr.total_amount) sales,
+                 SUM(sr.cost_amount) cost, SUM(sr.profit_amount) profit
+                 FROM sales_records sr {where}
+                 GROUP BY sr.product_name, COALESCE(sr.category, 'Без категории')
+                 ORDER BY sales DESC LIMIT 100""", *params)
+        categories = await conn.fetch(
+            f"""SELECT COALESCE(sr.category, 'Без категории') name,
+                 SUM(sr.quantity) quantity, SUM(sr.total_amount) sales,
+                 SUM(sr.profit_amount) profit
+                 FROM sales_records sr {where}
+                 GROUP BY COALESCE(sr.category, 'Без категории')
+                 ORDER BY sales DESC LIMIT 50""", *params)
+    def normalize(rows, include_product_fields=False):
+        return [{"name": r["name"],
+                 "category": r["category"] if include_product_fields else None,
+                 "quantity": float(r["quantity"] or 0),
+                 "sales": float(r["sales"] or 0),
+                 "profit": float(r["profit"] or 0),
+                 **({"cost": float(r["cost"] or 0)} if include_product_fields else {})} for r in rows]
+    return web.json_response({"success": True, "data": {
+        "products": normalize(products, True), "categories": normalize(categories),
+        "period_days": days,
     }})
 
 

@@ -143,14 +143,122 @@ async def upload_sales_file(request: web.Request) -> web.Response:
 
 
 # =============================================================================
-# Парсеры (Адаптированы под iiko и англ. шаблоны)
+# Парсеры (поддержка iiko "Дневной отчет" и плоских таблиц)
 # =============================================================================
 
+def _parse_iiko_daily_report(ws) -> list[dict]:
+    """
+    Парсит сводный отчёт iiko "Дневной отчет".
+    Возвращает список записей по оплатам (payment_method, total_amount, quantity=чеки).
+    """
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return []
+
+    # Ищем строку с заголовками
+    header_idx = -1
+    for i, row in enumerate(rows):
+        if not row:
+            continue
+        row_str = " ".join(str(c).lower() for c in row if c is not None)
+        if "учетный день" in row_str or "тип оплаты" in row_str:
+            header_idx = i
+            break
+
+    if header_idx == -1:
+        return []
+
+    headers = [str(c).strip().lower() if c else "" for c in rows[header_idx]]
+
+    def find_col(*names):
+        for idx, h in enumerate(headers):
+            for n in names:
+                if n in h:
+                    return idx
+        return -1
+
+    col_date = find_col("учетный день", "дата")
+    col_rest = find_col("торговое предприятие", "ресторан")
+    col_pay = find_col("тип оплаты", "оплата")
+    col_sum = find_col("сумма со скидкой", "сумма")
+    col_checks = find_col("чеков", "кол-во")
+
+    if col_sum == -1 or col_pay == -1:
+        return []
+
+    records = []
+    current_date = None
+    current_rest = None
+
+    for row in rows[header_idx + 1:]:
+        if not row or all(v is None or str(v).strip() == "" for v in row):
+            continue
+
+        def get(idx):
+            return row[idx] if idx != -1 and idx < len(row) else None
+
+        raw_date = get(col_date)
+        raw_rest = get(col_rest)
+        raw_pay = get(col_pay)
+        raw_sum = get(col_sum)
+        raw_checks = get(col_checks)
+
+        # Пропускаем строки-итоги
+        if raw_rest and "всего" in str(raw_rest).lower():
+            continue
+        if raw_date and "всего" in str(raw_date).lower():
+            continue
+
+        # Обновляем текущие дату и ресторан
+        if raw_date:
+            parsed_date = _to_date(raw_date)
+            if parsed_date:
+                current_date = parsed_date
+        if raw_rest:
+            current_rest = str(raw_rest).strip()
+
+        if raw_pay is None or raw_sum is None:
+            continue
+        if current_date is None:
+            continue
+
+        try:
+            total_amount = float(str(raw_sum).replace(",", ".").strip())
+        except (ValueError, TypeError):
+            continue
+
+        try:
+            checks = int(float(str(raw_checks).replace(",", ".").strip())) if raw_checks else 0
+        except (ValueError, TypeError):
+            checks = 0
+
+        records.append({
+            "sale_date": current_date,
+            "payment_method": str(raw_pay).strip(),
+            "total_amount": total_amount,
+            "quantity": checks if checks > 0 else 1,
+            "category": None,
+            "product_name": None,
+            "cost_amount": 0,
+            "profit_amount": 0,
+            "extra_data": {"restaurant_name": current_rest} if current_rest else None,
+        })
+
+    return records
+
+
 def _parse_excel(file_obj: io.BytesIO) -> list[dict]:
-    """Парсит Excel файл. Поддерживает русские заголовки iiko и английские."""
+    """Парсит Excel файл. Пробует iiko "Дневной отчет", затем плоскую таблицу."""
     wb = openpyxl.load_workbook(file_obj, read_only=True, data_only=True)
     ws = wb.active
 
+    # Сначала пробуем формат iiko "Дневной отчет"
+    iiko_records = _parse_iiko_daily_report(ws)
+    if iiko_records:
+        wb.close()
+        return iiko_records
+
+    # Если не вышло — пробуем плоскую таблицу
     header_map = {
         "дата": "sale_date",
         "дата продажи": "sale_date",
@@ -222,7 +330,7 @@ def _parse_excel(file_obj: io.BytesIO) -> list[dict]:
 
 
 def _parse_csv(text: str) -> list[dict]:
-    """Парсит CSV файл. Поддерживает русские заголовки iiko и английские."""
+    """Парсит CSV файл (плоская таблица)."""
     header_map = {
         "дата": "sale_date",
         "дата продажи": "sale_date",
@@ -298,8 +406,8 @@ async def _save_sales_records(pool, import_id: int, restaurant_key: str, records
                 extra = {k: v for k, v in rec.items() if k not in extra_keys}
                 sale_date = _to_date(rec.get("sale_date"))
                 if sale_date is None:
-                    continue  # Пропускаем строки без валидной даты
-                    
+                    continue
+
                 await conn.execute(
                     """
                     INSERT INTO sales_records (
@@ -353,8 +461,8 @@ async def _recalculate_daily_summary(pool, restaurant_key: str) -> None:
                 SUM(quantity) as total_items_sold,
                 COUNT(DISTINCT id) as total_transactions,
                 SUM(CASE WHEN payment_method = 'Наличные' OR payment_method = 'cash' THEN total_amount ELSE 0 END) as cash_sales,
-                SUM(CASE WHEN payment_method = 'Карта' OR payment_method = 'card' THEN total_amount ELSE 0 END) as card_sales,
-                SUM(CASE WHEN payment_method = 'Онлайн' OR payment_method = 'online' THEN total_amount ELSE 0 END) as online_sales,
+                SUM(CASE WHEN payment_method = 'Карта' OR payment_method = 'card' OR payment_method = 'ВТБ БАНК' THEN total_amount ELSE 0 END) as card_sales,
+                SUM(CASE WHEN payment_method = 'Онлайн' OR payment_method = 'online' OR payment_method LIKE 'Яндекс%' THEN total_amount ELSE 0 END) as online_sales,
                 COUNT(DISTINCT category) as unique_categories,
                 COUNT(DISTINCT product_name) as unique_products
             FROM sales_records
@@ -365,7 +473,8 @@ async def _recalculate_daily_summary(pool, restaurant_key: str) -> None:
 
         for row in rows:
             total_sales = float(row["total_sales"] or 0)
-            avg_check = round(total_sales / row["total_items_sold"], 2) if row["total_items_sold"] and row["total_items_sold"] > 0 else 0
+            items_sold = row["total_items_sold"] or 0
+            avg_check = round(total_sales / items_sold, 2) if items_sold > 0 else 0
 
             await conn.execute(
                 """
@@ -381,7 +490,7 @@ async def _recalculate_daily_summary(pool, restaurant_key: str) -> None:
                 float(row["total_cost"] or 0),
                 float(row["total_profit"] or 0),
                 float(row["avg_margin"] or 0),
-                row["total_items_sold"] or 0,
+                items_sold,
                 row["total_transactions"] or 0,
                 avg_check,
                 float(row["cash_sales"] or 0),
@@ -418,7 +527,6 @@ async def sales_dashboard(request: web.Request) -> web.Response:
     results = {}
 
     days = {"7d": 7, "30d": 30, "90d": 90}.get(period, 30)
-    # ИСПРАВЛЕНО: передаём объект date, а не isoformat строку
     date_from = (datetime.utcnow().date() - timedelta(days=days))
 
     async with pool.acquire() as conn:
@@ -677,11 +785,8 @@ async def sales_records(request: web.Request) -> web.Response:
     allowed_rests = await _get_allowed_restaurants(user)
     body = await request.json()
     restaurant_key = body.get("restaurant_key")
-    
-    # ИСПРАВЛЕНО: передаём date-объекты
     date_from = _to_date(body.get("date_from"))
     date_to = _to_date(body.get("date_to"))
-    
     category = body.get("category")
     product_name = body.get("product_name")
     page = max(1, int(body.get("page", 1) or 1))
@@ -848,8 +953,6 @@ async def export_sales_data(request: web.Request) -> web.Response:
     allowed_rests = await _get_allowed_restaurants(user)
     body = await request.json()
     restaurant_key = body.get("restaurant_key")
-    
-    # ИСПРАВЛЕНО: передаём date-объекты
     date_from = _to_date(body.get("date_from"))
     date_to = _to_date(body.get("date_to"))
 

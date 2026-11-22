@@ -383,7 +383,7 @@ async def _order_type_mapping(conn):
         )
     """)
     saved = await conn.fetchval("SELECT mapping FROM sales_order_type_settings WHERE id = 1")
-    return dict(saved) if saved is not None else dict(DEFAULT_ORDER_TYPES)
+    return (json.loads(saved) if isinstance(saved, str) else dict(saved)) if saved is not None else dict(DEFAULT_ORDER_TYPES)
 
 
 @routes.post("/api/sales/order-type-settings")

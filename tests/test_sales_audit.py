@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_semicolon_csv_import_with_russian_headers():
-    rows = _parse_csv('дата;товар;количество;сумма\\n2026-11-20;Лапша;2;500\\n')
+    rows = _parse_csv('дата;товар;количество;сумма\n2026-11-20;Лапша;2;500\n')
     assert len(rows) == 1
     assert rows[0]['product_name'] == 'Лапша'
     assert rows[0]['quantity'] == 2

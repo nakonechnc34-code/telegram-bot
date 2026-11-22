@@ -1,6 +1,6 @@
 """
 Routes для дашборда Товарооборот.
-Загрузка Excel/CSV файлов, аналитика, графики, агрегации.
+Загрузка Excel/CSV, аналитика, агрегации.
 """
 
 import io
@@ -10,25 +10,33 @@ import os
 import asyncio
 import uuid
 from datetime import datetime, date, timedelta
+from functools import wraps
 
 from aiohttp import web
 import openpyxl
 
 import db
 from middleware.auth import require_admin
-from utils.auth_helpers import get_auth_user, _is_tu, _sync_get_tu_rests
+from utils.auth_helpers import get_admin_user, denied, _is_tu, _sync_get_tu_rests
 
 routes = web.RouteTableDef()
 
 
-def _get_sales_upload_dir():
-    env_dir = os.getenv("DATA_DIR")
-    base_dir = env_dir if env_dir else ("/data" if os.path.exists("/data") else os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data"))
-    return os.path.join(base_dir, "uploads", "sales")
+# ==================== ХЕЛПЕРЫ ====================
+
+def admin_required(handler):
+    """Декоратор: требует админа + кладёт его в request['admin']."""
+    @wraps(handler)
+    async def wrapper(request):
+        admin, err = await get_admin_user(request)
+        if err:
+            return denied(err)
+        request['admin'] = admin
+        return await handler(request)
+    return wrapper
 
 
 def _to_date(val):
-    """Преобразует строку 'YYYY-MM-DD' (или datetime/date) в datetime.date."""
     if val is None or val == "":
         return None
     if isinstance(val, date) and not isinstance(val, datetime):
@@ -41,1087 +49,511 @@ def _to_date(val):
         return None
 
 
-async def _get_allowed_restaurants(user):
-    if _is_tu(user):
-        return await db._run(_sync_get_tu_rests, user["user_id"])
-    return None
+def _date_range(body: dict, default_days: int = 30) -> tuple[date, date]:
+    """Возвращает (date_from, date_to) из body: date_from/date_to, или year/month, или last N days."""
+    df = _to_date(body.get("date_from"))
+    dt = _to_date(body.get("date_to"))
+    if df and dt:
+        return df, dt
+    if body.get("year") and body.get("month"):
+        y, m = int(body["year"]), int(body["month"])
+        last = (date(y, m % 12 + 1, 1) - timedelta(days=1)).day
+        return date(y, m, 1), date(y, m, last)
+    return date.today() - timedelta(days=default_days), date.today()
 
 
-# =============================================================================
-# Загрузка файлов
-# =============================================================================
-
-@routes.post("/api/sales/upload")
-@require_admin
-async def upload_sales_file(request: web.Request) -> web.Response:
-    """Загрузка Excel (.xlsx/.xls) или CSV файла с данными товарооборота."""
-    user, err = await get_auth_user(request)
-    if err or not user:
-        return web.json_response({"error": "Unauthorized"}, status=401)
-    admin_user = user
-
-    reader = await request.post()
-    file_upload = reader.get("file")
-    if not file_upload or not file_upload.filename:
-        return web.json_response({"error": "Файл не найден"}, status=400)
-
-    restaurant_key = (reader.get("restaurant_key") or "").strip()
-    if not restaurant_key:
-        return web.json_response({"error": "Укажите restaurant_key"}, status=400)
-
-    allowed_rests = await _get_allowed_restaurants(admin_user)
-    if allowed_rests is not None and restaurant_key not in allowed_rests:
-        return web.json_response({"error": "Недостаточно прав для выбранного ресторана"}, status=403)
-
-    pool = db.get_pool(request.app)
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow("SELECT key FROM restaurants WHERE key = $1", restaurant_key)
-        if not row:
-            return web.json_response({"error": "Ресторан не найден"}, status=404)
-
-    filename = os.path.basename(file_upload.filename)
-    ext = os.path.splitext(filename)[1].lower()
-
-    if ext not in (".xlsx", ".xls", ".csv"):
-        return web.json_response({"error": "Поддерживаемые форматы: .xlsx, .xls, .csv"}, status=400)
-
-    uploads_dir = _get_sales_upload_dir()
-    os.makedirs(uploads_dir, exist_ok=True)
-
-    stored_name = f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}{ext}"
-    file_path = os.path.join(uploads_dir, stored_name)
-    data = await file_upload.read()
-
-    with open(file_path, "wb") as f:
-        f.write(data)
-
-    async with pool.acquire() as conn:
-        result = await conn.fetchrow(
-            """
-            INSERT INTO sales_imports (restaurant_key, filename, file_path, uploaded_by, status)
-            VALUES ($1, $2, $3, $4, 'processing')
-            RETURNING id
-            """,
-            restaurant_key, filename, file_path, admin_user.get("user_id")
-        )
-        import_id = result["id"]
-
-    try:
-        if ext in (".xlsx", ".xls"):
-            records = await asyncio.to_thread(_parse_excel, io.BytesIO(data))
-        else:
-            text = data.decode("utf-8-sig")
-            records = _parse_csv(text)
-
-        await _save_sales_records(pool, import_id, restaurant_key, records)
-
-        async with pool.acquire() as conn:
-            await conn.execute(
-                "UPDATE sales_imports SET status = 'completed', rows_count = $1, processed_at = NOW() WHERE id = $2",
-                len(records), import_id
-            )
-
-        await _recalculate_daily_summary(pool, restaurant_key)
-
-        return web.json_response({
-            "success": True,
-            "import_id": import_id,
-            "rows_count": len(records),
-            "message": f"Загружено {len(records)} записей"
-        })
-
-    except Exception as e:
-        async with pool.acquire() as conn:
-            await conn.execute(
-                "UPDATE sales_imports SET status = 'error', error_message = $1 WHERE id = $2",
-                str(e)[:1000], import_id
-            )
-        return web.json_response({
-            "error": f"Ошибка парсинга: {str(e)[:500]}",
-            "import_id": import_id
-        }, status=500)
+def _upload_dir():
+    base = os.getenv("DATA_DIR") or ("/data" if os.path.exists("/data") else os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+    return os.path.join(base, "data", "uploads", "sales")
 
 
-# =============================================================================
-# Парсеры (поддержка iiko "Дневной отчет" и плоских таблиц)
-# =============================================================================
+async def _allowed_rests(user):
+    return await db._run(_sync_get_tu_rests, user["user_id"]) if _is_tu(user) else None
 
-def _parse_iiko_daily_report(ws) -> list[dict]:
-    """
-    Парсит сводный отчёт iiko "Дневной отчет".
-    Возвращает список записей по оплатам (payment_method, total_amount, quantity=чеки).
-    """
+
+def _where(conditions, params):
+    return f"WHERE {' AND '.join(conditions)}" if conditions else "", params
+
+
+def _norm_row(r: dict, fields: dict) -> dict:
+    """Приводит dict к единому формату sales_records. fields — маппинг из исходного в целевой ключ."""
+    out = {}
+    for src, dst in fields.items():
+        if src in r:
+            out[dst] = r[src]
+    return out
+
+
+# ==================== ПАРСЕРЫ ====================
+
+def _parse_iiko_daily(ws) -> list[dict]:
+    """Парсит сводный 'Дневной отчет' iiko."""
     rows = list(ws.iter_rows(values_only=True))
-    if not rows:
-        return []
-
-    # Ищем строку с заголовками
-    header_idx = -1
-    for i, row in enumerate(rows):
-        if not row:
-            continue
-        row_str = " ".join(str(c).lower() for c in row if c is not None)
-        if "учетный день" in row_str or "тип оплаты" in row_str:
-            header_idx = i
-            break
-
+    header_idx = next(
+        (i for i, row in enumerate(rows)
+         if row and any(c and ("учетный день" in str(c).lower() or "тип оплаты" in str(c).lower()) for c in row)),
+        -1
+    )
     if header_idx == -1:
         return []
 
     headers = [str(c).strip().lower() if c else "" for c in rows[header_idx]]
+    def col(*names): return next((i for i, h in enumerate(headers) if any(n in h for n in names)), -1)
 
-    def find_col(*names):
-        for idx, h in enumerate(headers):
-            for n in names:
-                if n in h:
-                    return idx
-        return -1
+    i_date, i_rest, i_pay = col("учетный день", "дата"), col("торговое предприятие", "ресторан"), col("тип оплаты", "оплата")
+    i_sum, i_chk = col("сумма со скидкой", "сумма"), col("чеков", "кол-во")
 
-    col_date = find_col("учетный день", "дата")
-    col_rest = find_col("торговое предприятие", "ресторан")
-    col_pay = find_col("тип оплаты", "оплата")
-    col_sum = find_col("сумма со скидкой", "сумма")
-    col_checks = find_col("чеков", "кол-во")
-
-    if col_sum == -1 or col_pay == -1:
+    if i_sum == -1 or i_pay == -1:
         return []
 
-    records = []
-    current_date = None
-    current_rest = None
-
+    records, cur_date, cur_rest = [], None, None
     for row in rows[header_idx + 1:]:
         if not row or all(v is None or str(v).strip() == "" for v in row):
             continue
+        get = lambda i: row[i] if 0 <= i < len(row) else None
+        raw_date, raw_rest, raw_pay, raw_sum, raw_chk = get(i_date), get(i_rest), get(i_pay), get(i_sum), get(i_chk)
 
-        def get(idx):
-            return row[idx] if idx != -1 and idx < len(row) else None
+        if raw_rest and "всего" in str(raw_rest).lower(): continue
+        if raw_date and "всего" in str(raw_date).lower(): continue
 
-        raw_date = get(col_date)
-        raw_rest = get(col_rest)
-        raw_pay = get(col_pay)
-        raw_sum = get(col_sum)
-        raw_checks = get(col_checks)
+        cur_date = _to_date(raw_date) or cur_date
+        cur_rest = str(raw_rest).strip() if raw_rest else cur_rest
 
-        # Пропускаем строки-итоги
-        if raw_rest and "всего" in str(raw_rest).lower():
-            continue
-        if raw_date and "всего" in str(raw_date).lower():
-            continue
-
-        # Обновляем текущие дату и ресторан
-        if raw_date:
-            parsed_date = _to_date(raw_date)
-            if parsed_date:
-                current_date = parsed_date
-        if raw_rest:
-            current_rest = str(raw_rest).strip()
-
-        if raw_pay is None or raw_sum is None:
-            continue
-        if current_date is None:
-            continue
-
-        try:
-            total_amount = float(str(raw_sum).replace(",", ".").strip())
-        except (ValueError, TypeError):
-            continue
-
-        try:
-            checks = int(float(str(raw_checks).replace(",", ".").strip())) if raw_checks else 0
-        except (ValueError, TypeError):
-            checks = 0
+        if raw_pay is None or raw_sum is None or cur_date is None: continue
+        try: total = float(str(raw_sum).replace(",", ".").strip())
+        except (ValueError, TypeError): continue
+        try: checks = int(float(str(raw_chk).replace(",", "."))) if raw_chk else 0
+        except (ValueError, TypeError): checks = 0
 
         records.append({
-            "sale_date": current_date,
-            "payment_method": str(raw_pay).strip(),
-            "total_amount": total_amount,
-            "quantity": checks if checks > 0 else 1,
-            "category": None,
-            "product_name": None,
-            "cost_amount": 0,
-            "profit_amount": 0,
-            "extra_data": {"restaurant_name": current_rest} if current_rest else None,
+            "sale_date": cur_date, "payment_method": str(raw_pay).strip(),
+            "total_amount": total, "quantity": checks or 1,
+            "category": None, "product_name": None,
+            "cost_amount": 0, "profit_amount": 0,
+            "extra_data": {"restaurant_name": cur_rest} if cur_rest else None,
         })
+    return records
 
+
+FLAT_FIELDS = {
+    "дата": "sale_date", "дата продажи": "sale_date",
+    "категория": "category", "группа": "category",
+    "блюдо": "product_name", "наименование": "product_name", "товар": "product_name",
+    "количество": "quantity", "кол-во": "quantity",
+    "сумма": "total_amount", "сумма продажи": "total_amount",
+    "себестоимость": "cost_amount",
+    "оплата": "payment_method",
+    "скидка": "discount_amount",
+}
+NUM_FIELDS = {"quantity", "shift_number"}
+MONEY_FIELDS = {"unit_price", "total_amount", "cost_amount", "profit_amount", "discount_amount"}
+
+
+def _normalize(record: dict) -> dict:
+    """Приводит строку из Excel/CSV к sales_records."""
+    rec = {}
+    for src, val in record.items():
+        key = src.lower().strip() if isinstance(src, str) else str(src)
+        key = FLAT_FIELDS.get(key, key)
+        if key in NUM_FIELDS:
+            try: val = int(val) if val is not None else 0
+            except (ValueError, TypeError): val = 0
+        elif key in MONEY_FIELDS:
+            try: val = float(str(val).replace(",", ".")) if val is not None else 0.0
+            except (ValueError, TypeError): val = 0.0
+        elif key == "sale_date":
+            val = _to_date(val) or val
+        elif val is not None:
+            val = str(val).strip() if val else None
+        rec[key] = val
+    if "sale_date" not in rec or "total_amount" not in rec:
+        return {}
+    rec.setdefault("quantity", 1)
+    rec.setdefault("unit_price", rec["total_amount"])
+    rec.setdefault("category", None)
+    rec.setdefault("product_name", None)
+    rec.setdefault("payment_method", None)
+    return rec
+
+
+def _parse_flat(ws) -> list[dict]:
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows: return []
+    headers = [str(c).lower().strip() if c else "" for c in rows[0]]
+    records = []
+    for row in rows[1:]:
+        if not any(v is not None for v in row): continue
+        raw = {headers[i]: row[i] for i in range(min(len(headers), len(row)))}
+        rec = _normalize(raw)
+        if rec: records.append(rec)
     return records
 
 
 def _parse_excel(file_obj: io.BytesIO) -> list[dict]:
-    """Парсит Excel файл. Пробует iiko "Дневной отчет", затем плоскую таблицу."""
     wb = openpyxl.load_workbook(file_obj, read_only=True, data_only=True)
     ws = wb.active
-
-    # Сначала пробуем формат iiko "Дневной отчет"
-    iiko_records = _parse_iiko_daily_report(ws)
-    if iiko_records:
+    try:
+        iiko = _parse_iiko_daily(ws)
+        return iiko if iiko else _parse_flat(ws)
+    finally:
         wb.close()
-        return iiko_records
-
-    # Если не вышло — пробуем плоскую таблицу
-    header_map = {
-        "дата": "sale_date",
-        "дата продажи": "sale_date",
-        "категория": "category",
-        "группа": "category",
-        "блюдо": "product_name",
-        "наименование": "product_name",
-        "товар": "product_name",
-        "количество": "quantity",
-        "кол-во": "quantity",
-        "сумма": "total_amount",
-        "сумма продажи": "total_amount",
-        "себестоимость": "cost_amount",
-        "оплата": "payment_method",
-        "скидка": "discount_amount",
-    }
-
-    records = []
-    headers = None
-
-    for row in ws.iter_rows():
-        values = [cell.value for cell in row]
-        if not any(v is not None for v in values):
-            continue
-
-        if headers is None:
-            headers = []
-            for h in values:
-                if not h:
-                    headers.append("")
-                    continue
-                h_str = str(h).lower().strip()
-                headers.append(header_map.get(h_str, h_str))
-            continue
-
-        record = {}
-        for i, val in enumerate(values):
-            if i < len(headers):
-                header = headers[i]
-                if not header:
-                    continue
-                if val is None:
-                    record[header] = None
-                elif header in ("quantity", "shift_number"):
-                    record[header] = int(val) if val is not None else 0
-                elif header in ("unit_price", "total_amount", "cost_amount",
-                               "profit_amount", "discount_amount"):
-                    record[header] = float(val) if val is not None else 0.0
-                elif header in ("sale_date",):
-                    if isinstance(val, datetime):
-                        record[header] = val.date()
-                    elif isinstance(val, date):
-                        record[header] = val
-                    else:
-                        record[header] = _to_date(val) or val
-                else:
-                    record[header] = str(val) if val else None
-
-        if "sale_date" in record and "total_amount" in record:
-            record.setdefault("quantity", 1)
-            record.setdefault("unit_price", record.get("total_amount", 0))
-            record.setdefault("category", None)
-            record.setdefault("product_name", None)
-            record.setdefault("payment_method", None)
-            records.append(record)
-
-    wb.close()
-    return records
 
 
 def _parse_csv(text: str) -> list[dict]:
-    """Парсит CSV файл (плоская таблица)."""
-    header_map = {
-        "дата": "sale_date",
-        "дата продажи": "sale_date",
-        "категория": "category",
-        "группа": "category",
-        "блюдо": "product_name",
-        "наименование": "product_name",
-        "товар": "product_name",
-        "количество": "quantity",
-        "кол-во": "quantity",
-        "сумма": "total_amount",
-        "сумма продажи": "total_amount",
-        "себестоимость": "cost_amount",
-        "оплата": "payment_method",
-        "скидка": "discount_amount",
-    }
     reader = csv.DictReader(text.splitlines())
-    records = []
-
-    for row in reader:
-        cleaned = {}
-        for key, val in row.items():
-            k = key.lower().strip() if key else ""
-            if k:
-                mapped = header_map.get(k, k)
-                cleaned[mapped] = val.strip() if val else None
-
-        if not cleaned:
-            continue
-
-        for num_field in ("quantity", "shift_number"):
-            if num_field in cleaned and cleaned[num_field]:
-                try:
-                    cleaned[num_field] = int(cleaned[num_field])
-                except (ValueError, TypeError):
-                    cleaned[num_field] = 0
-
-        for money_field in ("unit_price", "total_amount", "cost_amount",
-                           "profit_amount", "discount_amount"):
-            if money_field in cleaned and cleaned[money_field]:
-                try:
-                    cleaned[money_field] = float(cleaned[money_field].replace(",", "."))
-                except (ValueError, TypeError):
-                    cleaned[money_field] = 0.0
-
-        if "sale_date" in cleaned and cleaned["sale_date"]:
-            parsed = _to_date(cleaned["sale_date"])
-            if parsed is not None:
-                cleaned["sale_date"] = parsed
-
-        if "sale_date" in cleaned and "total_amount" in cleaned:
-            cleaned.setdefault("quantity", 1)
-            cleaned.setdefault("unit_price", cleaned.get("total_amount", 0))
-            cleaned.setdefault("category", None)
-            cleaned.setdefault("product_name", None)
-            cleaned.setdefault("payment_method", None)
-            records.append(cleaned)
-
-    return records
+    return [rec for row in reader if (rec := _normalize(row))]
 
 
-async def _save_sales_records(pool, import_id: int, restaurant_key: str, records: list[dict]) -> None:
-    """Сохраняет парсенные записи в БД."""
-    extra_keys = {
-        "sale_date", "category", "subcategory", "product_name",
-        "sku", "quantity", "unit_price", "total_amount",
-        "cost_amount", "profit_amount", "profit_margin",
-        "payment_method", "shift_number", "employee_name", "discount_amount"
-    }
+# ==================== СОХРАНЕНИЕ ====================
+
+EXTRA_KEYS = {"sale_date", "category", "subcategory", "product_name", "sku", "quantity",
+              "unit_price", "total_amount", "cost_amount", "profit_amount", "profit_margin",
+              "payment_method", "shift_number", "employee_name", "discount_amount"}
+
+INSERT_SQL = """
+    INSERT INTO sales_records (
+        import_id, restaurant_key, sale_date, category, subcategory,
+        product_name, sku, quantity, unit_price, total_amount,
+        cost_amount, profit_amount, profit_margin, payment_method,
+        shift_number, employee_name, discount_amount, extra_data
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+"""
+
+
+async def _save_records(pool, import_id, restaurant_key, records):
     async with pool.acquire() as conn:
         async with conn.transaction():
             for rec in records:
-                extra = {k: v for k, v in rec.items() if k not in extra_keys}
                 sale_date = _to_date(rec.get("sale_date"))
-                if sale_date is None:
-                    continue
-
-                await conn.execute(
-                    """
-                    INSERT INTO sales_records (
-                        import_id, restaurant_key, sale_date, category, subcategory,
-                        product_name, sku, quantity, unit_price, total_amount,
-                        cost_amount, profit_amount, profit_margin, payment_method,
-                        shift_number, employee_name, discount_amount, extra_data
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-                    """,
-                    import_id,
-                    restaurant_key,
-                    sale_date,
-                    rec.get("category"),
-                    rec.get("subcategory"),
-                    rec.get("product_name"),
-                    rec.get("sku"),
-                    rec.get("quantity", 1),
-                    rec.get("unit_price", 0),
-                    rec.get("total_amount", 0),
-                    rec.get("cost_amount", 0),
-                    rec.get("profit_amount", 0),
-                    rec.get("profit_margin"),
-                    rec.get("payment_method"),
-                    rec.get("shift_number"),
-                    rec.get("employee_name"),
-                    rec.get("discount_amount", 0),
-                    json.dumps(extra) if extra else None
-                )
+                if sale_date is None: continue
+                extra = {k: v for k, v in rec.items() if k not in EXTRA_KEYS}
+                await conn.execute(INSERT_SQL,
+                    import_id, restaurant_key, sale_date,
+                    rec.get("category"), rec.get("subcategory"), rec.get("product_name"), rec.get("sku"),
+                    rec.get("quantity", 1), rec.get("unit_price", 0), rec.get("total_amount", 0),
+                    rec.get("cost_amount", 0), rec.get("profit_amount", 0), rec.get("profit_margin"),
+                    rec.get("payment_method"), rec.get("shift_number"), rec.get("employee_name"),
+                    rec.get("discount_amount", 0), json.dumps(extra) if extra else None)
 
 
-# =============================================================================
-# Ежедневная агрегация
-# =============================================================================
-
-async def _recalculate_daily_summary(pool, restaurant_key: str) -> None:
-    """Пересчитывает дневные сводки для ресторана."""
+async def _recalc_summary(pool, restaurant_key):
+    """Пересчитывает дневные сводки."""
     async with pool.acquire() as conn:
-        await conn.execute(
-            "DELETE FROM sales_daily_summary WHERE restaurant_key = $1", restaurant_key
-        )
-
+        await conn.execute("DELETE FROM sales_daily_summary WHERE restaurant_key = $1", restaurant_key)
         rows = await conn.fetch("""
-            SELECT
-                sale_date,
-                SUM(total_amount) as total_sales,
-                SUM(cost_amount) as total_cost,
-                SUM(profit_amount) as total_profit,
+            SELECT sale_date,
+                SUM(total_amount) AS total_sales, SUM(cost_amount) AS total_cost,
+                SUM(profit_amount) AS total_profit,
                 CASE WHEN SUM(total_amount) > 0
-                    THEN ROUND(SUM(profit_amount) * 100.0 / NULLIF(SUM(total_amount), 0), 2)
-                    ELSE 0 END as avg_margin,
-                SUM(quantity) as total_items_sold,
-                COUNT(DISTINCT id) as total_transactions,
-                SUM(CASE WHEN payment_method = 'Наличные' OR payment_method = 'cash' THEN total_amount ELSE 0 END) as cash_sales,
-                SUM(CASE WHEN payment_method = 'Карта' OR payment_method = 'card' OR payment_method = 'ВТБ БАНК' THEN total_amount ELSE 0 END) as card_sales,
-                SUM(CASE WHEN payment_method = 'Онлайн' OR payment_method = 'online' OR payment_method LIKE 'Яндекс%' THEN total_amount ELSE 0 END) as online_sales,
-                COUNT(DISTINCT category) as unique_categories,
-                COUNT(DISTINCT product_name) as unique_products
-            FROM sales_records
-            WHERE restaurant_key = $1
-            GROUP BY sale_date
-            ORDER BY sale_date
+                     THEN ROUND(SUM(profit_amount)*100.0 / NULLIF(SUM(total_amount),0), 2)
+                     ELSE 0 END AS avg_margin,
+                SUM(quantity) AS total_items_sold,
+                COUNT(DISTINCT id) AS total_transactions,
+                SUM(CASE WHEN payment_method IN ('Наличные','cash') THEN total_amount ELSE 0 END) AS cash_sales,
+                SUM(CASE WHEN payment_method IN ('Карта','card','ВТБ БАНК') THEN total_amount ELSE 0 END) AS card_sales,
+                SUM(CASE WHEN payment_method IN ('Онлайн','online') OR payment_method LIKE 'Яндекс%' THEN total_amount ELSE 0 END) AS online_sales,
+                COUNT(DISTINCT product_name) AS unique_products
+            FROM sales_records WHERE restaurant_key = $1 GROUP BY sale_date ORDER BY sale_date
         """, restaurant_key)
-
-        for row in rows:
-            total_sales = float(row["total_sales"] or 0)
-            items_sold = row["total_items_sold"] or 0
-            avg_check = round(total_sales / items_sold, 2) if items_sold > 0 else 0
-
-            await conn.execute(
-                """
-                INSERT INTO sales_daily_summary (
-                    restaurant_key, summary_date, total_sales, total_cost, total_profit,
-                    avg_margin, total_items_sold, total_transactions, avg_check,
-                    cash_sales, card_sales, online_sales, unique_products
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-                """,
-                restaurant_key,
-                row["sale_date"],
-                total_sales,
-                float(row["total_cost"] or 0),
-                float(row["total_profit"] or 0),
-                float(row["avg_margin"] or 0),
-                items_sold,
-                row["total_transactions"] or 0,
-                avg_check,
-                float(row["cash_sales"] or 0),
-                float(row["card_sales"] or 0),
-                float(row["online_sales"] or 0),
-                row["unique_products"] or 0
-            )
+        for r in rows:
+            ts = float(r["total_sales"] or 0); items = r["total_items_sold"] or 0
+            await conn.execute("""
+                INSERT INTO sales_daily_summary
+                (restaurant_key, summary_date, total_sales, total_cost, total_profit,
+                 avg_margin, total_items_sold, total_transactions, avg_check,
+                 cash_sales, card_sales, online_sales, unique_products)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+            """, restaurant_key, r["sale_date"], ts, float(r["total_cost"] or 0), float(r["total_profit"] or 0),
+                float(r["avg_margin"] or 0), items, r["total_transactions"] or 0,
+                round(ts / items, 2) if items else 0,
+                float(r["cash_sales"] or 0), float(r["card_sales"] or 0), float(r["online_sales"] or 0),
+                r["unique_products"] or 0)
 
 
-# =============================================================================
-# API: Дашборд — общая сводка
-# =============================================================================
+# ==================== РОУТЫ ====================
 
-@routes.post("/api/sales/dashboard")
+@routes.post("/api/sales/upload")
 @require_admin
-async def sales_dashboard(request: web.Request) -> web.Response:
-    """Основная сводка дашборда товарооборота."""
+async def upload_sales_file(request: web.Request) -> web.Response:
     user, err = await get_auth_user(request)
-    if err or not user:
-        return web.json_response({"error": "Unauthorized"}, status=401)
+    if err: return denied(err)
+    reader = await request.post()
+    f = reader.get("file")
+    if not f or not f.filename: return web.json_response({"error": "Файл не найден"}, status=400)
+    key = (reader.get("restaurant_key") or "").strip()
+    if not key: return web.json_response({"error": "Укажите restaurant_key"}, status=400)
 
-    allowed_rests = await _get_allowed_restaurants(user)
-    body = await request.json()
-    period = body.get("period", "30d")
-    restaurant_key = body.get("restaurant_key")
-
-    if allowed_rests is not None:
-        if restaurant_key and restaurant_key not in allowed_rests:
-            return web.json_response({"error": "Forbidden"}, status=403)
-        if not restaurant_key:
-            restaurant_key = allowed_rests[0] if allowed_rests else "__none__"
+    allowed = await _allowed_rests(user)
+    if allowed is not None and key not in allowed:
+        return web.json_response({"error": "Нет прав"}, status=403)
 
     pool = db.get_pool(request.app)
-    results = {}
+    async with pool.acquire() as conn:
+        if not await conn.fetchrow("SELECT 1 FROM restaurants WHERE key = $1", key):
+            return web.json_response({"error": "Ресторан не найден"}, status=404)
+
+    filename = os.path.basename(f.filename)
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in (".xlsx", ".xls", ".csv"):
+        return web.json_response({"error": "Форматы: .xlsx, .xls, .csv"}, status=400)
+
+    os.makedirs(_upload_dir(), exist_ok=True)
+    stored = f"{datetime.utcnow():%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:8]}{ext}"
+    path = os.path.join(_upload_dir(), stored)
+    data = await f.read()
+    with open(path, "wb") as fp: fp.write(data)
+
+    async with pool.acquire() as conn:
+        import_id = (await conn.fetchrow(
+            "INSERT INTO sales_imports (restaurant_key, filename, file_path, uploaded_by, status) "
+            "VALUES ($1, $2, $3, $4, 'processing') RETURNING id",
+            key, filename, path, user["user_id"]))["id"]
+
+    try:
+        records = (await asyncio.to_thread(_parse_excel, io.BytesIO(data))
+                   if ext in (".xlsx", ".xls") else _parse_csv(data.decode("utf-8-sig")))
+        await _save_records(pool, import_id, key, records)
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE sales_imports SET status='completed', rows_count=$1, processed_at=NOW() WHERE id=$2",
+                len(records), import_id)
+        await _recalc_summary(pool, key)
+        return web.json_response({"success": True, "import_id": import_id, "rows_count": len(records),
+                                  "message": f"Загружено {len(records)} записей"})
+    except Exception as e:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE sales_imports SET status='error', error_message=$1 WHERE id=$2",
+                str(e)[:1000], import_id)
+        return web.json_response({"error": f"Ошибка: {str(e)[:500]}", "import_id": import_id}, status=500)
+
+
+@routes.post("/api/sales/dashboard")
+@admin_required
+async def sales_dashboard(request: web.Request) -> web.Response:
+    user = request['admin']
+    body = await request.json()
+    period = body.get("period", "30d")
+    key = body.get("restaurant_key")
+    allowed = await _allowed_rests(user)
+    if allowed is not None:
+        if key and key not in allowed: return web.json_response({"error": "Forbidden"}, status=403)
+        key = key or (allowed[0] if allowed else "__none__")
 
     days = {"7d": 7, "30d": 30, "90d": 90}.get(period, 30)
     date_from = (datetime.utcnow().date() - timedelta(days=days))
 
+    pool = db.get_pool(request.app)
     async with pool.acquire() as conn:
-        if restaurant_key:
-            where_clause = "WHERE sr.restaurant_key = $1 AND sr.sale_date >= $2"
-            params = [restaurant_key, date_from]
-        else:
-            where_clause = "WHERE sr.sale_date >= $1"
-            params = [date_from]
+        cond, params = (["sr.restaurant_key = $1", "sr.sale_date >= $2"], [key, date_from]) if key \
+            else (["sr.sale_date >= $1"], [date_from])
+        w, p = _where(cond, params)
 
-        total_sales = await conn.fetchval(
-            f"SELECT COALESCE(SUM(total_amount), 0) FROM sales_records sr {where_clause}", *params
-        )
-        total_cost = await conn.fetchval(
-            f"SELECT COALESCE(SUM(cost_amount), 0) FROM sales_records sr {where_clause}", *params
-        )
-        total_profit = await conn.fetchval(
-            f"SELECT COALESCE(SUM(profit_amount), 0) FROM sales_records sr {where_clause}", *params
-        )
-        total_items = await conn.fetchval(
-            f"SELECT COALESCE(SUM(quantity), 0) FROM sales_records sr {where_clause}", *params
-        )
+        async def total(col):
+            return float(await conn.fetchval(f"SELECT COALESCE(SUM({col}),0) FROM sales_records sr {w}", *p) or 0)
 
-        margin = round(float(total_profit) * 100 / max(float(total_sales), 1), 2) if float(total_sales) > 0 else 0
-
-        results["overview"] = {
-            "total_sales": float(total_sales or 0),
-            "total_cost": float(total_cost or 0),
-            "total_profit": float(total_profit or 0),
-            "avg_margin": margin,
-            "total_items_sold": int(total_items or 0),
-            "period_days": days
+        ts, tc, tp, ti = (await asyncio.gather(*(total(c) for c in ("total_amount", "cost_amount", "profit_amount", "quantity"))))
+        overview = {
+            "total_sales": ts, "total_cost": tc, "total_profit": tp,
+            "avg_margin": round(tp * 100 / max(ts, 1), 2),
+            "total_items_sold": int(ti), "period_days": days,
         }
 
-        daily_trend = await conn.fetch(f"""
-            SELECT
-                sale_date,
-                SUM(total_amount) as daily_sales,
-                SUM(cost_amount) as daily_cost,
-                SUM(profit_amount) as daily_profit,
-                SUM(quantity) as daily_items
-            FROM sales_records
-            {where_clause.replace('sr.', '')}
-            GROUP BY sale_date
-            ORDER BY sale_date
-        """, *params)
+        daily_trend = await conn.fetch(
+            f"SELECT sale_date, SUM(total_amount) s, SUM(cost_amount) c, SUM(profit_amount) p, SUM(quantity) q "
+            f"FROM sales_records {w} GROUP BY sale_date ORDER BY sale_date", *p)
 
-        results["daily_trend"] = [
-            {
-                "date": str(r["sale_date"]),
-                "sales": float(r["daily_sales"] or 0),
-                "cost": float(r["daily_cost"] or 0),
-                "profit": float(r["daily_profit"] or 0),
-                "items": int(r["daily_items"] or 0)
-            }
-            for r in daily_trend
-        ]
+        by_rest = await conn.fetch(f"""
+            SELECT r.name, r.key, COALESCE(SUM(sr.total_amount),0) total, COALESCE(SUM(sr.profit_amount),0) profit
+            FROM restaurants r LEFT JOIN sales_records sr
+              ON sr.restaurant_key = r.key AND sr.sale_date >= ${2 if key else 1}
+              {('AND sr.restaurant_key = $1' if key else '')}
+            {('WHERE r.key = $1' if key else '')}
+            GROUP BY r.key, r.name ORDER BY total DESC""", *([key, date_from] if key else [date_from]))
 
-        if restaurant_key:
-            restaurant_sales = await conn.fetch("""
-                SELECT
-                    r.name,
-                    r.key,
-                    COALESCE(SUM(sr.total_amount), 0) as total,
-                    COALESCE(SUM(sr.profit_amount), 0) as profit
-                FROM restaurants r
-                LEFT JOIN sales_records sr ON sr.restaurant_key = r.key AND sr.sale_date >= $1 AND sr.restaurant_key = $2
-                WHERE r.key = $2
-                GROUP BY r.key, r.name
-                ORDER BY total DESC
-            """, date_from, restaurant_key)
-        else:
-            restaurant_sales = await conn.fetch("""
-                SELECT
-                    r.name,
-                    r.key,
-                    COALESCE(SUM(sr.total_amount), 0) as total,
-                    COALESCE(SUM(sr.profit_amount), 0) as profit
-                FROM restaurants r
-                LEFT JOIN sales_records sr ON sr.restaurant_key = r.key AND sr.sale_date >= $1
-                GROUP BY r.key, r.name
-                ORDER BY total DESC
-            """, date_from)
-
-        results["by_restaurant"] = [
-            {
-                "key": r["key"],
-                "name": r["name"],
-                "total_sales": float(r["total"] or 0),
-                "profit": float(r["profit"] or 0)
-            }
-            for r in restaurant_sales
-        ]
-
-        top_products = await conn.fetch(f"""
-            SELECT
-                product_name,
-                SUM(quantity) as qty,
-                SUM(total_amount) as total
-            FROM sales_records
-            {where_clause.replace('sr.', '')} AND product_name IS NOT NULL
-            GROUP BY product_name
-            ORDER BY total DESC
-            LIMIT 10
-        """, *params)
-
-        results["top_products"] = [
-            {
-                "name": r["product_name"],
-                "quantity": int(r["qty"] or 0),
-                "total_sales": float(r["total"] or 0)
-            }
-            for r in top_products if r["product_name"]
-        ]
-
-        by_category = await conn.fetch(f"""
-            SELECT
-                COALESCE(category, 'Без категории') as cat,
-                COUNT(*) as count,
-                SUM(total_amount) as total,
-                SUM(profit_amount) as profit
-            FROM sales_records
-            {where_clause.replace('sr.', '')}
-            GROUP BY category
-            ORDER BY total DESC
-        """, *params)
-
-        results["by_category"] = [
-            {
-                "category": r["cat"],
-                "count": int(r["count"] or 0),
-                "total_sales": float(r["total"] or 0),
-                "profit": float(r["profit"] or 0)
-            }
-            for r in by_category
-        ]
-
-        by_payment = await conn.fetch(f"""
-            SELECT
-                COALESCE(payment_method, 'Не указан') as method,
-                SUM(total_amount) as total,
-                COUNT(*) as count
-            FROM sales_records
-            {where_clause.replace('sr.', '')}
-            GROUP BY payment_method
-            ORDER BY total DESC
-        """, *params)
-
-        results["by_payment"] = [
-            {
-                "method": r["method"],
-                "total_sales": float(r["total"] or 0),
-                "count": int(r["count"] or 0)
-            }
-            for r in by_payment
-        ]
-
-        peak_hours = await conn.fetch(f"""
-            SELECT
-                EXTRACT(HOUR FROM sale_date::timestamp) as hour,
-                SUM(total_amount) as total,
-                COUNT(*) as transactions
-            FROM sales_records
-            {where_clause.replace('sr.', '')}
-            GROUP BY hour
-            ORDER BY total DESC
-            LIMIT 5
-        """, *params)
-
-        results["peak_hours"] = [
-            {
-                "hour": int(r["hour"]),
-                "total_sales": float(r["total"] or 0),
-                "transactions": int(r["transactions"] or 0)
-            }
-            for r in peak_hours
-        ]
-
-        if restaurant_key:
-            summary_where = "WHERE restaurant_key = $1 AND summary_date >= $2"
-            summary_params = [restaurant_key, date_from]
-        else:
-            summary_where = "WHERE summary_date >= $1"
-            summary_params = [date_from]
-
-        daily_summaries = await conn.fetch(f"""
-            SELECT * FROM sales_daily_summary
-            {summary_where}
-            ORDER BY summary_date DESC
-            LIMIT 30
-        """, *summary_params)
-
-        results["daily_summaries"] = [
-            {
-                "date": str(s["summary_date"]),
-                "total_sales": float(s["total_sales"] or 0),
-                "total_cost": float(s["total_cost"] or 0),
-                "total_profit": float(s["total_profit"] or 0),
-                "avg_margin": float(s["avg_margin"] or 0),
-                "items_sold": int(s["total_items_sold"] or 0),
-                "transactions": int(s["total_transactions"] or 0),
-                "avg_check": float(s["avg_check"] or 0),
-                "cash_sales": float(s["cash_sales"] or 0),
-                "card_sales": float(s["card_sales"] or 0),
-                "online_sales": float(s["online_sales"] or 0),
-                "unique_products": int(s["unique_products"] or 0)
-            }
-            for s in daily_summaries
-        ]
-
-        if restaurant_key:
-            imports_where = "WHERE si.restaurant_key = $1"
-            imports_params = [restaurant_key]
-        else:
-            imports_where = ""
-            imports_params = []
+        by_payment = await conn.fetch(
+            f"SELECT COALESCE(payment_method,'Не указан') method, SUM(total_amount) total, COUNT(*) c "
+            f"FROM sales_records {w} GROUP BY payment_method ORDER BY total DESC", *p)
 
         imports = await conn.fetch(f"""
-            SELECT si.*, u.full_name as uploader_name
-            FROM sales_imports si
+            SELECT si.*, u.full_name uploader_name FROM sales_imports si
             LEFT JOIN users u ON u.user_id = si.uploaded_by
-            {imports_where}
-            ORDER BY si.upload_date DESC
-            LIMIT 20
-        """, *imports_params)
+            {('WHERE si.restaurant_key = $1' if key else '')}
+            ORDER BY si.upload_date DESC LIMIT 20""", *([key] if key else []))
 
-        results["imports"] = [
-            {
-                "id": i["id"],
-                "filename": i["filename"],
-                "restaurant_key": i["restaurant_key"],
-                "upload_date": str(i["upload_date"]),
-                "rows_count": int(i["rows_count"] or 0),
-                "status": i["status"],
-                "error_message": i["error_message"],
-                "uploader_name": i["uploader_name"]
-            }
-            for i in imports
-        ]
+        summaries = await conn.fetch(
+            f"SELECT * FROM sales_daily_summary "
+            f"{('WHERE restaurant_key = $1 AND summary_date >= $2' if key else 'WHERE summary_date >= $1')} "
+            f"ORDER BY summary_date DESC LIMIT 30", *([key, date_from] if key else [date_from]))
 
-    return web.json_response({"success": True, "data": results})
+    return web.json_response({"success": True, "data": {
+        "overview": overview,
+        "daily_trend": [{"date": str(r["sale_date"]), "sales": float(r["s"] or 0),
+                         "cost": float(r["c"] or 0), "profit": float(r["p"] or 0),
+                         "items": int(r["q"] or 0)} for r in daily_trend],
+        "by_restaurant": [{"key": r["key"], "name": r["name"],
+                           "total_sales": float(r["total"] or 0), "profit": float(r["profit"] or 0)} for r in by_rest],
+        "by_payment": [{"method": r["method"], "total_sales": float(r["total"] or 0),
+                        "count": int(r["c"] or 0)} for r in by_payment],
+        "imports": [{"id": i["id"], "filename": i["filename"], "restaurant_key": i["restaurant_key"],
+                     "upload_date": str(i["upload_date"]), "rows_count": int(i["rows_count"] or 0),
+                     "status": i["status"], "error_message": i["error_message"],
+                     "uploader_name": i["uploader_name"]} for i in imports],
+        "daily_summaries": [{"date": str(s["summary_date"]), "total_sales": float(s["total_sales"] or 0),
+                             "total_cost": float(s["total_cost"] or 0), "total_profit": float(s["total_profit"] or 0),
+                             "avg_margin": float(s["avg_margin"] or 0), "items_sold": int(s["total_items_sold"] or 0),
+                             "transactions": int(s["total_transactions"] or 0), "avg_check": float(s["avg_check"] or 0),
+                             "cash_sales": float(s["cash_sales"] or 0), "card_sales": float(s["card_sales"] or 0),
+                             "online_sales": float(s["online_sales"] or 0),
+                             "unique_products": int(s["unique_products"] or 0)} for s in summaries],
+    }})
 
-
-# =============================================================================
-# API: Детализация по транзакциям
-# =============================================================================
 
 @routes.post("/api/sales/records")
-@require_admin
+@admin_required
 async def sales_records(request: web.Request) -> web.Response:
-    """Получение списка транзакций с пагинацией и фильтрами."""
-    user, err = await get_auth_user(request)
-    if err or not user:
-        return web.json_response({"error": "Unauthorized"}, status=401)
-
-    allowed_rests = await _get_allowed_restaurants(user)
+    user = request['admin']
     body = await request.json()
-    restaurant_key = body.get("restaurant_key")
-    date_from = _to_date(body.get("date_from"))
-    date_to = _to_date(body.get("date_to"))
-    category = body.get("category")
-    product_name = body.get("product_name")
-    page = max(1, int(body.get("page", 1) or 1))
-    limit = max(1, min(500, int(body.get("limit", 100) or 100)))
+    key = body.get("restaurant_key")
+    df, dt = _date_from(body.get("date_from")), _date_to(body.get("date_to"))
+    cat = body.get("category"); prod = body.get("product_name")
+    page = max(1, int(body.get("page", 1) or 1)); limit = max(1, min(500, int(body.get("limit", 100) or 100)))
+    allowed = await _allowed_rests(user)
+
+    cond, params, idx = [], [], 1
+    if allowed is not None:
+        if key and key not in allowed: return web.json_response({"error": "Forbidden"}, status=403)
+        cond.append(f"sr.restaurant_key = ANY(${idx})"); params.append([key] if key else allowed); idx += 1
+    elif key:
+        cond.append(f"sr.restaurant_key = ${idx}"); params.append(key); idx += 1
+    if df: cond.append(f"sr.sale_date >= ${idx}"); params.append(df); idx += 1
+    if dt: cond.append(f"sr.sale_date <= ${idx}"); params.append(dt); idx += 1
+    if cat: cond.append(f"sr.category ILIKE ${idx}"); params.append(f"%{cat}%"); idx += 1
+    if prod: cond.append(f"sr.product_name ILIKE ${idx}"); params.append(f"%{prod}%"); idx += 1
+    w, _ = _where(cond, params)
 
     pool = db.get_pool(request.app)
-    conditions = []
-    params = []
-    param_idx = 1
-
-    if allowed_rests is not None:
-        if restaurant_key and restaurant_key not in allowed_rests:
-            return web.json_response({"error": "Forbidden"}, status=403)
-        target_rests = [restaurant_key] if restaurant_key else allowed_rests
-        conditions.append(f"sr.restaurant_key = ANY(${param_idx})")
-        params.append(target_rests)
-        param_idx += 1
-    elif restaurant_key:
-        conditions.append(f"sr.restaurant_key = ${param_idx}")
-        params.append(restaurant_key)
-        param_idx += 1
-
-    if date_from:
-        conditions.append(f"sr.sale_date >= ${param_idx}")
-        params.append(date_from)
-        param_idx += 1
-
-    if date_to:
-        conditions.append(f"sr.sale_date <= ${param_idx}")
-        params.append(date_to)
-        param_idx += 1
-
-    if category:
-        conditions.append(f"sr.category ILIKE ${param_idx}")
-        params.append(f"%{category}%")
-        param_idx += 1
-
-    if product_name:
-        conditions.append(f"sr.product_name ILIKE ${param_idx}")
-        params.append(f"%{product_name}%")
-        param_idx += 1
-
-    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-    offset = (page - 1) * limit
-
     async with pool.acquire() as conn:
-        total = await conn.fetchval(
-            f"SELECT COUNT(*) FROM sales_records sr {where_clause}", *params
-        )
+        total = await conn.fetchval(f"SELECT COUNT(*) FROM sales_records sr {w}", *params)
+        rows = await conn.fetch(
+            f"SELECT sr.*, r.name restaurant_name FROM sales_records sr "
+            f"LEFT JOIN restaurants r ON r.key = sr.restaurant_key {w} "
+            f"ORDER BY sr.sale_date DESC, sr.id DESC LIMIT ${idx} OFFSET ${idx+1}",
+            *params, limit, (page - 1) * limit)
 
-        records = await conn.fetch(f"""
-            SELECT sr.*, r.name as restaurant_name
-            FROM sales_records sr
-            LEFT JOIN restaurants r ON r.key = sr.restaurant_key
-            {where_clause}
-            ORDER BY sr.sale_date DESC, sr.id DESC
-            LIMIT ${param_idx} OFFSET ${param_idx + 1}
-        """, *params, limit, offset)
-
-        return web.json_response({
-            "success": True,
-            "data": {
-                "records": [
-                    {
-                        "id": r["id"],
-                        "restaurant_key": r["restaurant_key"],
-                        "restaurant_name": r["restaurant_name"],
-                        "sale_date": str(r["sale_date"]),
-                        "category": r["category"],
-                        "subcategory": r["subcategory"],
-                        "product_name": r["product_name"],
-                        "sku": r["sku"],
-                        "quantity": int(r["quantity"] or 0),
-                        "unit_price": float(r["unit_price"] or 0),
-                        "total_amount": float(r["total_amount"] or 0),
-                        "cost_amount": float(r["cost_amount"] or 0),
-                        "profit_amount": float(r["profit_amount"] or 0),
-                        "profit_margin": float(r["profit_margin"] or 0),
-                        "payment_method": r["payment_method"],
-                        "shift_number": int(r["shift_number"] or 0),
-                        "employee_name": r["employee_name"],
-                        "discount_amount": float(r["discount_amount"] or 0)
-                    }
-                    for r in records
-                ],
-                "total": total,
-                "page": page,
-                "limit": limit,
-                "pages": (total + limit - 1) // limit if limit > 0 else 1
-            }
-        })
+    return web.json_response({"success": True, "data": {
+        "records": [_rec_to_json(r) for r in rows],
+        "total": total, "page": page, "limit": limit,
+        "pages": (total + limit - 1) // limit if limit > 0 else 1,
+    }})
 
 
-# =============================================================================
-# API: Список ресторанов для товарооборота
-# =============================================================================
+def _rec_to_json(r):
+    return {"id": r["id"], "restaurant_key": r["restaurant_key"], "restaurant_name": r["restaurant_name"],
+            "sale_date": str(r["sale_date"]), "category": r["category"], "subcategory": r["subcategory"],
+            "product_name": r["product_name"], "sku": r["sku"], "quantity": int(r["quantity"] or 0),
+            "unit_price": float(r["unit_price"] or 0), "total_amount": float(r["total_amount"] or 0),
+            "cost_amount": float(r["cost_amount"] or 0), "profit_amount": float(r["profit_amount"] or 0),
+            "profit_margin": float(r["profit_margin"] or 0), "payment_method": r["payment_method"],
+            "shift_number": int(r["shift_number"] or 0), "employee_name": r["employee_name"],
+            "discount_amount": float(r["discount_amount"] or 0)}
+
 
 @routes.post("/api/sales/restaurants")
-@require_admin
+@admin_required
 async def sales_restaurants(request: web.Request) -> web.Response:
-    """Получение списка ресторанов с метриками товарооборота."""
-    user, err = await get_auth_user(request)
-    if err or not user:
-        return web.json_response({"error": "Unauthorized"}, status=401)
-
-    allowed_rests = await _get_allowed_restaurants(user)
+    user = request['admin']
+    allowed = await _allowed_rests(user)
     pool = db.get_pool(request.app)
-
     async with pool.acquire() as conn:
-        if allowed_rests is not None:
-            restaurants = await conn.fetch("""
-                SELECT
-                    r.key,
-                    r.name,
-                    r.address,
-                    (SELECT COUNT(*) FROM sales_records sr WHERE sr.restaurant_key = r.key) as total_records,
-                    (SELECT COALESCE(SUM(total_amount), 0) FROM sales_records sr WHERE sr.restaurant_key = r.key) as total_sales,
-                    (SELECT MAX(sale_date) FROM sales_records sr WHERE sr.restaurant_key = r.key) as last_sale_date
-                FROM restaurants r
-                WHERE r.key = ANY($1)
-                ORDER BY r.sort NULLS FIRST, r.name
-            """, allowed_rests)
+        if allowed is not None:
+            rows = await conn.fetch("""
+                SELECT r.key, r.name, r.address,
+                  (SELECT COUNT(*) FROM sales_records sr WHERE sr.restaurant_key = r.key) total_records,
+                  (SELECT COALESCE(SUM(total_amount),0) FROM sales_records sr WHERE sr.restaurant_key = r.key) total_sales,
+                  (SELECT MAX(sale_date) FROM sales_records sr WHERE sr.restaurant_key = r.key) last_sale_date
+                FROM restaurants r WHERE r.key = ANY($1) ORDER BY r.sort NULLS FIRST, r.name""", allowed)
         else:
-            restaurants = await conn.fetch("""
-                SELECT
-                    r.key,
-                    r.name,
-                    r.address,
-                    (SELECT COUNT(*) FROM sales_records sr WHERE sr.restaurant_key = r.key) as total_records,
-                    (SELECT COALESCE(SUM(total_amount), 0) FROM sales_records sr WHERE sr.restaurant_key = r.key) as total_sales,
-                    (SELECT MAX(sale_date) FROM sales_records sr WHERE sr.restaurant_key = r.key) as last_sale_date
-                FROM restaurants r
-                ORDER BY r.sort NULLS FIRST, r.name
-            """)
+            rows = await conn.fetch("""
+                SELECT r.key, r.name, r.address,
+                  (SELECT COUNT(*) FROM sales_records sr WHERE sr.restaurant_key = r.key) total_records,
+                  (SELECT COALESCE(SUM(total_amount),0) FROM sales_records sr WHERE sr.restaurant_key = r.key) total_sales,
+                  (SELECT MAX(sale_date) FROM sales_records sr WHERE sr.restaurant_key = r.key) last_sale_date
+                FROM restaurants r ORDER BY r.sort NULLS FIRST, r.name""")
+    return web.json_response({"success": True, "data": [
+        {"key": r["key"], "name": r["name"], "address": r["address"],
+         "total_records": int(r["total_records"] or 0), "total_sales": float(r["total_sales"] or 0),
+         "last_sale_date": str(r["last_sale_date"]) if r["last_sale_date"] else None} for r in rows]})
 
-        return web.json_response({
-            "success": True,
-            "data": [
-                {
-                    "key": r["key"],
-                    "name": r["name"],
-                    "address": r["address"],
-                    "total_records": int(r["total_records"] or 0),
-                    "total_sales": float(r["total_sales"] or 0),
-                    "last_sale_date": str(r["last_sale_date"]) if r["last_sale_date"] else None
-                }
-                for r in restaurants
-            ]
-        })
-
-
-# =============================================================================
-# API: Экспорт данных
-# =============================================================================
 
 @routes.post("/api/sales/export")
-@require_admin
-async def export_sales_data(request: web.Request) -> web.Response:
-    """Экспорт данных товарооборота в Excel."""
-    user, err = await get_auth_user(request)
-    if err or not user:
-        return web.json_response({"error": "Unauthorized"}, status=401)
-
-    allowed_rests = await _get_allowed_restaurants(user)
+@admin_required
+async def export_sales(request: web.Request) -> web.Response:
+    user = request['admin']
     body = await request.json()
-    restaurant_key = body.get("restaurant_key")
-    date_from = _to_date(body.get("date_from"))
-    date_to = _to_date(body.get("date_to"))
+    key = body.get("restaurant_key")
+    df, dt = _to_date(body.get("date_from")), _to_date(body.get("date_to"))
+    allowed = await _allowed_rests(user)
+
+    cond, params, idx = [], [], 1
+    if allowed is not None:
+        if key and key not in allowed: return web.json_response({"error": "Forbidden"}, status=403)
+        cond.append(f"sr.restaurant_key = ANY(${idx})"); params.append([key] if key else allowed); idx += 1
+    elif key:
+        cond.append(f"sr.restaurant_key = ${idx}"); params.append(key); idx += 1
+    if df: cond.append(f"sr.sale_date >= ${idx}"); params.append(df); idx += 1
+    if dt: cond.append(f"sr.sale_date <= ${idx}"); params.append(dt); idx += 1
+    w, _ = _where(cond, params)
 
     pool = db.get_pool(request.app)
-    conditions = []
-    params = []
-    param_idx = 1
-
-    if allowed_rests is not None:
-        if restaurant_key and restaurant_key not in allowed_rests:
-            return web.json_response({"error": "Forbidden"}, status=403)
-        target_rests = [restaurant_key] if restaurant_key else allowed_rests
-        conditions.append(f"sr.restaurant_key = ANY(${param_idx})")
-        params.append(target_rests)
-        param_idx += 1
-    elif restaurant_key:
-        conditions.append(f"sr.restaurant_key = ${param_idx}")
-        params.append(restaurant_key)
-        param_idx += 1
-
-    if date_from:
-        conditions.append(f"sr.sale_date >= ${param_idx}")
-        params.append(date_from)
-        param_idx += 1
-    if date_to:
-        conditions.append(f"sr.sale_date <= ${param_idx}")
-        params.append(date_to)
-        param_idx += 1
-
-    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-
     async with pool.acquire() as conn:
-        records = await conn.fetch(f"""
-            SELECT
-                sr.sale_date,
-                sr.restaurant_key,
-                r.name as restaurant_name,
-                sr.category,
-                sr.product_name,
-                sr.quantity,
-                sr.unit_price,
-                sr.total_amount,
-                sr.cost_amount,
-                sr.profit_amount,
-                sr.payment_method,
-                sr.employee_name
-            FROM sales_records sr
-            LEFT JOIN restaurants r ON r.key = sr.restaurant_key
-            {where_clause}
-            ORDER BY sr.sale_date DESC
-        """, *params)
+        rows = await conn.fetch(
+            f"SELECT sr.sale_date, sr.restaurant_key, r.name restaurant_name, sr.category, "
+            f"sr.product_name, sr.quantity, sr.unit_price, sr.total_amount, sr.cost_amount, "
+            f"sr.profit_amount, sr.payment_method, sr.employee_name "
+            f"FROM sales_records sr LEFT JOIN restaurants r ON r.key = sr.restaurant_key {w} "
+            f"ORDER BY sr.sale_date DESC", *params)
 
-    def _generate_excel():
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Товарооборот"
-
-        headers = [
-            "Дата", "Ресторан", "Ключ", "Категория", "Товар", "Кол-во",
-            "Цена", "Сумма", "Себестоимость", "Прибыль", "Оплата", "Сотрудник"
-        ]
-        ws.append(headers)
-
+    def make_xlsx():
         from openpyxl.styles import Font, PatternFill
-        header_fill = PatternFill(start_color="667eea", end_color="667eea", fill_type="solid")
-        header_font = Font(bold=True, color="FFFFFF")
-        for cell in ws[1]:
-            cell.fill = header_fill
-            cell.font = header_font
-
-        for r in records:
-            ws.append([
-                r["sale_date"],
-                r["restaurant_name"],
-                r["restaurant_key"],
-                r["category"],
-                r["product_name"],
-                r["quantity"],
-                r["unit_price"],
-                r["total_amount"],
-                r["cost_amount"],
-                r["profit_amount"],
-                r["payment_method"],
-                r["employee_name"]
-            ])
-
+        wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Товарооборот"
+        ws.append(["Дата", "Ресторан", "Ключ", "Категория", "Товар", "Кол-во",
+                   "Цена", "Сумма", "Себестоимость", "Прибыль", "Оплата", "Сотрудник"])
+        fill = PatternFill("solid", start_color="667eea")
+        for c in ws[1]: c.fill = fill; c.font = Font(bold=True, color="FFFFFF")
+        for r in rows:
+            ws.append([r["sale_date"], r["restaurant_name"], r["restaurant_key"], r["category"],
+                       r["product_name"], r["quantity"], r["unit_price"], r["total_amount"],
+                       r["cost_amount"], r["profit_amount"], r["payment_method"], r["employee_name"]])
         for col in ws.columns:
-            max_length = 0
-            column = col[0].column_letter
-            for cell in col:
-                try:
-                    if cell.value:
-                        max_length = max(max_length, len(str(cell.value)))
-                except (ValueError, TypeError):
-                    pass
-            ws.column_dimensions[column].width = min(max_length + 4, 40)
+            width = max((len(str(c.value)) for c in col if c.value), default=0) + 4
+            ws.column_dimensions[col[0].column_letter].width = min(width, 40)
+        out = io.BytesIO(); wb.save(out); out.seek(0); wb.close()
+        return out.read()
 
-        output = io.BytesIO()
-        wb.save(output)
-        output.seek(0)
-        wb.close()
-        return output.read()
-
-    excel_bytes = await asyncio.to_thread(_generate_excel)
-    filename = f"sales_export_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
-
-    return web.Response(
-        body=excel_bytes,
+    data = await asyncio.to_thread(make_xlsx)
+    return web.Response(body=data,
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
-    )
+        headers={"Content-Disposition": f"attachment; filename=sales_{datetime.utcnow():%Y%m%d_%H%M%S}.xlsx"})
 
-
-# =============================================================================
-# API: Шаблоны для загрузки
-# =============================================================================
 
 @routes.get("/api/sales/template")
 @require_admin
 async def sales_template(request: web.Request) -> web.Response:
-    """Скачивание шаблона Excel для загрузки данных товарооборота."""
-    def _generate_template():
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Шаблон"
-
-        headers = [
-            "sale_date", "restaurant_key", "category", "subcategory",
-            "product_name", "sku", "quantity", "unit_price", "total_amount",
-            "cost_amount", "profit_amount", "profit_margin",
-            "payment_method", "shift_number", "employee_name", "discount_amount"
-        ]
-        ws.append(headers)
-
-        ws.append([
-            "2026-11-20", "restaurant_1", "Напитки", "Кофе",
-            "Капучино 300мл", "SKU001", 15, 250, 3750,
-            1200, 2550, 68.0,
-            "Карта", 1, "Иванов И.И.", 0
-        ])
-        ws.append([
-            "2026-11-20", "restaurant_1", "Еда", "Бургеры",
-            "Чизбургер", "SKU002", 8, 350, 2800,
-            1400, 1400, 50.0,
-            "Наличные", 1, "Петров П.П.", 50
-        ])
-
+    def make():
         from openpyxl.styles import Font, PatternFill
-        header_fill = PatternFill(start_color="667eea", end_color="667eea", fill_type="solid")
-        header_font = Font(bold=True, color="FFFFFF")
-        example_fill = PatternFill(start_color="f0f0ff", end_color="f0f0ff", fill_type="solid")
-        for cell in ws[1]:
-            cell.fill = header_fill
-            cell.font = header_font
-        for cell in ws[2]:
-            cell.fill = example_fill
-        for cell in ws[3]:
-            cell.fill = example_fill
-
-        output = io.BytesIO()
-        wb.save(output)
-        output.seek(0)
-        wb.close()
-        return output.read()
-
-    excel_bytes = await asyncio.to_thread(_generate_template)
-
-    return web.Response(
-        body=excel_bytes,
+        wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Шаблон"
+        headers = ["sale_date", "restaurant_key", "category", "subcategory", "product_name", "sku",
+                   "quantity", "unit_price", "total_amount", "cost_amount", "profit_amount",
+                   "profit_margin", "payment_method", "shift_number", "employee_name", "discount_amount"]
+        ws.append(headers)
+        ws.append(["2026-11-20", "restaurant_1", "Напитки", "Кофе", "Капучино", "SKU001",
+                   15, 250, 3750, 1200, 2550, 68.0, "Карта", 1, "Иванов И.И.", 0])
+        fill = PatternFill("solid", start_color="667eea")
+        for c in ws[1]: c.fill = fill; c.font = Font(bold=True, color="FFFFFF")
+        out = io.BytesIO(); wb.save(out); out.seek(0); wb.close()
+        return out.read()
+    data = await asyncio.to_thread(make)
+    return web.Response(body=data,
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=sales_template.xlsx"}
-    )
+        headers={"Content-Disposition": "attachment; filename=sales_template.xlsx"})

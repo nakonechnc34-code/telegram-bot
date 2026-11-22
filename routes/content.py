@@ -5,6 +5,8 @@ from utils.auth_helpers import get_auth_user, get_admin_user, denied, require_pe
 from utils.common import safe_int
 from utils.security import sanitize_html, sanitize_standard_html
 import json
+from utils.standard_docx import convert_standard_docx
+from zipfile import BadZipFile
 
 routes = web.RouteTableDef()
 
@@ -420,6 +422,32 @@ async def handle_admin_standards_list(request):
 
     items = await _run(_sync)
     return web.json_response({"standards": items})
+
+
+@routes.post('/api/admin/standard/import-docx')
+async def handle_admin_standard_import_docx(request):
+    admin, err = await get_admin_user(request)
+    if err:
+        return denied(err)
+    perm_err = require_perm(admin, "standards_edit")
+    if perm_err:
+        return perm_err
+    if request.content_length and request.content_length > 3 * 1024 * 1024:
+        return web.json_response({"error": "file_too_large"}, status=413)
+    try:
+        reader = await request.multipart()
+        part = await reader.next()
+        if not part or part.name != 'file' or not (part.filename or '').lower().endswith('.docx'):
+            return web.json_response({"error": "invalid_docx"}, status=400)
+        data = await part.read(decode=False)
+        if len(data) > 3 * 1024 * 1024 or not data.startswith(b'PK'):
+            return web.json_response({"error": "invalid_docx_or_too_large"}, status=400)
+        html = convert_standard_docx(data)
+        if len(html) > 100000:
+            return web.json_response({"error": "document_too_large"}, status=413)
+        return web.json_response({"ok": True, "html": html})
+    except (BadZipFile, ValueError, KeyError, OSError):
+        return web.json_response({"error": "invalid_docx"}, status=400)
 
 
 @routes.post('/api/admin/standard/add')

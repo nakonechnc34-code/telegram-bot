@@ -394,7 +394,7 @@ async def sales_order_type_settings(request: web.Request) -> web.Response:
     action = body.get("action", "get")
     if action not in ("get", "save"):
         return web.json_response({"error": "Неизвестное действие"}, status=400)
-    if action == "save" and _is_tu(user):
+    if action == "save" and not user.get("is_super_admin"):
         return web.json_response({"error": "Редактирование доступно администратору сети"}, status=403)
     pool = db.get_pool(request.app)
     async with pool.acquire() as conn:
@@ -420,7 +420,7 @@ async def sales_order_type_settings(request: web.Request) -> web.Response:
             rows = await conn.fetch("SELECT DISTINCT payment_method FROM sales_records WHERE restaurant_key = ANY($1) AND payment_method IS NOT NULL ORDER BY payment_method", allowed)
     methods = sorted(set(mapping) | {r["payment_method"] for r in rows})
     return web.json_response({"success": True, "data": {
-        "mapping": mapping, "methods": methods, "can_edit": not _is_tu(user),
+        "mapping": mapping, "methods": methods, "can_edit": bool(user.get("is_super_admin")),
     }})
 
 

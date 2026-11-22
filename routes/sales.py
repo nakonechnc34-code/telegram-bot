@@ -445,6 +445,42 @@ async def sales_order_type_settings(request: web.Request) -> web.Response:
     }})
 
 
+@routes.post("/api/sales/imports/delete")
+@admin_required
+async def delete_sales_import(request: web.Request) -> web.Response:
+    """Remove an import and only the sales rows still owned by that import."""
+    user = request["admin"]
+    body = await request.json()
+    import_id = body.get("import_id")
+    if type(import_id) is not int or import_id <= 0:
+        return web.json_response({"error": "Некорректный идентификатор отчёта"}, status=400)
+
+    allowed = await _allowed_rests(user)
+    pool = db.get_pool(request.app)
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            imp = await conn.fetchrow(
+                "SELECT id, restaurant_key FROM sales_imports WHERE id=$1 FOR UPDATE", import_id)
+            if imp is None:
+                return web.json_response({"error": "Отчёт не найден"}, status=404)
+            affected = await conn.fetch(
+                "SELECT DISTINCT restaurant_key FROM sales_records WHERE import_id=$1", import_id)
+            keys = {imp["restaurant_key"]} | {row["restaurant_key"] for row in affected}
+            if allowed is not None and not keys.issubset(set(allowed)):
+                return web.json_response({"error": "Нет доступа к одному или нескольким ресторанам"}, status=403)
+            # Lock restaurants in stable order, consistent with the upload transaction.
+            for key in sorted(keys):
+                await conn.fetchval("SELECT key FROM restaurants WHERE key=$1 FOR UPDATE", key)
+            deleted = await conn.fetchval(
+                "WITH removed AS (DELETE FROM sales_records WHERE import_id=$1 RETURNING id) "
+                "SELECT COUNT(*) FROM removed", import_id)
+            for key in sorted({row["restaurant_key"] for row in affected}):
+                await _recalc_summary(conn, key)
+            await conn.execute("DELETE FROM sales_imports WHERE id=$1", import_id)
+
+    return web.json_response({"success": True, "deleted_records": int(deleted or 0)})
+
+
 @routes.post("/api/sales/dashboard")
 @admin_required
 async def sales_dashboard(request: web.Request) -> web.Response:

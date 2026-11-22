@@ -128,8 +128,33 @@
         return rows.map((r,i) => '<tr><td>'+(i+1)+'</td><td><strong>'+esc(r.name)+'</strong></td><td>'+money(r.total_sales)+'</td></tr>').join('');
     }
     function importRows(rows) {
-        return rows.map(imp => '<tr><td><strong>'+esc(imp.filename)+'</strong></td><td>'+esc(state.restaurants.find(r=>r.key===imp.restaurant_key)?.name||imp.restaurant_key)+'</td><td>'+formatNumber(imp.rows_count)+'</td><td>'+formatDate(imp.upload_date)+'</td><td><span class="status-pill '+(imp.status==='completed'?'':'pending')+'">'+esc(imp.status==='completed'?'Загружен':imp.status)+'</span></td></tr>').join('');
+        return rows.map(imp => '<tr><td><strong>'+esc(imp.filename)+'</strong></td><td>'+
+            esc(state.restaurants.find(r=>r.key===imp.restaurant_key)?.name||imp.restaurant_key)+
+            '</td><td>'+formatNumber(imp.rows_count)+'</td><td>'+formatDate(imp.upload_date)+
+            '</td><td><span class="status-pill '+(imp.status==='completed'?'':'pending')+'">'+
+            esc(imp.status==='completed'?'Загружен':imp.status==='replaced'?'Заменён':imp.status==='error'?'Ошибка':imp.status)+
+            '</span></td><td><button type="button" class="btn btn-secondary sales-delete-import" data-import-id="'+
+            Number(imp.id)+'" aria-label="Удалить отчёт '+esc(imp.filename)+'">Удалить</button></td></tr>').join('');
     }
+
+    async function deleteImport(importId) {
+        const imp = (state.dashboardData?.imports || []).find(item => item.id === importId);
+        if (!imp) return;
+        if (!window.confirm('Удалить отчёт «'+imp.filename+'»? Связанные с ним данные продаж будут удалены из аналитики. Действие нельзя отменить.')) return;
+        const button = DOM.content.querySelector('.sales-delete-import[data-import-id="'+importId+'"]');
+        if (button) button.disabled = true;
+        try {
+            const result = await apiFetch('/api/sales/imports/delete', {
+                method: 'POST', body: JSON.stringify({import_id: importId})
+            });
+            showToast('Отчёт удалён. Удалено строк продаж: '+formatNumber(result.deleted_records));
+            await loadDashboard();
+        } catch (error) {
+            if (button) button.disabled = false;
+            showToast('Не удалось удалить отчёт: '+error.message, 'error');
+        }
+    }
+
     function renderDashboard(data) {
         const {overview:o, daily_trend:trend=[], by_restaurant:restaurants=[], hourly_revenue:hourly=[], hourly_by_order_type:hourlyTypes=[], by_order_type:orderTypes=[], previous_total_sales:previousSales=0, same_weekday_comparison:weekCompare=null, imports=[]} = data;
         const view=state.view;
@@ -144,8 +169,9 @@
         } else if(view==='imports') {
             DOM.content.innerHTML=intro('Загрузка и история','Импортируйте XLSX/CSV из iiko и отслеживайте последние загрузки.')+
             '<section class="panel"><h3>Новый отчёт</h3><p class="section-note">Выберите ресторан и загрузите файл до 10 МБ. Данные за совпадающие даты и рестораны будут заменены, а не сложены.</p><button class="btn btn-primary" id="import-from-panel">＋ Загрузить файл iiko</button></section>'+
-            table('История загрузок',['Файл','Ресторан','Строк','Дата','Статус'],importRows(imports),'Загрузок пока нет');
+            table('История загрузок',['Файл','Ресторан','Строк','Дата','Статус','Действия'],importRows(imports),'Загрузок пока нет');
             document.getElementById('import-from-panel').addEventListener('click',openUploadModal);
+            DOM.content.querySelectorAll('.sales-delete-import').forEach(button => button.addEventListener('click', () => deleteImport(Number(button.dataset.importId))));
         } else if(view==='products') {
             DOM.content.innerHTML=intro('Товарная аналитика','Рейтинг блюд и категорий по данным загруженных отчётов.')+
             '<section class="panel"><div class="loading">Загрузка товаров…</div></section>';

@@ -47,17 +47,18 @@
         </div>
         <div class="modal-body">
             <div class="form-group">
-                <label>Ресторан *</label>
+                <label>Ресторан для истории загрузки *</label>
                 <select class="form-input" id="upload-restaurant" required>
                     <option value="">Выберите ресторан</option>
                 </select>
             </div>
+            <p class="section-note">Для сводного «Дневного отчёта Воккер» продажи автоматически распределяются по ресторанам из файла. Выбранный ресторан используется для записи в историю загрузок. Все рестораны файла должны быть доступны вам.</p>
             <div class="form-group">
-                <label>Файл отчёта (.xlsx) *</label>
+                <label>Файл отчёта (.xlsx / .csv) *</label>
                 <div class="file-upload-area" id="file-drop-zone">
                     <div class="file-upload-icon">📁</div>
                     <div class="file-upload-text">Перетащите файл сюда или нажмите</div>
-                    <div class="file-upload-hint">Отчёт iiko «Продажи по товарам» (.xlsx)</div>
+                    <div class="file-upload-hint">Отчёт iiko «Продажи по товарам» или «Дневной отчёт Воккер» (.xlsx / .csv)</div>
                     <input type="file" id="file-input" accept=".xlsx,.csv" style="display:none;">
                 </div>
                 <div id="file-info" class="file-info-text"></div>

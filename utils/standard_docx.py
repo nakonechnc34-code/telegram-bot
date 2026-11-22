@@ -12,14 +12,14 @@ def _run_html(run):
     if not value:
         return ''
     # Symbol-font bullets are stored as private-use U+F0B7 in some Word files.
-    value = value.replace('\\uf0b7', '')
-    value = escape(value).replace('\\n', '<br>')
+    value = value.replace('\uf0b7', '')
+    value = escape(value).replace('\n', '<br>')
     styles = []
     if run.font.color and run.font.color.rgb:
         styles.append('color:#' + str(run.font.color.rgb))
     if run.font.size:
         styles.append('font-size:' + str(round(run.font.size.pt, 2)) + 'pt')
-    if run.font.name and not (run.text.startswith('\\uf0b7')):
+    if run.font.name and not (run.text.startswith('\uf0b7')):
         styles.append('font-family:' + escape(run.font.name, quote=True))
     if run.bold:
         styles.append('font-weight:bold')
@@ -92,7 +92,7 @@ def convert_standard_docx(data):
             styles.append('margin-bottom:' + str(round(para.paragraph_format.space_after.pt, 2)) + 'pt')
         # Word uses the private-use glyph for manual bullets. Normalize it to
         # a real bullet, keeping the following bold text and other formatting.
-        if para.text.startswith('\\uf0b7'):
+        if para.text.startswith('\uf0b7'):
             # Symbol-font bullet U+F0B7 is not a printable glyph in browsers.
             content = '• ' + content.lstrip()
             styles.append('padding-left:12px')

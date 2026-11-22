@@ -6,118 +6,143 @@
     <title>Товарооборот — Wokker</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/admin.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/sales.css">
 </head>
 <body>
-    <!-- Топбар -->
-    <div class="topbar">
-        <div class="topbar-left">
-            <h1>💰 Товарооборот</h1>
-        </div>
-        <div class="topbar-right">
-            <select class="topbar-select" id="restaurant-select" title="Выберите ресторан">
-                <option value="">Все рестораны</option>
-            </select>
-            <select class="topbar-select" id="period-select" title="Период">
-                <option value="7d">7 дней</option>
-                <option value="30d" selected>30 дней</option>
-                <option value="90d">90 дней</option>
-                <option value="custom">Произвольный</option>
-            </select>
-            <a href="/admin" style="color:var(--text-sec);text-decoration:none;font-size:13px;padding:0 8px;">⬅ Админ-панель</a>
-            <div class="avatar" id="sales-topbar-avatar" title="Администратор"></div>
-        </div>
-    </div>
 
-    <!-- Основной контент -->
-    <div class="main" style="margin-left:0;">
+<div class="layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-logo">
+            <div class="logo-icon">🍜</div>
+            <span>Wokker Sales</span>
+        </div>
+        
+        <nav class="sidebar-nav">
+            <a href="/sales" class="nav-item active">
+                <span class="nav-icon">📊</span> Обзор
+            </a>
+            <a href="/admin" class="nav-item">
+                <span class="nav-icon">⚙️</span> Админ-панель
+            </a>
+        </nav>
+
+        <div class="sidebar-promo">
+            <div class="promo-title">Управление данными</div>
+            <div class="promo-text">Загрузите Excel-файл с товарооборотом, чтобы увидеть актуальную статистику.</div>
+            <button class="btn-promo" id="btn-open-upload">📤 Загрузить файл</button>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Topbar -->
+        <header class="topbar">
+            <div class="topbar-left">
+                <h1 class="page-title">Товарооборот</h1>
+            </div>
+            
+            <div class="topbar-right">
+                <select class="topbar-select" id="restaurant-select">
+                    <option value="">Все рестораны</option>
+                </select>
+                <select class="topbar-select" id="period-select">
+                    <option value="7d">7 дней</option>
+                    <option value="30d" selected>30 дней</option>
+                    <option value="90d">90 дней</option>
+                </select>
+                
+                <button class="btn btn-secondary" id="btn-export">📥 Экспорт</button>
+                <button class="btn btn-primary" id="btn-detail">📋 Детализация</button>
+                
+                <div class="avatar" id="sales-topbar-avatar">A</div>
+            </div>
+        </header>
+
+        <!-- Dashboard Content -->
         <div class="content" id="sales-page-content">
             <div class="loading">Загрузка дашборда…</div>
         </div>
-    </div>
+    </main>
+</div>
 
-    <!-- Модальное окно загрузки -->
-    <div class="modal-overlay" id="upload-modal">
-        <div class="modal">
-            <div class="modal-header">
-                <h3>Загрузка данных товарооборота</h3>
-                <button class="modal-close" id="close-upload-modal">&times;</button>
+<!-- Модальное окно загрузки -->
+<div class="modal-overlay" id="upload-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Загрузка товарооборота</h3>
+            <button class="modal-close" id="close-upload-modal">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>Ресторан *</label>
+                <select class="form-input" id="upload-restaurant" required>
+                    <option value="">Выберите ресторан</option>
+                </select>
             </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label>Ресторан *</label>
-                    <select class="form-input" id="upload-restaurant" required>
-                        <option value="">Выберите ресторан</option>
-                    </select>
+            <div class="form-group">
+                <label>Файл (Excel или CSV) *</label>
+                <div class="file-upload-area" id="file-drop-zone">
+                    <div class="file-upload-icon">📁</div>
+                    <div class="file-upload-text">Перетащите файл сюда или нажмите</div>
+                    <div class="file-upload-hint">Форматы: .xlsx, .xls, .csv</div>
+                    <input type="file" id="file-input" accept=".xlsx,.xls,.csv" style="display:none;">
                 </div>
-                <div class="form-group">
-                    <label>Файл (Excel или CSV) *</label>
-                    <div class="file-upload-area" id="file-drop-zone">
-                        <div class="file-upload-icon">📁</div>
-                        <div class="file-upload-text">Перетащите файл сюда или нажмите для выбора</div>
-                        <div class="file-upload-hint">Поддерживаются форматы: .xlsx, .xls, .csv</div>
-                        <input type="file" id="file-input" accept=".xlsx,.xls,.csv" style="display:none;">
-                    </div>
-                    <div id="file-info" style="margin-top:10px;"></div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn ghost" id="btn-download-template">📥 Скачать шаблон</button>
-                <button class="btn ghost" id="btn-cancel-upload">Отмена</button>
-                <button class="btn btn--primary" id="btn-upload" disabled>Загрузить</button>
+                <div id="file-info" class="file-info-text"></div>
             </div>
         </div>
-    </div>
-
-    <!-- Модальное окно детализации -->
-    <div class="modal-overlay" id="detail-modal">
-        <div class="modal modal--large">
-            <div class="modal-header">
-                <h3>Детализация транзакций</h3>
-                <button class="modal-close" id="close-detail-modal">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="detail-filters">
-                    <input type="text" class="form-input" placeholder="Поиск по товару…" id="detail-search-product">
-                    <input type="text" class="form-input" placeholder="Категория…" id="detail-search-category">
-                    <input type="date" class="form-input" id="detail-date-from">
-                    <input type="date" class="form-input" id="detail-date-to">
-                    <button class="btn btn--primary" id="btn-search-detail">Найти</button>
-                </div>
-                <div class="table-wrap" style="margin-top:16px;">
-                    <table id="records-table">
-                        <thead>
-                            <tr>
-                                <th>Дата</th>
-                                <th>Ресторан</th>
-                                <th>Категория</th>
-                                <th>Товар</th>
-                                <th>Кол-во</th>
-                                <th>Цена</th>
-                                <th>Сумма</th>
-                                <th>Прибыль</th>
-                                <th>Оплата</th>
-                            </tr>
-                        </thead>
-                        <tbody id="records-tbody">
-                            <tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-sec);">Загрузите данные для просмотра</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div class="pagination" id="records-pagination" style="margin-top:16px;"></div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn ghost" id="btn-export-detail">📥 Экспорт в Excel</button>
-                <button class="btn btn--primary" onclick="document.getElementById('detail-modal').classList.remove('active')">Закрыть</button>
-            </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" id="btn-download-template">Скачать шаблон</button>
+            <button class="btn btn-secondary" id="btn-cancel-upload">Отмена</button>
+            <button class="btn btn-primary" id="btn-upload" disabled>Загрузить</button>
         </div>
     </div>
+</div>
 
-    <!-- Тосты -->
-    <div class="toast-container" id="toast-container"></div>
+<!-- Модальное окно детализации -->
+<div class="modal-overlay" id="detail-modal">
+    <div class="modal modal-large">
+        <div class="modal-header">
+            <h3>Детализация транзакций</h3>
+            <button class="modal-close" id="close-detail-modal">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="detail-filters">
+                <input type="text" class="form-input" placeholder="Поиск по товару…" id="detail-search-product">
+                <input type="text" class="form-input" placeholder="Категория…" id="detail-search-category">
+                <input type="date" class="form-input" id="detail-date-from">
+                <input type="date" class="form-input" id="detail-date-to">
+                <button class="btn btn-primary" id="btn-search-detail">Найти</button>
+            </div>
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Дата</th>
+                            <th>Ресторан</th>
+                            <th>Товар</th>
+                            <th>Кол-во</th>
+                            <th>Сумма</th>
+                            <th>Прибыль</th>
+                        </tr>
+                    </thead>
+                    <tbody id="records-tbody">
+                        <tr><td colspan="6" class="text-center">Загрузите данные</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="pagination" id="records-pagination"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" onclick="document.getElementById('detail-modal').classList.remove('active')">Закрыть</button>
+        </div>
+    </div>
+</div>
 
-    <script src="/sales.js"></script>
+<!-- Тосты -->
+<div class="toast-container" id="toast-container"></div>
+
+<script src="/sales.js"></script>
 </body>
 </html>

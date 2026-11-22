@@ -12,7 +12,7 @@ def _run_html(run):
     if not value:
         return ''
     # Symbol-font bullets are stored as private-use U+F0B7 in some Word files.
-    value = value.replace('\\uf0b7', '•')
+    value = value.replace('\\uf0b7', '')
     value = escape(value).replace('\\n', '<br>')
     styles = []
     if run.font.color and run.font.color.rgb:
@@ -58,20 +58,19 @@ def convert_standard_docx(data):
     document = Document(BytesIO(data))
     numbering = document.part.numbering_part.element
     output = []
-    active_list = None
+    list_counters = {}
     for para in document.paragraphs:
         kind, list_id = _list_kind(para, numbering)
-        current_list = (kind, list_id) if kind else None
-        if active_list != current_list:
-            if active_list:
-                output.append('</' + active_list[0] + '>')
-            if current_list:
-                output.append('<' + kind + ' style="padding-left:28px;margin-top:0;margin-bottom:8px">')
-            active_list = current_list
-
         content = ''.join(_run_html(run) for run in para.runs)
         if kind:
-            output.append('<li>' + content + '</li>')
+            # Use explicit Word list labels. The admin editor resets native
+            # ol/ul markers, so browser-generated bullets/numbers are unreliable.
+            if kind == 'ol':
+                list_counters[list_id] = list_counters.get(list_id, 0) + 1
+                marker = str(list_counters[list_id]) + '. '
+            else:
+                marker = '• '
+            output.append('<p style="margin-top:0;margin-bottom:0">' + marker + content + '</p>')
             continue
         if not para.text.strip():
             output.append('<p>&nbsp;</p>')
@@ -94,9 +93,9 @@ def convert_standard_docx(data):
         # Word uses the private-use glyph for manual bullets. Normalize it to
         # a real bullet, keeping the following bold text and other formatting.
         if para.text.startswith('\\uf0b7'):
+            # Symbol-font bullet U+F0B7 is not a printable glyph in browsers.
+            content = '• ' + content.lstrip()
             styles.append('padding-left:12px')
         attr = ' style="' + ';'.join(styles) + '"' if styles else ''
         output.append('<p' + attr + '>' + content + '</p>')
-    if active_list:
-        output.append('</' + active_list[0] + '>')
     return sanitize_standard_html(''.join(output))

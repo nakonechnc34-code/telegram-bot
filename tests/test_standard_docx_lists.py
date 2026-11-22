@@ -27,9 +27,9 @@ def test_word_numbered_items_are_not_bullets():
         numPr.append(level); numPr.append(number); pPr.append(numPr)
     buffer = BytesIO(); doc.save(buffer)
     html = convert_standard_docx(buffer.getvalue())
-    assert '<ol' in html
-    assert '<li>Смочите руки</li>' in html
-    assert '<li>Нанесите мыло</li>' in html
+    assert '<ol' not in html
+    assert '1. Смочите руки' in html
+    assert '2. Нанесите мыло' in html
     assert '&#8226;' not in html
 
 
@@ -44,3 +44,23 @@ def test_private_use_bullet_is_readable():
     assert '•' in html
     assert '\\uf0b7' not in html
     assert 'font-weight:bold' in html
+
+
+def test_numbered_list_has_exact_six_sequential_labels():
+    doc = Document()
+    numbering = doc.part.numbering_part.element
+    decimal_ids = {abstract.get(qn('w:abstractNumId')) for abstract in numbering.findall(qn('w:abstractNum'))
+                   if any(fmt.get(qn('w:val')) == 'decimal' for fmt in abstract.findall('.//' + qn('w:numFmt')))}
+    num_id = next(int(num.get(qn('w:numId'))) for num in numbering.findall(qn('w:num'))
+                  if num.find(qn('w:abstractNumId')).get(qn('w:val')) in decimal_ids)
+    for i in range(6):
+        p = doc.add_paragraph('Шаг ' + str(i + 1))
+        numPr = OxmlElement('w:numPr')
+        level = OxmlElement('w:ilvl'); level.set(qn('w:val'), '0')
+        number = OxmlElement('w:numId'); number.set(qn('w:val'), str(num_id))
+        numPr.extend([level, number]); p._p.get_or_add_pPr().append(numPr)
+    buf = BytesIO(); doc.save(buf)
+    html = convert_standard_docx(buf.getvalue())
+    for i in range(1, 7):
+        assert f'{i}. Шаг {i}' in html
+    assert '<ul' not in html and '<ol' not in html

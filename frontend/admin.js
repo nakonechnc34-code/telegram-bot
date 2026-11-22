@@ -775,7 +775,8 @@ function preserveStandardClipboardColors(html) {
             if (!declaration) continue;
             match[1].split(',').forEach(selector => {
                 selector = selector.trim();
-                if (/^\.[a-zA-Z_][\w-]*$/.test(selector)) colors.set(selector.slice(1), declaration[1]);
+                const classMatch = selector.match(/^(?:[a-zA-Z][\\w-]*)?\\.([a-zA-Z_][\\w-]*)$/);
+                if (classMatch) colors.set(classMatch[1], declaration[1]);
             });
         }
         style.remove();

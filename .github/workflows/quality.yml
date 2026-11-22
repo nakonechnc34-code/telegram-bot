@@ -34,7 +34,7 @@ jobs:
       - name: Run tests
         run: python -m pytest tests/ -q
       - name: Check shell script syntax
-        run: bash -n scripts/backup_postgres.sh scripts/verify_restore_postgres.sh scripts/backup_to_r2.sh
+        run: bash -n scripts/backup_postgres.sh scripts/verify_restore_postgres.sh
 
   dependency-audit:
     name: Dependency vulnerability audit

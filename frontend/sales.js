@@ -267,7 +267,7 @@
 
     function handleFileSelect(file) {
         if (!file) return;
-        if (!/\\.(xlsx|csv)$/i.test(file.name) || file.size > 10 * 1024 * 1024) {
+        if (!/\.(xlsx|csv)$/i.test(file.name) || file.size > 10 * 1024 * 1024) {
             state.uploadFile = null;
             DOM.btnUpload.disabled = true;
             showToast('Допустимы файлы XLSX/CSV до 10 МБ', 'error');

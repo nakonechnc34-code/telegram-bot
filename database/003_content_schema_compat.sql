@@ -17,6 +17,14 @@ BEGIN
         SELECT 1 FROM information_schema.columns
         WHERE table_schema = current_schema()
           AND table_name = 'certification_questions' AND column_name = 'option_b'
+    ) AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'certification_questions' AND column_name = 'option_c'
+    ) AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'certification_questions' AND column_name = 'option_d'
     ) THEN
         EXECUTE '
             UPDATE certification_questions

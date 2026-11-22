@@ -215,3 +215,16 @@ def test_iiko_restaurant_matching_normalizes_mall_and_punctuation():
     source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
     assert 'return re.sub(r"^мега\\s+", "", value)' in source
     assert 'if len(candidates) != 1:' in source
+
+
+def test_duplicate_sales_upload_is_atomic_and_reports_conflict():
+    source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
+    migration = (ROOT / "database/005_sales_import_dedup.sql").read_text(encoding="utf-8")
+    app = (ROOT / "app.py").read_text(encoding="utf-8")
+    assert "hashlib.sha256(data).hexdigest()" in source
+    assert "ON CONFLICT (file_hash)" in source
+    assert "DO NOTHING RETURNING id" in source
+    assert '"duplicate": True}, status=409' in source
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_imports_active_file_hash" in migration
+    assert "status IN ('processing', 'completed')" in migration
+    assert '"005_sales_import_dedup.sql"' in app

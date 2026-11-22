@@ -44,8 +44,14 @@ async def init_async_pool():
         async with _async_pool_lock:
             if _async_pool is None:
                 import asyncpg
-                _async_pool = await asyncpg.create_pool(DB_URL, min_size=2, max_size=10)
-                logging.info("✅ asyncpg pool initialized")
+                # statement_cache_size=0 необходимо, если используется PgBouncer (например, Supabase Pooler)
+                _async_pool = await asyncpg.create_pool(
+                    DB_URL, 
+                    min_size=2, 
+                    max_size=10,
+                    statement_cache_size=0
+                )
+                logging.info("✅ asyncpg pool initialized (statement_cache_size=0)")
 
 
 def get_pool(app=None):

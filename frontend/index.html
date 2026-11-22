@@ -413,7 +413,7 @@ function sanitizeStandardHtml(html) {
     if (node.hasAttribute('style')) {
       for (const property of allowedStyles) {
         const value = node.style.getPropertyValue(property);
-        if (!value || /[<>\\\\]/.test(value) || /url\\s*\\(|expression\\s*\\(|@import/i.test(value)) continue;
+        if (!value || /[<>\\]/.test(value) || /url\s*\(|expression\s*\(|@import/i.test(value)) continue;
         el.style.setProperty(property, value);
       }
     }

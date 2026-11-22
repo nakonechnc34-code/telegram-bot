@@ -49,19 +49,6 @@ def _to_date(val):
         return None
 
 
-def _date_range(body: dict, default_days: int = 30) -> tuple[date, date]:
-    """Возвращает (date_from, date_to) из body: date_from/date_to, или year/month, или last N days."""
-    df = _to_date(body.get("date_from"))
-    dt = _to_date(body.get("date_to"))
-    if df and dt:
-        return df, dt
-    if body.get("year") and body.get("month"):
-        y, m = int(body["year"]), int(body["month"])
-        last = (date(y, m % 12 + 1, 1) - timedelta(days=1)).day
-        return date(y, m, 1), date(y, m, last)
-    return date.today() - timedelta(days=default_days), date.today()
-
-
 def _upload_dir():
     base = os.getenv("DATA_DIR") or ("/data" if os.path.exists("/data") else os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
     return os.path.join(base, "data", "uploads", "sales")
@@ -73,15 +60,6 @@ async def _allowed_rests(user):
 
 def _where(conditions, params):
     return f"WHERE {' AND '.join(conditions)}" if conditions else "", params
-
-
-def _norm_row(r: dict, fields: dict) -> dict:
-    """Приводит dict к единому формату sales_records. fields — маппинг из исходного в целевой ключ."""
-    out = {}
-    for src, dst in fields.items():
-        if src in r:
-            out[dst] = r[src]
-    return out
 
 
 # ==================== ПАРСЕРЫ ====================
@@ -349,14 +327,18 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             else (["sr.sale_date >= $1"], [date_from])
         w, p = _where(cond, params)
 
-        async def total(col):
-            return float(await conn.fetchval(f"SELECT COALESCE(SUM({col}),0) FROM sales_records sr {w}", *p) or 0)
+        # ИСПРАВЛЕНО: Один запрос вместо asyncio.gather (решает ошибку InterfaceError)
+        row = await conn.fetchrow(
+            f"SELECT COALESCE(SUM(total_amount), 0) AS s, COALESCE(SUM(cost_amount), 0) AS c, "
+            f"COALESCE(SUM(profit_amount), 0) AS p, COALESCE(SUM(quantity), 0) AS i "
+            f"FROM sales_records sr {w}", *p
+        )
+        ts, tc, tp, ti = float(row["s"]), float(row["c"]), float(row["p"]), int(row["i"])
 
-        ts, tc, tp, ti = (await asyncio.gather(*(total(c) for c in ("total_amount", "cost_amount", "profit_amount", "quantity"))))
         overview = {
             "total_sales": ts, "total_cost": tc, "total_profit": tp,
             "avg_margin": round(tp * 100 / max(ts, 1), 2),
-            "total_items_sold": int(ti), "period_days": days,
+            "total_items_sold": ti, "period_days": days,
         }
 
         daily_trend = await conn.fetch(
@@ -415,7 +397,7 @@ async def sales_records(request: web.Request) -> web.Response:
     user = request['admin']
     body = await request.json()
     key = body.get("restaurant_key")
-    df, dt = _date_from(body.get("date_from")), _date_to(body.get("date_to"))
+    df, dt = _to_date(body.get("date_from")), _to_date(body.get("date_to"))
     cat = body.get("category"); prod = body.get("product_name")
     page = max(1, int(body.get("page", 1) or 1)); limit = max(1, min(500, int(body.get("limit", 100) or 100)))
     allowed = await _allowed_rests(user)

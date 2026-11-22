@@ -113,7 +113,7 @@
 
     const money = formatCurrency;
     function restRows(rows) {
-        return rows.map((r,i) => '<tr><td>' + (i+1) + '</td><td><strong>' + esc(r.name) + '</strong></td><td>' + money(r.total_sales) + '</td><td>' + money(r.profit) + '</td><td>' + (r.total_sales > 0 ? (100*r.profit/r.total_sales).toFixed(1)+'%' : '—') + '</td></tr>').join('');
+        return rows.map((r,i) => '<tr><td>'+(i+1)+'</td><td><strong>'+esc(r.name)+'</strong></td><td>'+money(r.total_sales)+'</td></tr>').join('');
     }
     function importRows(rows) {
         return rows.map(imp => '<tr><td><strong>'+esc(imp.filename)+'</strong></td><td>'+esc(state.restaurants.find(r=>r.key===imp.restaurant_key)?.name||imp.restaurant_key)+'</td><td>'+formatNumber(imp.rows_count)+'</td><td>'+formatDate(imp.upload_date)+'</td><td><span class="status-pill '+(imp.status==='completed'?'':'pending')+'">'+esc(imp.status==='completed'?'Загружен':imp.status)+'</span></td></tr>').join('');

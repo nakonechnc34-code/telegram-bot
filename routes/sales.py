@@ -562,7 +562,17 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             FROM sales_records sr
             WHERE sr.sale_date IN ($1, $2)
               AND sr.extra_data IS NOT NULL
-              AND (sr.extra_data::jsonb->>'opening_hour') ~ '^(?:[0-9]|1[0-9]|2[0-3])
+              AND (sr.extra_data::jsonb->>'opening_hour') ~ '^(?:[0-9]|1[0-9]|2[0-3])$'
+              AND (sr.extra_data::jsonb->>'opening_hour')::int < $3
+              {compare_filter}
+            GROUP BY 1, 2, 3 ORDER BY 1, 2
+        """, *compare_args)
+        comparison_days_present = await conn.fetch(
+            "SELECT DISTINCT sale_date FROM sales_records WHERE sale_date IN ($1, $2)"
+            + (" AND restaurant_key = ANY($3)" if scoped_keys is not None else ""),
+            *([comparison_day, last_week_day, scoped_keys]
+              if scoped_keys is not None else [comparison_day, last_week_day]))
+        order_mapping = await _order_type_mapping(conn)
         order_rows = await conn.fetch(
             f"""SELECT sr.payment_method method, SUM(sr.total_amount) sales,
                        SUM(sr.quantity) checks

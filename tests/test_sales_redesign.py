@@ -253,3 +253,17 @@ def test_custom_date_range_controls_and_backend_validation():
     assert 'date.fromisoformat(body["date_from"])' in backend
     assert 'date.fromisoformat(body["date_to"])' in backend
     assert '"sr.sale_date >= $1", "sr.sale_date < $2"' in backend
+
+
+def test_same_weekday_hourly_comparison_is_scoped_and_cutoff_exclusive():
+    backend = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
+    html = (ROOT / "frontend/sales.html").read_text(encoding="utf-8")
+    assert 'id="comparison-date"' in html
+    assert 'id="comparison-hour"' in html
+    assert 'last_week_day = comparison_day - timedelta(days=7)' in backend
+    assert "opening_hour')::int < $3" in backend
+    assert 'compare_filter = "AND sr.restaurant_key = ANY($4)"' in backend
+    assert '"same_weekday_comparison": day_comparison' in backend
+    assert "weekCompare.current[type]" in JS
+    assert "weekCompare.previous[type]" in JS
+    assert "compareReady=weekCompare?.has_current && weekCompare?.has_previous" in JS

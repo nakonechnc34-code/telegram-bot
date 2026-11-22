@@ -85,6 +85,19 @@ def run_migrations():
                 # Users
                 cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS personnel_number VARCHAR(50);")
                 
+                # News & Standards (колонки, которых не хватало)
+                cur.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS author_id BIGINT REFERENCES users(user_id);")
+                cur.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS level TEXT DEFAULT 'normal';")
+                cur.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS publish_at TIMESTAMPTZ;")
+                
+                cur.execute("ALTER TABLE standards ADD COLUMN IF NOT EXISTS author_id BIGINT REFERENCES users(user_id);")
+                cur.execute("ALTER TABLE standards ADD COLUMN IF NOT EXISTS number TEXT;")
+                cur.execute("ALTER TABLE standards ADD COLUMN IF NOT EXISTS group_name TEXT;")
+                cur.execute("ALTER TABLE standards ADD COLUMN IF NOT EXISTS content_type TEXT DEFAULT 'text';")
+                cur.execute("ALTER TABLE standards ADD COLUMN IF NOT EXISTS content_data JSONB;")
+                cur.execute("ALTER TABLE standards ADD COLUMN IF NOT EXISTS image_url TEXT;")
+                cur.execute("ALTER TABLE standards ADD COLUMN IF NOT EXISTS file_name TEXT;")
+
                 # Payments
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS payments (
@@ -101,13 +114,12 @@ def run_migrations():
                         approved_by_name TEXT
                     )
                 """)
-                # Добавляем колонки, если таблица была создана ранее без них
                 cur.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS record_type TEXT DEFAULT 'payout';")
                 cur.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'approved';")
                 cur.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS proposed_by_name TEXT;")
                 cur.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS approved_by_name TEXT;")
 
-                # Position rates (нужна для расчета зарплаты)
+                # Position rates
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS position_rates (
                         position_name TEXT PRIMARY KEY,

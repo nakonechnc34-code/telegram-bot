@@ -160,3 +160,46 @@ body { background: radial-gradient(ellipse at 95% 0%, #E9EFFF, transparent 38%),
   #page-content:is([data-page="users"],[data-page="medbooks"]) #users-search { width:100% !important; max-width:100%; }
   #page-content:is([data-page="users"],[data-page="medbooks"]) .stats-grid { grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; }
 }
+
+/* Phase 4 — remaining content sections; all selectors are presentation-only. */
+#page-content:is([data-page="news"],[data-page="standards"],[data-page="certification"],[data-page="faq"],[data-page="restaurants"],[data-page="positions"],[data-page="citizenships"],[data-page="questions"],[data-page="admins"],[data-page="reports"],[data-page="audit"]) .neu-card {
+  background:#FFFFFF;
+  border:1px solid #E2E9F8;
+  border-radius:20px;
+  box-shadow:0 4px 12px rgba(35,63,130,.04),0 18px 40px rgba(35,63,130,.06);
+}
+#page-content:is([data-page="news"],[data-page="standards"],[data-page="certification"],[data-page="faq"],[data-page="restaurants"],[data-page="positions"],[data-page="citizenships"],[data-page="questions"],[data-page="admins"],[data-page="reports"],[data-page="audit"]) .neu-card__header {
+  border-bottom-color:#E9EFF9;
+}
+#page-content:is([data-page="news"],[data-page="standards"],[data-page="certification"],[data-page="faq"],[data-page="restaurants"],[data-page="positions"],[data-page="citizenships"],[data-page="questions"],[data-page="admins"],[data-page="reports"],[data-page="audit"]) .table-wrap {
+  overflow-x:auto; -webkit-overflow-scrolling:touch;
+  border:1px solid #E5EBF8; border-radius:15px;
+}
+#page-content:is([data-page="news"],[data-page="standards"],[data-page="certification"],[data-page="faq"],[data-page="restaurants"],[data-page="positions"],[data-page="citizenships"],[data-page="questions"],[data-page="admins"],[data-page="reports"],[data-page="audit"]) table.t thead {
+  background:#F3F6FD;
+}
+#page-content:is([data-page="news"],[data-page="standards"],[data-page="certification"],[data-page="faq"],[data-page="restaurants"],[data-page="positions"],[data-page="citizenships"],[data-page="questions"],[data-page="admins"],[data-page="reports"],[data-page="audit"]) table.t th {
+  color:#586987; font-size:11px; font-weight:800;
+  letter-spacing:.5px;
+}
+#page-content:is([data-page="news"],[data-page="standards"],[data-page="certification"],[data-page="faq"],[data-page="restaurants"],[data-page="positions"],[data-page="citizenships"],[data-page="questions"],[data-page="admins"],[data-page="reports"],[data-page="audit"]) table.t tbody tr:hover {
+  background:#F7F9FF;
+}
+#page-content:is([data-page="news"],[data-page="standards"],[data-page="certification"],[data-page="faq"],[data-page="restaurants"],[data-page="positions"],[data-page="citizenships"],[data-page="questions"],[data-page="admins"],[data-page="reports"],[data-page="audit"]) .subtabs {
+  border-radius:13px; background:#EFF3FD;
+}
+#page-content:is([data-page="news"],[data-page="standards"],[data-page="certification"],[data-page="faq"],[data-page="restaurants"],[data-page="positions"],[data-page="citizenships"],[data-page="questions"],[data-page="admins"],[data-page="reports"],[data-page="audit"]) .subtab.active {
+  background:#FFF; color:#2C50B9; border-radius:10px;
+  box-shadow:0 2px 9px rgba(37,69,146,.08);
+}
+#page-content:is([data-page="news"],[data-page="standards"],[data-page="certification"],[data-page="faq"],[data-page="restaurants"],[data-page="positions"],[data-page="citizenships"],[data-page="questions"],[data-page="admins"],[data-page="reports"],[data-page="audit"]) .btn--primary {
+  background:linear-gradient(135deg,#456CE1,#2B50C4);
+  border-radius:12px; box-shadow:0 5px 14px rgba(43,80,196,.16);
+}
+#page-content:is([data-page="news"],[data-page="standards"],[data-page="certification"],[data-page="faq"],[data-page="restaurants"],[data-page="positions"],[data-page="citizenships"],[data-page="questions"],[data-page="admins"],[data-page="reports"],[data-page="audit"]) :is(.form-input,.form-select,.form-textarea):focus-visible {
+  outline:3px solid rgba(69,108,225,.25); outline-offset:1px;
+}
+@media(max-width:720px){
+  #page-content:is([data-page="news"],[data-page="standards"],[data-page="certification"],[data-page="faq"],[data-page="restaurants"],[data-page="positions"],[data-page="citizenships"],[data-page="questions"],[data-page="admins"],[data-page="reports"],[data-page="audit"]) .neu-card { padding:15px; }
+  #page-content:is([data-page="news"],[data-page="standards"],[data-page="certification"],[data-page="faq"],[data-page="restaurants"],[data-page="positions"],[data-page="citizenships"],[data-page="questions"],[data-page="admins"],[data-page="reports"],[data-page="audit"]) .neu-card__header { flex-wrap:wrap; gap:12px; }
+}

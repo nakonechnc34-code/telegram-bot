@@ -762,6 +762,43 @@ function cleanHTML(html) {
     return clean.trim();
 }
 
+// Convert Word clipboard class-based text colors into inline styles before insertion.
+function preserveStandardClipboardColors(html) {
+    if (!html || !/<style\b/i.test(html)) return html;
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const colors = new Map();
+    doc.querySelectorAll('style').forEach(style => {
+        const ruleRe = /([^{}]+)\{([^{}]*)\}/g;
+        let match;
+        while ((match = ruleRe.exec(style.textContent || ''))) {
+            const declaration = match[2].match(/(?:^|;)\s*color\s*:\s*(#[0-9a-fA-F]{3,8}|rgba?\([^;)]*\)|[a-zA-Z]{1,24})\s*(?:!important)?\s*(?:;|$)/i);
+            if (!declaration) continue;
+            match[1].split(',').forEach(selector => {
+                selector = selector.trim();
+                if (/^\.[a-zA-Z_][\w-]*$/.test(selector)) colors.set(selector.slice(1), declaration[1]);
+            });
+        }
+        style.remove();
+    });
+    doc.body.querySelectorAll('*').forEach(el => {
+        for (const cls of el.classList) {
+            if (colors.has(cls) && !el.style.color) el.style.color = colors.get(cls);
+        }
+    });
+    return doc.body.innerHTML;
+}
+
+function bindStandardRichPaste() {
+    const editor = $('std-body');
+    if (!editor) return;
+    editor.addEventListener('paste', event => {
+        const html = event.clipboardData?.getData('text/html') || '';
+        if (!/<style\b/i.test(html)) return;
+        event.preventDefault();
+        document.execCommand('insertHTML', false, cleanHTML(preserveStandardClipboardColors(html)));
+    });
+}
+
 function parsePastedTableData(rawText, htmlData) {
     if (htmlData && htmlData.includes('<table')) {
         try {
@@ -1186,6 +1223,7 @@ async function openAddStandard() {
     `, `<button class="btn btn--ghost" onclick="closeModal()">Отмена</button><button class="btn btn--primary" id="std-save">Создать</button>`);
 
     bindTablePasteHandler();
+    bindStandardRichPaste();
 
     $('std-image-btn').addEventListener('click', () => $('std-image-file').click());
     $('std-image-file').addEventListener('change', async (e) => {
@@ -1308,6 +1346,7 @@ async function openStdEdit(sid) {
         $('table-editor-container').innerHTML = renderTableEditor(_tableHeaders, _tableRows);
     }
     bindTablePasteHandler();
+    bindStandardRichPaste();
 
     $('std-image-btn').addEventListener('click', () => $('std-image-file').click());
     $('std-image-file').addEventListener('change', async (e) => {

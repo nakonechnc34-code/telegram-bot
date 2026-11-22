@@ -119,7 +119,7 @@ def test_hourly_dashboard_uses_scoped_sales_and_real_check_counts():
 
 def test_order_type_mapping_is_persistent_and_authorized():
     source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
-    assert 'CREATE TABLE IF NOT EXISTS sales_order_type_settings' in source
+    assert 'CREATE TABLE IF NOT EXISTS sales_order_type_settings' in (ROOT / "database/004_sales_order_type_settings.sql").read_text(encoding="utf-8")
     assert 'if action == "save" and not user.get("is_super_admin"):' in source
     assert '"Не распределено"' in source
     assert 'order_mapping.get(method, "Не распределено")' in source
@@ -145,9 +145,6 @@ def test_order_type_mapping_accepts_postgres_jsonb_text_and_dict():
         def __init__(self, value):
             self.value = value
 
-        async def execute(self, *_args):
-            return None
-
         async def fetchval(self, *_args):
             return self.value
 
@@ -160,3 +157,11 @@ def test_global_order_type_edit_permission_is_super_admin_only():
     source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
     assert 'if action == "save" and not user.get("is_super_admin"):' in source
     assert '"can_edit": bool(user.get("is_super_admin"))' in source
+
+
+def test_order_type_schema_is_migrated_not_created_on_requests():
+    source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
+    migration = (ROOT / "database/004_sales_order_type_settings.sql").read_text(encoding="utf-8")
+    assert "CREATE TABLE IF NOT EXISTS sales_order_type_settings" in migration
+    assert "CREATE TABLE IF NOT EXISTS sales_order_type_settings" not in source
+    assert "SELECT mapping FROM sales_order_type_settings" in source

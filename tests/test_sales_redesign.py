@@ -120,7 +120,7 @@ def test_hourly_dashboard_uses_scoped_sales_and_real_check_counts():
 def test_order_type_mapping_is_persistent_and_authorized():
     source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
     assert 'CREATE TABLE IF NOT EXISTS sales_order_type_settings' in source
-    assert 'if action == "save" and _is_tu(user)' in source
+    assert 'if action == "save" and not user.get("is_super_admin"):' in source
     assert '"Не распределено"' in source
     assert 'order_mapping.get(method, "Не распределено")' in source
     assert '"by_order_type": list(order_types.values())' in source
@@ -154,3 +154,9 @@ def test_order_type_mapping_accepts_postgres_jsonb_text_and_dict():
     expected = {"Наличные": "Зал", "Яндекс.Еда": "Доставка"}
     assert asyncio.run(_order_type_mapping(Conn('{"Наличные":"Зал","Яндекс.Еда":"Доставка"}'))) == expected
     assert asyncio.run(_order_type_mapping(Conn(expected))) == expected
+
+
+def test_global_order_type_edit_permission_is_super_admin_only():
+    source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
+    assert 'if action == "save" and not user.get("is_super_admin"):' in source
+    assert '"can_edit": bool(user.get("is_super_admin"))' in source

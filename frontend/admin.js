@@ -757,8 +757,6 @@ function cleanHTML(html) {
     clean = clean.replace(/<meta[^>]*>/gi, '');
     clean = clean.replace(/<link[^>]*>/gi, '');
     clean = clean.replace(/\s*(class|id)="[^"]*"/gi, '');
-    clean = clean.replace(/<p><br><\/p>/gi, '');
-    clean = clean.replace(/<p>&nbsp;<\/p>/gi, '');
     return clean.trim();
 }
 

@@ -445,14 +445,15 @@ async def sales_products(request: web.Request) -> web.Response:
                  FROM sales_records sr {where}
                  GROUP BY COALESCE(sr.category, 'Без категории')
                  ORDER BY sales DESC LIMIT 50""", *params)
-    def normalize(rows):
-        return [{"name": r["name"], "category": r["category"] if "category" in r else None,
+    def normalize(rows, include_product_fields=False):
+        return [{"name": r["name"],
+                 "category": r["category"] if include_product_fields else None,
                  "quantity": float(r["quantity"] or 0),
                  "sales": float(r["sales"] or 0),
                  "profit": float(r["profit"] or 0),
-                 **({"cost": float(r["cost"] or 0)} if "cost" in r else {})} for r in rows]
+                 **({"cost": float(r["cost"] or 0)} if include_product_fields else {})} for r in rows]
     return web.json_response({"success": True, "data": {
-        "products": normalize(products), "categories": normalize(categories),
+        "products": normalize(products, True), "categories": normalize(categories),
         "period_days": days,
     }})
 

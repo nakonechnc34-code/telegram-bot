@@ -457,12 +457,24 @@ async def sales_dashboard(request: web.Request) -> web.Response:
     # None means all restaurants (unrestricted admin). An empty list means no
     # restaurants. Never silently replace "all" with the TU's first restaurant.
     scoped_keys = [key] if key else allowed
-    days = {"7d": 7, "30d": 30, "90d": 90}.get(period, 30)
-    date_from = datetime.utcnow().date() - timedelta(days=days - 1)
-    conditions = ["sr.sale_date >= $1"]
-    params = [date_from]
+    if period == "custom":
+        try:
+            date_from = date.fromisoformat(body["date_from"])
+            date_to = date.fromisoformat(body["date_to"])
+        except (ValueError, TypeError, KeyError):
+            return web.json_response({"error": "Укажите корректные даты начала и окончания"}, status=400)
+        if date_to < date_from or (date_to - date_from).days > 366:
+            return web.json_response({"error": "Период должен быть от 1 до 367 дней"}, status=400)
+        days = (date_to - date_from).days + 1
+    else:
+        days = {"7d": 7, "30d": 30, "90d": 90}.get(period, 30)
+        date_to = datetime.utcnow().date()
+        date_from = date_to - timedelta(days=days - 1)
+    end_exclusive = date_to + timedelta(days=1)
+    conditions = ["sr.sale_date >= $1", "sr.sale_date < $2"]
+    params = [date_from, end_exclusive]
     if scoped_keys is not None:
-        conditions.append("sr.restaurant_key = ANY($2)")
+        conditions.append("sr.restaurant_key = ANY($3)")
         params.append(scoped_keys)
     w, _ = _where(conditions, params)
 
@@ -484,13 +496,13 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             f"FROM sales_records sr {w} GROUP BY sr.sale_date ORDER BY sr.sale_date", *params)
 
         # Restrict both the LEFT JOIN and restaurant rows to the same scope.
-        rest_filter = "WHERE r.key = ANY($2)" if scoped_keys is not None else ""
-        join_filter = "AND sr.restaurant_key = ANY($2)" if scoped_keys is not None else ""
+        rest_filter = "WHERE r.key = ANY($3)" if scoped_keys is not None else ""
+        join_filter = "AND sr.restaurant_key = ANY($3)" if scoped_keys is not None else ""
         by_rest = await conn.fetch(f"""
             SELECT r.name, r.key, COALESCE(SUM(sr.total_amount),0) total,
                    COALESCE(SUM(sr.profit_amount),0) profit
             FROM restaurants r LEFT JOIN sales_records sr
-              ON sr.restaurant_key = r.key AND sr.sale_date >= $1 {join_filter}
+              ON sr.restaurant_key = r.key AND sr.sale_date >= $1 AND sr.sale_date < $2 {join_filter}
             {rest_filter}
             GROUP BY r.key, r.name ORDER BY total DESC""", *params)
 
@@ -571,9 +583,9 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             {import_filter} ORDER BY si.upload_date DESC LIMIT 20""",
             *([scoped_keys] if scoped_keys is not None else []))
 
-        summary_filter = "AND restaurant_key = ANY($2)" if scoped_keys is not None else ""
+        summary_filter = "AND restaurant_key = ANY($3)" if scoped_keys is not None else ""
         summaries = await conn.fetch(
-            f"SELECT * FROM sales_daily_summary WHERE summary_date >= $1 {summary_filter} "
+            f"SELECT * FROM sales_daily_summary WHERE summary_date >= $1 AND summary_date < $2 {summary_filter} "
             f"ORDER BY summary_date DESC LIMIT 30", *params)
 
     return web.json_response({"success": True, "data": {

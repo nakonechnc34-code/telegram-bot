@@ -1,1206 +1,1145 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Табель · Wokker</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23F5F5F7'/%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%23007AFF' stroke-width='8'/%3E%3Cpath d='M25 50 A 25 25 0 0 0 75 50' fill='none' stroke='%23007AFF' stroke-width='12' stroke-linecap='round'/%3E%3C/svg%3E">
-<link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#F5F5F7">
-<link href="[https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap](https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap)" rel="stylesheet">
-<style>
-  :root {
-    --bg: #F7F8FA; --card-bg: #FFFFFF; --text-main: #111827; --text-muted: #6B7280;
-    --accent: #007AFF; --accent-soft: #EFF6FF; 
-    --green: #10B981; --green-soft: #ECFDF5; --green-text: #047857;
-    --amber: #F59E0B; --amber-soft: #FFFBEB; --amber-text: #B45309;
-    --red: #EF4444; --red-soft: #FEF2F2; --red-text: #B91C1C;
-    --purple: #8B5CF6; --purple-soft: #F3E8FF; --purple-text: #6B21A8;
-    --border: #E5E7EB; --font: 'Inter', sans-serif; --radius: 20px; --sidebar: #FFFFFF; 
-  }
-  
-  * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
-  body { font-family: var(--font); background: var(--bg); color: var(--text-main); height: 100vh; display: flex; overflow: hidden; font-size: 14px; }
-
-  /* ЭКРАН ВХОДА */
-  #login-screen { position: fixed; inset: 0; background: var(--bg); display: none; align-items: center; justify-content: center; padding: 24px; z-index: 1000; }
-  .login-card { background: #fff; border-radius: var(--radius); padding: 40px 32px; box-shadow: 0 10px 40px rgba(0,0,0,0.08); width: 100%; max-width: 400px; text-align: center; animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
-  .login-logo { width: 72px; height: 72px; border-radius: 20px; background: var(--accent-soft); margin: 0 auto 24px; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 800; color: var(--accent); }
-  .login-title { font-size: 26px; font-weight: 800; margin-bottom: 8px; letter-spacing: -1px; color: var(--text-main); }
-  .login-sub { font-size: 15px; color: var(--text-muted); margin-bottom: 32px; font-weight: 500; }
-  .login-input { width: 100%; border: 1px solid #E5E5EA; border-radius: 14px; padding: 16px; font-size: 16px; background: #FAFAFA; color: var(--text-main); font-weight: 600; margin-bottom: 16px; text-align: center; transition: all 0.3s; font-family: var(--font); outline: none; }
-  .login-input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
-  .login-btn { width: 100%; background: var(--text-main); color: #fff; border-radius: 14px; padding: 18px; font-size: 16px; font-weight: 600; margin-top: 8px; border: none; cursor: pointer; transition: opacity 0.2s; font-family: var(--font); }
-  .login-btn:hover { opacity: 0.9; }
-  .login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .login-error { color: var(--red); font-size: 14px; font-weight: 500; min-height: 20px; margin-top: 16px; }
-
-  /* ИНТЕРФЕЙС */
-  .layout { display: none; width: 100%; height: 100vh; }
-  
-  .sidebar { width: 260px; background: var(--sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; padding: 24px 20px; z-index: 10; }
-  .sidebar-logo { font-size: 20px; font-weight: 800; display: flex; align-items: center; gap: 10px; padding: 0 8px 32px; color: var(--text-main); letter-spacing: -0.5px; }
-  .nav-menu { display: flex; flex-direction: column; gap: 8px; flex: 1; }
-  .tab { background: transparent; border: none; padding: 14px 16px; text-align: left; font-weight: 600; font-size: 15px; color: var(--text-muted); border-radius: 12px; cursor: pointer; transition: all 0.2s; }
-  .tab:hover { background: #F3F4F6; color: var(--text-main); }
-  .tab.active { background: var(--accent-soft); color: var(--accent); }
-  
-  .logout-btn { background: transparent; border: 1px solid var(--border); color: var(--text-muted); padding: 12px; border-radius: 12px; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.2s; margin-top: auto; }
-  .logout-btn:hover { background: #F3F4F6; color: var(--red); border-color: #FECACA; }
-
-  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-  
-  .topbar { background: var(--card-bg); padding: 20px 32px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px; flex-shrink: 0; }
-  .left-controls { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
-  .view-toggle { display: flex; background: #F3F4F6; border-radius: 100px; padding: 4px; }
-  .view-toggle button { background: none; border: none; padding: 8px 20px; border-radius: 100px; font-weight: 600; font-size: 13px; color: var(--text-muted); cursor: pointer; transition: all 0.2s; }
-  .view-toggle button.active { background: #fff; color: var(--text-main); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-  
-  .month-selector { display: flex; align-items: center; }
-  .month-picker-input { background: #F3F4F6; border: 1px solid var(--border); padding: 10px 16px; border-radius: 12px; font-size: 15px; font-weight: 600; color: var(--text-main); font-family: var(--font); outline: none; cursor: pointer; transition: all 0.2s; }
-  .month-picker-input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
-  
-  .month-title { font-size: 18px; font-weight: 800; color: var(--text-main); display: flex; align-items: center; gap: 12px; }
-  .week-nav-btn { background: #F3F4F6; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 14px; font-weight: bold; color: var(--text-main); transition: all 0.2s; display: flex; align-items: center; justify-content: center; }
-  .week-nav-btn:hover { background: #E5E7EB; }
-
-  .right-controls { display: flex; align-items: center; gap: 16px; }
-  .legend { display: flex; gap: 16px; font-size: 13px; color: var(--text-muted); font-weight: 500; flex-wrap: wrap; }
-  .legend-item { display: flex; align-items: center; gap: 6px; }
-  .legend-color { width: 10px; height: 10px; border-radius: 50%; }
-
-  .content { padding: 24px 32px; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-  .section { display: none; height: 100%; width: 100%; overflow-y: auto; }
-  .section.active { display: flex; flex-direction: column; }
-  
-  /* ТАБЛИЦА */
-  .table-scroll { background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.03); position: relative; width: 100%; border: 1px solid var(--border); overflow: auto; margin-bottom: 24px; }
-  
-  table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; table-layout: fixed; }
-  
-  th { position: sticky; top: 0; background: #F9FAFB; z-index: 10; font-weight: 600; color: var(--text-muted); font-size: 12px; padding: 16px 4px; border-bottom: 1px solid var(--border); text-align: center; }
-  th.weekend { color: var(--red); background: #FEF2F2; }
-  
-  th.sticky-col, td.sticky-col { position: sticky; left: 0; background: var(--card-bg); z-index: 5; text-align: left; border-right: 1px solid var(--border); padding: 16px 20px; white-space: normal; word-break: break-word; line-height: 1.4; width: 240px; min-width: 240px; max-width: 240px; }
-  thead th.sticky-col { z-index: 15; background: #F9FAFB; font-size: 12px; }
-
-  th:not(.sticky-col):not(.col-total), td:not(.sticky-col):not(.col-total) {
-      width: 48px;
-      min-width: 48px;
-      max-width: 48px;
-      padding: 0;
-  }
-  
-  .emp-name { font-weight: 600; font-size: 15px; color: var(--text-main); cursor: pointer; transition: color 0.2s; display: inline-block; }
-  .emp-name:hover { color: var(--accent); text-decoration: underline; }
-  .emp-cross-tag { font-size: 11px; color: var(--purple-text); font-weight: 700; margin-top: 4px; background: var(--purple-soft); padding: 2px 8px; border-radius: 6px; display: inline-block; }
-
-  .rest-header td { background: #F9FAFB !important; font-weight: 700; padding: 12px 20px; border-bottom: 1px solid var(--border); border-top: 1px solid var(--border); text-transform: uppercase; font-size: 12px; color: var(--text-muted); }
-  .rest-header td.sticky-col { background: #F9FAFB !important; color: var(--text-main); }
-
-  td { border-bottom: 1px solid var(--border); border-right: 1px solid #F3F4F6; vertical-align: middle; text-align: center; padding: 0; height: 52px; }
-  td.weekend { background: #FAFAFA; }
-  td:last-child { border-right: none; }
-
-  /* ЯЧЕЙКА */
-  .cell-display { width: 100%; height: 100%; min-height: 52px; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; cursor: pointer; transition: all 0.2s; color: var(--text-main); border: 2px solid transparent; overflow: hidden; white-space: nowrap; }
-  .cell-display:hover { background: #F3F4F6; }
-  .cell-display.status-vacation { background: var(--green-soft); color: var(--green-text); }
-  .cell-display.status-sick { background: var(--amber-soft); color: var(--amber-text); }
-  .cell-display.status-absent { background: var(--red-soft); color: var(--red-text); }
-  .cell-display.cross-rest { background: var(--purple-soft) !important; color: var(--purple-text) !important; border-color: var(--purple) !important; font-weight: 800; }
-  .cell-display.cell-occupied-other { background: repeating-linear-gradient(45deg, #FAFAFA, #FAFAFA 10px, #F3F4F6 10px, #F3F4F6 20px) !important; cursor: not-allowed; border: none; }
-
-  .col-total { font-weight: 700; background: #F9FAFB; width: 100px; min-width: 100px; font-size: 15px; color: var(--text-main); border-left: 1px solid var(--border); position: sticky; right: 0; z-index: 5; }
-
-  /* ВЫПЛАТЫ */
-  .payout-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-shrink: 0; gap: 16px; flex-wrap: wrap; }
-  .payout-summary { display: flex; gap: 16px; flex-wrap: wrap; }
-  .summary-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 20px 24px; min-width: 160px; box-shadow: 0 4px 20px rgba(0,0,0,0.02); }
-  .summary-title { font-size: 12px; color: var(--text-muted); font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
-  .summary-value { font-size: 24px; font-weight: 800; color: var(--text-main); letter-spacing: -1px; }
-  .summary-value.green { color: var(--green-text); }
-  .summary-value.amber { color: var(--amber-text); }
-  .summary-value.blue { color: var(--accent); }
-  
-  .header-actions { display: flex; gap: 12px; }
-  .btn-action { background: var(--text-main); color: #fff; border: none; padding: 14px 20px; border-radius: 12px; font-weight: 600; font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: opacity 0.2s; }
-  .btn-action:hover { opacity: 0.9; }
-  .btn-action.green { background: var(--green); }
-  .btn-action.blue { background: var(--accent); }
-
-  .payout-layout { display: flex; flex-direction: column; gap: 24px; padding-bottom: 24px; }
-  
-  .payout-table th, .payout-table td { text-align: left; padding: 16px 24px; height: auto; border-right: none; }
-  .payout-table th { background: #F9FAFB; }
-  .payout-table tr:last-child td { border-bottom: none; }
-  .payout-table .right { text-align: right; }
-
-  /* КАРТОЧКИ МОДЕРАЦИИ */
-  .pending-card { background: #FFF9E6; border-radius: 16px; padding: 20px; margin-bottom: 16px; border: 1px solid rgba(255,149,0,0.25); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
-  .pending-info { flex: 1; min-width: 250px; }
-  .pending-title { font-size: 16px; font-weight: 800; margin-bottom: 4px; color: var(--text-main); }
-  .pending-meta { font-size: 12px; color: #C77700; font-weight: 600; margin-bottom: 8px; }
-  .pending-body { font-size: 14px; color: #6B5A2E; }
-  .pending-actions { display: flex; gap: 8px; }
-
-  /* МОДАЛЬНЫЕ ОКНА */
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
-  .modal-overlay.show { display: flex; animation: fadeIn 0.2s; }
-  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-
-  .modal-card { background: var(--card-bg); border-radius: var(--radius); width: 100%; max-width: 480px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-  .modal-header { padding: 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: #F9FAFB; }
-  .modal-title { font-size: 20px; font-weight: 700; }
-  .modal-close { background: #E5E7EB; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-main); transition: background 0.2s; }
-  .modal-close:hover { background: #D1D5DB; }
-  .modal-body { padding: 24px; max-height: calc(100vh - 150px); overflow-y: auto; }
-  
-  .form-group { margin-bottom: 20px; }
-  .form-label { display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
-  .form-input, .form-select, .form-textarea { width: 100%; border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; font-size: 15px; font-family: var(--font); background: #F9FAFB; color: var(--text-main); outline: none; transition: all 0.2s; }
-  .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
-  .form-textarea { resize: vertical; min-height: 100px; }
-  .btn-submit { width: 100%; background: var(--text-main); color: #fff; border-radius: 12px; padding: 16px; font-size: 16px; font-weight: 600; border: none; cursor: pointer; transition: opacity 0.2s; margin-top: 8px; }
-  .btn-submit:hover { opacity: 0.9; }
-
-  /* КАРТОЧКА СОТРУДНИКА */
-  .emp-card { background: var(--card-bg); border-radius: var(--radius); width: 100%; max-width: 600px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-  .emp-card-header { padding: 24px 24px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: flex-start; background: #F9FAFB; }
-  .emp-card-name { font-size: 22px; font-weight: 700; margin-bottom: 4px; letter-spacing: -0.5px; }
-  .emp-card-pos { font-size: 14px; color: var(--text-muted); font-weight: 500; }
-  .emp-card-body { padding: 24px; }
-  
-  .emp-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
-  .emp-stat-box { background: #F9FAFB; border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
-  .emp-stat-lbl { font-size: 12px; color: var(--text-muted); font-weight: 600; margin-bottom: 4px; }
-  .emp-stat-val { font-size: 18px; font-weight: 700; }
-  .emp-stat-val.highlight { color: var(--green-text); }
-  .emp-stat-val.amber { color: var(--amber-text); }
-  
-  .history-list { display: flex; flex-direction: column; gap: 12px; }
-  .history-item { border-left: 3px solid var(--border); padding-left: 12px; }
-  .history-item.accrual { border-left-color: var(--accent); }
-  .history-item.payout { border-left-color: var(--green); }
-  .history-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
-  .history-amount { font-weight: 700; font-size: 15px; }
-  .history-amount.accrual { color: var(--accent); }
-  .history-amount.payout { color: var(--green-text); }
-  .history-comment { font-size: 14px; color: var(--text-main); }
-
-  .toast { position: fixed; bottom: 32px; right: 32px; background: var(--text-main); color: #fff; padding: 14px 28px; border-radius: 100px; font-weight: 500; font-size: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); opacity: 0; transform: translateY(10px); transition: all 0.3s; pointer-events: none; z-index: 100; }
-  .toast.show { opacity: 1; transform: translateY(0); }
-  .loader { text-align: center; padding: 60px; color: var(--text-muted); font-weight: 500; font-size: 15px; }
-
-  @media (max-width: 1024px) {
-    .sidebar { width: 80px; padding: 24px 12px; }
-    .sidebar-logo { justify-content: center; padding: 0 0 24px; font-size: 16px; }
-    .sidebar-logo span { display: none; }
-    .tab { text-align: center; padding: 14px 0; font-size: 12px; }
-    .logout-btn { padding: 10px; font-size: 12px; }
-    .legend { display: none; }
-    .payout-summary { flex-direction: column; width: 100%; }
-    .summary-card { width: 100%; }
-    .payout-header { flex-direction: column; align-items: stretch; gap: 16px; }
-    .header-actions { flex-direction: column; width: 100%; }
-    .btn-action { width: 100%; justify-content: center; }
-  }
-
-  @media (max-width: 768px) {
-    body { flex-direction: column; overflow: auto; height: auto; min-height: 100vh; }
-    .layout { flex-direction: column; height: auto; }
-    .sidebar { width: 100%; flex-direction: row; padding: 12px; height: auto; border-right: none; border-bottom: 1px solid var(--border); justify-content: space-between; align-items: center; }
-    .sidebar-logo { padding: 0; font-size: 18px; }
-    .nav-menu { flex-direction: row; gap: 8px; flex: none; overflow-x: auto; }
-    .tab { padding: 8px 16px; font-size: 14px; white-space: nowrap; }
-    .logout-btn { margin-top: 0; padding: 8px 12px; }
-    .main { height: auto; flex: 1; overflow: visible; }
-    .topbar { padding: 16px; flex-direction: column; align-items: stretch; }
-    .left-controls { flex-direction: column; align-items: stretch; gap: 12px; }
-    .right-controls { justify-content: space-between; }
-    .content { padding: 16px; overflow: visible; }
-    .table-scroll { max-height: none; overflow-x: auto; }
-    th.sticky-col, td.sticky-col { width: 180px; min-width: 180px; max-width: 180px; padding: 12px; }
-    .col-total { position: static; }
-    .payout-table th, .payout-table td { padding: 12px 16px; }
-    .emp-stats-grid { grid-template-columns: 1fr; }
-  }
-</style>
-</head>
-<body>
-
-<div id="login-screen">
-  <div class="login-card">
-    <div class="login-logo">W</div>
-    <div class="login-title">Табель</div>
-    <div class="login-sub">Вход в систему</div>
-    <input class="login-input" id="login-login" type="text" placeholder="Логин" maxlength="5" autocomplete="username" style="text-transform: lowercase;">
-    <input class="login-input" id="login-password" type="password" placeholder="Пароль" autocomplete="current-password">
-    <button class="login-btn" id="login-btn">Войти</button>
-    <div class="login-error" id="login-error"></div>
-  </div>
-</div>
-
-<div class="layout" id="main-layout">
-  <aside class="sidebar">
-    <div class="sidebar-logo">Wokker <span style="color: var(--text-muted); font-weight: 500; margin-left: 4px;">| Табель</span></div>
-    <nav class="nav-menu">
-      <button class="tab active" data-sec="tab-sheet">Табель</button>
-      <button class="tab" data-sec="tab-payouts">Выплаты</button>
-      <button class="tab" data-sec="tab-reports">Отчёты</button>
-      <button class="tab" data-sec="tab-settings">Настройки</button>
-    </nav>
-    <button class="logout-btn" onclick="doLogout()">Выйти</button>
-  </aside>
-
-  <div class="main">
-    <div class="topbar" id="topbar-wrapper">
-      <div class="left-controls" id="left-controls-wrapper">
-        <div class="view-toggle" id="view-toggle-wrapper">
-          <button class="active" onclick="setViewMode('month')">Месяц</button>
-          <button onclick="setViewMode('week')">Неделя</button>
-        </div>
-        
-        <div class="month-selector" id="month-selector-wrapper">
-          <input type="month" id="month-picker" class="month-picker-input" onchange="changeMonthFromPicker(this.value)">
-        </div>
-
-        <div class="month-title" id="current-period-title" style="display: none;">
-            <button class="week-nav-btn" onclick="changeWeek(-1)">◀</button>
-            <span id="week-range-text" style="min-width: 100px; text-align: center;">09.11 — 15.11</span>
-            <button class="week-nav-btn" onclick="changeWeek(1)">▶</button>
-            <input type="date" id="week-jump-picker" style="display:none;" onchange="jumpToWeek(this.value)">
-            <button class="week-nav-btn" onclick="document.getElementById('week-jump-picker').click()" title="Перейти к дате">📅</button>
-        </div>
-
-        <div class="month-selector" id="rest-select-wrapper" style="display: none; align-items: center; gap: 8px;">
-            <span style="font-size: 13px; font-weight: 600; color: var(--text-muted);">Работа в:</span>
-            <select id="work-restaurant-select" class="month-picker-input" style="background: var(--purple-soft); color: var(--purple-text); border-color: var(--purple); font-weight: 800;" onchange="changeWorkRestaurant(this.value)">
-                <option value="">По основному месту</option>
-            </select>
-        </div>
-
-        <button class="btn-action" onclick="openImportModal()" style="background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); padding: 10px 16px; border-radius: 12px; font-weight: 600; font-size: 13px; cursor: pointer;">📥 Импорт .xlsx</button>
-      </div>
-
-      <div class="right-controls">
-        <div class="legend">
-          <div class="legend-item"><div class="legend-color" style="background: var(--green);"></div> Отпуск</div>
-          <div class="legend-item"><div class="legend-color" style="background: var(--amber);"></div> Больничный</div>
-          <div class="legend-item"><div class="legend-color" style="background: var(--red);"></div> Прогул</div>
-          <div class="legend-item"><div class="legend-color" style="background: var(--purple);"></div> Выход в другой точке</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="content">
-      <div class="section active" id="tab-sheet">
-        <div class="table-scroll" id="table-scroll">
-          <div id="sheet-container"><div class="loader">Загрузка...</div></div>
-        </div>
-      </div>
-
-      <div class="section" id="tab-payouts">
-        <div class="payout-header">
-          <div class="payout-summary" id="payout-summary"></div>
-          <div class="header-actions">
-            <button class="btn-action blue" onclick="openAccrualModal()">+ Начисление</button>
-            <button class="btn-action green" onclick="openPayoutModal()">+ Выплата</button>
-          </div>
-        </div>
-        <div class="payout-layout">
-          <div id="pending-payments-container"></div>
-          <div class="table-scroll">
-            <div id="payout-table-container"><div class="loader">Загрузка...</div></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="section" id="tab-reports">
-        <div class="payout-header">
-          <div>
-            <h2 style="font-size: 20px; font-weight: 800; margin-bottom: 4px;">Сводка и отчёты</h2>
-            <p style="font-size: 13px; color: var(--text-muted);">Динамика начислений и выплат</p>
-          </div>
-          <div class="header-actions">
-            <button class="btn-action" onclick="downloadReportExcel()">📊 Скачать в Excel (.xlsx)</button>
-          </div>
-        </div>
-        <div id="reports-container"><div class="loader">Загрузка...</div></div>
-      </div>
-
-      <div class="section" id="tab-settings">
-        <div class="payout-header">
-          <div>
-            <h2 style="font-size: 20px; font-weight: 800; margin-bottom: 4px;">Настройки ставок</h2>
-            <p style="font-size: 13px; color: var(--text-muted);">Фиксированные оклады и часовые ставки сотрудников</p>
-          </div>
-        </div>
-        <div class="table-scroll">
-          <div id="settings-container"><div class="loader">Загрузка...</div></div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL: ВЫБОР СМЕНЫ / СТАТУСА -->
-<div class="modal-overlay" id="shift-modal" onclick="closeModalOnBackdrop(event, 'shift-modal')">
-  <div class="modal-card">
-    <div class="modal-header">
-      <div>
-        <div class="modal-title" id="shift-modal-title">Редактирование дня</div>
-        <div style="font-size: 13px; color: var(--text-muted); margin-top: 2px;" id="shift-modal-sub">Иванов Иван • 12.11.2026</div>
-      </div>
-      <button class="modal-close" onclick="closeModal('shift-modal')">×</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label class="form-label">Выберите смену или статус</label>
-        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px;" id="preset-shifts"></div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;" id="preset-statuses">
-          <button type="button" class="btn-action" style="padding: 10px; font-size: 13px; background: var(--green-soft); color: var(--green-text); border: 1px solid #A7F3D0;" onclick="applyPreset('vacation')">🏖 Отпуск</button>
-          <button type="button" class="btn-action" style="padding: 10px; font-size: 13px; background: var(--amber-soft); color: var(--amber-text); border: 1px solid #FDE68A;" onclick="applyPreset('sick')">🤒 Больничный</button>
-          <button type="button" class="btn-action" style="padding: 10px; font-size: 13px; background: var(--red-soft); color: var(--red-text); border: 1px solid #FECACA;" onclick="applyPreset('absent')">🚫 Прогул</button>
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">Или укажите точное время (ЧЧ:ММ)</label>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <input type="text" id="shift-start" class="form-input" placeholder="09:00" style="text-align: center;" maxlength="5">
-          <span>—</span>
-          <input type="text" id="shift-end" class="form-input" placeholder="22:00" style="text-align: center;" maxlength="5">
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">Заметка / Комментарий</label>
-        <input type="text" id="shift-comment" class="form-input" placeholder="Например: подмена или переработка">
-      </div>
-
-      <div style="display: flex; gap: 12px; margin-top: 24px;">
-        <button type="button" class="btn-action" style="flex: 1; background: var(--red-soft); color: var(--red-text); justify-content: center;" onclick="clearShift()">Очистить</button>
-        <button type="button" class="btn-action" style="flex: 2; justify-content: center;" onclick="saveShiftFromModal()">Сохранить</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL: ИМПОРТ .XLSX -->
-<div class="modal-overlay" id="import-modal" onclick="closeModalOnBackdrop(event, 'import-modal')">
-  <div class="modal-card">
-    <div class="modal-header">
-      <div class="modal-title">Импорт табеля (.xlsx)</div>
-      <button class="modal-close" onclick="closeModal('import-modal')">×</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label class="form-label">Выберите Excel файл</label>
-        <input type="file" id="import-file-input" class="form-input" accept=".xlsx" style="padding: 10px; background: #fff;">
-        <div style="font-size: 12px; color: var(--text-muted); margin-top: 6px; line-height: 1.4;">
-          Файл должен содержать столбцы: <b>ФИО сотрудника</b> (или <b>Логин</b>), а далее даты в формате ДД.ММ (например, 01.11) с указанием часов/смен (например, 9-22, 12, отпуск, больничный, прогул).
-        </div>
-      </div>
-      <div id="import-result" style="display: none; background: var(--green-soft); color: var(--green-text); padding: 12px; border-radius: 12px; margin-bottom: 16px; font-weight: 600;"></div>
-      <button type="button" class="btn-submit" id="import-submit-btn" onclick="submitImportFile()">Загрузить и импортировать</button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL: НАЧИСЛЕНИЕ -->
-<div class="modal-overlay" id="accrual-modal" onclick="closeModalOnBackdrop(event, 'accrual-modal')">
-  <div class="modal-card">
-    <div class="modal-header">
-      <div class="modal-title">Новое начисление</div>
-      <button class="modal-close" onclick="closeModal('accrual-modal')">×</button>
-    </div>
-    <div class="modal-body">
-      <form id="accrual-form" onsubmit="submitAccrual(event)">
-        <div class="form-group">
-          <label class="form-label">Сотрудник</label>
-          <select class="form-select" id="accrual-emp" required></select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Сумма начисления (₽)</label>
-          <input type="number" step="0.01" class="form-input" id="accrual-amount" required placeholder="Например: 3000">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Дата</label>
-          <input type="date" class="form-input" id="accrual-date" required>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Причина / Комментарий</label>
-          <textarea class="form-textarea" id="accrual-comment" required placeholder="Например: премия за смену"></textarea>
-        </div>
-        <button type="submit" class="btn-submit">Сохранить начисление</button>
-      </form>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL: ВЫПЛАТА -->
-<div class="modal-overlay" id="payout-modal" onclick="closeModalOnBackdrop(event, 'payout-modal')">
-  <div class="modal-card">
-    <div class="modal-header">
-      <div class="modal-title">Новая выплата</div>
-      <button class="modal-close" onclick="closeModal('payout-modal')">×</button>
-    </div>
-    <div class="modal-body">
-      <form id="payout-form" onsubmit="submitPayout(event)">
-        <div class="form-group">
-          <label class="form-label">Сотрудник</label>
-          <select class="form-select" id="payout-emp" required></select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Сумма выплаты (₽)</label>
-          <input type="number" step="0.01" class="form-input" id="payout-amount" required placeholder="Например: 5000">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Дата выплаты</label>
-          <input type="date" class="form-input" id="payout-date" required>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Комментарий</label>
-          <textarea class="form-textarea" id="payout-comment" required placeholder="Например: аванс или зарплата"></textarea>
-        </div>
-        <button type="submit" class="btn-submit">Сохранить выплату</button>
-      </form>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL: КАРТОЧКА СОТРУДНИКА -->
-<div class="modal-overlay" id="emp-modal" onclick="closeModalOnBackdrop(event, 'emp-modal')">
-  <div class="emp-card">
-    <div class="emp-card-header">
-      <div>
-        <div class="emp-card-name" id="emp-name"></div>
-        <div class="emp-card-pos" id="emp-pos"></div>
-      </div>
-      <button class="modal-close" onclick="closeModal('emp-modal')">×</button>
-    </div>
-    <div class="emp-card-body">
-      <div class="emp-stats-grid" id="emp-stats"></div>
-      <div style="font-weight: 700; margin-bottom: 12px; font-size: 15px;">История операций</div>
-      <div class="history-list" id="emp-history"></div>
-    </div>
-  </div>
-</div>
-
-<div class="toast" id="toast"></div>
-
-<script>
-const TOKEN_KEY = 'wokker_staff_token';
-const LOGIN_RE = /^[a-z]{3}\d{2}$/;
-
-let CURRENT_YEAR = new Date().getFullYear();
-let CURRENT_MONTH = new Date().getMonth() + 1;
-let VIEW_MODE = 'month'; 
-let CURRENT_WEEK_DATE = new Date();
-let CURRENT_TAB = 'tab-sheet';
-
-let SHEET_DATA = null;
-let PAYOUTS_DATA = null;
-let SETTINGS_DATA = null;
-let CURRENT_WORK_REST = '';
-
-let activeShiftUserId = null;
-let activeShiftDate = null;
-
-function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
-function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
-function clearToken() { localStorage.removeItem(TOKEN_KEY); }
-
-function showToast(text) {
-  const el = document.getElementById('toast');
-  el.textContent = text;
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 2600);
-}
-
-async function api(path, body) {
-  const payload = { webToken: getToken() };
-  if (body) Object.assign(payload, body);
-  const res = await fetch(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (res.status === 401 || res.status === 403) {
-    clearToken();
-    showLogin();
-    throw new Error('unauthorized');
-  }
-  const j = await res.json();
-  if (j.error) throw new Error(j.error);
-  return j;
-}
-
-function showLogin() {
-  document.getElementById('main-layout').style.display = 'none';
-  document.getElementById('login-screen').style.display = 'flex';
-}
-function showMain() {
-  document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('main-layout').style.display = 'flex';
-}
-
-document.getElementById('login-login').addEventListener('input', e => {
-  e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5);
-});
-document.getElementById('login-btn').addEventListener('click', async () => {
-  const login = document.getElementById('login-login').value.trim().toLowerCase();
-  const password = document.getElementById('login-password').value;
-  const errEl = document.getElementById('login-error');
-  errEl.textContent = '';
-  if (!LOGIN_RE.test(login)) { errEl.textContent = 'Логин: 3 латинские буквы + 2 цифры'; return; }
-  if (!password) { errEl.textContent = 'Введите пароль'; return; }
-  const btn = document.getElementById('login-btn');
-  btn.disabled = true; btn.textContent = 'Проверяем…';
-  try {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ login, password }),
-    });
-    const data = await res.json();
-    if (!res.ok || !data.token) {
-      errEl.textContent = data.error === 'fired' ? 'Аккаунт уволен' : 'Неверный логин или пароль';
-      return;
-    }
-    setToken(data.token);
-    await loadInitial();
-  } catch (e) {
-    errEl.textContent = 'Ошибка соединения';
-  } finally {
-    btn.disabled = false; btn.textContent = 'Войти';
-  }
-});
-
-async function doLogout() {
-  try { await api('/api/auth/logout'); } catch (e) {}
-  clearToken();
-  showLogin();
-}
-
-function formatDate(d) {
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-}
-function formatDateShort(d) {
-  const pad = n => String(n).padStart(2, '0');
-  return `${pad(d.getDate())}.${pad(d.getMonth()+1)}`;
-}
-function formatMoney(v) { return Math.round(v).toLocaleString('ru-RU') + ' ₽'; }
-
-function updateDatePickersUI() {
-  const pad = n => String(n).padStart(2, '0');
-  document.getElementById('month-picker').value = `${CURRENT_YEAR}-${pad(CURRENT_MONTH)}`;
-
-  const d = new Date(CURRENT_WEEK_DATE);
-  const day = d.getDay() || 7;
-  const monday = new Date(d);
-  monday.setDate(d.getDate() - day + 1);
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  document.getElementById('week-range-text').textContent = `${formatDateShort(monday)} — ${formatDateShort(sunday)}`;
-}
-
-function setViewMode(mode) {
-  VIEW_MODE = mode;
-  const btns = document.querySelectorAll('.view-toggle button');
-  btns[0].classList.toggle('active', mode === 'month');
-  btns[1].classList.toggle('active', mode === 'week');
-
-  document.getElementById('month-selector-wrapper').style.display = mode === 'month' ? 'flex' : 'none';
-  document.getElementById('current-period-title').style.display = mode === 'week' ? 'flex' : 'none';
-
-  renderSheet();
-}
-
-function changeMonthFromPicker(val) {
-  if (!val) return;
-  const parts = val.split('-');
-  if (parts.length === 2) {
-    CURRENT_YEAR = parseInt(parts[0]);
-    CURRENT_MONTH = parseInt(parts[1]);
-    loadSheet();
-  }
-}
-
-function changeWeek(delta) {
-  CURRENT_WEEK_DATE.setDate(CURRENT_WEEK_DATE.getDate() + (delta * 7));
-  CURRENT_YEAR = CURRENT_WEEK_DATE.getFullYear();
-  CURRENT_MONTH = CURRENT_WEEK_DATE.getMonth() + 1;
-  updateDatePickersUI();
-  loadSheet();
-}
-
-function jumpToWeek(val) {
-  if (!val) return;
-  const d = new Date(val + 'T00:00:00');
-  if (!isNaN(d.getTime())) {
-    CURRENT_WEEK_DATE = d;
-    CURRENT_YEAR = d.getFullYear();
-    CURRENT_MONTH = d.getMonth() + 1;
-    updateDatePickersUI();
-    loadSheet();
-  }
-}
-
-function changeWorkRestaurant(val) {
-  CURRENT_WORK_REST = val;
-  renderSheet();
-}
-
-document.querySelectorAll('.tab').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-    btn.classList.add('active');
-    CURRENT_TAB = btn.dataset.sec;
-    document.getElementById(CURRENT_TAB).classList.add('active');
-
-    const isSheet = CURRENT_TAB === 'tab-sheet';
-    const isPayouts = CURRENT_TAB === 'tab-payouts';
-    const isReports = CURRENT_TAB === 'tab-reports';
-    const isSettings = CURRENT_TAB === 'tab-settings';
-
-    document.getElementById('topbar-wrapper').style.display = (isSheet || isPayouts || isReports) ? 'flex' : 'none';
-    document.getElementById('left-controls-wrapper').style.display = (isSheet || isPayouts) ? 'flex' : 'none';
-    document.querySelector('.right-controls').style.display = isSheet ? 'flex' : 'none';
-
-    if (isSheet) loadSheet();
-    if (isPayouts) loadPayouts();
-    if (isReports) loadReports();
-    if (isSettings) loadSettings();
-  });
-});
-
-function closeModal(id) { document.getElementById(id).classList.remove('show'); }
-function closeModalOnBackdrop(e, id) { if (e.target.id === id) closeModal(id); }
-
-async function loadInitial() {
-  try {
-    updateDatePickersUI();
-    await loadRestaurants();
-    showMain();
-    loadSheet();
-  } catch (e) {
-    if (e.message !== 'unauthorized') {
-      showToast('Ошибка загрузки: ' + e.message);
-    }
-  }
-}
-
-async function loadRestaurants() {
-  try {
-    const res = await api('/api/timesheet/restaurants');
-    const sel = document.getElementById('work-restaurant-select');
-    const wrap = document.getElementById('rest-select-wrapper');
-    const prevRest = CURRENT_WORK_REST;
-    sel.innerHTML = '<option value="">По основному месту</option>';
-    let hasPrev = false;
-    (res.restaurants || []).forEach(r => {
-      if (r.key === prevRest) hasPrev = true;
-      sel.innerHTML += `<option value="${r.key}">${r.name}</option>`;
-    });
-    CURRENT_WORK_REST = hasPrev ? prevRest : '';
-    sel.value = CURRENT_WORK_REST;
-    wrap.style.display = (res.restaurants && res.restaurants.length > 0) ? 'flex' : 'none';
-  } catch (e) {}
-}
-
-async function loadSheet() {
-  const cont = document.getElementById('sheet-container');
-  cont.innerHTML = '<div class="loader">Загрузка...</div>';
-  try {
-    SHEET_DATA = await api('/api/timesheet/sheet', { year: CURRENT_YEAR, month: CURRENT_MONTH });
-    renderSheet();
-  } catch (e) {
-    if (e.message !== 'unauthorized') {
-      cont.innerHTML = `<div class="loader">Ошибка: ${e.message}</div>`;
-    }
-  }
-}
-
-function getDaysForView() {
-  if (VIEW_MODE === 'week') {
-    const d = new Date(CURRENT_WEEK_DATE);
-    const day = d.getDay() || 7;
-    const monday = new Date(d);
-    monday.setDate(d.getDate() - day + 1);
-    const days = [];
-    const weekDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-    for (let i = 0; i < 7; i++) {
-      const cur = new Date(monday);
-      cur.setDate(monday.getDate() + i);
-      const isWeekend = (cur.getDay() === 0 || cur.getDay() === 6);
-      days.push({
-        date: formatDate(cur),
-        dayName: weekDays[i],
-        dayNum: cur.getDate(),
-        isWeekend
-      });
-    }
-    return days;
-  } else {
-    const daysInMonth = new Date(CURRENT_YEAR, CURRENT_MONTH, 0).getDate();
-    const days = [];
-    const weekDays = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dt = new Date(CURRENT_YEAR, CURRENT_MONTH - 1, d);
-      const isWeekend = (dt.getDay() === 0 || dt.getDay() === 6);
-      days.push({
-        date: formatDate(dt),
-        dayName: weekDays[dt.getDay()],
-        dayNum: d,
-        isWeekend
-      });
-    }
-    return days;
-  }
-}
-
-function renderSheet() {
-  if (!SHEET_DATA) return;
-  const cont = document.getElementById('sheet-container');
-  const days = getDaysForView();
-
-  const headerDaysHtml = days.map(d => {
-    return `<th class="${d.isWeekend ? 'weekend' : ''}">
-      <div style="font-size: 10px; opacity: 0.7; margin-bottom: 2px;">${d.dayName}</div>
-      <div>${d.dayNum}</div>
-    </th>`;
-  }).join('');
-
-  const rowsHtml = [];
-  const groups = SHEET_DATA.groups || [];
-
-  for (const g of groups) {
-    rowsHtml.push(`
-      <tr class="rest-header">
-        <td class="sticky-col">${g.restaurant_name}</td>
-        ${days.map(d => `<td class="${d.isWeekend ? 'weekend' : ''}"></td>`).join('')}
-        <td class="col-total">Итого</td>
-      </tr>
-    `);
-
-    for (const emp of g.employees || []) {
-      const uid = emp.user_id;
-      const empRecords = (SHEET_DATA.records && SHEET_DATA.records[uid]) || {};
-      const crossDays = (SHEET_DATA.cross_days && SHEET_DATA.cross_days[uid]) || [];
-
-      let totalHours = 0;
-      const tds = days.map(d => {
-        const rec = empRecords[d.date];
-        const isCross = crossDays.includes(d.date);
-        let dispText = '';
-        let cellClass = 'cell-display';
-
-        if (isCross) {
-          cellClass += ' cell-occupied-other';
-          dispText = '';
-        } else if (rec) {
-          if (rec.status === 'vacation') { dispText = '🏖'; cellClass += ' status-vacation'; }
-          else if (rec.status === 'sick') { dispText = '🤒'; cellClass += ' status-sick'; }
-          else if (rec.status === 'absent') { dispText = '🚫'; cellClass += ' status-absent'; }
-          else if (rec.hours > 0) {
-            dispText = parseFloat(rec.hours) + 'ч';
-            if (CURRENT_WORK_REST && rec.restaurant_key && rec.restaurant_key !== g.restaurant_key) {
-              cellClass += ' cross-rest';
+from aiohttp import web
+from psycopg2.extras import RealDictCursor
+from db import get_conn, _run
+from utils.auth_helpers import get_auth_user, denied, _is_hr_or_super, _is_tu, _sync_user_has_perm
+import calendar
+from datetime import datetime, date, time
+import io
+import traceback
+import logging
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from utils.common import safe_int, safe_float
+
+routes = web.RouteTableDef()
+
+
+def _require_timesheet_access(user):
+    if not _sync_user_has_perm(user, "timesheet_access"):
+        raise web.HTTPForbidden(text='{"error": "forbidden"}', content_type='application/json')
+
+
+def _check_can_edit_user(editor_user, target_uid):
+    if editor_user["is_super_admin"] or (editor_user.get("position") or "").strip().upper() == "HR":
+        return True
+    if editor_user["user_id"] == target_uid:
+        return True
+    pos_lower = (editor_user.get("position") or "").lower()
+    is_tu = "территориальный" in pos_lower
+    is_us = "управляющий сменой" in pos_lower
+    if not (is_tu or is_us):
+        return False
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT restaurant_key FROM users WHERE user_id = %s", (target_uid,))
+            target = cur.fetchone()
+            if not target:
+                return False
+            if is_us:
+                return target["restaurant_key"] == editor_user.get("restaurant_key")
+            elif is_tu:
+                cur.execute(
+                    "SELECT key FROM restaurants WHERE territory_manager_id = %s AND key = %s",
+                    (editor_user["user_id"], target["restaurant_key"])
+                )
+                return cur.fetchone() is not None
+    return False
+
+
+def _check_can_use_restaurant(editor_user, rest_key):
+    """Проверяет, может ли пользователь записывать часы на указанный ресторан."""
+    if not rest_key:
+        return True
+    if editor_user["is_super_admin"] or (editor_user.get("position") or "").strip().upper() == "HR":
+        return True
+    pos_lower = (editor_user.get("position") or "").lower()
+    if "управляющий сменой" in pos_lower:
+        return rest_key == editor_user.get("restaurant_key")
+    if "территориальный" in pos_lower:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM restaurants WHERE territory_manager_id = %s AND key = %s",
+                    (editor_user["user_id"], rest_key)
+                )
+                return cur.fetchone() is not None
+    return rest_key == editor_user.get("restaurant_key")
+
+
+@routes.post('/api/timesheet/restaurants')
+async def handle_timesheet_restaurants(request):
+    user, err = await get_auth_user(request)
+    if err:
+        return denied(err)
+    _require_timesheet_access(user)
+
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                if "управляющий сменой" in (user.get("position") or "").lower():
+                    cur.execute("SELECT key, name FROM restaurants WHERE key = %s", (user.get("restaurant_key"),))
+                else:
+                    cur.execute("SELECT key, name FROM restaurants ORDER BY name")
+                return [dict(r) for r in cur.fetchall()]
+
+    rests = await _run(_sync)
+    return web.json_response({"restaurants": rests})
+
+
+def _sync_timesheet_matrix(user_id, date_from, date_to):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+            u = cur.fetchone()
+            if not u:
+                return []
+
+            is_hr_or_super = _is_hr_or_super(u)
+            is_tu = _is_tu(u)
+            is_us = "управляющий сменой" in (u.get("position") or "").lower()
+
+            query = """SELECT u.user_id, u.full_name, u.position, u.restaurant_key AS main_restaurant_key,
+                       COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, u.payment_type, r.name AS restaurant_name
+                FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key
+                LEFT JOIN position_rates pr ON u.position = pr.position_name
+                WHERE COALESCE(u.is_fired, FALSE) = FALSE
+                  AND COALESCE(u.is_admin, FALSE) = FALSE
+                  AND u.login IS NOT NULL
+                  AND COALESCE(u.payment_type, '') != 'fixed' """
+            params = []
+            if is_us:
+                query += " AND u.restaurant_key = %s"
+                params.append(u.get("restaurant_key"))
+            elif is_tu:
+                query += " AND u.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id = %s)"
+                params.append(user_id)
+            elif not is_hr_or_super:
+                query += " AND u.user_id = %s"
+                params.append(user_id)
+            query += " ORDER BY r.name, u.full_name"
+
+            cur.execute(query, params)
+            employees = [dict(r) for r in cur.fetchall()]
+            if not employees:
+                return []
+
+            emp_ids = [e["user_id"] for e in employees]
+            cur.execute(
+                """SELECT user_id, work_date, hours, status, restaurant_key,
+                          to_char(start_time, 'HH24:MI') as st, to_char(end_time, 'HH24:MI') as et
+                   FROM timesheet_records
+                   WHERE user_id = ANY(%s) AND work_date >= %s::date AND work_date <= %s::date""",
+                (emp_ids, date_from, date_to)
+            )
+            records = cur.fetchall()
+
+            data_map = {eid: {} for eid in emp_ids}
+            for r in records:
+                data_map[r["user_id"]][str(r["work_date"].day)] = {
+                    "h": float(r["hours"] or 0),
+                    "s": r["status"] or "work",
+                    "rk": r["restaurant_key"],
+                    "st": r["st"] or "",
+                    "et": r["et"] or ""
+                }
+            for e in employees:
+                e["data"] = data_map[e["user_id"]]
+            return employees
+
+
+@routes.post('/api/timesheet/matrix')
+async def handle_timesheet_matrix(request):
+    user, err = await get_auth_user(request)
+    if err:
+        return denied(err)
+    _require_timesheet_access(user)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
+
+    date_from = body.get("date_from")
+    date_to = body.get("date_to")
+    if not date_from or not date_to:
+        month = safe_int(body.get("month", datetime.now().month))
+        year = safe_int(body.get("year", datetime.now().year))
+        last_day = calendar.monthrange(year, month)[1]
+        date_from = f"{year}-{month:02d}-01"
+        date_to = f"{year}-{month:02d}-{last_day:02d}"
+
+    employees = await _run(_sync_timesheet_matrix, user["user_id"], date_from, date_to)
+    return web.json_response({"employees": employees})
+
+
+def _sync_save_cell(user_id, target_uid, work_date, hours, status, restaurant_key=None, start_time=None, end_time=None):
+    hours = round(hours, 2)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if hours <= 0 and status == 'work':
+                cur.execute("DELETE FROM timesheet_records WHERE user_id = %s AND work_date = %s", (target_uid, work_date))
+            else:
+                cur.execute(
+                    """INSERT INTO timesheet_records (user_id, work_date, hours, status, restaurant_key, start_time, end_time, updated_at)
+                       VALUES (%s, %s, %s, %s, %s, %s::time, %s::time, NOW())
+                       ON CONFLICT (user_id, work_date) DO UPDATE SET
+                           hours = EXCLUDED.hours, status = EXCLUDED.status,
+                           restaurant_key = EXCLUDED.restaurant_key,
+                           start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time, updated_at = NOW()""",
+                    (target_uid, work_date, hours, status, restaurant_key, start_time or None, end_time or None)
+                )
+
+
+@routes.post('/api/timesheet/save_cell')
+async def handle_timesheet_save_cell(request):
+    user, err = await get_auth_user(request)
+    if err:
+        return denied(err)
+    _require_timesheet_access(user)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
+
+    target_uid = safe_int(body.get("user_id"))
+    work_date = body.get("work_date")
+    hours = safe_float(body.get("hours", 0))
+    status = body.get("status", "work")
+    restaurant_key = body.get("restaurant_key")
+    start_time = body.get("start_time")
+    end_time = body.get("end_time")
+
+    if not work_date or target_uid <= 0:
+        return web.json_response({"error": "invalid_data"}, status=400)
+    allowed = await _run(_check_can_edit_user, user, target_uid)
+    if not allowed:
+        return web.json_response({"error": "forbidden_edit_other"}, status=403)
+
+    if restaurant_key:
+        ok_rest = await _run(_check_can_use_restaurant, user, restaurant_key)
+        if not ok_rest:
+            return web.json_response({"error": "forbidden_restaurant"}, status=403)
+
+    await _run(_sync_save_cell, user["user_id"], target_uid, work_date, hours, status, restaurant_key, start_time, end_time)
+    return web.json_response({"ok": True})
+
+
+# Алиас на будущее: timesheet.html зовёт /api/timesheet/record/save
+@routes.post('/api/timesheet/record/save')
+async def handle_timesheet_record_save(request):
+    return await handle_timesheet_save_cell(request)
+
+
+def _parse_date(val):
+    if isinstance(val, (datetime, date)):
+        return val.strftime("%Y-%m-%d")
+    s = str(val).strip()
+    for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%Y/%m/%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(s, fmt).strftime("%Y-%m-%d")
+        except Exception:
+            pass
+    return None
+
+
+def _sync_import_attendance(user_id, rows, default_rest_key=None):
+    success = 0
+    errors = []
+
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT user_id, login, personnel_number, restaurant_key
+                FROM users
+                WHERE personnel_number IS NOT NULL AND personnel_number != '' AND COALESCE(is_fired, FALSE) = FALSE
+            """)
+            users_map = {str(u["personnel_number"]).strip(): u for u in cur.fetchall()}
+
+            cur.execute("SELECT key, name FROM restaurants")
+            restaurants = cur.fetchall()
+            rest_map = {r["name"].strip().lower(): r["key"] for r in restaurants}
+
+            for row in rows:
+                try:
+                    date_str = row[0]
+                    personnel_number = row[1]
+                    raw_val = row[2]
+                    rest_name = row[3] if len(row) > 3 else None
+
+                    if not date_str or not personnel_number:
+                        continue
+
+                    target_user = users_map.get(personnel_number)
+                    if not target_user:
+                        errors.append(f"Сотрудник с таб. номером '{personnel_number}' не найден")
+                        continue
+
+                    hours = 0
+                    status = 'work'
+                    start_time = None
+                    end_time = None
+
+                    if raw_val in ('В', 'Б', 'Н'):
+                        status = {'В': 'vacation', 'Б': 'sick', 'Н': 'absent'}[raw_val]
+                        hours = 8 if status in ('vacation', 'sick') else 0
+                    elif '-' in raw_val:
+                        parts = raw_val.split('-')
+                        st_str = parts[0].strip()
+                        et_str = parts[1].strip()
+                        try:
+                            sh, sm = map(int, st_str.split(':'))
+                            eh, em = map(int, et_str.split(':'))
+                            start_min = sh * 60 + sm
+                            end_min = eh * 60 + em
+                            if end_min < start_min:
+                                end_min += 24 * 60
+                            hours = round((end_min - start_min) / 60.0, 2)
+                            start_time = f"{sh:02d}:{sm:02d}:00"
+                            end_time = f"{eh:02d}:{em:02d}:00"
+                        except Exception:
+                            continue
+                    else:
+                        try:
+                            if ':' in raw_val:
+                                parts = raw_val.split(':')
+                                hours = float(parts[0]) + float(parts[1]) / 60.0
+                            else:
+                                hours = float(raw_val.replace(',', '.'))
+                            hours = round(hours, 2)
+                        except Exception:
+                            continue
+
+                    r_key = None
+                    if rest_name:
+                        clean_rest_name = rest_name.strip().lower()
+                        r_key = rest_map.get(clean_rest_name)
+                        if not r_key:
+                            for db_name, db_key in rest_map.items():
+                                if clean_rest_name in db_name or db_name in clean_rest_name:
+                                    r_key = db_key
+                                    break
+                    if not r_key:
+                        r_key = default_rest_key or target_user["restaurant_key"]
+
+                    if hours <= 0 and status == 'work':
+                        cur.execute("DELETE FROM timesheet_records WHERE user_id = %s AND work_date = %s",
+                                    (target_user["user_id"], date_str))
+                    else:
+                        cur.execute(
+                            """INSERT INTO timesheet_records (user_id, work_date, hours, status, restaurant_key, start_time, end_time, updated_at)
+                               VALUES (%s, %s, %s, %s, %s, %s::time, %s::time, NOW())
+                               ON CONFLICT (user_id, work_date) DO UPDATE SET
+                                   hours = EXCLUDED.hours, status = EXCLUDED.status,
+                                   restaurant_key = EXCLUDED.restaurant_key,
+                                   start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time, updated_at = NOW()""",
+                            (target_user["user_id"], date_str, hours, status, r_key, start_time, end_time)
+                        )
+                    success += 1
+                except Exception as e:
+                    errors.append(f"Ошибка в строке {row}: {str(e)}")
+
+    return success, errors[:10]
+
+
+def _parse_excel_rows(file_data):
+    wb = load_workbook(filename=io.BytesIO(file_data), data_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+
+    header_idx = -1
+    for i, row in enumerate(rows):
+        if any(cell and "табельный номер" in str(cell).lower() for cell in row):
+            header_idx = i
+            break
+
+    if header_idx == -1:
+        raise Exception("Не найдена строка с заголовками (Табельный номер)")
+
+    headers = rows[header_idx]
+    pers_num_col = -1
+    rest_col = -1
+    date_cols = {}
+
+    for col_idx, cell_val in enumerate(headers):
+        if not cell_val:
+            continue
+        val_str = str(cell_val).strip().lower()
+
+        if "табельный номер" in val_str:
+            pers_num_col = col_idx
+        elif "подразделение" in val_str or "ресторан" in val_str:
+            rest_col = col_idx
+        else:
+            date_str = _parse_date(cell_val)
+            if date_str:
+                date_cols[col_idx] = date_str
+
+    if pers_num_col == -1:
+        raise Exception("Колонка 'Табельный номер' не найдена")
+
+    parsed_data = []
+    current_pers_num = None
+
+    for row in rows[header_idx + 1:]:
+        if not row:
+            continue
+
+        if len(row) > pers_num_col and row[pers_num_col]:
+            current_pers_num = str(row[pers_num_col]).strip()
+
+        if not current_pers_num:
+            continue
+
+        rest_name = ""
+        if rest_col != -1 and rest_col < len(row) and row[rest_col]:
+            rest_name = str(row[rest_col]).strip()
+
+        has_data = False
+        for col_idx in date_cols.keys():
+            if col_idx < len(row) and row[col_idx] is not None:
+                has_data = True
+                break
+        if not has_data:
+            continue
+
+        for col_idx, date_str in date_cols.items():
+            if col_idx < len(row) and row[col_idx] is not None:
+                cell_val = row[col_idx]
+
+                if isinstance(cell_val, time):
+                    raw_val = f"{cell_val.hour}:{cell_val.minute:02d}"
+                elif isinstance(cell_val, (float, int)):
+                    raw_val = str(cell_val)
+                else:
+                    raw_val = str(cell_val).strip()
+
+                if not raw_val or raw_val.upper() == 'NONE':
+                    continue
+                parsed_data.append((date_str, current_pers_num, raw_val.upper(), rest_name))
+
+    return parsed_data
+
+
+@routes.post('/api/timesheet/import_attendance')
+async def handle_import_attendance(request):
+    user, err = await get_auth_user(request)
+    if err:
+        return denied(err)
+    _require_timesheet_access(user)
+
+    reader = await request.multipart()
+    file_data = None
+    default_rest = request.query.get("restaurant_key")
+
+    while True:
+        part = await reader.next()
+        if part is None:
+            break
+        if part.name == 'file':
+            file_data = await part.read()
+            break
+
+    if not file_data:
+        return web.json_response({"error": "Файл не загружен"}, status=400)
+
+    try:
+        rows = await _run(_parse_excel_rows, file_data)
+    except Exception as e:
+        return web.json_response({"error": f"Не удалось прочитать Excel: {str(e)}"}, status=400)
+
+    success, errors = await _run(_sync_import_attendance, user["user_id"], rows, default_rest)
+    return web.json_response({"ok": True, "success_count": success, "imported_count": success, "errors": errors})
+
+
+# Алиас: timesheet.html зовёт /api/timesheet/import
+@routes.post('/api/timesheet/import')
+async def handle_timesheet_import_alias(request):
+    return await handle_import_attendance(request)
+
+
+def _sync_reports(user_id, date_from, date_to, only_me=False):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+            u = cur.fetchone()
+            is_hr_or_super = _is_hr_or_super(u)
+            is_tu = _is_tu(u)
+            is_us = "управляющий сменой" in (u.get("position") or "").lower()
+
+            base = """SELECT u.full_name, u.position,
+                       COALESCE(tr.name, r.name) AS restaurant_name,
+                       COALESCE(SUM(t.hours), 0) as total_hours,
+                       COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, u.payment_type,
+                       CASE WHEN u.payment_type = 'fixed' THEN COALESCE(NULLIF(u.rate, 0), pr.rate, 0)
+                            ELSE (COALESCE(SUM(t.hours), 0) * COALESCE(NULLIF(u.rate, 0), pr.rate, 0)) END as total_salary
+                FROM users u 
+                LEFT JOIN timesheet_records t ON u.user_id = t.user_id AND t.work_date >= %s::date AND t.work_date <= %s::date
+                LEFT JOIN restaurants r ON u.restaurant_key = r.key
+                LEFT JOIN restaurants tr ON t.restaurant_key = tr.key
+                LEFT JOIN position_rates pr ON u.position = pr.position_name
+                WHERE COALESCE(u.is_fired, FALSE) = FALSE AND u.login IS NOT NULL"""
+
+            params = [date_from, date_to]
+
+            if only_me:
+                base += " AND u.user_id = %s"
+                params.append(user_id)
+            elif is_us:
+                base += " AND COALESCE(t.restaurant_key, u.restaurant_key) = %s"
+                params.append(u.get("restaurant_key"))
+            elif is_tu:
+                base += " AND COALESCE(t.restaurant_key, u.restaurant_key) IN (SELECT key FROM restaurants WHERE territory_manager_id = %s)"
+                params.append(user_id)
+            elif not is_hr_or_super:
+                base += " AND u.user_id = %s"
+                params.append(user_id)
+
+            base += " GROUP BY u.user_id, u.full_name, u.position, COALESCE(tr.name, r.name), u.rate, pr.rate, u.payment_type ORDER BY COALESCE(tr.name, r.name), u.full_name"
+
+            cur.execute(base, params)
+            return [dict(r) for r in cur.fetchall()]
+
+
+@routes.post('/api/timesheet/reports')
+async def handle_timesheet_reports(request):
+    user, err = await get_auth_user(request)
+    if err:
+        return denied(err)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
+
+    date_from = body.get("date_from")
+    date_to = body.get("date_to")
+    if not date_from or not date_to:
+        month = safe_int(body.get("month", datetime.now().month))
+        year = safe_int(body.get("year", datetime.now().year))
+        last_day = calendar.monthrange(year, month)[1]
+        date_from = f"{year}-{month:02d}-01"
+        date_to = f"{year}-{month:02d}-{last_day:02d}"
+
+    report = await _run(_sync_reports, user["user_id"], date_from, date_to, True)
+    return web.json_response({"report": report})
+
+
+@routes.get('/api/timesheet/export')
+@routes.get('/api/timesheet/export_excel')
+async def handle_timesheet_export_excel(request):
+    user, err = await get_auth_user(request)
+    if err:
+        return denied(err)
+
+    date_from = request.query.get("date_from")
+    date_to = request.query.get("date_to")
+
+    # Если передали year/month (как в timesheet.html), конвертируем в диапазон
+    if not date_from or not date_to:
+        year = safe_int(request.query.get("year"))
+        month = safe_int(request.query.get("month"))
+        if year and month and 1 <= month <= 12:
+            last_day = calendar.monthrange(year, month)[1]
+            date_from = f"{year}-{month:02d}-01"
+            date_to = f"{year}-{month:02d}-{last_day:02d}"
+        else:
+            return web.Response(text="Укажите даты", status=400)
+
+    only_me = request.query.get("only_me") == "true"
+    report = await _run(_sync_reports, user["user_id"], date_from, date_to, only_me)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Табель"
+
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1C1C1E", end_color="1C1C1E", fill_type="solid")
+    border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+    center_align = Alignment(horizontal="center", vertical="center")
+
+    headers = ["Сотрудник", "Должность", "Ресторан", "Часов", "Ставка (₽)", "К оплате (₽)"]
+    ws.append(headers)
+
+    for col_num, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_num)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center_align
+        cell.border = border
+
+    for r in report:
+        row_data = [
+            r.get("full_name", ""),
+            r.get("position", ""),
+            r.get("restaurant_name", ""),
+            float(r.get("total_hours", 0)),
+            "Оклад" if r.get("payment_type") == 'fixed' else float(r.get("rate", 0)),
+            float(r.get("total_salary", 0)),
+        ]
+        ws.append(row_data)
+        current_row = ws.max_row
+        for col_num in range(1, 7):
+            cell = ws.cell(row=current_row, column=col_num)
+            cell.border = border
+            if col_num >= 4:
+                cell.alignment = Alignment(horizontal="right", vertical="center")
+
+    for col in ws.columns:
+        max_length = 0
+        column = col[0].column_letter
+        for cell in col:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except Exception:
+                pass
+        ws.column_dimensions[column].width = max_length + 2
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    filename = f"Табель_{date_from}_{date_to}.xlsx"
+    return web.Response(
+        body=output.read(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+# ===================== НАСТРОЙКИ СТАВОК =====================
+
+def _sync_settings_get(user_id):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+            u = cur.fetchone()
+            if not u or not _is_hr_or_super(u):
+                return []
+
+            cur.execute("""
+                SELECT u.user_id, u.full_name, u.position, u.payment_type,
+                       COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS effective_rate,
+                       COALESCE(u.rate, 0) AS user_rate
+                FROM users u
+                LEFT JOIN position_rates pr ON pr.position_name = u.position
+                WHERE COALESCE(u.is_fired, FALSE) = FALSE
+                  AND COALESCE(u.is_admin, FALSE) = FALSE
+                  AND u.login IS NOT NULL
+                ORDER BY u.full_name
+            """)
+            rows = []
+            for r in cur.fetchall():
+                d = dict(r)
+                ptype = d.get("payment_type") or "hourly"
+                eff = float(d.get("effective_rate") or 0)
+                ur = float(d.get("user_rate") or 0)
+                rows.append({
+                    "user_id": d["user_id"],
+                    "full_name": d["full_name"],
+                    "position": d["position"],
+                    "payment_type": ptype,
+                    "hourly_rate": eff if ptype != 'fixed' else 0,
+                    "fixed_salary": ur if ptype == 'fixed' else 0,
+                })
+            return rows
+
+
+@routes.post('/api/timesheet/settings')
+async def handle_timesheet_settings_get(request):
+    user, err = await get_auth_user(request)
+    if err:
+        return denied(err)
+    settings = await _run(_sync_settings_get, user["user_id"])
+    return web.json_response({"settings": settings, "employees": settings})
+
+
+@routes.post('/api/timesheet/settings/save')
+async def handle_timesheet_settings_save(request):
+    user, err = await get_auth_user(request)
+    if err:
+        return denied(err)
+    if not _is_hr_or_super(user):
+        return web.json_response({"error": "forbidden"}, status=403)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
+
+    # Вариант 1: обновление конкретного сотрудника (timesheet.html)
+    target_uid = safe_int(body.get("user_id"))
+    if target_uid > 0:
+        payment_type = body.get("payment_type")
+        if payment_type not in ('hourly', 'fixed'):
+            return web.json_response({"error": "invalid_payment_type"}, status=400)
+        if payment_type == 'fixed':
+            rate = safe_float(body.get("fixed_salary", 0))
+        else:
+            rate = safe_float(body.get("hourly_rate", 0))
+
+        def _sync_user():
+            with get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE users SET payment_type = %s, rate = %s WHERE user_id = %s",
+                        (payment_type, rate, target_uid)
+                    )
+        await _run(_sync_user)
+        return web.json_response({"ok": True})
+
+    # Вариант 2: обновление по должности (старый формат)
+    position_name = (body.get("position_name") or "").strip()
+    rate = safe_float(body.get("rate", 0))
+    if not position_name:
+        return web.json_response({"error": "invalid_position"}, status=400)
+
+    def _sync_pos():
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO position_rates (position_name, rate) VALUES (%s, %s)
+                       ON CONFLICT (position_name) DO UPDATE SET rate = EXCLUDED.rate""",
+                    (position_name, rate)
+                )
+
+    await _run(_sync_pos)
+    return web.json_response({"ok": True})
+
+
+# ===================== ВЫПЛАТЫ =====================
+@routes.post('/api/payments/add')
+async def handle_payment_add(request):
+    user, err = await get_auth_user(request)
+    if err:
+        return denied(err)
+    _require_timesheet_access(user)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
+
+    target_uid = safe_int(body.get("user_id"))
+    amount = safe_float(body.get("amount", 0))
+    comment = (body.get("comment") or "").strip()
+    payment_date = body.get("payment_date")
+
+    if target_uid <= 0:
+        return web.json_response({"error": "Выберите сотрудника"}, status=400)
+    if amount <= 0:
+        return web.json_response({"error": "Сумма должна быть больше нуля"}, status=400)
+    if not comment:
+        return web.json_response({"error": "Комментарий обязателен"}, status=400)
+
+    allowed = await _run(_check_can_edit_user, user, target_uid)
+    if not allowed:
+        return web.json_response({"error": "forbidden_edit_other"}, status=403)
+
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO payments (user_id, amount, comment, created_by, record_type, status, payment_date)
+                    VALUES (%s, %s, %s, %s, 'payout', 'approved', COALESCE(%s::date, CURRENT_DATE))
+                """, (target_uid, amount, comment, user["user_id"], payment_date))
+
+    await _run(_sync)
+    return web.json_response({"ok": True})
+
+
+# ===================== НАЧИСЛЕНИЯ =====================
+@routes.post('/api/accruals/add')
+@routes.post('/api/payments/accrual/add')
+async def handle_accrual_add(request):
+    user, err = await get_auth_user(request)
+    if err:
+        return denied(err)
+    _require_timesheet_access(user)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
+
+    target_uid = safe_int(body.get("user_id"))
+    amount = safe_float(body.get("amount", 0))
+    comment = (body.get("comment") or "").strip()
+    payment_date = body.get("payment_date")
+
+    if target_uid <= 0:
+        return web.json_response({"error": "Выберите сотрудника"}, status=400)
+    if amount <= 0:
+        return web.json_response({"error": "Сумма должна быть больше нуля"}, status=400)
+    if not comment:
+        return web.json_response({"error": "Комментарий обязателен"}, status=400)
+
+    allowed = await _run(_check_can_edit_user, user, target_uid)
+    if not allowed:
+        return web.json_response({"error": "forbidden_edit_other"}, status=403)
+
+    is_hr_or_super = _is_hr_or_super(user)
+    status = 'approved' if is_hr_or_super else 'pending'
+    proposed_by_name = None if is_hr_or_super else user.get("full_name")
+
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO payments (user_id, amount, comment, created_by, record_type, status, proposed_by_name, payment_date)
+                    VALUES (%s, %s, %s, %s, 'accrual', %s, %s, COALESCE(%s::date, CURRENT_DATE))
+                """, (target_uid, amount, comment, user["user_id"], status, proposed_by_name, payment_date))
+
+    await _run(_sync)
+    return web.json_response({"ok": True})
+
+
+@routes.post('/api/accruals/approve')
+async def handle_accrual_approve(request):
+    user, err = await get_auth_user(request)
+    if err:
+        return denied(err)
+    if not _is_hr_or_super(user):
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
+
+    pid = safe_int(body.get("id"))
+    if pid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
+
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE payments SET status='approved', approved_by_name=%s WHERE id=%s",
+                    (user.get("full_name"), pid)
+                )
+
+    await _run(_sync)
+    return web.json_response({"ok": True})
+
+
+@routes.post('/api/accruals/reject')
+async def handle_accrual_reject(request):
+    user, err = await get_auth_user(request)
+    if err:
+        return denied(err)
+    if not _is_hr_or_super(user):
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
+
+    pid = safe_int(body.get("id"))
+    if pid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
+
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM payments WHERE id=%s AND status='pending'", (pid,))
+
+    await _run(_sync)
+    return web.json_response({"ok": True})
+
+
+# ===================== СВОДКА ПО ВЫПЛАТАМ =====================
+
+def _sync_payments_summary(user_id, year, month):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+            u = cur.fetchone()
+            if not u:
+                return {
+                    "totals": {"accrued_total": 0, "paid_total": 0, "remaining_total": 0},
+                    "employees": [],
+                    "pending": [],
+                }
+
+            is_hr_or_super = _is_hr_or_super(u)
+            is_tu = _is_tu(u)
+            is_us = "управляющий сменой" in (u.get("position") or "").lower()
+
+            month_start = date(year, month, 1)
+            last_day = calendar.monthrange(year, month)[1]
+            month_end = date(year, month, last_day)
+
+            rest_filter = ""
+            params_rest = []
+            if is_us:
+                rest_filter = " AND u.restaurant_key = %s"
+                params_rest = [u.get("restaurant_key")]
+            elif is_tu:
+                rest_filter = " AND u.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id = %s)"
+                params_rest = [user_id]
+            elif not is_hr_or_super:
+                rest_filter = " AND u.user_id = %s"
+                params_rest = [user_id]
+
+            cur.execute(f"""
+                SELECT u.user_id, u.full_name, u.position, u.payment_type,
+                       COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate,
+                       COALESCE(SUM(t.hours), 0) AS total_hours
+                FROM users u
+                LEFT JOIN restaurants r ON u.restaurant_key = r.key
+                LEFT JOIN position_rates pr ON pr.position_name = u.position
+                LEFT JOIN timesheet_records t ON t.user_id = u.user_id
+                    AND t.work_date >= %s AND t.work_date <= %s
+                WHERE COALESCE(u.is_fired, FALSE) = FALSE
+                  AND COALESCE(u.is_admin, FALSE) = FALSE
+                  AND u.login IS NOT NULL
+                  {rest_filter}
+                GROUP BY u.user_id, u.full_name, u.position, u.payment_type, u.rate, pr.rate
+                ORDER BY u.full_name
+            """, [month_start, month_end] + params_rest)
+            employees = [dict(r) for r in cur.fetchall()]
+
+            emp_ids = [e["user_id"] for e in employees]
+            if not emp_ids:
+                return {
+                    "totals": {"accrued_total": 0, "paid_total": 0, "remaining_total": 0},
+                    "employees": [],
+                    "pending": [],
+                }
+
+            for e in employees:
+                rate = float(e.get("rate") or 0)
+                hours = float(e.get("total_hours") or 0)
+                if e.get("payment_type") == 'fixed':
+                    e["timesheet_accrued"] = rate
+                else:
+                    e["timesheet_accrued"] = round(hours * rate, 2)
+
+            cur.execute("""
+                SELECT user_id,
+                       SUM(CASE WHEN record_type='accrual' AND status='approved' THEN amount ELSE 0 END) AS extra_accrued,
+                       SUM(CASE WHEN record_type='payout' AND status='approved' THEN amount ELSE 0 END) AS paid
+                FROM payments
+                WHERE user_id = ANY(%s) AND payment_date >= %s AND payment_date <= %s
+                GROUP BY user_id
+            """, (emp_ids, month_start, month_end))
+            pay_map = {r["user_id"]: r for r in cur.fetchall()}
+
+            accrued_total = 0
+            paid_total = 0
+            for e in employees:
+                p = pay_map.get(e["user_id"], {})
+                extra = float(p.get("extra_accrued") or 0)
+                paid = float(p.get("paid") or 0)
+                accrued = round(e["timesheet_accrued"] + extra, 2)
+                remaining = round(accrued - paid, 2)
+                e["accrued_total"] = accrued
+                e["paid_total"] = paid
+                e["remaining"] = remaining
+                accrued_total += accrued
+                paid_total += paid
+
+            cur.execute("""
+                SELECT p.id, p.user_id, p.amount, p.comment, p.payment_date,
+                       p.record_type, p.status, p.proposed_by_name,
+                       u.full_name AS employee_name
+                FROM payments p
+                LEFT JOIN users u ON u.user_id = p.user_id
+                WHERE p.status = 'pending'
+                  AND p.user_id = ANY(%s)
+                ORDER BY p.payment_date DESC, p.id DESC
+            """, (emp_ids,))
+            pending = []
+            for r in cur.fetchall():
+                d = dict(r)
+                d["payment_date"] = d["payment_date"].strftime("%d.%m.%Y") if d.get("payment_date") else ""
+                d["amount"] = float(d.get("amount") or 0)
+                pending.append(d)
+
+            return {
+                "totals": {
+                    "accrued_total": round(accrued_total, 2),
+                    "paid_total": round(paid_total, 2),
+                    "remaining_total": round(accrued_total - paid_total, 2),
+                },
+                "employees": employees,
+                "pending": pending,
             }
-            totalHours += parseFloat(rec.hours);
-          }
-        }
 
-        const isDisabled = isCross;
-        const clickHandler = isDisabled ? '' : `onclick="openShiftModal(${uid}, '${d.date}')"`;
-        return `<td class="${d.isWeekend ? 'weekend' : ''}">
-          <div class="${cellClass}" ${clickHandler}>${dispText}</div>
-        </td>`;
-      }).join('');
 
-      const hasCrossTag = crossDays.some(cd => days.some(d => d.date === cd));
-      const crossTagHtml = hasCrossTag ? `<span class="emp-cross-tag">Выход в другой точке</span>` : '';
+@routes.post('/api/payments/summary')
+async def handle_payments_summary(request):
+    user, err = await get_auth_user(request)
+    if err:
+        return denied(err)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    month = safe_int(body.get("month", datetime.now().month))
+    year = safe_int(body.get("year", datetime.now().year))
+    if not (1 <= month <= 12) or not (2000 <= year <= 2100):
+        return web.json_response({"error": "invalid_date"}, status=400)
+    data = await _run(_sync_payments_summary, user["user_id"], year, month)
+    return web.json_response(data)
 
-      rowsHtml.push(`
-        <tr>
-          <td class="sticky-col">
-            <div class="emp-name" onclick="openEmpCard(${uid})">${emp.full_name}</div>
-            <div style="font-size: 12px; color: var(--text-muted);">${emp.position}</div>
-            ${crossTagHtml}
-          </td>
-          ${tds}
-          <td class="col-total">${totalHours > 0 ? totalHours + ' ч' : '—'}</td>
-        </tr>
-      `);
-    }
-  }
 
-  cont.innerHTML = `
-    <table>
-      <thead>
-        <tr>
-          <th class="sticky-col">Сотрудник</th>
-          ${headerDaysHtml}
-          <th class="col-total">Часы</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rowsHtml.join('')}
-      </tbody>
-    </table>
-  `;
-}
+def _sync_payments_employee(viewer_id, target_uid, date_from, date_to):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id = %s", (target_uid,))
+            target = cur.fetchone()
+            if not target:
+                return None
 
-function getEmpInfo(uid) {
-  for (const g of SHEET_DATA.groups || []) {
-    for (const e of g.employees || []) {
-      if (e.user_id === uid) return { ...e, restaurant_key: g.restaurant_key };
-    }
-  }
-  return null;
-}
+            cur.execute("""
+                SELECT COALESCE(SUM(t.hours), 0) AS total_hours
+                FROM timesheet_records t
+                WHERE t.user_id = %s AND t.work_date >= %s::date AND t.work_date <= %s::date
+            """, (target_uid, date_from, date_to))
+            total_hours = float(cur.fetchone()["total_hours"] or 0)
 
-function openShiftModal(uid, dateStr) {
-  const emp = getEmpInfo(uid);
-  if (!emp) return;
+            cur.execute("""
+                SELECT COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, u.payment_type
+                FROM users u LEFT JOIN position_rates pr ON pr.position_name = u.position
+                WHERE u.user_id = %s
+            """, (target_uid,))
+            rate_row = cur.fetchone() or {}
+            rate = float(rate_row.get("rate") or 0)
+            ptype = rate_row.get("payment_type") or 'hourly'
+            timesheet_accrued = rate if ptype == 'fixed' else round(total_hours * rate, 2)
 
-  activeShiftUserId = uid;
-  activeShiftDate = dateStr;
+            cur.execute("""
+                SELECT
+                    COALESCE(SUM(CASE WHEN record_type='accrual' AND status='approved' THEN amount ELSE 0 END), 0) AS extra_accrued,
+                    COALESCE(SUM(CASE WHEN record_type='payout' AND status='approved' THEN amount ELSE 0 END), 0) AS paid
+                FROM payments
+                WHERE user_id = %s AND payment_date >= %s::date AND payment_date <= %s::date
+            """, (target_uid, date_from, date_to))
+            sums = cur.fetchone() or {}
+            extra = float(sums.get("extra_accrued") or 0)
+            paid = float(sums.get("paid") or 0)
 
-  const parts = dateStr.split('-');
-  const dtFormatted = `${parts[2]}.${parts[1]}.${parts[0]}`;
-  document.getElementById('shift-modal-title').textContent = 'Редактирование смены';
-  document.getElementById('shift-modal-sub').textContent = `${emp.full_name} • ${dtFormatted}`;
+            cur.execute("""
+                SELECT id, record_type, amount, comment, payment_date, status
+                FROM payments
+                WHERE user_id = %s AND payment_date >= %s::date AND payment_date <= %s::date
+                ORDER BY payment_date DESC, id DESC
+            """, (target_uid, date_from, date_to))
+            history = []
+            for r in cur.fetchall():
+                d = dict(r)
+                history.append({
+                    "id": d["id"],
+                    "type": "accrual" if d["record_type"] == "accrual" else "payout",
+                    "date": d["payment_date"].strftime("%d.%m.%Y") if d.get("payment_date") else "",
+                    "amount": float(d["amount"] or 0),
+                    "comment": d["comment"] or "",
+                    "status": d["status"],
+                })
 
-  const presetsGrid = document.getElementById('preset-shifts');
-  presetsGrid.innerHTML = '';
-  const shifts = [
-    { start: '09:00', end: '22:00', label: '09–22 (13ч)' },
-    { start: '10:00', end: '23:00', label: '10–23 (13ч)' },
-    { start: '12:00', end: '00:00', label: '12–00 (12ч)' },
-  ];
-  shifts.forEach(s => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn-action';
-    btn.style.cssText = 'padding: 10px 4px; font-size: 12px; justify-content: center; background: #F3F4F6; color: var(--text-main); border: 1px solid var(--border);';
-    btn.textContent = s.label;
-    btn.onclick = () => {
-      document.getElementById('shift-start').value = s.start;
-      document.getElementById('shift-end').value = s.end;
-      saveShiftFromModal();
-    };
-    presetsGrid.appendChild(btn);
-  });
+            return {
+                "employee": {
+                    "user_id": target["user_id"],
+                    "full_name": target.get("full_name"),
+                    "position": target.get("position"),
+                },
+                "total_hours": total_hours,
+                "timesheet_accrued": timesheet_accrued,
+                "extra_accrued": extra,
+                "accrued_total": round(timesheet_accrued + extra, 2),
+                "paid_total": paid,
+                "remaining": round(timesheet_accrued + extra - paid, 2),
+                "history": history,
+            }
 
-  const rec = (SHEET_DATA.records && SHEET_DATA.records[uid] && SHEET_DATA.records[uid][dateStr]) || null;
-  document.getElementById('shift-start').value = (rec && rec.start_time) ? rec.start_time.slice(0, 5) : '';
-  document.getElementById('shift-end').value = (rec && rec.end_time) ? rec.end_time.slice(0, 5) : '';
-  document.getElementById('shift-comment').value = (rec && rec.comment) ? rec.comment : '';
 
-  document.getElementById('shift-modal').classList.add('show');
-}
+@routes.post('/api/payments/employee')
+async def handle_payments_employee(request):
+    user, err = await get_auth_user(request)
+    if err:
+        return denied(err)
 
-function applyPreset(statusType) {
-  document.getElementById('shift-start').value = '';
-  document.getElementById('shift-end').value = '';
-  submitShiftUpdate(null, null, statusType);
-}
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
 
-function clearShift() {
-  document.getElementById('shift-start').value = '';
-  document.getElementById('shift-end').value = '';
-  document.getElementById('shift-comment').value = '';
-  submitShiftUpdate(null, null, '');
-}
+    target_uid = safe_int(body.get("user_id"))
+    if target_uid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
 
-function saveShiftFromModal() {
-  const start = document.getElementById('shift-start').value.trim();
-  const end = document.getElementById('shift-end').value.trim();
-  if (!start || !end) { showToast('Укажите время начала и окончания'); return; }
-  submitShiftUpdate(start, end, 'worked');
-}
+    is_hr = _is_hr_or_super(user)
+    if not is_hr and user["user_id"] != target_uid:
+        allowed = await _run(_check_can_edit_user, user, target_uid)
+        if not allowed:
+            return web.json_response({"error": "forbidden"}, status=403)
 
-async function submitShiftUpdate(start, end, status) {
-  const comment = document.getElementById('shift-comment').value.trim();
-  closeModal('shift-modal');
-  try {
-    const restKey = CURRENT_WORK_REST || null;
-    await api('/api/timesheet/record/save', {
-      user_id: activeShiftUserId,
-      work_date: activeShiftDate,
-      start_time: start || null,
-      end_time: end || null,
-      status: status || null,
-      comment,
-      restaurant_key: restKey
-    });
-    showToast('Сохранено');
-    await loadSheet();
-  } catch (e) {
-    if (e.message !== 'unauthorized') showToast('Ошибка: ' + e.message);
-  }
-}
+    date_from = body.get("date_from")
+    date_to = body.get("date_to")
+    if not date_from or not date_to:
+        month = safe_int(body.get("month", datetime.now().month))
+        year = safe_int(body.get("year", datetime.now().year))
+        if not (1 <= month <= 12) or not (2000 <= year <= 2100):
+            return web.json_response({"error": "invalid_date"}, status=400)
+        last_day = calendar.monthrange(year, month)[1]
+        date_from = f"{year}-{month:02d}-01"
+        date_to = f"{year}-{month:02d}-{last_day:02d}"
 
-function openImportModal() {
-  document.getElementById('import-file-input').value = '';
-  document.getElementById('import-result').style.display = 'none';
-  document.getElementById('import-modal').classList.add('show');
-}
+    data = await _run(_sync_payments_employee, user["user_id"], target_uid, date_from, date_to)
+    if data is None:
+        return web.json_response({"error": "not_found"}, status=404)
+    return web.json_response(data)
 
-async function submitImportFile() {
-  const fileInput = document.getElementById('import-file-input');
-  if (!fileInput.files || fileInput.files.length === 0) { showToast('Выберите файл'); return; }
-  const btn = document.getElementById('import-submit-btn');
-  btn.disabled = true; btn.textContent = 'Импортируем...';
 
-  const formData = new FormData();
-  formData.append('file', fileInput.files[0]);
+@routes.post('/api/payments/approve')
+async def handle_payment_approve(request):
+    user, err = await get_auth_user(request)
+    if err:
+        return denied(err)
+    if not _is_hr_or_super(user):
+        return web.json_response({"error": "forbidden"}, status=403)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
+    pid = safe_int(body.get("payment_id") or body.get("id"))
+    if pid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
 
-  try {
-    const res = await fetch('/api/timesheet/import', {
-      method: 'POST',
-      headers: { 'X-Token': getToken() },
-      body: formData
-    });
-    const j = await res.json();
-    if (!res.ok) throw new Error(j.error || 'Ошибка импорта');
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE payments SET status='approved', approved_by_name=%s WHERE id=%s AND status='pending'",
+                    (user.get("full_name"), pid)
+                )
 
-    const resEl = document.getElementById('import-result');
-    resEl.style.display = 'block';
-    resEl.textContent = `Успешно обработано записей: ${j.imported_count || 0}`;
-    showToast('Импорт завершён');
-    await loadSheet();
-    setTimeout(() => closeModal('import-modal'), 1200);
-  } catch (e) {
-    showToast('Ошибка: ' + e.message);
-  } finally {
-    btn.disabled = false; btn.textContent = 'Загрузить и импортировать';
-  }
-}
+    await _run(_sync)
+    return web.json_response({"ok": True})
 
-async function loadPayouts() {
-  const cont = document.getElementById('payout-table-container');
-  const sumCont = document.getElementById('payout-summary');
-  const pendCont = document.getElementById('pending-payments-container');
-  cont.innerHTML = '<div class="loader">Загрузка...</div>';
-  pendCont.innerHTML = '';
-  try {
-    PAYOUTS_DATA = await api('/api/payments/summary', { year: CURRENT_YEAR, month: CURRENT_MONTH });
-    const t = PAYOUTS_DATA.totals || {};
-    sumCont.innerHTML = `
-      <div class="summary-card"><div class="summary-title">Начислено всего</div><div class="summary-value blue">${formatMoney(t.accrued_total)}</div></div>
-      <div class="summary-card"><div class="summary-title">Выплачено всего</div><div class="summary-value green">${formatMoney(t.paid_total)}</div></div>
-      <div class="summary-card"><div class="summary-title">Остаток к выплате</div><div class="summary-value amber">${formatMoney(t.remaining_total)}</div></div>
-    `;
 
-    const pending = PAYOUTS_DATA.pending || [];
-    if (pending.length > 0) {
-      pendCont.innerHTML = '<div style="font-weight: 700; margin-bottom: 12px; font-size: 16px;">На модерации (' + pending.length + ')</div>' + pending.map(p => {
-        const typeLabel = p.record_type === 'accrual' ? 'Начисление' : 'Выплата';
-        const colorStyle = p.record_type === 'accrual' ? 'color: var(--accent);' : 'color: var(--green-text);';
-        return `<div class="pending-card">
-          <div class="pending-info">
-            <div class="pending-title">${typeLabel}: ${p.employee_name} — <span style="${colorStyle}">${formatMoney(p.amount)}</span></div>
-            <div class="pending-meta">Дата: ${p.payment_date} • Предложил: ${p.proposed_by_name}</div>
-            <div class="pending-body">${p.comment}</div>
-          </div>
-          <div class="pending-actions">
-            <button type="button" class="btn-action" style="background: var(--green-soft); color: var(--green-text); padding: 8px 16px; border: 1px solid #A7F3D0;" onclick="approvePayment(${p.id})">Согласовать</button>
-            <button type="button" class="btn-action" style="background: var(--red-soft); color: var(--red-text); padding: 8px 16px; border: 1px solid #FECACA;" onclick="rejectPayment(${p.id})">Отклонить</button>
-          </div>
-        </div>`;
-      }).join('');
-    }
+@routes.post('/api/payments/reject')
+async def handle_payment_reject(request):
+    user, err = await get_auth_user(request)
+    if err:
+        return denied(err)
+    if not _is_hr_or_super(user):
+        return web.json_response({"error": "forbidden"}, status=403)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_json"}, status=400)
+    pid = safe_int(body.get("payment_id") or body.get("id"))
+    if pid <= 0:
+        return web.json_response({"error": "invalid_id"}, status=400)
 
-    const rows = (PAYOUTS_DATA.employees || []).map(e => {
-      return `<tr>
-        <td><span class="emp-name" onclick="openEmpCard(${e.user_id})">${e.full_name}</span><div style="font-size: 12px; color: var(--text-muted);">${e.position}</div></td>
-        <td>${e.total_hours} ч</td>
-        <td>${formatMoney(e.accrued_total)}</td>
-        <td style="color: var(--green-text); font-weight: 600;">${formatMoney(e.paid_total)}</td>
-        <td style="color: var(--amber-text); font-weight: 700;">${formatMoney(e.remaining)}</td>
-      </tr>`;
-    }).join('');
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM payments WHERE id=%s AND status='pending'", (pid,))
 
-    cont.innerHTML = `<table class="payout-table"><thead><tr><th>Сотрудник</th><th>Часы</th><th>Начислено</th><th>Выплачено</th><th>Остаток</th></tr></thead><tbody>${rows}</tbody></table>`;
-  } catch (e) {
-    if (e.message !== 'unauthorized') cont.innerHTML = `<div class="loader">Ошибка: ${e.message}</div>`;
-  }
-}
-
-async function approvePayment(id) {
-  try { await api('/api/payments/approve', { payment_id: id }); showToast('Согласовано'); loadPayouts(); }
-  catch (e) { if (e.message !== 'unauthorized') showToast('Ошибка: ' + e.message); }
-}
-async function rejectPayment(id) {
-  if (!confirm('Отклонить операцию?')) return;
-  try { await api('/api/payments/reject', { payment_id: id }); showToast('Отклонено'); loadPayouts(); }
-  catch (e) { if (e.message !== 'unauthorized') showToast('Ошибка: ' + e.message); }
-}
-
-function populateEmployeeSelect(selectId) {
-  const sel = document.getElementById(selectId);
-  sel.innerHTML = '';
-  const emps = [];
-  for (const g of SHEET_DATA.groups || []) {
-    for (const e of g.employees || []) emps.push(e);
-  }
-  emps.sort((a, b) => a.full_name.localeCompare(b.full_name));
-  emps.forEach(e => {
-    const opt = document.createElement('option');
-    opt.value = e.user_id;
-    opt.textContent = e.full_name;
-    sel.appendChild(opt);
-  });
-}
-
-function openAccrualModal() {
-  populateEmployeeSelect('accrual-emp');
-  document.getElementById('accrual-amount').value = '';
-  document.getElementById('accrual-date').value = formatDate(new Date());
-  document.getElementById('accrual-comment').value = '';
-  document.getElementById('accrual-modal').classList.add('show');
-}
-async function submitAccrual(e) {
-  e.preventDefault();
-  try {
-    await api('/api/payments/accrual/add', {
-      user_id: parseInt(document.getElementById('accrual-emp').value),
-      amount: parseFloat(document.getElementById('accrual-amount').value),
-      payment_date: document.getElementById('accrual-date').value,
-      comment: document.getElementById('accrual-comment').value.trim()
-    });
-    showToast('Начисление сохранено');
-    closeModal('accrual-modal');
-    loadPayouts();
-  } catch (err) { if (err.message !== 'unauthorized') showToast('Ошибка: ' + err.message); }
-}
-
-function openPayoutModal() {
-  populateEmployeeSelect('payout-emp');
-  document.getElementById('payout-amount').value = '';
-  document.getElementById('payout-date').value = formatDate(new Date());
-  document.getElementById('payout-comment').value = '';
-  document.getElementById('payout-modal').classList.add('show');
-}
-async function submitPayout(e) {
-  e.preventDefault();
-  try {
-    await api('/api/payments/add', {
-      user_id: parseInt(document.getElementById('payout-emp').value),
-      amount: parseFloat(document.getElementById('payout-amount').value),
-      payment_date: document.getElementById('payout-date').value,
-      comment: document.getElementById('payout-comment').value.trim()
-    });
-    showToast('Выплата сохранена');
-    closeModal('payout-modal');
-    loadPayouts();
-  } catch (err) { if (err.message !== 'unauthorized') showToast('Ошибка: ' + err.message); }
-}
-
-async function openEmpCard(uid) {
-  document.getElementById('emp-name').textContent = 'Загрузка...';
-  document.getElementById('emp-modal').classList.add('show');
-  try {
-    const res = await api('/api/payments/employee', { user_id: uid, year: CURRENT_YEAR, month: CURRENT_MONTH });
-    const emp = res.employee || {};
-    document.getElementById('emp-name').textContent = emp.full_name || '';
-    document.getElementById('emp-pos').textContent = emp.position || '';
-
-    document.getElementById('emp-stats').innerHTML = `
-      <div class="emp-stat-box"><div class="emp-stat-lbl">Отработано часов</div><div class="emp-stat-val">${res.total_hours || 0} ч</div></div>
-      <div class="emp-stat-box"><div class="emp-stat-lbl">Начислено всего</div><div class="emp-stat-val" style="color: var(--accent);">${formatMoney(res.accrued_total)}</div></div>
-      <div class="emp-stat-box"><div class="emp-stat-lbl">Выплачено</div><div class="emp-stat-val highlight">${formatMoney(res.paid_total)}</div></div>
-      <div class="emp-stat-box"><div class="emp-stat-lbl">Остаток к выплате</div><div class="emp-stat-val amber">${formatMoney(res.remaining)}</div></div>
-    `;
-
-    const hist = res.history || [];
-    if (hist.length === 0) {
-      document.getElementById('emp-history').innerHTML = '<div style="color: var(--text-muted); font-size: 13px;">Операций за выбранный период нет</div>';
-    } else {
-      document.getElementById('emp-history').innerHTML = hist.map(h => {
-        const isAcc = h.type === 'accrual';
-        return `<div class="history-item ${h.type}">
-          <div class="history-meta"><span>${h.date} • ${isAcc ? 'Начисление' : 'Выплата'}</span><span class="history-amount ${h.type}">${isAcc ? '+' : '-'}${formatMoney(h.amount)}</span></div>
-          <div class="history-comment">${h.comment}</div>
-        </div>`;
-      }).join('');
-    }
-  } catch (e) { if (e.message !== 'unauthorized') showToast('Ошибка: ' + e.message); }
-}
-
-async function loadReports() {
-  const cont = document.getElementById('reports-container');
-  cont.innerHTML = '<div class="loader">Загрузка...</div>';
-  try {
-    const res = await api('/api/payments/summary', { year: CURRENT_YEAR, month: CURRENT_MONTH });
-    const t = res.totals || {};
-    cont.innerHTML = `<div class="payout-summary">
-      <div class="summary-card"><div class="summary-title">Начислено</div><div class="summary-value blue">${formatMoney(t.accrued_total)}</div></div>
-      <div class="summary-card"><div class="summary-title">Выплачено</div><div class="summary-value green">${formatMoney(t.paid_total)}</div></div>
-      <div class="summary-card"><div class="summary-title">Остаток</div><div class="summary-value amber">${formatMoney(t.remaining_total)}</div></div>
-    </div>`;
-  } catch (e) { if (e.message !== 'unauthorized') cont.innerHTML = `<div class="loader">Ошибка: ${e.message}</div>`; }
-}
-
-function downloadReportExcel() {
-  const token = encodeURIComponent(getToken());
-  window.location.href = `/api/timesheet/export?year=${CURRENT_YEAR}&month=${CURRENT_MONTH}&webToken=${token}`;
-}
-
-async function loadSettings() {
-  const cont = document.getElementById('settings-container');
-  cont.innerHTML = '<div class="loader">Загрузка...</div>';
-  try {
-    SETTINGS_DATA = await api('/api/timesheet/settings');
-    const emps = SETTINGS_DATA.employees || [];
-    const rows = emps.map(e => {
-      const pType = e.payment_type === 'fixed' ? 'Фиксированный оклад' : 'Почасовая ставка';
-      const valText = e.payment_type === 'fixed' ? formatMoney(e.fixed_salary) : formatMoney(e.hourly_rate) + '/ч';
-      return `<tr>
-        <td><div style="font-weight: 600;">${e.full_name}</div><div style="font-size: 12px; color: var(--text-muted);">${e.position}</div></td>
-        <td>${pType}</td>
-        <td style="font-weight: 700;">${valText}</td>
-        <td class="right"><button type="button" class="btn-action" style="padding: 8px 16px; font-size: 13px; display: inline-block;" onclick="editEmpRate(${e.user_id}, '${e.payment_type || 'hourly'}', ${e.hourly_rate || 0}, ${e.fixed_salary || 0})">Изменить</button></td>
-      </tr>`;
-    }).join('');
-    cont.innerHTML = `<table class="payout-table"><thead><tr><th>Сотрудник</th><th>Тип оплаты</th><th>Ставка / Оклад</th><th class="right">Действие</th></tr></thead><tbody>${rows}</tbody></table>`;
-  } catch (e) { if (e.message !== 'unauthorized') cont.innerHTML = `<div class="loader">Ошибка: ${e.message}</div>`; }
-}
-
-function editEmpRate(uid, pType, hRate, fSal) {
-  const newType = prompt('Тип оплаты ("hourly" — почасовая, "fixed" — оклад):', pType);
-  if (!newType) return;
-  if (newType === 'fixed') {
-    const val = prompt('Фиксированный оклад в рублях:', fSal);
-    if (val === null) return;
-    api('/api/timesheet/settings/save', { user_id: uid, payment_type: 'fixed', fixed_salary: parseFloat(val) || 0 }).then(() => { showToast('Сохранено'); loadSettings(); });
-  } else {
-    const val = prompt('Часовая ставка в рублях:', hRate);
-    if (val === null) return;
-    api('/api/timesheet/settings/save', { user_id: uid, payment_type: 'hourly', hourly_rate: parseFloat(val) || 0 }).then(() => { showToast('Сохранено'); loadSettings(); });
-  }
-}
-
-(async function init() {
-  if (!getToken()) { showLogin(); return; }
-  try {
-    await loadInitial();
-  } catch (e) {
-    if (e.message === 'unauthorized') {
-      showLogin();
-    } else {
-      showLogin();
-      document.getElementById('login-error').textContent = 'Ошибка загрузки: ' + e.message;
-    }
-  }
-})();
-</script>
-</body>
-</html>
+    await _run(_sync)
+    return web.json_response({"ok": True})

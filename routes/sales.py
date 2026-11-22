@@ -408,6 +408,55 @@ async def sales_dashboard(request: web.Request) -> web.Response:
     }})
 
 
+
+@routes.post("/api/sales/products")
+@admin_required
+async def sales_products(request: web.Request) -> web.Response:
+    """Aggregated products and categories, scoped to authorized restaurants."""
+    user = request["admin"]
+    body = await request.json()
+    key = body.get("restaurant_key")
+    allowed = await _allowed_rests(user)
+    if allowed is not None and key and key not in allowed:
+        return web.json_response({"error": "Forbidden"}, status=403)
+
+    days = {"7d": 7, "30d": 30, "90d": 90}.get(body.get("period"), 30)
+    since = datetime.utcnow().date() - timedelta(days=days - 1)
+    scoped = [key] if key else allowed
+    conditions = ["sr.sale_date >= $1", "NULLIF(TRIM(sr.product_name), '') IS NOT NULL"]
+    params = [since]
+    if scoped is not None:
+        conditions.append("sr.restaurant_key = ANY($2)")
+        params.append(scoped)
+    where, _ = _where(conditions, params)
+    pool = db.get_pool(request.app)
+    async with pool.acquire() as conn:
+        products = await conn.fetch(
+            f"""SELECT sr.product_name name, COALESCE(sr.category, 'Без категории') category,
+                 SUM(sr.quantity) quantity, SUM(sr.total_amount) sales,
+                 SUM(sr.cost_amount) cost, SUM(sr.profit_amount) profit
+                 FROM sales_records sr {where}
+                 GROUP BY sr.product_name, COALESCE(sr.category, 'Без категории')
+                 ORDER BY sales DESC LIMIT 100""", *params)
+        categories = await conn.fetch(
+            f"""SELECT COALESCE(sr.category, 'Без категории') name,
+                 SUM(sr.quantity) quantity, SUM(sr.total_amount) sales,
+                 SUM(sr.profit_amount) profit
+                 FROM sales_records sr {where}
+                 GROUP BY COALESCE(sr.category, 'Без категории')
+                 ORDER BY sales DESC LIMIT 50""", *params)
+    def normalize(rows):
+        return [{"name": r["name"], "category": r["category"] if "category" in r else None,
+                 "quantity": float(r["quantity"] or 0),
+                 "sales": float(r["sales"] or 0),
+                 "profit": float(r["profit"] or 0),
+                 **({"cost": float(r["cost"] or 0)} if "cost" in r else {})} for r in rows]
+    return web.json_response({"success": True, "data": {
+        "products": normalize(products), "categories": normalize(categories),
+        "period_days": days,
+    }})
+
+
 @routes.post("/api/sales/records")
 @admin_required
 async def sales_records(request: web.Request) -> web.Response:

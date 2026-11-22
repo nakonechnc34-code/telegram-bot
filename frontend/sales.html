@@ -3,38 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Товарооборот — Wokker</title>
+    <title>Sales — WOKKER Control</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/sales.css">
 </head>
 <body>
-
-<header class="topbar">
-    <div class="topbar-left">
-        <h1 class="page-title">Товарооборот</h1>
-    </div>
-    <div class="topbar-right">
-        <select class="topbar-select" id="restaurant-select">
-            <option value="">Все рестораны</option>
-        </select>
-        <select class="topbar-select" id="period-select">
-            <option value="7d">7 дней</option>
-            <option value="30d" selected>30 дней</option>
-            <option value="90d">90 дней</option>
-        </select>
-        <button class="btn btn-primary" id="btn-import-iiko">📥 Загрузить отчёт iiko</button>
+<div class="app-shell">
+  <aside class="sidebar" id="sales-sidebar">
+    <a class="brand" href="/admin"><span class="brand-mark">W</span><span>WOKKER <small>CONTROL</small></span></a>
+    <div class="nav-caption">АНАЛИТИКА ПРОДАЖ</div>
+    <nav class="side-nav" aria-label="Разделы Sales">
+      <button class="nav-link active" data-view="overview"><span>◫</span> Обзор сети</button>
+      <button class="nav-link" data-view="restaurants"><span>▦</span> Рестораны</button>
+      <button class="nav-link" data-view="products"><span>▤</span> Товарная аналитика</button>
+      <button class="nav-link" data-view="imports"><span>⇧</span> Отчёты и импорт</button>
+      <button class="nav-link" data-view="records"><span>☷</span> Детализация</button>
+    </nav>
+    <div class="sidebar-bottom"><a href="/admin">← Вернуться в WOKKER Control</a><span>Sales · Управленческая аналитика</span></div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar">
+      <div class="topbar-left"><button id="menu-toggle" class="mobile-menu" aria-label="Открыть меню">☰</button><div class="eyebrow">WOKKER / SALES</div><h1 class="page-title" id="view-title">Обзор сети</h1></div>
+      <div class="topbar-right">
+        <label class="filter-field"><span>Ресторан</span><select class="topbar-select" id="restaurant-select"><option value="">Все доступные рестораны</option></select></label>
+        <label class="filter-field"><span>Период</span><select class="topbar-select" id="period-select"><option value="7d">7 дней</option><option value="30d" selected>30 дней</option><option value="90d">90 дней</option></select></label>
+        <button class="btn btn-primary" id="btn-import-iiko">＋ Загрузить отчёт</button>
         <button class="btn btn-secondary" id="btn-detail">Детализация</button>
-        <button class="btn btn-secondary" id="btn-export">📤 Экспорт</button>
-        <div class="avatar" id="sales-topbar-avatar">A</div>
-    </div>
-</header>
-
-<main class="content" id="sales-page-content">
-    <div class="loading">Загрузка дашборда…</div>
-</main>
-
+        <button class="btn btn-secondary" id="btn-export">Экспорт</button>
+        <div class="avatar" id="sales-topbar-avatar">W</div>
+      </div>
+    </header>
+    <main class="content" id="sales-page-content" aria-live="polite"><div class="loading">Загрузка аналитики…</div></main>
+  </div>
+</div>
 <!-- Модальное окно загрузки -->
 <div class="modal-overlay" id="upload-modal">
     <div class="modal">

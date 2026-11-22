@@ -74,7 +74,7 @@ def test_iiko_daily_report_skips_hour_restaurant_and_day_totals():
     assert sum(r["quantity"] for r in records) == 10
     assert [r["source_restaurant"] for r in records] == [
         "Белая дача", "Белая дача", "Беляево"]
-    assert records[0]["opening_hour"] == "10"
+    assert records[0]["opening_hour"] == 10
     assert all(r["product_name"] is None for r in records)
 
 

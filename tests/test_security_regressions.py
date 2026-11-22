@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 import pytest
 from multidict import CIMultiDict
 
+from middleware import rate_limit
 from routes import auth, medbooks, timesheet, users
 from utils import auth_helpers
 
@@ -26,7 +27,7 @@ def request(body=None, headers=(), remote="192.0.2.10"):
 
 @pytest.mark.parametrize("handler", [auth.handle_auth_login_staff, auth.handle_auth_login_admin])
 def test_login_uses_transport_ip(handler, monkeypatch):
-    monkeypatch.setattr(auth, "TRUSTED_PROXY_NETWORKS", ())
+    monkeypatch.setattr(rate_limit.config, "TRUSTED_PROXY_NETWORKS", ())
     limit = Mock(return_value=False)
     monkeypatch.setattr(auth, "_check_rate_limit", limit)
     req = request({"login": "abc01", "password": "secret"},
@@ -41,8 +42,8 @@ def test_login_uses_transport_ip(handler, monkeypatch):
     ([("X-Forwarded-For", "198.51.100.1"), ("X-Forwarded-For", "203.0.113.8")], "192.0.2.10"),
 ])
 def test_trusted_proxy_uses_valid_address_from_right(monkeypatch, headers, expected):
-    monkeypatch.setattr(auth, "TRUSTED_PROXY_NETWORKS", (ip_network("192.0.2.0/24"),))
-    assert auth._get_client_ip(request(headers=headers)) == expected
+    monkeypatch.setattr(rate_limit.config, "TRUSTED_PROXY_NETWORKS", (ip_network("192.0.2.0/24"),))
+    assert rate_limit.get_client_ip(request(headers=headers)) == expected
 
 
 @pytest.mark.parametrize("handler", [medbooks.handle_admin_medbooks, medbooks.handle_admin_medbook_get,
@@ -160,3 +161,50 @@ def test_attendance_import_only_writes_valid_rows_in_scope(monkeypatch):
     assert (count, len(errors)) == (1, 4)
     assert cursor.execute.call_count == 3
     assert cursor.execute.call_args.args[1][:5] == (123, "2026-11-20", 8, "work", "a")
+
+
+def test_hr_position_requires_admin_role():
+    user = {"position": " HR ", "is_admin": False}
+    assert not auth_helpers._is_hr_or_super(user)
+    assert not auth_helpers._sync_user_has_perm(user, "timesheet_access")
+
+
+def test_delegated_admin_cannot_assign_hr(monkeypatch):
+    admin = {"user_id": 42, "is_admin": True, "is_super_admin": False,
+             "permissions": {"users_edit": True}}
+    monkeypatch.setattr(users, "get_admin_user", AsyncMock(return_value=(admin, None)))
+    monkeypatch.setattr(users, "_check_admin_can_manage_user", AsyncMock(return_value=True))
+    run = AsyncMock(return_value={"user_id": 123, "position": "Работник"})
+    monkeypatch.setattr(users, "_run", run)
+    response = asyncio.run(users.handle_admin_user_update(request({
+        "user_id": 123, "updates": {"position": " hr "}
+    })))
+    assert response.status == 403
+    run.assert_awaited_once_with(users._sync_get_user_by_id, 123)
+
+
+@pytest.mark.parametrize("handler_name", ["handle_academy_course_detail", "handle_academy_submit_test"])
+def test_employee_academy_routes_only_access_published_courses(handler_name, monkeypatch):
+    from routes import academy
+
+    monkeypatch.setattr(academy, "get_auth_user", AsyncMock(return_value=({"user_id": 42}, None)))
+    cursor = mock_cursor(academy, monkeypatch)
+    cursor.fetchone.return_value = None
+    response = asyncio.run(getattr(academy, handler_name)(request({"course_id": 10})))
+    assert response.status == 404
+    cursor.execute.assert_called_once()
+    query, params = cursor.execute.call_args.args
+    assert "COALESCE(is_published, TRUE)" in query
+    assert params == (10,)
+
+
+def test_api_limiter_uses_same_ip_policy_as_login(monkeypatch):
+    monkeypatch.setenv("TRUST_PROXY", "true")
+    monkeypatch.setattr(rate_limit.config, "TRUSTED_PROXY_NETWORKS", ())
+    check = Mock(return_value=False)
+    monkeypatch.setattr(rate_limit, "_check_rate", check)
+    req = request(headers=[("X-Forwarded-For", "198.51.100.1")])
+    handler = AsyncMock()
+    assert asyncio.run(rate_limit.api_rate_middleware(req, handler)).status == 429
+    assert check.call_args.args[0] == req.remote
+    handler.assert_not_called()

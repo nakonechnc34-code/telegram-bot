@@ -73,7 +73,7 @@ def _sync_bootstrap(user_id):
             vaccines = [dict(r) for r in cur.fetchall()]
 
             pos_lower = (user.get("position") or "").lower()
-            is_hr = pos_lower.strip() == "hr"
+            is_hr = _is_hr_or_super(user)
             is_tu = "территориальный" in pos_lower
             is_us = "управляющий сменой" in pos_lower
             can_see_team = is_hr or is_tu or is_us

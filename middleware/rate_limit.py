@@ -1,5 +1,5 @@
 """Middleware для rate-limiting API запросов."""
-import os
+from ipaddress import ip_address
 import time
 import logging
 import threading
@@ -13,15 +13,22 @@ logger = logging.getLogger(__name__)
 
 
 def get_client_ip(request):
-    """Единая точка получения IP клиента (используется и в auth.py)."""
-    if os.getenv("TRUST_PROXY", "").lower() in ("1", "true", "yes"):
-        xff = request.headers.get("X-Forwarded-For", "").strip()
-        if xff:
-            first_ip = xff.split(",")[0].strip()
-            if first_ip:
-                return first_ip
-    return request.remote or "unknown"
-
+    # remote читается из транспорта aiohttp. Заголовок проверяется только за доверенным прокси.
+    try:
+        peer = ip_address(request.remote or "")
+    except ValueError:
+        return "unknown"
+    peer = getattr(peer, "ipv4_mapped", None) or peer
+    if any(peer in network for network in config.TRUSTED_PROXY_NETWORKS):
+        forwarded = request.headers.getall("X-Forwarded-For", [])
+        if len(forwarded) == 1:
+            try:
+                client = ip_address(forwarded[0].rsplit(",", 1)[-1].strip())
+                if getattr(client, "scope_id", None) is None:
+                    return str(getattr(client, "ipv4_mapped", None) or client)
+            except ValueError:
+                pass
+    return str(peer)
 
 def _check_rate(ip, limit, window):
     now = time.time()

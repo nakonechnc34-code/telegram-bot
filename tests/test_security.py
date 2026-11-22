@@ -45,7 +45,7 @@ class TestSecurity:
     def test_sanitize_html_blocks_script(self):
         result = sanitize_html('<script>alert(1)</script>Hello')
         assert '<script>' not in result
-        assert 'alert' not in result
+        assert result == 'alert(1)Hello'  # Bleach strips the element and retains inert text.
 
     def test_validate_login_data(self):
         ok, err = validate_login_data({"login": "ADM01", "password": "secret"})

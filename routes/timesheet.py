@@ -68,7 +68,7 @@ def _restaurant_in_scope(user, key, territory_keys):
 
 
 def _check_can_edit_user(editor_user, target_uid):
-    if editor_user["is_super_admin"] or (editor_user.get("position") or "").strip().upper() == "HR":
+    if _is_hr_or_super(editor_user):
         return True
     if editor_user["user_id"] == target_uid:
         return True

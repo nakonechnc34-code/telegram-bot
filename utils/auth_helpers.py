@@ -48,9 +48,7 @@ def _sync_user_has_perm(user, perm):
     if not user:
         return False
 
-    if user.get("is_super_admin"):
-        return True
-    if (user.get("position") or "").strip().upper() == "HR":
+    if _is_hr_or_super(user):
         return True
 
     perms = user.get("permissions")
@@ -69,10 +67,14 @@ def _sync_user_has_perm(user, perm):
     return False
 
 
+def _is_hr_position(position):
+    return isinstance(position, str) and position.strip().upper() == "HR"
+
+
 def _is_hr_or_super(user):
-    if not user:
-        return False
-    return user.get("is_super_admin") or (user.get("position") or "").strip().upper() == "HR"
+    return bool(user and (
+        user.get("is_super_admin") or (user.get("is_admin") and _is_hr_position(user.get("position")))
+    ))
 
 
 def _is_tu(user):

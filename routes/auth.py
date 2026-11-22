@@ -1,7 +1,5 @@
-from ipaddress import ip_address
-
 from aiohttp import web
-from config import TRUSTED_PROXY_NETWORKS
+from middleware.rate_limit import get_client_ip
 from psycopg2.extras import RealDictCursor
 from db import get_conn, _run
 from utils.security import validate_login_data, verify_password, _check_rate_limit, _reset_rate_limit
@@ -18,24 +16,6 @@ def _sync_get_user_by_login(login):
             cur.execute("SELECT * FROM users WHERE LOWER(login) = LOWER(%s)", (login,))
             return cur.fetchone()
 
-def _get_client_ip(request):
-    # remote читается из транспорта aiohttp. Заголовок проверяется только за доверенным прокси.
-    try:
-        peer = ip_address(request.remote or "")
-    except ValueError:
-        return "unknown"
-    peer = getattr(peer, "ipv4_mapped", None) or peer
-    if any(peer in network for network in TRUSTED_PROXY_NETWORKS):
-        forwarded = request.headers.getall("X-Forwarded-For", [])
-        if len(forwarded) == 1:
-            try:
-                client = ip_address(forwarded[0].rsplit(",", 1)[-1].strip())
-                if getattr(client, "scope_id", None) is None:
-                    return str(getattr(client, "ipv4_mapped", None) or client)
-            except ValueError:
-                pass
-    return str(peer)
-
 # ============= СТАФФ (СОТРУДНИК) =============
 @routes.post('/api/auth/login')
 async def handle_auth_login_staff(request):
@@ -49,7 +29,7 @@ async def handle_auth_login_staff(request):
         return web.json_response({"error": err}, status=400)
 
     login, password = data["login"], data["password"]
-    ip = _get_client_ip(request)
+    ip = get_client_ip(request)
 
     if not _check_rate_limit(ip):
         return web.json_response({"error": "too_many_attempts"}, status=429)
@@ -91,7 +71,7 @@ async def handle_auth_login_admin(request):
         return web.json_response({"error": err}, status=400)
 
     login, password = data["login"], data["password"]
-    ip = _get_client_ip(request)
+    ip = get_client_ip(request)
 
     if not _check_rate_limit(ip):
         return web.json_response({"error": "too_many_attempts"}, status=429)

@@ -2,7 +2,7 @@ from aiohttp import web
 from psycopg2.extras import RealDictCursor
 from psycopg2 import sql
 from db import get_conn, _run
-from utils.auth_helpers import get_admin_user, denied, require_perm, _is_tu, _sync_get_tu_rests
+from utils.auth_helpers import get_admin_user, denied, require_perm, _is_tu, _sync_get_tu_rests, _is_hr_or_super, _is_hr_position
 from utils.security import hash_password
 from routes.medbooks import _can_read_medbooks, compute_medbook_status, _sync_get_medbook_refs
 from utils.common import safe_int, generate_login_for
@@ -89,7 +89,7 @@ def _sync_get_user_by_id(user_id):
 
 
 async def _check_admin_can_manage_user(admin, target_uid):
-    if admin.get("is_super_admin") or (admin.get("position") or "").strip().upper() == "HR":
+    if _is_hr_or_super(admin):
         return True
     target = await _run(_sync_get_user_by_id, target_uid)
     if not target:
@@ -187,6 +187,8 @@ async def handle_admin_user_create(request):
     data, err = validate_user_create_data(body)
     if err:
         return web.json_response({"error": err}, status=400)
+    if _is_hr_position(data.get("position")) and not admin.get("is_super_admin"):
+        return denied(403)
     if _is_tu(admin):
         allowed_rests = await _run(_sync_get_tu_rests, admin["user_id"])
         rest_key = data.get("restaurant_key") or ""
@@ -276,6 +278,12 @@ async def handle_admin_user_update(request):
         return web.json_response({"error": "forbidden_is_admin"}, status=403)
     if target.get("is_super_admin") and not admin["is_super_admin"]:
         return web.json_response({"error": "cannot_edit_super"}, status=403)
+    if not admin.get("is_super_admin") and (
+        _is_hr_position(updates.get("position"))
+        or (_is_hr_or_super(target) and ("password" in updates or "position" in updates))
+        or (target.get("is_admin") and "password" in updates)
+    ):
+        return denied(403)
     if "restaurant" in updates:
         updates["restaurant_key"] = updates.pop("restaurant")
 
@@ -543,8 +551,8 @@ async def handle_admin_position_add(request):
                 cur.execute("SELECT id FROM positions WHERE LOWER(name) = LOWER(%s)", (name,))
                 if cur.fetchone():
                     return "duplicate"
-                cur.execute("SELECT COALESCE(MAX(sort), 0) + 1 FROM positions")
-                sort_val = cur.fetchone()[0]
+                cur.execute("SELECT COALESCE(MAX(sort), 0) + 1 AS next_sort FROM positions")
+                sort_val = cur.fetchone()["next_sort"]
                 cur.execute(
                     "INSERT INTO positions (name, sort, is_archived) VALUES (%s, %s, FALSE) RETURNING *",
                     (name, sort_val)

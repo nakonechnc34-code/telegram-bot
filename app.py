@@ -8,12 +8,14 @@ import time
 from datetime import datetime, date
 from decimal import Decimal
 from email.utils import formatdate
+from pathlib import Path
 from aiohttp import web
 
 import config
 from db import init_pool, close_pool, get_conn, init_async_pool, close_async_pool
 from middleware.cache import clear_cache
 from utils.auth_helpers import _sync_get_session_user, _sync_get_user
+from utils.security import hash_password
 
 # ============= START TIME =============
 START_TIME = time.time()
@@ -77,6 +79,9 @@ def run_migrations():
 
         with get_conn() as conn:
             with conn.cursor() as cur:
+                cur.execute("SELECT pg_advisory_xact_lock(%s)", (764250931,))
+                migrations = Path(__file__).resolve().parent / "database"
+                cur.execute((migrations / "000_create_core_tables.sql").read_text(encoding="utf-8"))
                 # Timesheet
                 cur.execute("ALTER TABLE timesheet_records ADD COLUMN IF NOT EXISTS restaurant_key TEXT;")
                 cur.execute("ALTER TABLE timesheet_records ADD COLUMN IF NOT EXISTS start_time TIME;")
@@ -137,9 +142,20 @@ def run_migrations():
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_payments_date ON payments(payment_date, status);")
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_payments_user_date ON payments(user_id, payment_date);")
                 
-                logging.info("✅ Миграция БД: колонки, таблицы и индексы проверены/добавлены.")
-    except Exception as e:
-        logging.error(f"❌ Ошибка миграции/создания папок: {e}")
+                cur.execute((migrations / "002_create_sales_tables.sql").read_text(encoding="utf-8"))
+                cur.execute("SELECT 1 FROM users LIMIT 1")
+                if cur.fetchone() is None:
+                    if not config.LOGIN_RE.fullmatch(config.ADMIN_LOGIN):
+                        raise ValueError("Некорректный формат ADMIN_LOGIN")
+                    cur.execute(
+                        "INSERT INTO users (login, password_hash, full_name, is_admin, is_super_admin) "
+                        "VALUES (%s, %s, %s, TRUE, TRUE)",
+                        (config.ADMIN_LOGIN, hash_password(config.ADMIN_PASSWORD), "Администратор"),
+                    )
+        logging.info("Миграции БД завершены")
+    except Exception:
+        logging.exception("Ошибка миграции БД")
+        raise
 
 
 # ============= MIDDLEWARES =============
@@ -364,6 +380,10 @@ async def _send_static_file(name, content_type):
     return web.Response(**kwargs)
 
 
+async def handle_timesheet_js(request):
+    return await _send_static_file("timesheet.js", "application/javascript")
+
+
 async def handle_manifest(request):
     return await _send_static_file("manifest.json", "application/manifest+json")
 
@@ -494,6 +514,7 @@ app.router.add_get("/academy", handle_academy_page)
 app.router.add_get("/academy/", handle_academy_page)
 app.router.add_get("/timesheet", handle_timesheet_page)
 app.router.add_get("/timesheet/", handle_timesheet_page)
+app.router.add_get("/timesheet.js", handle_timesheet_js)
 app.router.add_get("/sales", handle_sales_page)
 app.router.add_get("/sales/", handle_sales_page)
 app.router.add_get("/sales.css", handle_sales_css)

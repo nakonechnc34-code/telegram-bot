@@ -80,8 +80,9 @@ def _parse_iiko_daily(ws) -> list[dict]:
 
     i_date, i_rest, i_pay = col("учетный день", "дата"), col("торговое предприятие", "ресторан"), col("тип оплаты", "оплата")
     i_sum, i_chk = col("сумма со скидкой", "сумма"), col("чеков", "кол-во")
+    i_hour = col("час открытия")
 
-    if i_sum == -1 or i_pay == -1:
+    if i_sum == -1 or i_pay == -1 or i_rest == -1 or i_date == -1:
         return []
 
     records, cur_date, cur_rest = [], None, None
@@ -98,6 +99,7 @@ def _parse_iiko_daily(ws) -> list[dict]:
         cur_rest = str(raw_rest).strip() if raw_rest else cur_rest
 
         if raw_pay is None or raw_sum is None or cur_date is None: continue
+        if "всего" in str(raw_pay).lower(): continue
         try: total = float(str(raw_sum).replace(",", ".").strip())
         except (ValueError, TypeError): continue
         try: checks = int(float(str(raw_chk).replace(",", "."))) if raw_chk else 0
@@ -108,7 +110,8 @@ def _parse_iiko_daily(ws) -> list[dict]:
             "total_amount": total, "quantity": checks or 1,
             "category": None, "product_name": None,
             "cost_amount": 0, "profit_amount": 0,
-            "extra_data": {"restaurant_name": cur_rest} if cur_rest else None,
+            "source_restaurant": cur_rest,
+            "opening_hour": str(get(i_hour)).strip() if i_hour >= 0 and get(i_hour) is not None else None,
         })
     return records
 
@@ -298,17 +301,47 @@ async def upload_sales_file(request: web.Request) -> web.Response:
                    if ext == ".xlsx" else _parse_csv(data.decode("utf-8-sig")))
         if not records:
             raise ValueError("В файле нет распознанных строк продаж")
+        # Route every restaurant in a multi-restaurant iiko daily report to
+        # its own database key; reject unknown/ambiguous or unauthorized names.
+        daily = any("source_restaurant" in rec for rec in records)
+        by_key = {}
+        if daily:
+            async with pool.acquire() as conn:
+                db_rests = await conn.fetch("SELECT key, name FROM restaurants")
+            def norm_name(value):
+                return " ".join(str(value or "").casefold().replace("ё", "е").split())
+            matches = {}
+            for restaurant in db_rests:
+                matches.setdefault(norm_name(restaurant["name"]), []).append(restaurant["key"])
+            unknown = []
+            for rec in records:
+                name = rec.get("source_restaurant")
+                candidates = matches.get(norm_name(name), [])
+                if len(candidates) != 1:
+                    unknown.append(name or "(без названия)")
+                    continue
+                rest_key = candidates[0]
+                if allowed is not None and rest_key not in allowed:
+                    raise PermissionError("Нет прав на ресторан: " + str(name))
+                by_key.setdefault(rest_key, []).append(rec)
+            if unknown:
+                raise ValueError("Не удалось однозначно сопоставить рестораны: " + ", ".join(sorted(set(unknown))))
+        else:
+            by_key[key] = records
+
         async with pool.acquire() as conn:
             async with conn.transaction():
-                # Serialise imports and summary rebuilds for this restaurant.
-                await conn.fetchval("SELECT key FROM restaurants WHERE key = $1 FOR UPDATE", key)
-                await _save_records(conn, import_id, key, records)
-                await _recalc_summary(conn, key)
+                for rest_key in sorted(by_key):
+                    await conn.fetchval("SELECT key FROM restaurants WHERE key = $1 FOR UPDATE", rest_key)
+                for rest_key, grouped in by_key.items():
+                    await _save_records(conn, import_id, rest_key, grouped)
+                    await _recalc_summary(conn, rest_key)
                 await conn.execute(
                     "UPDATE sales_imports SET status='completed', rows_count=$1, processed_at=NOW() WHERE id=$2",
                     len(records), import_id,
                 )
         return web.json_response({"success": True, "import_id": import_id, "rows_count": len(records),
+                                  "restaurants_count": len(by_key),
                                   "message": f"Загружено {len(records)} записей"})
     except Exception as e:
         async with pool.acquire() as conn:

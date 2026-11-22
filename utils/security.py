@@ -97,6 +97,7 @@ def sanitize_html(html_str):
 # Standards accept pasted formatting, but only a narrowly allowed set of CSS
 # properties. The general sanitizer above remains unchanged for other content.
 from bleach.css_sanitizer import CSSSanitizer
+import re
 
 _STANDARDS_CSS = CSSSanitizer(allowed_css_properties=[
     'color', 'background-color', 'font-size', 'font-weight', 'font-style',
@@ -106,16 +107,25 @@ _STANDARDS_CSS = CSSSanitizer(allowed_css_properties=[
 ])
 
 
+_SAFE_FONT_COLOR = re.compile(r'^(?:#[0-9a-fA-F]{3,8}|[a-zA-Z]{1,24}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\))$')
+
+
+def _standard_attribute_filter(tag, name, value):
+    if name in ALLOWED_ATTRS.get(tag, []) or name in ('class', 'style'):
+        return True
+    if tag == 'font' and name == 'color':
+        return bool(_SAFE_FONT_COLOR.fullmatch(value.strip()))
+    return False
+
+
 def sanitize_standard_html(html_str):
     """Preserve safe document styling without allowing executable HTML/CSS."""
     if not html_str:
         return ""
-    attrs = dict(ALLOWED_ATTRS)
-    attrs['*'] = ['class', 'style']
     return bleach.clean(
         html_str,
-        tags=ALLOWED_TAGS,
-        attributes=attrs,
+        tags=[*ALLOWED_TAGS, 'font'],
+        attributes=_standard_attribute_filter,
         protocols=ALLOWED_PROTOCOLS,
         css_sanitizer=_STANDARDS_CSS,
         strip=True,

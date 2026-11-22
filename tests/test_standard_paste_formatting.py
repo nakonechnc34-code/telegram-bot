@@ -27,3 +27,18 @@ def test_standard_endpoints_use_safe_style_sanitizer():
     from pathlib import Path
     src = (Path(__file__).resolve().parents[1] / 'routes' / 'content.py').read_text(encoding='utf-8')
     assert src.count('text = sanitize_standard_html((body.get("body") or "").strip())') == 2
+
+
+def test_word_font_color_survives_standard_save():
+    html = '<p><font color="#c00000"><b>Важный заголовок</b></font></p>'
+    result = sanitize_standard_html(html)
+    assert '<font color="#c00000">' in result
+    assert '<b>Важный заголовок</b>' in result
+
+
+def test_word_font_color_rejects_unsafe_attributes():
+    html = '<font color="expression(alert(1))" onclick="alert(1)">Текст</font>'
+    result = sanitize_standard_html(html)
+    assert 'color=' not in result
+    assert 'onclick' not in result
+    assert '<font>Текст</font>' in result

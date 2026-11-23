@@ -22,7 +22,8 @@ def test_reference_dashboard_layout():
         assert item in JS
         assert item in CSS
     for label in ("Товарооборот", "Предыдущий период", "Выручка по часам",
-                  "Рестораны с продажами", "Динамика", "Каналы продаж"):
+                  "Рестораны с продажами", "Средний чек", "Количество заказов",
+                  "Гостей", "Доля доставки", "Динамика", "Каналы продаж"):
         assert label in JS
 
 
@@ -33,9 +34,10 @@ def test_unavailable_metrics_not_fabricated():
         "async function loadOrderTypeSettings()", 1
     )[0]
     assert "kpi('₽','Товарооборот'" in overview
-    assert "kpi('↗','Предыдущий период'" in overview
-    assert "kpi('⌁','Рестораны с продажами'" in overview
-    assert "kpi('₽','Средний чек'" not in overview
+    assert "sales-v4-secondary-stats" in overview
+    assert "kpi('%','Доля доставки','—'" in overview
+    assert "kpi('▤','Средний чек','—'" in overview
+    assert "kpi('▣','Количество заказов','—'" in overview
     assert "kpi('₽','Скидки'" not in overview
     dashboard_cards = overview.split("const signedChange =", 1)[1]
     assert "formatNumber(h.checks)" not in dashboard_cards

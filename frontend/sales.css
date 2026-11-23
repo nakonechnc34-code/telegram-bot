@@ -98,3 +98,7 @@
 @media(max-width:1250px){.rest-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:900px){.rest-dashboard{grid-template-columns:1fr}.rest-restaurants{position:static;max-height:280px}.rest-restaurant-list{max-height:180px}}
 @media(max-width:520px){.rest-kpis,.rest-mini-grid{grid-template-columns:1fr}.rest-graph-area{height:250px}}
+
+/* Explicit checkbox styling for restaurant scope selection. */
+.rest-restaurant-check{width:15px;height:15px;flex:0 0 15px;margin:0;accent-color:var(--red);cursor:pointer}
+.rest-restaurant-check:focus-visible{outline:2px solid var(--red);outline-offset:3px}

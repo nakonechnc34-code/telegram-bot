@@ -312,17 +312,26 @@ INSERT_SQL = """
 
 
 async def _save_records(conn, import_id, restaurant_key, records):
+    """Write records in bounded batches to avoid one round-trip per row."""
+    batch = []
     for rec in records:
         sale_date = _to_date(rec.get("sale_date"))
-        if sale_date is None: continue
+        if sale_date is None:
+            continue
         extra = {k: v for k, v in rec.items() if k not in EXTRA_KEYS}
-        await conn.execute(INSERT_SQL,
+        batch.append((
             import_id, restaurant_key, sale_date,
             rec.get("category"), rec.get("subcategory"), rec.get("product_name"), rec.get("sku"),
             rec.get("quantity", 1), rec.get("unit_price", 0), rec.get("total_amount", 0),
             rec.get("cost_amount", 0), rec.get("profit_amount", 0), rec.get("profit_margin"),
             rec.get("payment_method"), rec.get("shift_number"), rec.get("employee_name"),
-            rec.get("discount_amount", 0), json.dumps(extra) if extra else None)
+            rec.get("discount_amount", 0), json.dumps(extra) if extra else None,
+        ))
+        if len(batch) >= 500:
+            await conn.executemany(INSERT_SQL, batch)
+            batch.clear()
+    if batch:
+        await conn.executemany(INSERT_SQL, batch)
 
 
 async def _recalc_summary(conn, restaurant_key):

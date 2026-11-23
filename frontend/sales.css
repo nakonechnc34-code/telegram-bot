@@ -425,3 +425,18 @@ button:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-v
   .sales-v2-kpi-heading{font-size:10px}
   .sales-v2-kpi-footer{font-size:10px}
 }
+
+/* Hide the oversized mobile header shown in user screenshot. Keep filters available on demand. */
+.mobile-filter-toggle{display:none}
+@media(max-width:850px){
+ .topbar{display:block;padding:10px 14px;background:#192232;border-bottom:0}
+ .topbar-left{display:flex;align-items:center;justify-content:space-between;flex-wrap:nowrap;gap:12px;min-height:40px}
+ .topbar-left .eyebrow,.topbar-left .page-title{display:none}
+ .mobile-menu{display:grid;place-items:center;width:40px;height:40px;margin:0;color:#fff;font-size:24px}
+ .mobile-filter-toggle{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid #475268;background:#29364b;color:#fff;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:750}
+ .topbar-right{display:none;margin-top:12px;padding:12px;background:#fff;border-radius:12px}
+ .topbar.mobile-filters-open .topbar-right{display:grid}
+ .topbar-right .filter-field[hidden]{display:none}
+ .topbar-right .btn[hidden]{display:none}
+ .workspace-context{padding-top:11px;padding-bottom:11px}
+}

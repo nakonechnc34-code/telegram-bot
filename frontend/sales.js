@@ -272,7 +272,7 @@
                 const hall=Number(channels['Зал']||0);
                 const delivery=Number(channels['Доставка']||0);
                 const total=Number(r.total_sales||0);
-                return '<tr data-sales-rest-row><td>'+esc(r.name)+'</td><td class="sales-turnover-total">'+money(total)+'</td><td class="sales-turnover-hall">'+money(hall)+'</td><td class="sales-turnover-delivery">'+money(delivery)+'</td><td class="sales-turnover-unassigned">'+money(unassigned)+'</td></tr>';
+                return '<tr data-sales-rest-row><td>'+esc(r.name)+'</td><td class="sales-turnover-total">'+money(total)+'</td><td class="sales-turnover-hall">'+money(hall)+'</td><td class="sales-turnover-delivery">'+money(delivery)+'</td></tr>';
             }).join('');
             const restaurantTurnoverPanel='<section class="sales-v2-panel sales-turnover-first" aria-label="ТО ресторанов"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">ОСНОВНОЙ ОТЧЁТ</div><h3>ТО по ресторанам</h3><p class="sales-v3-panel-subtitle">Товарооборот за выбранный период, разбивка по каналам</p></div></div>'+
                 '<div class="sales-turnover-tabs" role="group" aria-label="Разбивка товарооборота">'+

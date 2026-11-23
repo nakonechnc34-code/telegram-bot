@@ -16,17 +16,28 @@ def test_dashboard_period_presets_supported_by_api():
 
 
 def test_reference_dashboard_layout():
-    for item in ("rest-dashboard", "rest-kpis", "rest-graph", "rest-restaurants",
-                 "rest-restaurant-check", "rest-date-presets"):
+    for item in ("sales-v2-dashboard", "sales-v2-kpis", "sales-v2-trend",
+                 "sales-v2-restaurant-panel", "rest-restaurant-check",
+                 "sales-v2-presets", "sales-v2-compare-grid"):
         assert item in JS
         assert item in CSS
-    for label in ("Продажи", "Средний чек", "Чеки", "Скидки", "Динамика"):
+    for label in ("Товарооборот", "Предыдущий период", "Выручка по часам",
+                  "Рестораны с продажами", "Динамика", "Каналы продаж"):
         assert label in JS
 
 
 def test_unavailable_metrics_not_fabricated():
-    assert "Нет количества чеков в данных iiko" in JS
-    assert "Нет данных о скидках" in JS
+    # The dashboard must not manufacture receipt counts, average receipt or discounts
+    # when the iiko summary does not expose reliable values.
+    overview = JS.split("function renderDashboard(data)", 1)[1].split(
+        "async function loadOrderTypeSettings()", 1
+    )[0]
+    assert "kpi('₽','Товарооборот'" in overview
+    assert "kpi('↗','Предыдущий период'" in overview
+    assert "kpi('⌁','Рестораны с продажами'" in overview
+    assert "kpi('₽','Средний чек'" not in overview
+    assert "kpi('₽','Скидки'" not in overview
+    assert "formatNumber(h.checks)" not in overview
 
 
 def test_restaurant_scope_still_uses_authorized_dashboard_endpoint():

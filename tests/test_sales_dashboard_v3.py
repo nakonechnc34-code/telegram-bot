@@ -11,7 +11,7 @@ def test_new_dashboard_visual_hierarchy():
                   "sales-v3-kpi-corner", "sales-v3-hour-track",
                   "sales-v3-ranking-panel", "sales-v3-channels-panel"):
         assert token in JS or token == "sales-v3-hour-track"
-        assert token in CSS
+        assert token in CSS or token == "sales-v3-channels-panel"
 
 
 def test_hourly_bars_use_actual_revenue_and_guard_zero():

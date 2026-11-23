@@ -716,7 +716,7 @@ async def sales_dashboard(request: web.Request) -> web.Response:
         # Time-series for the leading chart. Both windows use the same restaurant scope.
         # Today compares with the same weekday last week; longer periods compare
         # with the immediately preceding period of equal length.
-        chart_previous_from = date_from - timedelta(days=7) if period == "1d" else previous_from
+        chart_previous_from = date_from - timedelta(days=7) if days == 1 else previous_from
         chart_previous_to = chart_previous_from + timedelta(days=days)
         chart_previous_params = [chart_previous_from, chart_previous_to]
         if scoped_keys is not None:
@@ -746,8 +746,8 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             points = {}
             for item in rows:
                 offset = (item["day"] - start).days
-                idx = item["hour"] if period == "1d" else offset
-                if idx is None or idx < 0 or idx >= (24 if period == "1d" else days):
+                idx = item["hour"] if days == 1 else offset
+                if idx is None or idx < 0 or idx >= (24 if days == 1 else days):
                     continue
                 category = order_mapping.get(item["method"] or "", "Не распределено")
                 point = points.setdefault(idx, {"total": 0.0, "hall": 0.0, "delivery": 0.0})
@@ -761,14 +761,14 @@ async def sales_dashboard(request: web.Request) -> web.Response:
 
         chart_current_points = chart_points(chart_current, date_from)
         chart_previous_points = chart_points(chart_previous, chart_previous_from)
-        chart_length = 24 if period == "1d" else days
+        chart_length = 24 if days == 1 else days
         chart_series = {
-            "granularity": "hour" if period == "1d" else "day",
-            "comparison_label": "Тот же день прошлой недели" if period == "1d" else "Предыдущий аналогичный период",
+            "granularity": "hour" if days == 1 else "day",
+            "comparison_label": "Тот же день прошлой недели" if days == 1 else "Предыдущий аналогичный период",
             "previous_has_data": bool(chart_previous),
             "points": [
                 {
-                    "label": f"{i:02d}:00" if period == "1d" else str(date_from + timedelta(days=i)),
+                    "label": f"{i:02d}:00" if days == 1 else str(date_from + timedelta(days=i)),
                     **chart_current_points.get(i, {"total": 0.0, "hall": 0.0, "delivery": 0.0}),
                     "previous": chart_previous_points.get(i, {"total": 0.0, "hall": 0.0, "delivery": 0.0}),
                 }

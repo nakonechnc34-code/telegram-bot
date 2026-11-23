@@ -128,6 +128,7 @@
         const requestId = ++state.dashboardRequest;
         const restaurantKey = DOM.restaurantSelect.value || null;
         const period = DOM.periodSelect.value;
+        if (period !== 'custom') dashboardDateRange();
         if (period === 'custom' && (!DOM.dateFrom.value || !DOM.dateTo.value)) {
             DOM.content.innerHTML = '<div class="loading">Выберите начало и конец периода</div>';
             return;
@@ -192,6 +193,16 @@
             if (button) button.disabled = false;
             showToast('Не удалось удалить отчёт: '+error.message, 'error');
         }
+    }
+
+    function dashboardDateRange() {
+        const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+        if(DOM.periodSelect.value==='custom')return;
+        const count={'1d':1,'7d':7,'30d':30,'90d':90,'365d':365}[DOM.periodSelect.value]||1;
+        const start=new Date(today+'T12:00:00Z');
+        start.setUTCDate(start.getUTCDate()-count+1);
+        DOM.dateFrom.value=start.toISOString().slice(0,10);
+        DOM.dateTo.value=today;
     }
 
     function renderDashboard(data) {
@@ -270,7 +281,7 @@
             DOM.content.innerHTML=
                 '<div class="sales-v2-dashboard">'+
                 '<div class="sales-v2-heading"><div><div class="sales-v2-eyebrow">WOKKER SALES <span class="sales-v3-slash">/</span> КОМАНДНЫЙ ЦЕНТР</div><h2>Пульс продаж<span class="sales-v3-heading-period"> · обзор</span></h2><p>Контроль товарооборота, динамики и эффективности ресторанов · '+esc(availableDates)+'</p></div><div class="sales-v2-status"><span class="sales-v2-status-dot"></span> Источник: iiko</div></div>'+ 
-                '<div class="sales-v2-toolbar"><div class="sales-v2-presets">'+[['1d','Сегодня'],['7d','7 дней'],['30d','30 дней'],['90d','90 дней'],['365d','Год'],['custom','Свой период']].map(p=>'<button type="button" class="rest-period '+(DOM.periodSelect.value===p[0]?'selected':'')+'" data-rest-period="'+p[0]+'">'+p[1]+'</button>').join('')+'</div><span class="sales-v2-toolbar-hint">Период и ресторан можно изменить в верхней панели</span></div>'+
+                '<div class="sales-v2-toolbar"><div class="sales-v2-presets">'+[['1d','Сегодня'],['7d','7 дней'],['30d','30 дней'],['90d','90 дней'],['365d','Год']].map(p=>'<button type="button" class="rest-period '+(DOM.periodSelect.value===p[0]?'selected':'')+'" data-rest-period="'+p[0]+'">'+p[1]+'</button>').join('')+'</div><div class="sales-v2-date-range"><label>С даты <input type="date" id="sales-inline-date-from" value="'+esc(DOM.dateFrom.value||'')+'"></label><label>По дату <input type="date" id="sales-inline-date-to" value="'+esc(DOM.dateTo.value||'')+'"></label></div></div>'+
                 '<section class="sales-v2-panel sales-leading-chart"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">ТОВАРООБОРОТ</div><h3>'+(turnoverChart.granularity==='hour'?'Почасовой ТО':'ТО по дням')+'</h3></div><span class="sales-v2-muted">'+esc(availableDates)+'</span></div>'+
                 '<div class="sales-chart-switches"><label><input type="checkbox" data-sales-chart-series="total" checked> Общий ТО</label><label><input type="checkbox" data-sales-chart-series="hall"> Зал</label><label><input type="checkbox" data-sales-chart-series="delivery"> Доставка</label><label><input type="checkbox" data-sales-chart-series="previous" '+(turnoverChart.previous_has_data?'':'disabled')+'> '+esc(turnoverChart.comparison_label||'Аналогичный период')+'</label></div>'+
                 '<div class="rest-graph-area sales-leading-chart-area"><canvas id="sales-turnover-chart" role="img" aria-label="График товарооборота"></canvas></div>'+
@@ -308,6 +319,18 @@
                 });
             }));
             DOM.content.querySelectorAll('[data-rest-period]').forEach(button=>button.addEventListener('click',()=>{DOM.periodSelect.value=button.dataset.restPeriod;DOM.periodSelect.dispatchEvent(new Event('change'));}));
+            const inlineFrom=document.getElementById('sales-inline-date-from');
+            const inlineTo=document.getElementById('sales-inline-date-to');
+            const applyInlineDates=()=>{
+                if(!inlineFrom.value||!inlineTo.value)return;
+                if(inlineFrom.value>inlineTo.value){showToast('Дата начала должна быть не позднее даты окончания','error');return;}
+                DOM.dateFrom.value=inlineFrom.value;
+                DOM.dateTo.value=inlineTo.value;
+                DOM.periodSelect.value='custom';
+                DOM.periodSelect.dispatchEvent(new Event('change'));
+            };
+            inlineFrom.addEventListener('change',applyInlineDates);
+            inlineTo.addEventListener('change',applyInlineDates);
             const search=document.getElementById('rest-search');
             search.addEventListener('input',()=>{const term=search.value.toLocaleLowerCase('ru');DOM.content.querySelectorAll('.rest-restaurant-check').forEach(input=>{input.closest('label').hidden=!input.closest('label').textContent.toLocaleLowerCase('ru').includes(term);});});
             document.getElementById('rest-all').addEventListener('change',()=>{DOM.restaurantSelect.value='';loadDashboard();});

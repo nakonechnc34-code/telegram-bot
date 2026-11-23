@@ -80,8 +80,8 @@ def test_turnover_chart_defaults_to_today_and_is_first():
 
 def test_turnover_chart_uses_scoped_current_and_comparison_periods():
     assert '"turnover_chart": chart_series' in API
-    assert 'chart_previous_from = date_from - timedelta(days=7) if period == "1d" else previous_from' in API
+    assert 'chart_previous_from = date_from - timedelta(days=7) if days == 1 else previous_from' in API
     assert 'chart_previous_where, _ = _where(previous_conditions, chart_previous_params)' in API
     assert 'FROM sales_records sr {w}' in API
     assert 'FROM sales_records sr {chart_previous_where}' in API
-    assert '"granularity": "hour" if period == "1d" else "day"' in API
+    assert '"granularity": "hour" if days == 1 else "day"' in API

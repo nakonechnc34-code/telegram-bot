@@ -271,7 +271,6 @@
                 const channels=restaurantChannels[r.key]||{};
                 const hall=Number(channels['Зал']||0);
                 const delivery=Number(channels['Доставка']||0);
-                const unassigned=Number(channels['Не распределено']||0);
                 const total=Number(r.total_sales||0);
                 return '<tr data-sales-rest-row><td>'+esc(r.name)+'</td><td class="sales-turnover-total">'+money(total)+'</td><td class="sales-turnover-hall">'+money(hall)+'</td><td class="sales-turnover-delivery">'+money(delivery)+'</td><td class="sales-turnover-unassigned">'+money(unassigned)+'</td></tr>';
             }).join('');
@@ -279,8 +278,8 @@
                 '<div class="sales-turnover-tabs" role="group" aria-label="Разбивка товарооборота">'+
                 '<button type="button" class="sales-turnover-tab selected" data-turnover-mode="all" aria-pressed="true">Общий ТО</button>'+
                 '<button type="button" class="sales-turnover-tab" data-turnover-mode="split" aria-pressed="false">Зал / Доставка</button></div>'+
-                '<div class="sales-v2-table-scroll"><table class="sales-v2-table sales-turnover-table" data-turnover-mode="all"><thead><tr><th>Ресторан</th><th>ТО</th><th class="sales-turnover-detail">Зал</th><th class="sales-turnover-detail">Доставка</th><th class="sales-turnover-detail">Не распределено</th></tr></thead><tbody>'+
-                (restaurantTurnoverRows||'<tr><td colspan="5">Нет данных за выбранный период</td></tr>')+
+                '<div class="sales-v2-table-scroll"><table class="sales-v2-table sales-turnover-table" data-turnover-mode="all"><thead><tr><th>Ресторан</th><th>ТО</th><th class="sales-turnover-detail">Зал</th><th class="sales-turnover-detail">Доставка</th></tr></thead><tbody>'+
+                (restaurantTurnoverRows||'<tr><td colspan="4">Нет данных за выбранный период</td></tr>')+
                 '</tbody></table></div><p class="sales-v2-muted sales-turnover-note">«Не распределено» — продажи без назначенного типа заказа в настройках.</p></section>';
             DOM.content.innerHTML=
                 '<div class="sales-v2-dashboard">'+

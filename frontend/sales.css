@@ -460,3 +460,13 @@ button:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-v
  .sales-turnover-table[data-turnover-mode="split"]{min-width:570px}
  .sales-turnover-table th,.sales-turnover-table td{padding:12px 10px;font-size:11px;white-space:nowrap}
 }
+
+/* Remove the large analytics header and filter strip requested by the user.
+   Keep the mobile hamburger visible so navigation remains accessible. */
+.topbar{display:none}
+@media(max-width:850px){
+  .topbar{display:flex;align-items:center;padding:8px 12px;background:#192232;border:0}
+  .topbar-left{display:flex;min-height:40px}
+  .topbar-left .eyebrow,.topbar-left .page-title,.mobile-filter-toggle,.topbar-right{display:none!important}
+  .mobile-menu{display:grid}
+}

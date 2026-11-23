@@ -85,3 +85,14 @@ def test_turnover_chart_uses_scoped_current_and_comparison_periods():
     assert 'FROM sales_records sr {w}' in API
     assert 'FROM sales_records sr {chart_previous_where}' in API
     assert '"granularity": "hour" if days == 1 else "day"' in API
+
+
+def test_turnover_chart_marks_missing_dates_instead_of_plotting_zero():
+    assert '"has_data": i in chart_current_points' in API
+    assert '"previous_has_data": i in chart_previous_points' in API
+    assert "if(!hasData(p,key)){drawing=false;return;}" in JS
+    assert "visible.filter(key=>hasData(p,key))" in JS
+
+
+def test_dashboard_heading_uses_selected_dates_not_only_imported_dates():
+    assert "const availableDates=DOM.dateFrom.value&&DOM.dateTo.value?" in JS

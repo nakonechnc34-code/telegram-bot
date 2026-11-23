@@ -554,7 +554,20 @@
             if(state.view==='settings') renderDashboard(state.dashboardData||{overview:{},daily_trend:[],by_restaurant:[],imports:[]});
             else if(state.dashboardData) renderDashboard(state.dashboardData); else loadDashboard();
         }));
-        document.getElementById('menu-toggle').addEventListener('click',()=>document.getElementById('sales-sidebar').classList.toggle('open'));
+        const salesSidebar=document.getElementById('sales-sidebar');
+        const salesMenuToggle=document.getElementById('menu-toggle');
+        const setSalesMenuOpen=(open)=>{
+            salesSidebar.classList.toggle('open',open);
+            salesMenuToggle.setAttribute('aria-expanded',String(open));
+            salesMenuToggle.setAttribute('aria-label',open?'Закрыть меню':'Открыть меню');
+        };
+        salesMenuToggle.setAttribute('aria-expanded','false');
+        salesMenuToggle.addEventListener('click',()=>setSalesMenuOpen(!salesSidebar.classList.contains('open')));
+        salesSidebar.querySelectorAll('.nav-link').forEach(link=>link.addEventListener('click',()=>setSalesMenuOpen(false)));
+        document.addEventListener('keydown',event=>{if(event.key==='Escape')setSalesMenuOpen(false);});
+        document.addEventListener('click',event=>{
+            if(salesSidebar.classList.contains('open') && !salesSidebar.contains(event.target) && !salesMenuToggle.contains(event.target))setSalesMenuOpen(false);
+        });
 
         function updateDateControls() {
             const custom = DOM.periodSelect.value === 'custom';

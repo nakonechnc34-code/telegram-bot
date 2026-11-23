@@ -561,6 +561,14 @@
             salesMenuToggle.setAttribute('aria-expanded',String(open));
             salesMenuToggle.setAttribute('aria-label',open?'Закрыть меню':'Открыть меню');
         };
+        const mobileFilterToggle=document.getElementById('sales-mobile-filter-toggle');
+        const salesTopbar=document.querySelector('.topbar');
+        const setMobileFiltersOpen=open=>{
+            salesTopbar.classList.toggle('mobile-filters-open',open);
+            mobileFilterToggle.setAttribute('aria-expanded',String(open));
+        };
+        mobileFilterToggle.addEventListener('click',()=>setMobileFiltersOpen(!salesTopbar.classList.contains('mobile-filters-open')));
+        document.addEventListener('keydown',event=>{if(event.key==='Escape')setMobileFiltersOpen(false);});
         salesMenuToggle.setAttribute('aria-expanded','false');
         salesMenuToggle.addEventListener('click',()=>setSalesMenuOpen(!salesSidebar.classList.contains('open')));
         salesSidebar.querySelectorAll('.nav-link').forEach(link=>link.addEventListener('click',()=>setSalesMenuOpen(false)));

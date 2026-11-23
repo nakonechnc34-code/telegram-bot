@@ -237,3 +237,85 @@ button:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-v
 .sales-import-hero h3{margin:0}
 .sales-import-hero .section-note{max-width:670px;margin:0 0 8px}
 @media(max-width:760px){.sales-section-stats{grid-template-columns:1fr}.sales-section-stats>div{padding:16px 19px}.sales-section-stats strong{font-size:22px}}
+
+/* Dashboard V3 — complete visual redraw. Existing sales permissions and calculations are unchanged. */
+.sales-v2-dashboard{display:grid;gap:23px;--v3-ink:#17212f;--v3-soft:#f7f8fb;--v3-line:#e9edf2}
+.sales-v2-heading{padding:9px 2px 5px;align-items:flex-start}
+.sales-v2-heading h2{font-size:clamp(28px,3.2vw,41px);line-height:1.15;letter-spacing:-.065em;color:var(--v3-ink);font-weight:850;margin:9px 0 11px}
+.sales-v3-heading-period{font-weight:450;color:#9da6b2}
+.sales-v2-heading p{font-size:13px;color:#8792a1;line-height:1.6}
+.sales-v2-eyebrow{font-size:10px;letter-spacing:.13em;font-weight:850;color:#9da5b1}
+.sales-v3-slash{color:#cf303a;padding:0 7px}
+.sales-v2-status{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #e9edf1;color:#637081;padding:9px 13px;border-radius:100px;font-size:11px;font-weight:750;white-space:nowrap}
+.sales-v2-status-dot{background:#2eb783;box-shadow:0 0 0 4px #e7f8f0}
+.sales-v2-toolbar{background:#fff;border:1px solid #e8ecf1;border-radius:16px;padding:12px 15px;box-shadow:0 5px 20px #17212f06;gap:12px}
+.sales-v2-presets{display:flex;flex-wrap:wrap;gap:5px}
+.sales-v2-toolbar .rest-period{border:1px solid transparent;border-radius:9px;padding:10px 15px;font-size:12px;font-weight:750;min-height:39px}
+.sales-v2-toolbar .rest-period.selected{background:#c92c35;border-color:#c92c35;color:#fff;box-shadow:0 5px 12px #c92c3529}
+.sales-v2-toolbar .rest-period:not(.selected):hover{background:#f4f6f8}
+.sales-v2-toolbar-hint{font-size:11px;color:#a0a8b3}
+.sales-v3-context-strip{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:0;border:1px solid #e8ecf1;background:#fff;border-radius:16px;overflow:hidden}
+.sales-v3-context-strip>div{display:grid;gap:7px;padding:15px 21px;min-width:0}
+.sales-v3-context-strip>div+div{border-left:1px solid #edf0f4}
+.sales-v3-context-label{font-size:9px;color:#a3acb7;letter-spacing:.1em;font-weight:850}
+.sales-v3-context-strip strong{font-size:12px;font-weight:750;color:#4b5665;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sales-v2-kpis{gap:15px}
+.sales-v2-kpi{position:relative;isolation:isolate;overflow:hidden;min-height:173px;padding:22px 23px;background:#fff;border:1px solid #e8ecf1;border-radius:17px;box-shadow:0 6px 26px #17212f07;transition:transform .2s,border-color .2s,box-shadow .2s}
+.sales-v2-kpi:hover{transform:translateY(-2px);border-color:#dce2e9;box-shadow:0 12px 30px #17212f0d}
+.sales-v2-kpi:first-child{background:linear-gradient(135deg,#c92c35 0%,#b51e2b 100%);border-color:#b51e2b;color:#fff}
+.sales-v2-kpi:first-child .sales-v2-kpi-heading,.sales-v2-kpi:first-child .sales-v2-kpi-footer,.sales-v2-kpi:first-child .sales-v2-kpi-footer span{color:#ffe2e5}
+.sales-v2-kpi:first-child .sales-v2-icon{background:#ffffff26;color:#fff}
+.sales-v2-kpi:first-child .sales-change{background:#ffffff22;color:#fff}
+.sales-v2-kpi-heading{font-size:12px;font-weight:700;color:#8d97a5;gap:10px}
+.sales-v2-icon{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:#fff1f2;color:#c92c35;font-size:18px;font-weight:800}
+.sales-v2-kpi strong{display:block;font-size:clamp(23px,2.5vw,34px);letter-spacing:-.06em;line-height:1.25;margin-top:19px;position:relative;z-index:1}
+.sales-v2-kpi-footer{font-size:11px;display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:11px;color:#8c96a4}
+.sales-v3-kpi-corner{position:absolute;right:-30px;bottom:-58px;width:138px;height:138px;border:1px solid #e9edf2;border-radius:50%;pointer-events:none;z-index:0}
+.sales-v3-kpi-corner:after{content:'';position:absolute;inset:20px;border:1px solid #e9edf2;border-radius:50%}
+.sales-v2-kpi:first-child .sales-v3-kpi-corner,.sales-v2-kpi:first-child .sales-v3-kpi-corner:after{border-color:#ffffff24}
+.sales-v3-section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:5px 2px 0}
+.sales-v3-section-title>div{display:flex;align-items:center;gap:11px}
+.sales-v3-section-index{font-size:11px;color:#c92c35;font-weight:850}
+.sales-v3-section-title h3{font-size:17px;letter-spacing:-.035em;margin:0;color:#263140}
+.sales-v3-section-title>span{font-size:11px;color:#9ba4b0}
+.sales-v2-layout{gap:17px}
+.sales-v2-main,.sales-v2-aside{gap:17px}
+.sales-v2-panel{border:1px solid #e8ecf1;border-radius:17px;padding:23px 24px;background:#fff;box-shadow:0 5px 22px #17212f05}
+.sales-v2-panel-head{margin-bottom:20px;gap:14px}
+.sales-v2-panel-head h3{font-size:17px;letter-spacing:-.04em;font-weight:800;color:#253040;margin:5px 0 0}
+.sales-v3-panel-subtitle{font-size:11px;color:#9ba4b0;margin:7px 0 0}
+.sales-v2-muted{font-size:11px;color:#9aa4b1}
+.sales-v2-trend .rest-graph-area{min-height:290px}
+.sales-v2-legend{border-top:1px solid #f0f2f5;padding-top:15px;margin-top:12px;font-size:11px;color:#8c96a4}
+.sales-v2-compare-grid{gap:10px}
+.sales-v2-compare-grid>div{border:1px solid #edf0f4;background:#fafbfc;border-radius:12px;padding:15px;min-width:0}
+.sales-v2-compare-grid>div strong{font-size:clamp(17px,1.8vw,23px);letter-spacing:-.045em}
+.sales-v2-table-scroll{border:1px solid #edf0f4;border-radius:11px;overflow:auto}
+.sales-v2-table{width:100%;border-collapse:collapse}
+.sales-v2-table th{background:#f8f9fb;color:#929caa;font-size:10px;font-weight:800;letter-spacing:.025em;text-align:left}
+.sales-v2-table th,.sales-v2-table td{padding:13px 14px;border-bottom:1px solid #f0f2f5}
+.sales-v2-table tbody tr:last-child td{border-bottom:0}
+.sales-v2-table tbody tr:hover{background:#fafbfc}
+.sales-v3-hour-cell{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:200px}
+.sales-v3-hour-cell strong{font-size:12px;white-space:nowrap;color:#384454}
+.sales-v3-hour-track{height:7px;background:#f0f2f5;border-radius:10px;flex:1;overflow:hidden;min-width:45px}
+.sales-v3-hour-track>span{height:100%;display:block;background:linear-gradient(90deg,#edabb0,#c92c35);border-radius:10px}
+.sales-v3-hour-label{font-variant-numeric:tabular-nums;font-weight:750;color:#697587}
+.sales-v2-ranking{gap:19px}
+.sales-v2-rank{gap:11px}
+.sales-v2-rank-number{background:#f6f7f9;color:#8b95a3;min-width:28px;height:28px;border-radius:8px;display:grid;place-items:center;font-size:11px;font-weight:850}
+.sales-v2-rank:first-child .sales-v2-rank-number{background:#fff0f1;color:#c92c35}
+.sales-v2-rank-top{font-size:12px;gap:9px}
+.sales-v2-rank-top strong{font-size:12px;color:#394556}
+.sales-v2-meter{height:7px;background:#f0f2f5;border-radius:9px}
+.sales-v2-meter>span{background:linear-gradient(90deg,#e8a0a5,#c92c35)}
+.sales-v2-meter.channel>span{background:linear-gradient(90deg,#f0c5c8,#d97078)}
+.sales-v2-restaurant-panel input[type=search]{border-radius:10px;background:#fbfcfd}
+.rest-restaurant-list{display:grid;gap:5px}
+.rest-restaurant-option{border-radius:9px;padding:8px 10px;transition:background .15s}
+.rest-restaurant-option:hover{background:#f8f9fb}
+.rest-restaurant-option input{accent-color:#c92c35}
+@media(max-width:1250px){.sales-v2-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.sales-v2-layout{grid-template-columns:1fr}.sales-v2-aside{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.sales-v2-heading{flex-direction:column;gap:13px}.sales-v2-heading h2{font-size:30px}.sales-v3-context-strip{grid-template-columns:1fr}.sales-v3-context-strip>div+div{border-left:0;border-top:1px solid #edf0f4}.sales-v2-aside{grid-template-columns:1fr}.sales-v3-section-title>span{display:none}.sales-v2-panel{padding:18px}}
+@media(max-width:520px){.sales-v2-kpis{grid-template-columns:1fr}.sales-v2-kpi{min-height:150px}.sales-v2-toolbar .rest-period{padding:9px 11px}.sales-v2-compare-grid{grid-template-columns:1fr}.sales-v3-hour-cell{min-width:155px}.sales-v2-panel-head{align-items:flex-start;flex-direction:column}}
+@media(prefers-reduced-motion:reduce){.sales-v2-kpi{transition:none}.sales-v2-kpi:hover{transform:none}}

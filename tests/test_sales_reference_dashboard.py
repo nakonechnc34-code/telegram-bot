@@ -46,3 +46,22 @@ def test_unavailable_metrics_not_fabricated():
 def test_restaurant_scope_still_uses_authorized_dashboard_endpoint():
     assert "'/api/sales/dashboard'" in JS
     assert "allowed = await _allowed_rests(user)" in API
+
+
+def test_restaurant_turnover_is_first_dashboard_section_with_channel_split():
+    overview = JS.split("function renderDashboard(data)", 1)[1].split(
+        "async function loadOrderTypeSettings()", 1
+    )[0]
+    assert "restaurantTurnoverPanel+" in overview
+    assert overview.index("restaurantTurnoverPanel+") < overview.index("'<div class=\"sales-v3-context-strip\">")
+    assert 'data-turnover-mode="all"' in overview
+    assert 'data-turnover-mode="split"' in overview
+    for label in ("ТО по ресторанам", "Зал / Доставка"):
+        assert label in overview
+    assert "sales-turnover-unassigned" not in overview
+    turnover_panel = overview.split("const restaurantTurnoverPanel=", 1)[1].split("DOM.content.innerHTML=", 1)[0]
+    assert "Не распределено" not in turnover_panel
+    assert '"restaurant_channels": restaurant_channels' in API
+    assert 'restaurant_channel_rows = await conn.fetch(' in API
+    assert 'FROM sales_records sr {w}' in API
+    assert 'restaurant_channels.setdefault(' in API

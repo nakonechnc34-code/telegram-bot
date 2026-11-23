@@ -196,6 +196,7 @@
 
     function renderDashboard(data) {
         const {overview:o, daily_trend:trend=[], by_restaurant:restaurants=[], hourly_revenue:hourly=[], hourly_by_order_type:hourlyTypes=[], by_order_type:orderTypes=[], previous_total_sales:previousSales=0, same_weekday_comparison:weekCompare=null, imports=[]} = data;
+        const restaurantChannels=data.restaurant_channels||{};
         const view=state.view;
         const intro = (title,subtitle,tag='ДАННЫЕ ИЗ ОТЧЁТОВ') => '<div class="intro"><div><h2>'+title+'</h2><p>'+subtitle+'</p></div><span class="eyebrow-tag">'+tag+'</span></div>';
         const table=(title,heads,rows,empty='Нет данных за выбранный период')=>'<section class="table-wrap"><div class="table-title">'+title+'</div><table class="table"><thead><tr>'+heads.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+(rows||'<tr><td colspan="'+heads.length+'" class="text-center">'+empty+'</td></tr>')+'</tbody></table></section>';
@@ -266,10 +267,26 @@
             const hourRows=hourly.map(h=>'<tr><td><span class="sales-v3-hour-label">'+String(h.hour).padStart(2,'0')+':00</span></td><td><div class="sales-v3-hour-cell"><span class="sales-v3-hour-track"><span style="width:'+Math.max(0,Math.min(100,Number(h.sales||0)/peakHour*100)).toFixed(1)+'%"></span></span><strong>'+money(h.sales)+'</strong></div></td></tr>').join('');
             const comparedHours=(week.hours||[]).map(h=>'<tr><td>'+String(h.hour).padStart(2,'0')+':00</td><td>'+money(h.current)+'</td><td>'+money(h.previous)+'</td><td>'+signedChange(h.current,h.previous)+'</td></tr>').join('');
             const options=state.restaurants.map(r=>'<label class="rest-restaurant-option"><input type="checkbox" class="rest-restaurant-check" value="'+esc(r.key)+'" '+(!DOM.restaurantSelect.value||DOM.restaurantSelect.value===r.key?'checked':'')+'><span>'+esc(r.name)+'</span></label>').join('');
+            const restaurantTurnoverRows=restaurants.map(r=>{
+                const channels=restaurantChannels[r.key]||{};
+                const hall=Number(channels['Зал']||0);
+                const delivery=Number(channels['Доставка']||0);
+                const unassigned=Number(channels['Не распределено']||0);
+                const total=Number(r.total_sales||0);
+                return '<tr data-sales-rest-row><td>'+esc(r.name)+'</td><td class="sales-turnover-total">'+money(total)+'</td><td class="sales-turnover-hall">'+money(hall)+'</td><td class="sales-turnover-delivery">'+money(delivery)+'</td><td class="sales-turnover-unassigned">'+money(unassigned)+'</td></tr>';
+            }).join('');
+            const restaurantTurnoverPanel='<section class="sales-v2-panel sales-turnover-first" aria-label="ТО ресторанов"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">ОСНОВНОЙ ОТЧЁТ</div><h3>ТО по ресторанам</h3><p class="sales-v3-panel-subtitle">Товарооборот за выбранный период, разбивка по каналам</p></div></div>'+
+                '<div class="sales-turnover-tabs" role="group" aria-label="Разбивка товарооборота">'+
+                '<button type="button" class="sales-turnover-tab selected" data-turnover-mode="all" aria-pressed="true">Общий ТО</button>'+
+                '<button type="button" class="sales-turnover-tab" data-turnover-mode="split" aria-pressed="false">Зал / Доставка</button></div>'+
+                '<div class="sales-v2-table-scroll"><table class="sales-v2-table sales-turnover-table" data-turnover-mode="all"><thead><tr><th>Ресторан</th><th>ТО</th><th class="sales-turnover-detail">Зал</th><th class="sales-turnover-detail">Доставка</th><th class="sales-turnover-detail">Не распределено</th></tr></thead><tbody>'+
+                (restaurantTurnoverRows||'<tr><td colspan="5">Нет данных за выбранный период</td></tr>')+
+                '</tbody></table></div><p class="sales-v2-muted sales-turnover-note">«Не распределено» — продажи без назначенного типа заказа в настройках.</p></section>';
             DOM.content.innerHTML=
                 '<div class="sales-v2-dashboard">'+
                 '<div class="sales-v2-heading"><div><div class="sales-v2-eyebrow">WOKKER SALES <span class="sales-v3-slash">/</span> КОМАНДНЫЙ ЦЕНТР</div><h2>Пульс продаж<span class="sales-v3-heading-period"> · обзор</span></h2><p>Контроль товарооборота, динамики и эффективности ресторанов · '+esc(availableDates)+'</p></div><div class="sales-v2-status"><span class="sales-v2-status-dot"></span> Источник: iiko</div></div>'+ 
                 '<div class="sales-v2-toolbar"><div class="sales-v2-presets">'+[['1d','Сегодня'],['7d','7 дней'],['30d','30 дней'],['90d','90 дней'],['365d','Год'],['custom','Свой период']].map(p=>'<button type="button" class="rest-period '+(DOM.periodSelect.value===p[0]?'selected':'')+'" data-rest-period="'+p[0]+'">'+p[1]+'</button>').join('')+'</div><span class="sales-v2-toolbar-hint">Период и ресторан можно изменить в верхней панели</span></div>'+
+                restaurantTurnoverPanel+
                 '<div class="sales-v3-context-strip"><div><span class="sales-v3-context-label">АКТИВНЫЙ ПЕРИОД</span><strong>'+esc(availableDates)+'</strong></div><div><span class="sales-v3-context-label">ОХВАТ</span><strong>'+(DOM.restaurantSelect.value?'Один ресторан':'Все доступные рестораны')+'</strong></div><div><span class="sales-v3-context-label">ИСТОЧНИК ДАННЫХ</span><strong>Загруженные отчёты iiko</strong></div></div>'+
                 '<div class="sales-v2-kpis sales-v4-kpis">'+ 
                   kpi('₽','Товарооборот',money(total),'к предыдущему периоду',signedChange(total,previous))+
@@ -292,6 +309,15 @@
                   '<section class="sales-v2-panel sales-v3-channels-panel"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">СТРУКТУРА ПРОДАЖ</div><h3>Каналы продаж</h3><p class="sales-v3-panel-subtitle">Доли выручки по типам заказов</p></div></div><div class="sales-v2-ranking">'+(channels||'<p>Нет данных</p>')+'</div></section>'+
                   '<section class="sales-v2-panel sales-v2-restaurant-panel"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">ФИЛЬТР</div><h3>Рестораны</h3></div></div><p class="sales-v2-muted">Выберите один ресторан или все доступные</p><input id="rest-search" type="search" placeholder="Найти ресторан…" aria-label="Поиск по ресторанам"><div class="rest-restaurant-list"><label class="rest-restaurant-option"><input type="checkbox" id="rest-all" '+(!DOM.restaurantSelect.value?'checked':'')+'> Все рестораны</label>'+options+'</div></section>'+
                 '</aside></div><section class="sales-v2-panel sales-v4-insights"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">ИТОГИ ПЕРИОДА</div><h3>Ключевые выводы</h3></div></div><div class="sales-v4-insight-grid"><div><span class="sales-v4-insight-icon">↗</span><span>Товарооборот к предыдущему периоду</span><strong>'+signedChange(total,previous)+'</strong></div><div><span class="sales-v4-insight-icon">◷</span><span>Почасовая выручка по загруженным данным</span><strong>'+money(totalHours)+'</strong></div><div><span class="sales-v4-insight-icon">▦</span><span>Ресторанов с продажами</span><strong>'+formatNumber(restaurants.filter(r=>Number(r.total_sales)>0).length)+'</strong></div></div></section></div>';
+            DOM.content.querySelectorAll('[data-turnover-mode]').forEach(button=>button.addEventListener('click',()=>{
+                const mode=button.dataset.turnoverMode;
+                DOM.content.querySelector('.sales-turnover-table').dataset.turnoverMode=mode;
+                DOM.content.querySelectorAll('[data-turnover-mode]').forEach(tab=>{
+                    const selected=tab.dataset.turnoverMode===mode;
+                    tab.classList.toggle('selected',selected);
+                    tab.setAttribute('aria-pressed',String(selected));
+                });
+            }));
             DOM.content.querySelectorAll('[data-rest-period]').forEach(button=>button.addEventListener('click',()=>{DOM.periodSelect.value=button.dataset.restPeriod;DOM.periodSelect.dispatchEvent(new Event('change'));}));
             const search=document.getElementById('rest-search');
             search.addEventListener('input',()=>{const term=search.value.toLocaleLowerCase('ru');DOM.content.querySelectorAll('.rest-restaurant-check').forEach(input=>{input.closest('label').hidden=!input.closest('label').textContent.toLocaleLowerCase('ru').includes(term);});});

@@ -18,6 +18,8 @@ def test_import_list_exposes_same_delete_eligibility():
     assert 'AS can_delete' in BACKEND
     assert 'NOT EXISTS (SELECT 1 FROM sales_records sr WHERE sr.import_id = si.id' in BACKEND
     assert 'sr.restaurant_key = ANY($2::text[])' in BACKEND
+    assert 'if allowed is not None else "TRUE"' in BACKEND
+    assert '*([scoped_keys, allowed] if scoped_keys is not None and allowed is not None' in BACKEND
     assert '"can_delete": i["can_delete"]' in BACKEND
 
 

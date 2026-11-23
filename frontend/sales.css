@@ -469,3 +469,12 @@ button:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-v
 .sales-chart-switches label:has(input:disabled){opacity:.5;cursor:not-allowed}
 .sales-leading-chart-area{height:320px;min-height:240px}
 @media(max-width:760px){.sales-leading-chart-area{height:250px}.sales-chart-switches{gap:10px 15px;font-size:12px}}
+
+/* Remove the legacy analytics header shown above the dashboard. */
+.topbar{display:none!important}
+@media(max-width:850px){
+  .topbar{display:flex!important;position:relative;padding:8px 12px;background:transparent;border:0;min-height:48px}
+  .topbar-left{display:flex;align-items:center}
+  .topbar-left .eyebrow,.topbar-left .page-title,.topbar-left .mobile-filter-toggle,.topbar-right{display:none!important}
+  .topbar .mobile-menu{display:grid!important}
+}

@@ -63,3 +63,38 @@
   outline: 3px solid var(--red);
   outline-offset: 3px;
 }
+
+/* Restalytica-inspired dashboard layout, WOKKER brand palette */
+.rest-dashboard{display:grid;grid-template-columns:minmax(0,1fr) 216px;gap:20px;align-items:start}
+.rest-main{min-width:0;display:grid;gap:20px}
+.rest-datebar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+.rest-period-title{font-size:16px;font-weight:750}
+.rest-date-presets{display:flex;flex-wrap:wrap;gap:6px}
+.rest-period{border:0;border-bottom:1px dashed #a1a1a1;background:transparent;color:#4b5563;padding:6px 8px;font-size:12px}
+.rest-period.selected{color:var(--red);border-bottom:2px solid var(--red);font-weight:800}
+.rest-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.rest-kpi,.rest-mini,.rest-graph,.rest-restaurants{background:white;border-radius:10px;padding:14px;box-shadow:var(--shadow)}
+.rest-kpi{min-height:118px;display:flex;flex-direction:column}
+.rest-kpi-top{display:flex;justify-content:space-between;gap:8px;align-items:start;font-size:12px;color:var(--red)}
+.rest-kpi-top strong{color:#333;font-size:16px;text-align:right}
+.rest-kpi-sub{font-size:11px;color:#8b919b;flex:1}
+.rest-kpi-bottom{border-top:1px solid #e7e7e7;padding-top:7px;font-size:11px}
+.rest-delta.negative,.negative{color:#e03440}.rest-delta.positive,.positive{color:#168453}
+.rest-mini-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.rest-mini{min-width:0}.rest-mini h3{font-size:12px;color:var(--red);margin:0 0 9px;font-weight:700}
+.rest-mini-line{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #f0f0f0;padding:5px 0;font-size:11px}
+.rest-mini-line span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rest-mini-line strong{white-space:nowrap}
+.rest-graph{padding:20px 16px}.rest-graph h2{text-align:center;font-size:16px;font-weight:600;margin:0 0 10px}
+.rest-graph-area{height:330px;position:relative}.rest-graph-area canvas{width:100%;height:100%}
+.rest-chart-legend{display:flex;gap:22px;justify-content:center;font-size:11px;color:#4b5563;flex-wrap:wrap;margin-top:12px}
+.rest-chart-legend span:first-child{color:var(--red)}
+.rest-restaurants{position:sticky;top:16px;padding:14px 10px;max-height:calc(100vh - 100px);display:flex;flex-direction:column}
+.rest-restaurants h3{font-size:14px;margin:0 0 8px}.rest-restaurants p{font-size:11px;margin:0 0 10px}
+#rest-search{width:100%;border:1px solid #ddd;border-radius:6px;padding:9px;font-size:12px;margin-bottom:9px}
+.rest-restaurant-list{overflow-y:auto;min-height:100px}
+.rest-restaurant-option{display:flex;gap:9px;align-items:center;border-bottom:1px solid #f0f0f0;padding:7px 4px;font-size:11px;cursor:pointer}
+.rest-restaurant-option[hidden]{display:none}.rest-restaurant-option input{accent-color:var(--red)}
+.rest-restaurants-note{margin-top:10px!important;color:#858585}
+@media(max-width:1250px){.rest-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:900px){.rest-dashboard{grid-template-columns:1fr}.rest-restaurants{position:static;max-height:280px}.rest-restaurant-list{max-height:180px}}
+@media(max-width:520px){.rest-kpis,.rest-mini-grid{grid-template-columns:1fr}.rest-graph-area{height:250px}}

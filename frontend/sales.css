@@ -222,3 +222,18 @@ button:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-v
 @media(max-width:850px){.sidebar{width:260px;box-shadow:10px 0 45px rgba(30,40,55,.12)}.topbar{padding:18px 20px}.workspace-context{padding:16px 20px 0}.workspace-context-note{display:none}}
 @media(max-width:520px){.topbar{padding:17px 14px}.workspace-context{padding:14px 14px 0}.content{padding:16px 12px 35px}.topbar-right{gap:7px}.topbar-right .filter-field{min-width:calc(50% - 5px)}.topbar-right .btn{min-width:calc(50% - 5px)}.panel{padding:17px}.modal-overlay{padding:10px}.modal-body{padding:17px}.modal-header,.modal-footer{padding:16px}.table th,.table td{padding:12px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+/* Shared summaries and workflow surfaces */
+.sales-section-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}
+.sales-section-stats>div{display:grid;gap:9px;background:#fff;border:1px solid #e8ebf0;border-radius:15px;padding:20px 22px;min-width:0}
+.sales-section-stats span{font-size:11px;color:#87909d;font-weight:700}
+.sales-section-stats strong{font-size:clamp(18px,2vw,26px);line-height:1.2;letter-spacing:-.04em;overflow-wrap:anywhere}
+.sales-section-stats>div:first-child{border-top:3px solid #c92c35}
+.sales-workflow-card{display:flex;align-items:center;gap:18px}
+.sales-workflow-card h3{margin:0 0 5px}
+.sales-workflow-card p{margin:0}
+.sales-workflow-icon,.sales-import-hero-mark{width:52px;height:52px;display:grid;place-items:center;background:#fff0f1;color:#c92c35;border-radius:15px;font-size:25px;flex:none}
+.sales-import-hero{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:10px;background:linear-gradient(110deg,#fff,#fff8f8)}
+.sales-import-hero h3{margin:0}
+.sales-import-hero .section-note{max-width:670px;margin:0 0 8px}
+@media(max-width:760px){.sales-section-stats{grid-template-columns:1fr}.sales-section-stats>div{padding:16px 19px}.sales-section-stats strong{font-size:22px}}

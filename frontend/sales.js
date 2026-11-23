@@ -280,7 +280,7 @@
                 '<button type="button" class="sales-turnover-tab" data-turnover-mode="split" aria-pressed="false">Зал / Доставка</button></div>'+
                 '<div class="sales-v2-table-scroll"><table class="sales-v2-table sales-turnover-table" data-turnover-mode="all"><thead><tr><th>Ресторан</th><th>ТО</th><th class="sales-turnover-detail">Зал</th><th class="sales-turnover-detail">Доставка</th></tr></thead><tbody>'+
                 (restaurantTurnoverRows||'<tr><td colspan="4">Нет данных за выбранный период</td></tr>')+
-                '</tbody></table></div><p class="sales-v2-muted sales-turnover-note">«Не распределено» — продажи без назначенного типа заказа в настройках.</p></section>';
+                '</tbody></table></div></section>';
             DOM.content.innerHTML=
                 '<div class="sales-v2-dashboard">'+
                 '<div class="sales-v2-heading"><div><div class="sales-v2-eyebrow">WOKKER SALES <span class="sales-v3-slash">/</span> КОМАНДНЫЙ ЦЕНТР</div><h2>Пульс продаж<span class="sales-v3-heading-period"> · обзор</span></h2><p>Контроль товарооборота, динамики и эффективности ресторанов · '+esc(availableDates)+'</p></div><div class="sales-v2-status"><span class="sales-v2-status-dot"></span> Источник: iiko</div></div>'+ 

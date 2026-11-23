@@ -370,3 +370,58 @@ button:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-v
 @media(max-width:1050px){.sales-v4-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.sales-v4-kpis .sales-v2-kpi:first-child{grid-column:span 2}}
 @media(max-width:760px){.sales-v4-secondary-stats{grid-template-columns:1fr}.sales-v4-layout .sales-v2-main{grid-template-columns:1fr}}
 @media(max-width:430px){.sales-v4-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.sales-v4-kpis .sales-v2-kpi:first-child{grid-column:1/-1}}
+
+/* WOKKER Sales reference layout: dark sidebar and usable phone viewport. */
+.sidebar{background:#192232;border-right:1px solid #283346;color:#e8edf5}
+.sidebar .brand{color:#fff}
+.sidebar .brand small{color:#b0bacb}
+.sidebar .nav-caption{color:#8997ad}
+.sidebar .nav-link{color:#c1cbda}
+.sidebar .nav-link:hover{background:#283549;color:#fff}
+.sidebar .nav-link.active{background:#ba303b;color:#fff}
+.sidebar .sidebar-bottom{border-color:#344154}
+.sidebar .sidebar-bottom span{color:#b0bacb}
+.sidebar .sidebar-bottom .btn{background:#263246;color:#fff;border-color:#3a475a}
+.sidebar .brand-mark{background:#bd3540}
+@media(max-width:850px){
+  html,body{max-width:100%;overflow-x:hidden}
+  .app-shell,.workspace,.content,.topbar{min-width:0;max-width:100%}
+  .sidebar{width:min(290px,84vw);max-width:84vw;left:0;bottom:0;overflow-y:auto;box-shadow:none}
+  .sidebar.open{box-shadow:10px 0 50px #0c162b55}
+  .topbar{padding:17px 16px;gap:14px;align-items:stretch}
+  .topbar-left{width:100%;gap:0}
+  .topbar-left .eyebrow{font-size:9px;letter-spacing:.08em}
+  .topbar-left .page-title{font-size:23px;margin-top:5px}
+  .topbar-right{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end;gap:9px;width:100%}
+  .topbar-right .filter-field{min-width:0;width:auto}
+  .topbar-right .topbar-select{min-width:0;width:100%;max-width:100%;font-size:12px;padding:10px 8px}
+  .topbar-right .btn{min-width:0;width:100%;white-space:normal;font-size:12px;padding:10px 8px}
+  .workspace-context{padding-left:16px;padding-right:16px}
+  .content{padding:17px 14px 45px}
+  .sales-v2-dashboard{gap:15px}
+  .sales-v2-heading h2{font-size:25px}
+  .sales-v2-heading p{font-size:11px}
+  .sales-v2-toolbar{padding:0}
+  .sales-v2-toolbar-hint{display:none}
+  .sales-v2-presets{display:flex;flex-wrap:nowrap;overflow-x:auto;max-width:100%;padding-bottom:3px}
+  .sales-v2-toolbar .rest-period{white-space:nowrap;padding:9px 11px}
+  .sales-v4-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .sales-v4-kpis .sales-v2-kpi:first-child{grid-column:1/-1}
+  .sales-v4-kpis .sales-v2-kpi{min-width:0;min-height:138px;padding:16px 13px}
+  .sales-v4-kpis .sales-v2-kpi strong{overflow-wrap:anywhere;font-size:clamp(18px,5vw,24px)}
+  .sales-v4-kpis .sales-v2-kpi:first-child strong{font-size:clamp(27px,8vw,38px)}
+  .sales-v4-layout,.sales-v4-layout .sales-v2-main,.sales-v4-layout .sales-v2-aside{grid-template-columns:minmax(0,1fr)}
+  .sales-v4-layout .sales-v2-main .sales-v2-trend,.sales-v4-layout .sales-v2-main>section:nth-child(2),.sales-v4-layout .sales-v2-main .sales-v3-hourly-panel{grid-column:1;grid-row:auto}
+  .sales-v2-panel{min-width:0;padding:17px}
+  .sales-v2-panel-head{flex-wrap:wrap}
+  .sales-v3-context-strip strong{white-space:normal;overflow-wrap:anywhere}
+  .sales-v4-insight-grid{grid-template-columns:1fr}
+  .sales-v4-secondary-stats{grid-template-columns:1fr}
+}
+@media(max-width:430px){
+  .topbar-right{gap:8px}
+  .topbar-right .filter-field{font-size:10px}
+  .sales-v4-kpis .sales-v2-kpi:first-child{grid-column:1/-1}
+  .sales-v2-kpi-heading{font-size:10px}
+  .sales-v2-kpi-footer{font-size:10px}
+}

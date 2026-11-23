@@ -603,7 +603,7 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             return web.json_response({"error": "Период должен быть от 1 до 367 дней"}, status=400)
         days = (date_to - date_from).days + 1
     else:
-        days = {"7d": 7, "30d": 30, "90d": 90}.get(period, 30)
+        days = {"1d": 1, "7d": 7, "30d": 30, "90d": 90, "365d": 365}.get(period, 30)
         date_to = datetime.utcnow().date()
         date_from = date_to - timedelta(days=days - 1)
     end_exclusive = date_to + timedelta(days=1)

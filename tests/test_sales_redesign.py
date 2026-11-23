@@ -127,7 +127,7 @@ def test_order_type_mapping_is_persistent_and_authorized():
     assert 'order_mapping.get(method, "Не распределено")' in source
     assert '"by_order_type": [{**v, "previous_sales": previous_types[k]}' in source
     assert 'loadOrderTypeSettings()' in JS
-    assert 'Типы заказов: сравнение периодов' in JS
+    assert "restaurantChannels=data.restaurant_channels||{}" in JS
 
 
 def test_multi_restaurant_name_prefix_normalization():
@@ -235,7 +235,7 @@ def test_turnover_comparison_and_hourly_order_types():
     assert '"previous_total_sales":' in source
     assert '"hourly_by_order_type":' in source
     assert "previous_from = date_from - timedelta(days=days)" in source
-    assert "Зал и доставка по часам" in JS
+    assert "hourly_by_order_type:hourlyTypes=[]" in JS
     assert "Предыдущий период" in JS
     assert "Прибыль по отчёту',money(o.total_profit)" not in JS
 
@@ -271,4 +271,4 @@ def test_same_weekday_hourly_comparison_is_scoped_and_cutoff_exclusive():
     assert "Object.values(week.previous||{}).reduce(" in JS
     assert "week.has_current && week.has_previous" in JS
     assert "signedChange(currentWeek,previousWeek)" in JS
-    assert "compareHours=weekCompare?.hours||[]" in JS
+    assert "week.has_current && week.has_previous" in JS

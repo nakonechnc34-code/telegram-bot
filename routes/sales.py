@@ -716,7 +716,7 @@ async def sales_dashboard(request: web.Request) -> web.Response:
         # Time-series for the leading chart. Both windows use the same restaurant scope.
         # Today compares with the same weekday last week; longer periods compare
         # with the immediately preceding period of equal length.
-        chart_previous_from = date_from - timedelta(days=7) if period == "1d" else previous_from
+        chart_previous_from = date_from - timedelta(days=7) if days == 1 else previous_from
         chart_previous_to = chart_previous_from + timedelta(days=days)
         chart_previous_params = [chart_previous_from, chart_previous_to]
         if scoped_keys is not None:
@@ -764,7 +764,7 @@ async def sales_dashboard(request: web.Request) -> web.Response:
         chart_length = 24 if days == 1 else days
         chart_series = {
             "granularity": "hour" if days == 1 else "day",
-            "comparison_label": "Тот же день прошлой недели" if period == "1d" else "Предыдущий аналогичный период",
+            "comparison_label": "Тот же день прошлой недели" if days == 1 else "Предыдущий аналогичный период",
             "previous_has_data": bool(chart_previous),
             "points": [
                 {

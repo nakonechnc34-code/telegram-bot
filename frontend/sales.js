@@ -205,8 +205,25 @@
         } else if(view==='restaurants') {
             DOM.content.innerHTML=intro('ТО ресторанов','Сравнение ресторанов по товарообороту.')+
             table('Рейтинг ресторанов',['№','Ресторан','ТО'],restRows(restaurants));
+        } else if(view==='reports') {
+            // Reports are calculated automatically from the same authorized,
+            // date-filtered dataset as the dashboard; no extra upload needed.
+            const change=(current,previous)=>previous>0?((current-previous)*100/previous).toFixed(1)+'%':'—';
+            const compareHours=weekCompare?.hours||[];
+            const reportList=[
+                ['Динамика выручки по дням', ['Дата','ТО'], trend.map(t=>'<tr><td>'+formatDate(t.date)+'</td><td>'+money(t.sales)+'</td></tr>').join('')],
+                ['Товарооборот по ресторанам', ['Ресторан','ТО'], restaurants.map(r=>'<tr><td>'+esc(r.name)+'</td><td>'+money(r.total_sales)+'</td></tr>').join('')],
+                ['Типы заказов: сравнение периодов', ['Тип','Текущий ТО','Предыдущий ТО','Изменение'],orderTypes.map(t=>'<tr><td>'+esc(t.type)+'</td><td>'+money(t.sales)+'</td><td>'+money(t.previous_sales)+'</td><td>'+change(t.sales,t.previous_sales)+'</td></tr>').join('')],
+                ['Почасовая выручка', ['Час','ТО','Чеки'],hourly.map(h=>'<tr><td>'+String(h.hour).padStart(2,'0')+':00</td><td>'+money(h.sales)+'</td><td>'+formatNumber(h.checks)+'</td></tr>').join('')],
+                ['Зал и доставка по часам', ['Час','Зал','Доставка','Не распределено'],hourlyTypes.map(h=>'<tr><td>'+String(h.hour).padStart(2,'0')+':00</td><td>'+money(h['Зал'])+'</td><td>'+money(h['Доставка'])+'</td><td>'+money(h['Не распределено'])+'</td></tr>').join('')]
+            ];
+            if(weekCompare) reportList.push(['Сравнение с тем же днём прошлой недели', ['Час','Выбранный день','Неделю назад','Изменение'],
+                compareHours.map(h=>'<tr><td>'+String(h.hour).padStart(2,'0')+':00</td><td>'+money(h.current)+'</td><td>'+money(h.previous)+'</td><td>'+(weekCompare.has_current&&weekCompare.has_previous?change(h.current,h.previous):'—')+'</td></tr>').join('')]);
+            DOM.content.innerHTML=intro('Автоматические отчёты','Формируются из загруженных данных iiko с учётом выбранного ресторана и периода.','АВТОМАТИЧЕСКИ')+
+                '<section class="panel"><h3>Отчётность без ручной подготовки</h3><p class="section-note">Выберите период и ресторан в верхней панели. Все таблицы пересчитываются автоматически. Для выгрузки используйте кнопку «Экспорт».</p></section>'+
+                reportList.map(item=>table(item[0],item[1],item[2])).join('');
         } else if(view==='imports') {
-            DOM.content.innerHTML=intro('Загрузка и история','Импортируйте XLSX/CSV из iiko и отслеживайте последние загрузки.')+
+            DOM.content.innerHTML=intro('Импорт iiko','Загружайте XLSX/CSV из iiko и контролируйте историю обработки.')+
             '<section class="panel"><h3>Новый отчёт</h3><p class="section-note">Выберите ресторан и загрузите файл до 10 МБ. Данные за совпадающие даты и рестораны будут заменены, а не сложены.</p><button class="btn btn-primary" id="import-from-panel">＋ Загрузить файл iiko</button></section>'+
             table('История загрузок',['Файл','Ресторан','Строк','Дата','Статус','Действия'],importRows(imports),'Загрузок пока нет');
             document.getElementById('import-from-panel').addEventListener('click',openUploadModal);
@@ -241,14 +258,14 @@
             const max=Math.max(1,...restaurants.map(r=>r.total_sales||0));
             const bars=restaurants.slice(0,6).map((r,i)=>'<div class="progress-item"><div class="pi-header"><span>'+esc(r.name)+'</span><span>'+money(r.total_sales)+'</span></div><div class="pi-bar-bg"><div class="pi-bar-fill '+['','green','yellow','red'][i%4]+'" style="width:'+Math.max(0,Math.min(100,100*r.total_sales/max))+'%"></div></div></div>').join('');
             DOM.content.innerHTML=intro('Продажи под контролем','Ключевые показатели сети на основе загруженных отчётов.')+
-            comparePanel+(compareReady?compareTable+compareHourlyTable:'')+
+            comparePanel+
             '<section class="kpi-grid">'+cards.map(c=>'<div class="kpi-card"><div class="kpi-label">'+c[0]+'</div><div class="kpi-value">'+c[1]+'</div><div class="kpi-trend">'+c[2]+'</div></div>').join('')+'</section>'+
             '<div class="charts-row"><section class="chart-card"><div class="chart-header"><span class="chart-title">Динамика выручки</span><span class="chart-note">По дням</span></div>'+(trend.length?'<div class="chart-canvas-wrapper"><canvas id="chart-daily-trend" aria-label="График выручки"></canvas></div>':'<div class="empty-state"><strong>Пока нет данных</strong>Загрузите отчёт iiko для построения графика</div>')+'</section>'+
             '<section class="chart-card"><div class="chart-header"><span class="chart-title">Лидеры по выручке</span><span class="chart-note">Рестораны</span></div><div class="progress-list">'+(bars||'<div class="empty-state">Нет данных</div>')+'</div></section></div>'+
-            table('ТО по типу заказа: что выросло и упало',['Тип заказа','Текущий ТО','Предыдущий ТО','Изменение'],typeRows,'Нет данных')+
-            table('Почасовой ТО: зал и доставка',['Час','Зал','Доставка','Не распределено'],hourlyTypes.map(h=>'<tr><td>'+String(h.hour).padStart(2,'0')+':00</td><td>'+money(h['Зал'])+'</td><td>'+money(h['Доставка'])+'</td><td>'+money(h['Не распределено'])+'</td></tr>').join(''),'Нет почасовых данных')+
+            ''+
+            ''+
             '<section class="chart-card"><div class="chart-header"><span class="chart-title">Почасовая выручка</span><span class="chart-note">Час открытия чека · выбранный период и ресторан</span></div><div class="progress-list">'+(hourlyRows||'<div class="empty-state">Нет почасовых данных. Загрузите дневной отчёт iiko с колонкой «Час открытия».</div>')+'</div></section>'+ 
-            table('Последние загрузки',['Файл','Ресторан','Строк','Дата','Статус'],importRows(imports.slice(0,5)),'Загрузок пока нет');
+            '<div class="panel"><h3>Подробная аналитика</h3><p class="section-note">Таблицы и автоматические отчёты доступны в разделе «Отчёты». История файлов — в «Импорт iiko».</p></div>';
             requestAnimationFrame(()=>renderDailyTrendChart(trend));
         }
     }

@@ -253,7 +253,7 @@
                 return '<span class="sales-change '+growthClass(current,prior)+'">'+(n===null?'Нет базы':(n>0?'↑ ':n<0?'↓ ':'→ ')+Math.abs(n).toFixed(1)+'%')+'</span>';
             };
             const kpi=(icon,title,value,subtitle,change)=>'<article class="sales-v2-kpi"><div class="sales-v2-kpi-heading"><span class="sales-v2-icon" aria-hidden="true">'+icon+'</span><span>'+title+'</span></div><strong>'+value+'</strong><div class="sales-v2-kpi-footer">'+(change||'')+'<span>'+subtitle+'</span></div><span class="sales-v3-kpi-corner" aria-hidden="true"></span></article>';
-            const availableDates=trend.length?formatDate(trend[0].date)+' — '+formatDate(trend[trend.length-1].date):'Нет загруженных данных';
+            const availableDates=DOM.dateFrom.value&&DOM.dateTo.value?formatDate(DOM.dateFrom.value)+' — '+formatDate(DOM.dateTo.value):(trend.length?formatDate(trend[0].date)+' — '+formatDate(trend[trend.length-1].date):'Нет загруженных данных');
             const totalHours=hourly.reduce((sum,h)=>sum+Number(h.sales||0),0);
             const topRestaurants=restaurants.filter(r=>Number(r.total_sales)>0).slice(0,8);
             const maxRestaurant=Math.max(1,...topRestaurants.map(r=>Number(r.total_sales||0)));
@@ -424,8 +424,10 @@
             previous:{color:'#9b72c7',value:p=>Number((p.previous||{}).total||0)}
         };
         const visible=selected.filter(key=>series[key]&&(key!=='previous'||chart.previous_has_data));
+        const hasData=(p,key)=>key==='previous'?p.previous_has_data!==false:p.has_data!==false;
         const pad={left:65,right:20,top:20,bottom:44}, width=Math.max(1,W-pad.left-pad.right), height=Math.max(1,H-pad.top-pad.bottom);
-        const max=Math.max(1,...points.flatMap(p=>visible.map(key=>series[key].value(p))));
+        const amounts=points.flatMap(p=>visible.filter(key=>hasData(p,key)).map(key=>series[key].value(p)));
+        const max=Math.max(1,...amounts);
         ctx.clearRect(0,0,W,H);ctx.font='11px sans-serif';
         for(let i=0;i<=4;i++){
             const y=pad.top+height*i/4;
@@ -435,13 +437,23 @@
         visible.forEach(key=>{
             const item=series[key];ctx.strokeStyle=item.color;ctx.lineWidth=2.5;
             ctx.setLineDash(key==='previous'?[6,4]:[]);
-            ctx.beginPath();
+            ctx.beginPath();let drawing=false;
             points.forEach((p,i)=>{
+                if(!hasData(p,key)){drawing=false;return;}
                 const x=pad.left+(points.length===1?width/2:width*i/(points.length-1));
                 const y=pad.top+height*(1-item.value(p)/max);
-                if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+                if(!drawing)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+                drawing=true;
             });
             ctx.stroke();ctx.setLineDash([]);
+            if(points.length===1||points.filter(p=>hasData(p,key)).length===1){
+                points.forEach((p,i)=>{
+                    if(!hasData(p,key))return;
+                    const x=pad.left+(points.length===1?width/2:width*i/(points.length-1));
+                    const y=pad.top+height*(1-item.value(p)/max);
+                    ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fillStyle=item.color;ctx.fill();
+                });
+            }
         });
         ctx.fillStyle='#6b7280';ctx.textAlign='center';ctx.font='10px sans-serif';
         const step=Math.max(1,Math.ceil(points.length/7));
@@ -452,7 +464,7 @@
             ctx.fillText(label,x,H-13);
         });
         if(!visible.length){ctx.textAlign='center';ctx.fillStyle='#6b7280';ctx.fillText('Выберите показатель',W/2,H/2);}
-        else if(!points.some(p=>visible.some(key=>series[key].value(p)>0))){ctx.textAlign='center';ctx.fillStyle='#6b7280';ctx.fillText('Нет данных за выбранный период',W/2,H/2);}
+        else if(!points.some(p=>visible.some(key=>hasData(p,key)))){ctx.textAlign='center';ctx.fillStyle='#6b7280';ctx.fillText('Нет данных за выбранный период',W/2,H/2);}
     }
 
     function renderDailyTrendChart(trend) {

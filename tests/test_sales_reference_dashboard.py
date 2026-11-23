@@ -65,3 +65,23 @@ def test_restaurant_turnover_is_first_dashboard_section_with_channel_split():
     assert 'restaurant_channel_rows = await conn.fetch(' in API
     assert 'FROM sales_records sr {w}' in API
     assert 'restaurant_channels.setdefault(' in API
+
+
+def test_turnover_chart_defaults_to_today_and_is_first():
+    html = (ROOT / "frontend/sales.html").read_text(encoding="utf-8")
+    assert '<option value="1d" selected>Сегодня</option>' in html
+    assert "period: '1d'" in JS
+    assert "sales-leading-chart" in JS
+    assert JS.index("sales-leading-chart") < JS.index("restaurantTurnoverPanel+")
+    for key in ("total", "hall", "delivery", "previous"):
+        assert f'data-sales-chart-series="{key}"' in JS
+    assert "turnoverChart.granularity==='hour'" in JS
+
+
+def test_turnover_chart_uses_scoped_current_and_comparison_periods():
+    assert '"turnover_chart": chart_series' in API
+    assert 'chart_previous_from = date_from - timedelta(days=7) if period == "1d" else previous_from' in API
+    assert 'chart_previous_where, _ = _where(previous_conditions, chart_previous_params)' in API
+    assert 'FROM sales_records sr {w}' in API
+    assert 'FROM sales_records sr {chart_previous_where}' in API
+    assert '"granularity": "hour" if period == "1d" else "day"' in API

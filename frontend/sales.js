@@ -4,7 +4,7 @@
     const state = {
         token: null,
         restaurantKey: null,
-        period: '30d',
+        period: '1d',
         restaurants: [],
         dashboardData: null,
         uploadFile: null,
@@ -197,6 +197,7 @@
     function renderDashboard(data) {
         const {overview:o, daily_trend:trend=[], by_restaurant:restaurants=[], hourly_revenue:hourly=[], hourly_by_order_type:hourlyTypes=[], by_order_type:orderTypes=[], previous_total_sales:previousSales=0, same_weekday_comparison:weekCompare=null, imports=[]} = data;
         const restaurantChannels=data.restaurant_channels||{};
+        const turnoverChart=data.turnover_chart||{points:[],granularity:'day',previous_has_data:false};
         const view=state.view;
         const intro = (title,subtitle,tag='ДАННЫЕ ИЗ ОТЧЁТОВ') => '<div class="intro"><div><h2>'+title+'</h2><p>'+subtitle+'</p></div><span class="eyebrow-tag">'+tag+'</span></div>';
         const table=(title,heads,rows,empty='Нет данных за выбранный период')=>'<section class="table-wrap"><div class="table-title">'+title+'</div><table class="table"><thead><tr>'+heads.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+(rows||'<tr><td colspan="'+heads.length+'" class="text-center">'+empty+'</td></tr>')+'</tbody></table></section>';
@@ -270,6 +271,10 @@
                 '<div class="sales-v2-dashboard">'+
                 '<div class="sales-v2-heading"><div><div class="sales-v2-eyebrow">WOKKER SALES <span class="sales-v3-slash">/</span> КОМАНДНЫЙ ЦЕНТР</div><h2>Пульс продаж<span class="sales-v3-heading-period"> · обзор</span></h2><p>Контроль товарооборота, динамики и эффективности ресторанов · '+esc(availableDates)+'</p></div><div class="sales-v2-status"><span class="sales-v2-status-dot"></span> Источник: iiko</div></div>'+ 
                 '<div class="sales-v2-toolbar"><div class="sales-v2-presets">'+[['1d','Сегодня'],['7d','7 дней'],['30d','30 дней'],['90d','90 дней'],['365d','Год'],['custom','Свой период']].map(p=>'<button type="button" class="rest-period '+(DOM.periodSelect.value===p[0]?'selected':'')+'" data-rest-period="'+p[0]+'">'+p[1]+'</button>').join('')+'</div><span class="sales-v2-toolbar-hint">Период и ресторан можно изменить в верхней панели</span></div>'+
+                '<section class="sales-v2-panel sales-leading-chart"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">ТОВАРООБОРОТ</div><h3>'+(turnoverChart.granularity==='hour'?'Почасовой ТО':'ТО по дням')+'</h3></div><span class="sales-v2-muted">'+esc(availableDates)+'</span></div>'+
+                '<div class="sales-chart-switches"><label><input type="checkbox" data-sales-chart-series="total" checked> Общий ТО</label><label><input type="checkbox" data-sales-chart-series="hall"> Зал</label><label><input type="checkbox" data-sales-chart-series="delivery"> Доставка</label><label><input type="checkbox" data-sales-chart-series="previous" '+(turnoverChart.previous_has_data?'':'disabled')+'> '+esc(turnoverChart.comparison_label||'Аналогичный период')+'</label></div>'+
+                '<div class="rest-graph-area sales-leading-chart-area"><canvas id="sales-turnover-chart" role="img" aria-label="График товарооборота"></canvas></div>'+
+                '<p class="sales-v2-muted">Для сравнения используются фактически загруженные данные iiko. Зал и доставка определяются настройками типов заказов.</p></section>'+
                 restaurantTurnoverPanel+
                 '<div class="sales-v3-context-strip"><div><span class="sales-v3-context-label">АКТИВНЫЙ ПЕРИОД</span><strong>'+esc(availableDates)+'</strong></div><div><span class="sales-v3-context-label">ОХВАТ</span><strong>'+(DOM.restaurantSelect.value?'Один ресторан':'Все доступные рестораны')+'</strong></div><div><span class="sales-v3-context-label">ИСТОЧНИК ДАННЫХ</span><strong>Загруженные отчёты iiko</strong></div></div>'+
                 '<div class="sales-v2-kpis sales-v4-kpis">'+ 
@@ -307,6 +312,10 @@
             search.addEventListener('input',()=>{const term=search.value.toLocaleLowerCase('ru');DOM.content.querySelectorAll('.rest-restaurant-check').forEach(input=>{input.closest('label').hidden=!input.closest('label').textContent.toLocaleLowerCase('ru').includes(term);});});
             document.getElementById('rest-all').addEventListener('change',()=>{DOM.restaurantSelect.value='';loadDashboard();});
             DOM.content.querySelectorAll('.rest-restaurant-check').forEach(input=>input.addEventListener('change',()=>{DOM.restaurantSelect.value=input.value;loadDashboard();}));
+            const chartControls=Array.from(DOM.content.querySelectorAll('[data-sales-chart-series]'));
+            const drawLeadingChart=()=>renderTurnoverChart(turnoverChart,chartControls.filter(el=>el.checked).map(el=>el.dataset.salesChartSeries));
+            chartControls.forEach(el=>el.addEventListener('change',drawLeadingChart));
+            requestAnimationFrame(drawLeadingChart);
             requestAnimationFrame(()=>renderDailyTrendChart(trend));
         }
     }
@@ -373,6 +382,54 @@
             if(page>1){const prev=document.createElement('button');prev.className='btn btn-secondary';prev.textContent='← Назад';prev.addEventListener('click',()=>loadInlineRecords(page-1));pager.appendChild(prev);}
             if(page<(d.pages||1)){const next=document.createElement('button');next.className='btn btn-secondary';next.textContent='Далее →';next.addEventListener('click',()=>loadInlineRecords(page+1));pager.appendChild(next);}
         }catch(e){if(state.view==='records'&&requestId===state.recordsRequest)target.innerHTML='<div class="empty-state"><strong>Ошибка загрузки</strong>'+esc(e.message)+'</div>';}
+    }
+
+    function renderTurnoverChart(chart, selected) {
+        const canvas=document.getElementById('sales-turnover-chart');
+        if(!canvas)return;
+        const points=chart.points||[], parent=canvas.parentElement;
+        const bounds=parent.getBoundingClientRect();
+        if(!bounds.width||!bounds.height)return;
+        const ratio=window.devicePixelRatio||1, W=bounds.width, H=bounds.height;
+        canvas.width=Math.round(W*ratio);canvas.height=Math.round(H*ratio);
+        canvas.style.width=W+'px';canvas.style.height=H+'px';
+        const ctx=canvas.getContext('2d');ctx.scale(ratio,ratio);
+        const series={
+            total:{color:'#c92c35',value:p=>Number(p.total||0)},
+            hall:{color:'#2563eb',value:p=>Number(p.hall||0)},
+            delivery:{color:'#0d9488',value:p=>Number(p.delivery||0)},
+            previous:{color:'#9b72c7',value:p=>Number((p.previous||{}).total||0)}
+        };
+        const visible=selected.filter(key=>series[key]&&(key!=='previous'||chart.previous_has_data));
+        const pad={left:65,right:20,top:20,bottom:44}, width=Math.max(1,W-pad.left-pad.right), height=Math.max(1,H-pad.top-pad.bottom);
+        const max=Math.max(1,...points.flatMap(p=>visible.map(key=>series[key].value(p))));
+        ctx.clearRect(0,0,W,H);ctx.font='11px sans-serif';
+        for(let i=0;i<=4;i++){
+            const y=pad.top+height*i/4;
+            ctx.strokeStyle='#e5e7eb';ctx.beginPath();ctx.moveTo(pad.left,y);ctx.lineTo(W-pad.right,y);ctx.stroke();
+            ctx.fillStyle='#6b7280';ctx.textAlign='right';ctx.fillText(formatNumber(max*(4-i)/4),pad.left-8,y+4);
+        }
+        visible.forEach(key=>{
+            const item=series[key];ctx.strokeStyle=item.color;ctx.lineWidth=2.5;
+            ctx.setLineDash(key==='previous'?[6,4]:[]);
+            ctx.beginPath();
+            points.forEach((p,i)=>{
+                const x=pad.left+(points.length===1?width/2:width*i/(points.length-1));
+                const y=pad.top+height*(1-item.value(p)/max);
+                if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+            });
+            ctx.stroke();ctx.setLineDash([]);
+        });
+        ctx.fillStyle='#6b7280';ctx.textAlign='center';ctx.font='10px sans-serif';
+        const step=Math.max(1,Math.ceil(points.length/7));
+        points.forEach((p,i)=>{
+            if(i%step!==0&&i!==points.length-1)return;
+            const x=pad.left+(points.length===1?width/2:width*i/(points.length-1));
+            const label=chart.granularity==='day'?String(p.label||'').slice(5):p.label;
+            ctx.fillText(label,x,H-13);
+        });
+        if(!visible.length){ctx.textAlign='center';ctx.fillStyle='#6b7280';ctx.fillText('Выберите показатель',W/2,H/2);}
+        else if(!points.some(p=>visible.some(key=>series[key].value(p)>0))){ctx.textAlign='center';ctx.fillStyle='#6b7280';ctx.fillText('Нет данных за выбранный период',W/2,H/2);}
     }
 
     function renderDailyTrendChart(trend) {

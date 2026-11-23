@@ -585,7 +585,7 @@ async def delete_sales_import(request: web.Request) -> web.Response:
 async def sales_dashboard(request: web.Request) -> web.Response:
     user = request['admin']
     body = await request.json()
-    period = body.get("period", "30d")
+    period = body.get("period", "1d")
     key = body.get("restaurant_key")
     allowed = await _allowed_rests(user)
     if allowed is not None and key and key not in allowed:
@@ -604,7 +604,7 @@ async def sales_dashboard(request: web.Request) -> web.Response:
         days = (date_to - date_from).days + 1
     else:
         days = {"1d": 1, "7d": 7, "30d": 30, "90d": 90, "365d": 365}.get(period, 30)
-        date_to = datetime.utcnow().date()
+        date_to = datetime.now(ZoneInfo("Europe/Moscow")).date()
         date_from = date_to - timedelta(days=days - 1)
     end_exclusive = date_to + timedelta(days=1)
     conditions = ["sr.sale_date >= $1", "sr.sale_date < $2"]
@@ -713,7 +713,68 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             + (" AND restaurant_key = ANY($3)" if scoped_keys is not None else ""),
             *([comparison_day, last_week_day, scoped_keys]
               if scoped_keys is not None else [comparison_day, last_week_day]))
+        # Time-series for the leading chart. Both windows use the same restaurant scope.
+        # Today compares with the same weekday last week; longer periods compare
+        # with the immediately preceding period of equal length.
+        chart_previous_from = date_from - timedelta(days=7) if period == "1d" else previous_from
+        chart_previous_to = chart_previous_from + timedelta(days=days)
+        chart_previous_params = [chart_previous_from, chart_previous_to]
+        if scoped_keys is not None:
+            chart_previous_params.append(scoped_keys)
+        chart_previous_where, _ = _where(previous_conditions, chart_previous_params)
+        chart_current = await conn.fetch(
+            f"""SELECT sr.sale_date AS day, sr.payment_method AS method,
+                       CASE WHEN sr.extra_data IS NOT NULL
+                             AND (sr.extra_data::jsonb->>'opening_hour') ~ '^(?:[0-9]|1[0-9]|2[0-3])$'
+                            THEN (sr.extra_data::jsonb->>'opening_hour')::int
+                            ELSE NULL END AS hour,
+                       SUM(sr.total_amount) AS sales
+                FROM sales_records sr {w}
+                GROUP BY 1, 2, 3""", *params)
+        chart_previous = await conn.fetch(
+            f"""SELECT sr.sale_date AS day, sr.payment_method AS method,
+                       CASE WHEN sr.extra_data IS NOT NULL
+                             AND (sr.extra_data::jsonb->>'opening_hour') ~ '^(?:[0-9]|1[0-9]|2[0-3])$'
+                            THEN (sr.extra_data::jsonb->>'opening_hour')::int
+                            ELSE NULL END AS hour,
+                       SUM(sr.total_amount) AS sales
+                FROM sales_records sr {chart_previous_where}
+                GROUP BY 1, 2, 3""", *chart_previous_params)
         order_mapping = await _order_type_mapping(conn)
+
+        def chart_points(rows, start):
+            points = {}
+            for item in rows:
+                offset = (item["day"] - start).days
+                idx = item["hour"] if period == "1d" else offset
+                if idx is None or idx < 0 or idx >= (24 if period == "1d" else days):
+                    continue
+                category = order_mapping.get(item["method"] or "", "Не распределено")
+                point = points.setdefault(idx, {"total": 0.0, "hall": 0.0, "delivery": 0.0})
+                amount = float(item["sales"] or 0)
+                point["total"] += amount
+                if category == "Зал":
+                    point["hall"] += amount
+                elif category == "Доставка":
+                    point["delivery"] += amount
+            return points
+
+        chart_current_points = chart_points(chart_current, date_from)
+        chart_previous_points = chart_points(chart_previous, chart_previous_from)
+        chart_length = 24 if period == "1d" else days
+        chart_series = {
+            "granularity": "hour" if period == "1d" else "day",
+            "comparison_label": "Тот же день прошлой недели" if period == "1d" else "Предыдущий аналогичный период",
+            "previous_has_data": bool(chart_previous),
+            "points": [
+                {
+                    "label": f"{i:02d}:00" if period == "1d" else str(date_from + timedelta(days=i)),
+                    **chart_current_points.get(i, {"total": 0.0, "hall": 0.0, "delivery": 0.0}),
+                    "previous": chart_previous_points.get(i, {"total": 0.0, "hall": 0.0, "delivery": 0.0}),
+                }
+                for i in range(chart_length)
+            ],
+        }
         order_rows = await conn.fetch(
             f"""SELECT sr.payment_method method, SUM(sr.total_amount) sales,
                        SUM(sr.quantity) checks
@@ -812,6 +873,7 @@ async def sales_dashboard(request: web.Request) -> web.Response:
         "hourly_revenue": [{"hour": int(r["opening_hour"]), "sales": float(r["sales"] or 0),
                             "checks": int(r["checks"] or 0)} for r in hourly],
         "restaurant_channels": restaurant_channels,
+        "turnover_chart": chart_series,
         "by_restaurant": [{"key": r["key"], "name": r["name"],
                            "total_sales": float(r["total"] or 0), "profit": float(r["profit"] or 0)} for r in by_rest],
         "by_payment": [{"method": r["method"], "total_sales": float(r["total"] or 0),
@@ -1031,3 +1093,4 @@ async def sales_template(request: web.Request) -> web.Response:
     return web.Response(body=data,
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=sales_template.xlsx"})
+

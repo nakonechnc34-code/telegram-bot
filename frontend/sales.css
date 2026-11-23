@@ -460,3 +460,12 @@ button:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-v
  .sales-turnover-table[data-turnover-mode="split"]{min-width:570px}
  .sales-turnover-table th,.sales-turnover-table td{padding:12px 10px;font-size:11px;white-space:nowrap}
 }
+
+/* First turnover chart: responsive multi-series comparison. */
+.sales-leading-chart{margin-bottom:16px}
+.sales-chart-switches{display:flex;flex-wrap:wrap;gap:12px 22px;margin:8px 0 14px;font-size:13px;font-weight:650;color:#374151}
+.sales-chart-switches label{display:inline-flex;align-items:center;gap:7px;cursor:pointer}
+.sales-chart-switches input{accent-color:#c92c35}
+.sales-chart-switches label:has(input:disabled){opacity:.5;cursor:not-allowed}
+.sales-leading-chart-area{height:320px;min-height:240px}
+@media(max-width:760px){.sales-leading-chart-area{height:250px}.sales-chart-switches{gap:10px 15px;font-size:12px}}

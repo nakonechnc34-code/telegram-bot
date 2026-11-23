@@ -273,13 +273,12 @@
                 '<div class="sales-v3-context-strip"><div><span class="sales-v3-context-label">АКТИВНЫЙ ПЕРИОД</span><strong>'+esc(availableDates)+'</strong></div><div><span class="sales-v3-context-label">ОХВАТ</span><strong>'+(DOM.restaurantSelect.value?'Один ресторан':'Все доступные рестораны')+'</strong></div><div><span class="sales-v3-context-label">ИСТОЧНИК ДАННЫХ</span><strong>Загруженные отчёты iiko</strong></div></div>'+
                 '<div class="sales-v2-kpis sales-v4-kpis">'+ 
                   kpi('₽','Товарооборот',money(total),'к предыдущему периоду',signedChange(total,previous))+
-                  kpi('↗','Предыдущий период',money(previous),'сопоставимый период','')+
-                  kpi('◷','Выручка по часам',money(totalHours),'по загруженным часам','')+
-                  kpi('⌁','Рестораны с продажами',formatNumber(restaurants.filter(r=>Number(r.total_sales)>0).length),'за выбранный период','')+
                   kpi('▤','Средний чек','—','нет данных в сводке iiko','')+
                   kpi('▣','Количество заказов','—','нет данных в сводке iiko','')+
                   kpi('◉','Гостей','—','нет данных в сводке iiko','')+
+                  kpi('%','Доля доставки','—','нет данных в сводке iiko','')+
                 '</div>'+
+                '<div class="sales-v4-secondary-stats"><div><span>Предыдущий период</span><strong>'+money(previous)+'</strong></div><div><span>Выручка по часам</span><strong>'+money(totalHours)+'</strong></div><div><span>Рестораны с продажами</span><strong>'+formatNumber(restaurants.filter(r=>Number(r.total_sales)>0).length)+'</strong></div></div>'+
                 '<div class="sales-v3-section-title"><div><span class="sales-v3-section-index">01 /</span><h3>Динамика и сравнение</h3></div><span>Выручка в разрезе дат и часов</span></div>'+
                 '<div class="sales-v2-layout sales-v4-layout"><div class="sales-v2-main">'+ 
                   '<section class="sales-v2-panel sales-v2-trend"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">ДИНАМИКА</div><h3>Выручка по дням</h3></div><span class="sales-v2-muted">'+esc(availableDates)+'</span></div>'+(trend.length?'<div class="rest-graph-area"><canvas id="chart-daily-trend" aria-label="Динамика выручки"></canvas></div>':'<div class="empty-state">Нет данных. Загрузите отчёт iiko.</div>')+'<div class="sales-v2-legend"><span><i></i> Выручка за период</span><span>Предыдущий период: '+money(previous)+'</span></div></section>'+

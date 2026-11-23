@@ -213,7 +213,7 @@
             const reportList=[
                 ['Динамика выручки по дням', ['Дата','ТО'], trend.map(t=>'<tr><td>'+formatDate(t.date)+'</td><td>'+money(t.sales)+'</td></tr>').join('')],
                 ['Товарооборот по ресторанам', ['Ресторан','ТО'], restaurants.map(r=>'<tr><td>'+esc(r.name)+'</td><td>'+money(r.total_sales)+'</td></tr>').join('')],
-                ['Типы заказов: сравнение периодов', ['Тип','Текущий ТО','Предыдущий ТО','Изменение'],orderTypes.map(t=>'<tr><td>'+esc(t.type)+'</td><td>'+money(t.sales)+'</td><td>'+money(t.previous_sales)+'</td><td>'+change(t.sales,t.previous_sales)+'</td></tr>').join('')],
+                ['Типы заказов: сравнение периодов', ['Тип','Текущий ТО','Предыдущий ТО','Изменение'],orderTypes.map(t=>'<tr><td>'+esc(t.typ)+'</td><td>'+money(t.sales)+'</td><td>'+money(t.previous_sales)+'</td><td>'+change(t.sales,t.previous_sales)+'</td></tr>').join('')],
                 ['Почасовая выручка', ['Час','ТО','Чеки'],hourly.map(h=>'<tr><td>'+String(h.hour).padStart(2,'0')+':00</td><td>'+money(h.sales)+'</td><td>'+formatNumber(h.checks)+'</td></tr>').join('')],
                 ['Зал и доставка по часам', ['Час','Зал','Доставка','Не распределено'],hourlyTypes.map(h=>'<tr><td>'+String(h.hour).padStart(2,'0')+':00</td><td>'+money(h['Зал'])+'</td><td>'+money(h['Доставка'])+'</td><td>'+money(h['Не распределено'])+'</td></tr>').join('')]
             ];

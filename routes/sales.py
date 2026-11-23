@@ -642,6 +642,12 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             {rest_filter}
             GROUP BY r.key, r.name ORDER BY total DESC""", *params)
 
+        # Per-restaurant channel split uses the same authorized scope and date range.
+        restaurant_channel_rows = await conn.fetch(
+            f"""SELECT sr.restaurant_key, sr.payment_method, SUM(sr.total_amount) AS sales
+                FROM sales_records sr {w}
+                GROUP BY sr.restaurant_key, sr.payment_method""", *params)
+
         # Aggregate only records that carry a valid opening hour.
         hour_conditions = conditions + [
             "sr.extra_data IS NOT NULL",
@@ -713,6 +719,16 @@ async def sales_dashboard(request: web.Request) -> web.Response:
                        SUM(sr.quantity) checks
                 FROM sales_records sr {w}
                 GROUP BY sr.payment_method""", *params)
+        restaurant_channels = {}
+        for item in restaurant_channel_rows:
+            key = item["restaurant_key"]
+            category = order_mapping.get(item["payment_method"] or "", "Не распределено")
+            if category not in ("Зал", "Доставка"):
+                category = "Не распределено"
+            channel_totals = restaurant_channels.setdefault(
+                key, {"Зал": 0.0, "Доставка": 0.0, "Не распределено": 0.0})
+            channel_totals[category] += float(item["sales"] or 0)
+
         order_types = {name: {"type": name, "sales": 0.0, "checks": 0}
                        for name in ("Зал", "Доставка", "Не распределено")}
         for item in order_rows:
@@ -795,6 +811,7 @@ async def sales_dashboard(request: web.Request) -> web.Response:
         "hourly_by_order_type": [hourly_types[k] for k in sorted(hourly_types)],
         "hourly_revenue": [{"hour": int(r["opening_hour"]), "sales": float(r["sales"] or 0),
                             "checks": int(r["checks"] or 0)} for r in hourly],
+        "restaurant_channels": restaurant_channels,
         "by_restaurant": [{"key": r["key"], "name": r["name"],
                            "total_sales": float(r["total"] or 0), "profit": float(r["profit"] or 0)} for r in by_rest],
         "by_payment": [{"method": r["method"], "total_sales": float(r["total"] or 0),

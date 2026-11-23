@@ -7,10 +7,10 @@ JS = (ROOT / "frontend/sales.js").read_text(encoding="utf-8")
 
 
 def test_three_primary_sales_sections():
-    assert 'data-view="overview"><span>◫</span> Дашборд' in HTML
-    assert 'data-view="reports"><span>▦</span> Отчёты' in HTML
-    assert 'data-view="imports"><span>⇧</span> Импорт iiko' in HTML
-    assert 'data-view="settings"' in HTML
+    for view, title in (("overview", "Дашборд"), ("reports", "Отчёты"),
+                        ("imports", "Импорт iiko"), ("settings", "Настройки")):
+        assert f'data-view="{view}"' in HTML
+        assert f"<span>{title}</span>" in HTML
 
 
 def test_automatic_reports_derive_from_filtered_dashboard():

@@ -155,3 +155,85 @@
 .sales-v2-restaurant-panel .rest-restaurant-list{max-height:270px;overflow:auto}
 @media(max-width:1250px){.sales-v2-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.sales-v2-layout{grid-template-columns:minmax(0,1fr)}.sales-v2-aside{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){.sales-v2-kpis,.sales-v2-aside{grid-template-columns:minmax(0,1fr)}.sales-v2-heading h2{font-size:23px}.sales-v2-panel{padding:17px}.sales-v2-compare-grid{grid-template-columns:1fr}.sales-v2-toolbar{padding:10px}.sales-v2-toolbar .rest-period{padding:8px 10px}.sales-v2-kpi strong{font-size:28px}}
+
+
+/* WOKKER Sales unified workspace design — dashboard, reports, imports and settings */
+:root{--bg:#f5f6f8;--card:#fff;--ink:#20252d;--muted:#7a8492;--line:#e6e9ee;--red:#c92c35;--red-dark:#a91d28;--red-soft:#fff0f1;--shadow:0 4px 22px rgba(25,34,50,.035);--radius:16px}
+body{background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+button,input,select{transition:border-color .18s,background-color .18s,box-shadow .18s,transform .18s}
+button:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-visible{outline:3px solid rgba(201,44,53,.3);outline-offset:2px}
+.sidebar{width:254px;background:#fff;border-right:1px solid #e8ebf0;padding:26px 16px 20px;box-shadow:3px 0 20px rgba(32,37,45,.015)}
+.sidebar .brand{padding:3px 12px 37px;letter-spacing:.015em}
+.sidebar .brand-mark{border-radius:13px;box-shadow:0 8px 18px rgba(201,44,53,.16)}
+.nav-caption{padding:0 15px 13px;color:#a0a7b2;font-size:10px}
+.side-nav{gap:5px}
+.nav-link{min-height:47px;gap:12px;border:1px solid transparent;border-radius:11px;font-size:13px;font-weight:700}
+.nav-link>span:first-child{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;border-radius:8px;font-size:18px}
+.nav-link.active{background:#fff0f1;border-color:#f9e0e2;color:#bc2731}
+.nav-link.active>span:first-child{background:#ffe0e3}
+.nav-link:not(.active):hover{background:#f7f8fa;color:#2f3540}
+.sidebar-bottom{padding:20px 11px 0}
+.sidebar-system-label{display:flex;align-items:center;gap:7px;line-height:1.5}
+.system-indicator{width:7px;height:7px;border-radius:50%;background:#36a97d;flex:none}
+.sidebar-bottom .btn{width:100%;text-align:center}
+.workspace{background:linear-gradient(180deg,#fff 0,#f5f6f8 240px)}
+.topbar{padding:23px clamp(20px,2.5vw,40px);align-items:center;gap:22px;box-shadow:0 1px 0 #f2f3f6}
+.topbar-left{min-width:180px}
+.topbar .page-title{font-size:clamp(23px,2.2vw,29px);letter-spacing:-.055em}
+.eyebrow{font-size:10px;color:#939ba8}
+.eyebrow-divider{padding:0 5px;color:#c4c9d1}
+.topbar-right{gap:9px}
+.topbar .filter-field{font-size:10px;letter-spacing:.01em;color:#77818f}
+.topbar-select,.form-input{min-height:40px;background:#fbfcfd;border-color:#e4e7ed;border-radius:10px;color:#343b46}
+.topbar-select:hover,.form-input:hover{border-color:#cbd1db}
+.btn{min-height:40px;border-radius:10px;box-shadow:none}
+.btn-primary{box-shadow:0 5px 12px rgba(201,44,53,.12)}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 8px 16px rgba(201,44,53,.18)}
+.workspace-context{display:flex;justify-content:space-between;align-items:center;gap:12px;max-width:1640px;margin:0 auto;padding:22px 32px 0}
+.workspace-context-label{font-size:12px;font-weight:750;color:#535d6b}
+.workspace-context-note{font-size:11px;color:#9aa2ad}
+.content{padding-top:18px;gap:20px}
+.content>.intro,.content>.sales-v2-dashboard{min-width:0}
+.panel,.table-wrap,.chart-card,.kpi-card,.sales-v2-panel{border:1px solid #e8ebf0;box-shadow:0 3px 18px rgba(31,41,55,.028);border-radius:16px}
+.panel{padding:clamp(18px,2vw,27px)}
+.panel h3{margin-top:0;font-size:16px;letter-spacing:-.025em}
+.section-note{line-height:1.65;color:#7d8693}
+.table-wrap{overflow-x:auto}
+.table{min-width:580px}
+.table th{background:#f9fafc;text-transform:none;letter-spacing:.02em}
+.table th,.table td{padding:14px 17px}
+.table tbody tr:hover{background:#f8f9fb}
+.table-title{padding:21px 21px 11px}
+.status-pill{font-weight:750}
+.detail-filters{gap:10px}
+.detail-filters .form-input{min-width:160px}
+.modal-overlay{backdrop-filter:blur(4px);background:rgba(24,30,42,.48)}
+.modal{border:1px solid #e7e9ef;border-radius:19px}
+.modal-header h3{letter-spacing:-.025em}
+.file-upload-area{background:#fcfcfd;border:2px dashed #d9dfe8;border-radius:14px}
+.file-upload-area:hover{border-color:#d65b63;background:#fff8f8}
+.pagination button{border-radius:8px}
+.sales-login-screen{background:radial-gradient(ellipse at 15% 10%,#ffeaec 0,transparent 44%),#f5f6f8}
+.sales-login-card{border:1px solid #e9ebef;border-radius:22px;box-shadow:0 25px 80px rgba(31,41,55,.09)}
+.sales-login-card h1{letter-spacing:-.04em}
+.sales-v2-kpi,.sales-v2-panel{background:#fff}
+.sales-v2-panel:hover{border-color:#dce1e8}
+@media(max-width:1250px){.sidebar{width:225px}.workspace-context{padding:18px 20px 0}}
+@media(max-width:850px){.sidebar{width:260px;box-shadow:10px 0 45px rgba(30,40,55,.12)}.topbar{padding:18px 20px}.workspace-context{padding:16px 20px 0}.workspace-context-note{display:none}}
+@media(max-width:520px){.topbar{padding:17px 14px}.workspace-context{padding:14px 14px 0}.content{padding:16px 12px 35px}.topbar-right{gap:7px}.topbar-right .filter-field{min-width:calc(50% - 5px)}.topbar-right .btn{min-width:calc(50% - 5px)}.panel{padding:17px}.modal-overlay{padding:10px}.modal-body{padding:17px}.modal-header,.modal-footer{padding:16px}.table th,.table td{padding:12px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+/* Shared summaries and workflow surfaces */
+.sales-section-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}
+.sales-section-stats>div{display:grid;gap:9px;background:#fff;border:1px solid #e8ebf0;border-radius:15px;padding:20px 22px;min-width:0}
+.sales-section-stats span{font-size:11px;color:#87909d;font-weight:700}
+.sales-section-stats strong{font-size:clamp(18px,2vw,26px);line-height:1.2;letter-spacing:-.04em;overflow-wrap:anywhere}
+.sales-section-stats>div:first-child{border-top:3px solid #c92c35}
+.sales-workflow-card{display:flex;align-items:center;gap:18px}
+.sales-workflow-card h3{margin:0 0 5px}
+.sales-workflow-card p{margin:0}
+.sales-workflow-icon,.sales-import-hero-mark{width:52px;height:52px;display:grid;place-items:center;background:#fff0f1;color:#c92c35;border-radius:15px;font-size:25px;flex:none}
+.sales-import-hero{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:10px;background:linear-gradient(110deg,#fff,#fff8f8)}
+.sales-import-hero h3{margin:0}
+.sales-import-hero .section-note{max-width:670px;margin:0 0 8px}
+@media(max-width:760px){.sales-section-stats{grid-template-columns:1fr}.sales-section-stats>div{padding:16px 19px}.sales-section-stats strong{font-size:22px}}

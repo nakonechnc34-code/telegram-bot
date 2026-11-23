@@ -200,7 +200,7 @@
         const intro = (title,subtitle,tag='ДАННЫЕ ИЗ ОТЧЁТОВ') => '<div class="intro"><div><h2>'+title+'</h2><p>'+subtitle+'</p></div><span class="eyebrow-tag">'+tag+'</span></div>';
         const table=(title,heads,rows,empty='Нет данных за выбранный период')=>'<section class="table-wrap"><div class="table-title">'+title+'</div><table class="table"><thead><tr>'+heads.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+(rows||'<tr><td colspan="'+heads.length+'" class="text-center">'+empty+'</td></tr>')+'</tbody></table></section>';
         if(view==='settings') {
-            DOM.content.innerHTML=intro('Настройки типов заказа','Назначьте каждому способу оплаты тип заказа: Зал, Доставка или Не распределено.')+'<section class="panel"><div class="loading">Загрузка настроек…</div></section>';
+            DOM.content.innerHTML=intro('Настройки типов заказа','Управляйте распределением продаж по каналам. Изменения применяются к аналитике.')+'<section class="panel sales-workflow-card"><div class="sales-workflow-icon" aria-hidden="true">⚙</div><div><h3>Классификация заказов</h3><p class="section-note">Назначьте каждому способу оплаты тип заказа: Зал, Доставка или Не распределено.</p></div></section><section class="panel"><div class="loading">Загрузка настроек…</div></section>';
             loadOrderTypeSettings();
         } else if(view==='restaurants') {
             DOM.content.innerHTML=intro('ТО ресторанов','Сравнение ресторанов по товарообороту.')+
@@ -219,12 +219,12 @@
             ];
             if(weekCompare) reportList.push(['Сравнение с тем же днём прошлой недели', ['Час','Выбранный день','Неделю назад','Изменение'],
                 compareHours.map(h=>'<tr><td>'+String(h.hour).padStart(2,'0')+':00</td><td>'+money(h.current)+'</td><td>'+money(h.previous)+'</td><td>'+(weekCompare.has_current&&weekCompare.has_previous?change(h.current,h.previous):'—')+'</td></tr>').join('')]);
-            DOM.content.innerHTML=intro('Автоматические отчёты','Формируются из загруженных данных iiko с учётом выбранного ресторана и периода.','АВТОМАТИЧЕСКИ')+
+            DOM.content.innerHTML=intro('Автоматические отчёты','Формируются из загруженных данных iiko с учётом выбранного ресторана и периода.','АВТОМАТИЧЕСКИ')+ '<div class="sales-section-stats"><div><span>Товарооборот за период</span><strong>'+money(o.total_sales||0)+'</strong></div><div><span>Отчётных таблиц</span><strong>'+reportList.length+'</strong></div><div><span>Ресторанов в отчёте</span><strong>'+restaurants.length+'</strong></div></div>'+
                 '<section class="panel"><h3>Отчётность без ручной подготовки</h3><p class="section-note">Выберите период и ресторан в верхней панели. Все таблицы пересчитываются автоматически. Для выгрузки используйте кнопку «Экспорт».</p></section>'+
                 reportList.map(item=>table(item[0],item[1],item[2])).join('');
         } else if(view==='imports') {
-            DOM.content.innerHTML=intro('Импорт iiko','Загружайте XLSX/CSV из iiko и контролируйте историю обработки.')+
-            '<section class="panel"><h3>Новый отчёт</h3><p class="section-note">Выберите ресторан и загрузите файл до 10 МБ. Данные за совпадающие даты и рестораны будут заменены, а не сложены.</p><button class="btn btn-primary" id="import-from-panel">＋ Загрузить файл iiko</button></section>'+
+            DOM.content.innerHTML=intro('Импорт iiko','Загружайте XLSX/CSV из iiko и контролируйте историю обработки.')+ '<div class="sales-section-stats"><div><span>Загрузок в истории</span><strong>'+imports.length+'</strong></div><div><span>Форматы</span><strong>XLSX / CSV</strong></div><div><span>Повторная загрузка</span><strong>Замена данных</strong></div></div>'+
+            '<section class="panel sales-import-hero"><div class="sales-import-hero-mark" aria-hidden="true">⇧</div><h3>Новый отчёт</h3><p class="section-note">Выберите ресторан и загрузите файл до 10 МБ. Данные за совпадающие даты и рестораны будут заменены, а не сложены.</p><button class="btn btn-primary" id="import-from-panel">＋ Загрузить файл iiko</button></section>'+
             table('История загрузок',['Файл','Ресторан','Строк','Дата','Статус','Действия'],importRows(imports),'Загрузок пока нет');
             document.getElementById('import-from-panel').addEventListener('click',openUploadModal);
             DOM.content.querySelectorAll('.sales-delete-import').forEach(button => button.addEventListener('click', () => deleteImport(Number(button.dataset.importId))));

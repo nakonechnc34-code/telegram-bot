@@ -760,7 +760,7 @@ async def sales_dashboard(request: web.Request) -> web.Response:
         deletion_scope = (
             "NOT EXISTS (SELECT 1 FROM sales_records sr WHERE sr.import_id = si.id "
             "AND NOT (sr.restaurant_key = ANY($2::text[])))"
-            if scoped_keys is not None else "TRUE"
+            if allowed is not None else "TRUE"
         )
         imports = await conn.fetch(f"""
             SELECT si.*, u.full_name uploader_name,
@@ -768,7 +768,7 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             FROM sales_imports si
             LEFT JOIN users u ON u.user_id = si.uploaded_by
             {import_filter} ORDER BY si.upload_date DESC LIMIT 20""",
-            *([scoped_keys, scoped_keys] if scoped_keys is not None else []))
+            *([scoped_keys, allowed] if scoped_keys is not None and allowed is not None else ([scoped_keys] if scoped_keys is not None else [])))
 
         summary_filter = "AND restaurant_key = ANY($3)" if scoped_keys is not None else ""
         summaries = await conn.fetch(

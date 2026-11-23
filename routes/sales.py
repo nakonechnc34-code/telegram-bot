@@ -770,6 +770,8 @@ async def sales_dashboard(request: web.Request) -> web.Response:
                 {
                     "label": f"{i:02d}:00" if days == 1 else str(date_from + timedelta(days=i)),
                     **chart_current_points.get(i, {"total": 0.0, "hall": 0.0, "delivery": 0.0}),
+                    "has_data": i in chart_current_points,
+                    "previous_has_data": i in chart_previous_points,
                     "previous": chart_previous_points.get(i, {"total": 0.0, "hall": 0.0, "delivery": 0.0}),
                 }
                 for i in range(chart_length)

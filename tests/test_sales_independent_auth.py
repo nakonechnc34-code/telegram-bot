@@ -1,12 +1,12 @@
-"""Sales must use independent credentials and an explicitly granted permission."""
+"""Sales uses independent credentials; superadmins have implicit access, others need a grant."""
 from pathlib import Path
 from routes.sales import _sales_allowed
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_sales_access_is_explicit_even_for_super_admin():
-    assert not _sales_allowed({"is_super_admin": True, "permissions": {}})
+def test_sales_access_is_implicit_for_super_admin_only():
+    assert _sales_allowed({"is_super_admin": True, "permissions": {}})
     assert not _sales_allowed({"is_admin": True, "permissions": {"users_edit": True}})
     assert _sales_allowed({"is_admin": True, "permissions": {"sales_access": True}})
     assert not _sales_allowed({"permissions": {"sales_access": True}, "is_fired": True})

@@ -10,3 +10,56 @@
 .sales-login-card input { border:1px solid #cbd5e1; border-radius:9px; padding:12px; font:inherit; }
 .sales-login-card input:focus-visible { outline:2px solid #c92935; outline-offset:2px; }
 #sales-login-error { color:#b42318; margin:0; min-height:18px; }
+
+
+/* WOKKER Sales motion system: brand colors stay unchanged.
+   Transform/opacity only for low-cost transitions; no animation on data values. */
+@keyframes sales-enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes sales-bar-reveal {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes sales-modal-enter {
+  from { opacity: 0; transform: translateY(12px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes sales-toast-enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .content > .intro,
+  .content > .kpi-grid,
+  .content > .charts-row,
+  .content > .table-wrap,
+  .content > .panel,
+  .content > .empty-state {
+    animation: sales-enter .42s cubic-bezier(.2,.75,.25,1) both;
+  }
+  .content > .kpi-grid { animation-delay: 45ms; }
+  .content > .charts-row { animation-delay: 85ms; }
+  .content > .table-wrap, .content > .panel { animation-delay: 110ms; }
+  .kpi-card, .chart-card, .panel, .nav-link, .btn, .table tbody tr {
+    transition: transform .2s ease, box-shadow .2s ease, background-color .2s ease, border-color .2s ease;
+  }
+  .kpi-card:hover, .chart-card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(24,32,45,.085); }
+  .btn:not(:disabled):active { transform: scale(.975); }
+  .nav-link:not(.active):hover { transform: translateX(3px); }
+  .pi-bar-fill { transform-origin: left center; animation: sales-bar-reveal .7s cubic-bezier(.2,.75,.25,1) both; }
+  .modal-overlay.active .modal { animation: sales-modal-enter .24s ease-out both; }
+  .toast { animation: sales-toast-enter .22s ease-out both; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .content *, .sidebar *, .topbar *, .modal-overlay *, .toast {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+:where(.nav-link,.btn,.mobile-menu,.modal-close,.sidebar-bottom button):focus-visible {
+  outline: 3px solid var(--red);
+  outline-offset: 3px;
+}

@@ -167,12 +167,18 @@
             '</td><td><span class="status-pill '+(imp.status==='completed'?'':'pending')+'">'+
             esc(imp.status==='completed'?'Загружен':imp.status==='replaced'?'Заменён':imp.status==='error'?'Ошибка':imp.status)+
             '</span></td><td><button type="button" class="btn btn-secondary sales-delete-import" data-import-id="'+
-            Number(imp.id)+'" aria-label="Удалить отчёт '+esc(imp.filename)+'">Удалить</button></td></tr>').join('');
+            Number(imp.id)+'" aria-label="Удалить отчёт '+esc(imp.filename)+'"'+
+            (imp.can_delete === false ? ' disabled title="В отчёте есть рестораны вне вашей территории. Удаление доступно супер-администратору."' : '')+
+            '>'+(imp.can_delete === false ? 'Нет прав на удаление' : 'Удалить')+'</button></td></tr>').join('');
     }
 
     async function deleteImport(importId) {
         const imp = (state.dashboardData?.imports || []).find(item => item.id === importId);
         if (!imp) return;
+        if (imp.can_delete === false) {
+            showToast('Отчёт содержит рестораны вне вашей территории. Обратитесь к супер-администратору.', 'error');
+            return;
+        }
         if (!window.confirm('Удалить отчёт «'+imp.filename+'»? Связанные с ним данные продаж будут удалены из аналитики. Действие нельзя отменить.')) return;
         const button = DOM.content.querySelector('.sales-delete-import[data-import-id="'+importId+'"]');
         if (button) button.disabled = true;

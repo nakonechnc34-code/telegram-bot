@@ -31,8 +31,12 @@ routes = web.RouteTableDef()
 # ==================== ХЕЛПЕРЫ ====================
 
 def _sales_allowed(user):
-    """Sales access is explicitly assigned in WOKKER Control, including for admins."""
-    if not user or user.get("is_fired") or not (user.get("is_admin") or user.get("is_super_admin")):
+    """Superadmins have implicit Sales access; other admins require an explicit grant."""
+    if not user or user.get("is_fired"):
+        return False
+    if user.get("is_super_admin"):
+        return True
+    if not user.get("is_admin"):
         return False
     perms = user.get("permissions") or {}
     if isinstance(perms, str):
@@ -553,7 +557,7 @@ async def delete_sales_import(request: web.Request) -> web.Response:
                 "SELECT DISTINCT restaurant_key FROM sales_records WHERE import_id=$1", import_id)
             keys = {imp["restaurant_key"]} | {row["restaurant_key"] for row in affected}
             if allowed is not None and not keys.issubset(set(allowed)):
-                return web.json_response({"error": "Нет доступа к одному или нескольким ресторанам"}, status=403)
+                return web.json_response({"error": "Отчёт содержит данные ресторанов вне вашей территории. Удалить его целиком может супер-администратор."}, status=403)
             # Lock restaurants in stable order, consistent with the upload transaction.
             for key in sorted(keys):
                 await conn.fetchval("SELECT key FROM restaurants WHERE key=$1 FOR UPDATE", key)
@@ -750,12 +754,21 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             f"SUM(sr.total_amount) total, COUNT(*) c "
             f"FROM sales_records sr {w} GROUP BY sr.payment_method ORDER BY total DESC", *params)
 
+        # An import may contain rows for multiple restaurants even when its
+        # history record is attached to a single restaurant. Match deletion scope.
         import_filter = "WHERE si.restaurant_key = ANY($1)" if scoped_keys is not None else ""
+        deletion_scope = (
+            "NOT EXISTS (SELECT 1 FROM sales_records sr WHERE sr.import_id = si.id "
+            "AND NOT (sr.restaurant_key = ANY($2::text[])))"
+            if allowed is not None else "TRUE"
+        )
         imports = await conn.fetch(f"""
-            SELECT si.*, u.full_name uploader_name FROM sales_imports si
+            SELECT si.*, u.full_name uploader_name,
+                   {deletion_scope} AS can_delete
+            FROM sales_imports si
             LEFT JOIN users u ON u.user_id = si.uploaded_by
             {import_filter} ORDER BY si.upload_date DESC LIMIT 20""",
-            *([scoped_keys] if scoped_keys is not None else []))
+            *([scoped_keys, allowed] if scoped_keys is not None and allowed is not None else ([scoped_keys] if scoped_keys is not None else [])))
 
         summary_filter = "AND restaurant_key = ANY($3)" if scoped_keys is not None else ""
         summaries = await conn.fetch(
@@ -779,7 +792,7 @@ async def sales_dashboard(request: web.Request) -> web.Response:
                         "count": int(r["c"] or 0)} for r in by_payment],
         "imports": [{"id": i["id"], "filename": i["filename"], "restaurant_key": i["restaurant_key"],
                      "upload_date": str(i["upload_date"]), "rows_count": int(i["rows_count"] or 0),
-                     "status": i["status"], "error_message": i["error_message"],
+                     "status": i["status"], "can_delete": i["can_delete"], "error_message": i["error_message"],
                      "uploader_name": i["uploader_name"]} for i in imports],
         "daily_summaries": [{"date": str(s["summary_date"]), "total_sales": float(s["total_sales"] or 0),
                              "total_cost": float(s["total_cost"] or 0), "total_profit": float(s["total_profit"] or 0),

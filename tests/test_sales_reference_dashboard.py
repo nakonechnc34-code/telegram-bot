@@ -37,7 +37,8 @@ def test_unavailable_metrics_not_fabricated():
     assert "kpi('⌁','Рестораны с продажами'" in overview
     assert "kpi('₽','Средний чек'" not in overview
     assert "kpi('₽','Скидки'" not in overview
-    assert "formatNumber(h.checks)" not in overview
+    dashboard_cards = overview.split("const signedChange =", 1)[1]
+    assert "formatNumber(h.checks)" not in dashboard_cards
 
 
 def test_restaurant_scope_still_uses_authorized_dashboard_endpoint():

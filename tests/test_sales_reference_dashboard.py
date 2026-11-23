@@ -59,6 +59,8 @@ def test_restaurant_turnover_is_first_dashboard_section_with_channel_split():
     for label in ("ТО по ресторанам", "Зал / Доставка"):
         assert label in overview
     assert "sales-turnover-unassigned" not in overview
+    turnover_panel = overview.split("const restaurantTurnoverPanel=", 1)[1].split("DOM.content.innerHTML=", 1)[0]
+    assert "Не распределено" not in turnover_panel
     assert '"restaurant_channels": restaurant_channels' in API
     assert 'restaurant_channel_rows = await conn.fetch(' in API
     assert 'FROM sales_records sr {w}' in API

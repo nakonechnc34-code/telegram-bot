@@ -725,12 +725,27 @@ async def sales_dashboard(request: web.Request) -> web.Response:
         chart_current = await conn.fetch(
             f"""SELECT sr.sale_date AS day, sr.payment_method AS method,
                        CASE WHEN sr.extra_data IS NOT NULL
-                             AND (sr.extra_data::jsonb->>'opening_hour') ~ '^(?:[0-9]|1[0-9]|2[0-3])
+                             AND (sr.extra_data::jsonb->>'opening_hour') ~ '^(?:[0-9]|1[0-9]|2[0-3])$'
+                            THEN (sr.extra_data::jsonb->>'opening_hour')::int
+                            ELSE NULL END AS hour,
+                       SUM(sr.total_amount) AS sales
+                FROM sales_records sr {w}
+                GROUP BY 1, 2, 3""", *params)
+        chart_previous = await conn.fetch(
+            f"""SELECT sr.sale_date AS day, sr.payment_method AS method,
+                       CASE WHEN sr.extra_data IS NOT NULL
+                             AND (sr.extra_data::jsonb->>'opening_hour') ~ '^(?:[0-9]|1[0-9]|2[0-3])$'
+                            THEN (sr.extra_data::jsonb->>'opening_hour')::int
+                            ELSE NULL END AS hour,
+                       SUM(sr.total_amount) AS sales
+                FROM sales_records sr {chart_previous_where}
+                GROUP BY 1, 2, 3""", *chart_previous_params)
+        order_mapping = await _order_type_mapping(conn)
+
         def chart_points(rows, start):
             points = {}
             for item in rows:
                 offset = (item["day"] - start).days
-                # A daily point includes all sales, including those without an hour.
                 idx = item["hour"] if period == "1d" else offset
                 if idx is None or idx < 0 or idx >= (24 if period == "1d" else days):
                     continue

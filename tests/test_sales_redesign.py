@@ -8,7 +8,7 @@ CSS = (ROOT / "frontend/sales.css").read_text(encoding="utf-8")
 
 
 def test_sales_views_have_navigation():
-    for view in ("overview", "restaurants", "imports", "settings"):
+    for view in ("overview", "reports", "imports", "settings"):
         assert f'data-view="{view}"' in HTML
     assert "state.view=button.dataset.view" in JS
     assert 'data-view="products"' not in HTML
@@ -127,7 +127,7 @@ def test_order_type_mapping_is_persistent_and_authorized():
     assert 'order_mapping.get(method, "Не распределено")' in source
     assert '"by_order_type": [{**v, "previous_sales": previous_types[k]}' in source
     assert 'loadOrderTypeSettings()' in JS
-    assert 'ТО по типу заказа: что выросло и упало' in JS
+    assert 'Типы заказов: сравнение периодов' in JS
 
 
 def test_multi_restaurant_name_prefix_normalization():
@@ -235,7 +235,7 @@ def test_turnover_comparison_and_hourly_order_types():
     assert '"previous_total_sales":' in source
     assert '"hourly_by_order_type":' in source
     assert "previous_from = date_from - timedelta(days=days)" in source
-    assert "Почасовой ТО: зал и доставка" in JS
+    assert "Зал и доставка по часам" in JS
     assert "Предыдущий период" in JS
     assert "Прибыль по отчёту',money(o.total_profit)" not in JS
 

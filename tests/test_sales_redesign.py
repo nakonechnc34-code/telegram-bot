@@ -264,6 +264,11 @@ def test_same_weekday_hourly_comparison_is_scoped_and_cutoff_exclusive():
     assert "opening_hour')::int < $3" in backend
     assert 'compare_filter = "AND sr.restaurant_key = ANY($4)"' in backend
     assert '"same_weekday_comparison": day_comparison' in backend
-    assert "weekCompare.current[type]" in JS
-    assert "weekCompare.previous[type]" in JS
-    assert "compareReady=weekCompare?.has_current && weekCompare?.has_previous" in JS
+    # The dashboard now aggregates all order types into a single comparison KPI.
+    # Keep the contract tied to the actual comparison data and readiness flags.
+    assert "same_weekday_comparison:weekCompare=null" in JS
+    assert "Object.values(week.current||{}).reduce(" in JS
+    assert "Object.values(week.previous||{}).reduce(" in JS
+    assert "week.has_current&&week.has_previous" in JS
+    assert "growthLabel(currentWeek,previousWeek)" in JS
+    assert "compareHours=weekCompare?.hours||[]" in JS

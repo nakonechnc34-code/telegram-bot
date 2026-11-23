@@ -13,15 +13,11 @@ def test_three_primary_sales_sections():
         assert f"<span>{title}</span>" in HTML
 
 
-def test_automatic_reports_derive_from_filtered_dashboard():
+def test_reports_tab_is_completely_empty():
     assert "else if(view==='reports')" in JS
-    assert "Динамика выручки по дням" in JS
-    assert "Товарооборот по ресторанам" in JS
-    assert "Типы заказов: сравнение периодов" in JS
-    assert "Почасовая выручка" in JS
-    assert "Зал и доставка по часам" in JS
-    assert "esc(t.typ)" in JS
-    assert "reportList.map(item=>table(" in JS
+    reports = JS.split("} else if(view==='reports') {", 1)[1].split("} else if(view==='imports') {", 1)[0]
+    assert reports.strip() == "DOM.content.innerHTML='';"
+    assert "reportList.map(item=>table(" not in JS
 
 
 def test_iiko_import_still_has_upload_and_delete():

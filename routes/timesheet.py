@@ -847,3 +847,80 @@ async def handle_accrual_reject(request):
 
     await _run(_sync)
     return web.json_response({"ok": True})
+
+
+def _sync_employee_payment_summary(user_id, date_from, date_to):
+    """Read-only summary scoped to the authenticated employee."""
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT
+                    COALESCE(t.total_hours, 0) AS total_hours,
+                    CASE WHEN u.payment_type = 'fixed'
+                         THEN COALESCE(NULLIF(u.rate, 0), pr.rate, 0)
+                         ELSE COALESCE(t.total_hours, 0) *
+                              COALESCE(NULLIF(u.rate, 0), pr.rate, 0)
+                    END AS timesheet_accrued,
+                    COALESCE(p.extra_accrued, 0) AS extra_accrued,
+                    COALESCE(p.paid, 0) AS paid
+                FROM users u
+                LEFT JOIN position_rates pr ON pr.position_name = u.position
+                LEFT JOIN LATERAL (
+                    SELECT SUM(hours) AS total_hours
+                    FROM timesheet_records
+                    WHERE user_id = u.user_id
+                      AND work_date BETWEEN %s::date AND %s::date
+                ) t ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT
+                        SUM(amount) FILTER (
+                            WHERE record_type = 'accrual' AND status = 'approved'
+                        ) AS extra_accrued,
+                        SUM(amount) FILTER (
+                            WHERE record_type = 'payout' AND status = 'approved'
+                        ) AS paid
+                    FROM payments
+                    WHERE user_id = u.user_id
+                      AND payment_date BETWEEN %s::date AND %s::date
+                ) p ON TRUE
+                WHERE u.user_id = %s
+            """, (date_from, date_to, date_from, date_to, user_id))
+            row = cur.fetchone()
+            if row is None:
+                return None
+            hours = float(row["total_hours"] or 0)
+            accrued = float(row["timesheet_accrued"] or 0)
+            extra = float(row["extra_accrued"] or 0)
+            paid = float(row["paid"] or 0)
+            return {
+                "total_hours": hours,
+                "timesheet_accrued": accrued,
+                "extra_accrued": extra,
+                "paid": paid,
+                "remaining": accrued + extra - paid,
+            }
+
+
+@routes.post('/api/payments/employee')
+async def handle_employee_payment_summary(request):
+    user, err = await get_auth_user(request)
+    if err:
+        return denied(err)
+    try:
+        body = await request.json()
+    except (ValueError, TypeError):
+        return web.json_response({"error": "invalid_json"}, status=400)
+    if not isinstance(body, dict):
+        return web.json_response({"error": "invalid_json"}, status=400)
+    try:
+        date_from, date_to = _date_range(body)
+    except (ValueError, TypeError, OverflowError):
+        return web.json_response({"error": "invalid_dates"}, status=400)
+
+    # Never trust a client-supplied user_id: employees may only read their own pay.
+    summary = await _run(
+        _sync_employee_payment_summary, user["user_id"], date_from, date_to
+    )
+    if summary is None:
+        return web.json_response({"error": "user_not_found"}, status=404)
+    return web.json_response(summary)

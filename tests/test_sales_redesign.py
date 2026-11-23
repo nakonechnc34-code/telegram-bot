@@ -269,6 +269,6 @@ def test_same_weekday_hourly_comparison_is_scoped_and_cutoff_exclusive():
     assert "same_weekday_comparison:weekCompare=null" in JS
     assert "Object.values(week.current||{}).reduce(" in JS
     assert "Object.values(week.previous||{}).reduce(" in JS
-    assert "week.has_current&&week.has_previous" in JS
-    assert "growthLabel(currentWeek,previousWeek)" in JS
+    assert "week.has_current && week.has_previous" in JS
+    assert "signedChange(currentWeek,previousWeek)" in JS
     assert "compareHours=weekCompare?.hours||[]" in JS

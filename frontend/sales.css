@@ -102,3 +102,56 @@
 /* Explicit checkbox styling for restaurant scope selection. */
 .rest-restaurant-check{width:15px;height:15px;flex:0 0 15px;margin:0;accent-color:var(--red);cursor:pointer}
 .rest-restaurant-check:focus-visible{outline:2px solid var(--red);outline-offset:3px}
+
+
+/* Sales analytics workspace v2 — original design, responsive layout */
+.sales-v2-dashboard{display:grid;gap:20px;color:#252a35}
+.sales-v2-heading{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}
+.sales-v2-heading h2{font-size:27px;letter-spacing:-.045em;margin:4px 0 3px;font-weight:800}
+.sales-v2-heading p,.sales-v2-muted{color:#87909d;font-size:12px;margin:0}
+.sales-v2-eyebrow{font-size:10px;letter-spacing:.13em;color:#a0a8b4;font-weight:800}
+.sales-v2-status{display:flex;align-items:center;gap:8px;padding:9px 13px;border-radius:999px;border:1px solid #dcefe7;background:#f5fbf8;color:#23875c;font-weight:700;font-size:11px}
+.sales-v2-status-dot{width:7px;height:7px;background:#29aa72;border-radius:50%}
+.sales-v2-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:white;border:1px solid var(--line);border-radius:14px;padding:10px 15px}
+.sales-v2-presets{display:flex;gap:5px;flex-wrap:wrap}
+.sales-v2-toolbar .rest-period{border:0;background:transparent;border-radius:8px;padding:9px 14px;font-weight:750;font-size:12px;color:#7b8491}
+.sales-v2-toolbar .rest-period.selected{background:#c92c35;color:#fff}
+.sales-v2-toolbar-hint{font-size:11px;color:#a0a7b1}
+.sales-v2-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:15px}
+.sales-v2-kpi{min-width:0;background:white;border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:0 5px 22px rgba(20,35,55,.035)}
+.sales-v2-kpi-heading{display:flex;align-items:center;gap:10px;color:#7c8491;font-weight:700;font-size:12px}
+.sales-v2-icon{width:30px;height:30px;display:grid;place-items:center;background:#f7f8fa;color:#c92c35;border-radius:9px;font-size:17px}
+.sales-v2-kpi strong{display:block;font-size:clamp(22px,2.15vw,33px);line-height:1.3;letter-spacing:-.045em;margin:16px 0 12px;white-space:nowrap}
+.sales-v2-kpi-footer{display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:#a0a6b0;font-size:10px}
+.sales-change{display:inline-flex;align-items:center;padding:5px 8px;border-radius:7px;background:#f1f3f5;color:#7b8490;font-weight:800;font-size:11px;white-space:nowrap}
+.sales-change.positive{color:#159567;background:#e9f8f1}.sales-change.negative{color:#d64a56;background:#fff0f1}
+.sales-v2-layout{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(290px,1fr);gap:17px;align-items:start}
+.sales-v2-main,.sales-v2-aside{display:grid;gap:17px;min-width:0}
+.sales-v2-panel{background:white;border:1px solid var(--line);border-radius:16px;padding:23px;min-width:0;box-shadow:0 4px 22px rgba(20,35,55,.028)}
+.sales-v2-panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.sales-v2-panel-head h3{margin:3px 0 0;font-size:17px;letter-spacing:-.025em}
+.sales-v2-trend .rest-graph-area{height:300px}
+.sales-v2-legend{display:flex;gap:18px;align-items:center;flex-wrap:wrap;color:#9ba3ad;font-size:11px;margin-top:16px}
+.sales-v2-legend i{display:inline-block;width:8px;height:8px;background:#c92c35;border-radius:50%;margin-right:6px}
+.sales-v2-compare-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:15px}
+.sales-v2-compare-grid>div{padding:15px;background:#f7f8fa;border-radius:11px;min-width:0}
+.sales-v2-compare-grid span{display:block;font-size:11px;color:#88919d;margin-bottom:8px}
+.sales-v2-compare-grid strong{font-size:clamp(14px,1.6vw,21px);letter-spacing:-.035em}
+.sales-v2-table-scroll{overflow:auto;max-height:320px;margin-top:17px}
+.sales-v2-table{width:100%;border-collapse:collapse;font-size:12px}
+.sales-v2-table th{position:sticky;top:0;background:#fafbfc;color:#8a94a0;text-align:left;font-weight:700}
+.sales-v2-table th,.sales-v2-table td{padding:12px 14px;border-bottom:1px solid #eff1f4;white-space:nowrap}
+.sales-v2-ranking{display:grid;gap:18px}
+.sales-v2-rank{display:flex;gap:12px;align-items:flex-start}
+.sales-v2-rank-number{color:#a9b0bb;font-size:12px;font-weight:800;padding-top:2px}
+.sales-v2-rank-body{flex:1;min-width:0}
+.sales-v2-rank-top{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12px;margin-bottom:9px}
+.sales-v2-rank-top span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#59616e}
+.sales-v2-rank-top strong{font-size:12px;white-space:nowrap}
+.sales-v2-meter{height:6px;background:#f0f2f5;border-radius:10px;overflow:hidden}
+.sales-v2-meter>span{display:block;height:100%;background:#c92c35;border-radius:10px}
+.sales-v2-meter.channel>span{background:#db8d91}
+.sales-v2-restaurant-panel input[type=search]{width:100%;border:1px solid #e5e8ed;padding:11px 12px;border-radius:9px;margin:15px 0 10px}
+.sales-v2-restaurant-panel .rest-restaurant-list{max-height:270px;overflow:auto}
+@media(max-width:1250px){.sales-v2-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.sales-v2-layout{grid-template-columns:minmax(0,1fr)}.sales-v2-aside{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){.sales-v2-kpis,.sales-v2-aside{grid-template-columns:minmax(0,1fr)}.sales-v2-heading h2{font-size:23px}.sales-v2-panel{padding:17px}.sales-v2-compare-grid{grid-template-columns:1fr}.sales-v2-toolbar{padding:10px}.sales-v2-toolbar .rest-period{padding:8px 10px}.sales-v2-kpi strong{font-size:28px}}

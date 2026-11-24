@@ -563,3 +563,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-v
 .hourly-report-table tbody tr.hourly-summary th{border-left-color:#b7791f}
 
 .hourly-report-table tbody .hourly-territory-heading th{background:#dfe6ef;color:#243449;text-align:left;font-weight:800;padding:12px;border-top:3px solid #aebaca}.hourly-report-table tbody .hourly-company{background:#fce1e4;font-weight:800}.hourly-report-table tbody .hourly-company th{border-left-color:#c92535}
+
+/* Keep navigation visible against the light mobile header. */
+@media(max-width:850px){
+  .topbar .mobile-menu{display:grid!important;visibility:visible;opacity:1;color:#fff;background:#c92535;border:1px solid #b51e2b;border-radius:10px;width:44px;height:44px;flex:0 0 44px;place-items:center}
+  .topbar .mobile-menu .sales-nav-icon{color:#fff;stroke:currentColor}
+}

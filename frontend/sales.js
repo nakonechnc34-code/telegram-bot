@@ -11,6 +11,7 @@
         detailPage: 1,
         view: 'overview',
         dashboardRequest: 0,
+        selectedRestaurants: null,
         productsRequest: 0,
         recordsRequest: 0,
     };
@@ -141,7 +142,7 @@
         try {
             const res = await apiFetch('/api/sales/dashboard', {
                 method: 'POST',
-                body: JSON.stringify({ restaurant_key: restaurantKey, period, date_from: DOM.dateFrom.value, date_to: DOM.dateTo.value, comparison_date: DOM.comparisonDate.value, comparison_hour: Number(DOM.comparisonHour.value) }),
+                body: JSON.stringify({ restaurant_key: restaurantKey, restaurant_keys: state.selectedRestaurants, period, date_from: DOM.dateFrom.value, date_to: DOM.dateTo.value, comparison_date: DOM.comparisonDate.value, comparison_hour: Number(DOM.comparisonHour.value) }),
             });
 
             if (requestId !== state.dashboardRequest) return;
@@ -263,7 +264,8 @@
             const peakHour=Math.max(1,...hourly.map(h=>Number(h.sales||0)));
             const hourRows=hourly.map(h=>'<tr><td><span class="sales-v3-hour-label">'+String(h.hour).padStart(2,'0')+':00</span></td><td><div class="sales-v3-hour-cell"><span class="sales-v3-hour-track"><span style="width:'+Math.max(0,Math.min(100,Number(h.sales||0)/peakHour*100)).toFixed(1)+'%"></span></span><strong>'+money(h.sales)+'</strong></div></td></tr>').join('');
             const comparedHours=(week.hours||[]).map(h=>'<tr><td>'+String(h.hour).padStart(2,'0')+':00</td><td>'+money(h.current)+'</td><td>'+money(h.previous)+'</td><td>'+signedChange(h.current,h.previous)+'</td></tr>').join('');
-            const options=state.restaurants.map(r=>'<label class="rest-restaurant-option"><input type="checkbox" class="rest-restaurant-check" value="'+esc(r.key)+'" '+(!DOM.restaurantSelect.value||DOM.restaurantSelect.value===r.key?'checked':'')+'><span>'+esc(r.name)+'</span></label>').join('');
+            const selectedRestaurants=state.selectedRestaurants===null?state.restaurants.map(r=>r.key):state.selectedRestaurants;
+            const options=state.restaurants.map(r=>'<label class="rest-restaurant-option"><input type="checkbox" class="rest-restaurant-check" value="'+esc(r.key)+'" '+(selectedRestaurants.includes(r.key)?'checked':'')+'><span>'+esc(r.name)+'</span></label>').join('');
             const restaurantTurnoverRows=restaurants.map(r=>{
                 const channels=restaurantChannels[r.key]||{};
                 const hall=Number(channels['Зал']||0);
@@ -282,12 +284,15 @@
                 '<div class="sales-v2-dashboard">'+
                 '<div class="sales-v2-heading"><div><div class="sales-v2-eyebrow">WOKKER SALES <span class="sales-v3-slash">/</span> КОМАНДНЫЙ ЦЕНТР</div><h2>Пульс продаж<span class="sales-v3-heading-period"> · обзор</span></h2><p>Контроль товарооборота, динамики и эффективности ресторанов · '+esc(availableDates)+'</p></div><div class="sales-v2-status"><span class="sales-v2-status-dot"></span> Источник: iiko</div></div>'+ 
                 '<div class="sales-v2-toolbar"><div class="sales-v2-presets">'+[['1d','Сегодня'],['7d','7 дней'],['30d','30 дней'],['90d','90 дней'],['365d','Год']].map(p=>'<button type="button" class="rest-period '+(DOM.periodSelect.value===p[0]?'selected':'')+'" data-rest-period="'+p[0]+'">'+p[1]+'</button>').join('')+'</div><div class="sales-v2-date-range"><label>С даты <input type="date" id="sales-inline-date-from" value="'+esc(DOM.dateFrom.value||'')+'"></label><label>По дату <input type="date" id="sales-inline-date-to" value="'+esc(DOM.dateTo.value||'')+'"></label></div></div>'+
+                '<div class="sales-chart-filter-layout">'+
                 '<section class="sales-v2-panel sales-leading-chart"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">ТОВАРООБОРОТ</div><h3>'+(turnoverChart.granularity==='hour'?'Почасовой ТО':'ТО по дням')+'</h3></div><span class="sales-v2-muted">'+esc(availableDates)+'</span></div>'+
                 '<div class="sales-chart-switches"><label><input type="checkbox" data-sales-chart-series="total" checked> Общий ТО</label><label><input type="checkbox" data-sales-chart-series="hall"> Зал</label><label><input type="checkbox" data-sales-chart-series="delivery"> Доставка</label><label><input type="checkbox" data-sales-chart-series="previous" '+(turnoverChart.previous_has_data?'':'disabled')+'> '+esc(turnoverChart.comparison_label||'Аналогичный период')+'</label></div>'+
                 '<div class="rest-graph-area sales-leading-chart-area"><canvas id="sales-turnover-chart" role="img" aria-label="График товарооборота"></canvas></div>'+
                 '<p class="sales-v2-muted">Для сравнения используются фактически загруженные данные iiko. Зал и доставка определяются настройками типов заказов.</p></section>'+
+                '<section class="sales-v2-panel sales-v2-restaurant-panel"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">ФИЛЬТР</div><h3>Рестораны</h3></div></div><p class="sales-v2-muted">Выбрано '+selectedRestaurants.length+' из '+state.restaurants.length+'</p><input id="rest-search" type="search" placeholder="Найти ресторан…" aria-label="Поиск по ресторанам"><div class="rest-restaurant-list"><label class="rest-restaurant-option"><input type="checkbox" id="rest-all" '+(selectedRestaurants.length===state.restaurants.length?'checked':'')+'> Все рестораны</label>'+options+'</div></section>'+
+                '</div>'+
                 restaurantTurnoverPanel+
-                '<div class="sales-v3-context-strip"><div><span class="sales-v3-context-label">АКТИВНЫЙ ПЕРИОД</span><strong>'+esc(availableDates)+'</strong></div><div><span class="sales-v3-context-label">ОХВАТ</span><strong>'+(DOM.restaurantSelect.value?'Один ресторан':'Все доступные рестораны')+'</strong></div><div><span class="sales-v3-context-label">ИСТОЧНИК ДАННЫХ</span><strong>Загруженные отчёты iiko</strong></div></div>'+
+                '<div class="sales-v3-context-strip"><div><span class="sales-v3-context-label">АКТИВНЫЙ ПЕРИОД</span><strong>'+esc(availableDates)+'</strong></div><div><span class="sales-v3-context-label">ОХВАТ</span><strong>'+(state.selectedRestaurants===null?'Все доступные рестораны':'Выбрано: '+state.selectedRestaurants.length)+'</strong></div><div><span class="sales-v3-context-label">ИСТОЧНИК ДАННЫХ</span><strong>Загруженные отчёты iiko</strong></div></div>'+
                 '<div class="sales-v2-kpis sales-v4-kpis">'+ 
                   kpi('₽','Товарооборот',money(total),'к предыдущему периоду',signedChange(total,previous))+
                   kpi('▤','Средний чек','—','нет данных в сводке iiko','')+
@@ -307,7 +312,6 @@
                 '</div><aside class="sales-v2-aside">'+
                   '<section class="sales-v2-panel sales-v3-ranking-panel"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">РЕЙТИНГ</div><h3>Рестораны по ТО</h3><p class="sales-v3-panel-subtitle">Лидеры по товарообороту</p></div></div><div class="sales-v2-ranking">'+(rankedRestaurants||'<p>Нет данных</p>')+'</div></section>'+
                   '<section class="sales-v2-panel sales-v3-channels-panel"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">СТРУКТУРА ПРОДАЖ</div><h3>Каналы продаж</h3><p class="sales-v3-panel-subtitle">Доли выручки по типам заказов</p></div></div><div class="sales-v2-ranking">'+(channels||'<p>Нет данных</p>')+'</div></section>'+
-                  '<section class="sales-v2-panel sales-v2-restaurant-panel"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">ФИЛЬТР</div><h3>Рестораны</h3></div></div><p class="sales-v2-muted">Выберите один ресторан или все доступные</p><input id="rest-search" type="search" placeholder="Найти ресторан…" aria-label="Поиск по ресторанам"><div class="rest-restaurant-list"><label class="rest-restaurant-option"><input type="checkbox" id="rest-all" '+(!DOM.restaurantSelect.value?'checked':'')+'> Все рестораны</label>'+options+'</div></section>'+
                 '</aside></div><section class="sales-v2-panel sales-v4-insights"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">ИТОГИ ПЕРИОДА</div><h3>Ключевые выводы</h3></div></div><div class="sales-v4-insight-grid"><div><span class="sales-v4-insight-icon">↗</span><span>Товарооборот к предыдущему периоду</span><strong>'+signedChange(total,previous)+'</strong></div><div><span class="sales-v4-insight-icon">◷</span><span>Почасовая выручка по загруженным данным</span><strong>'+money(totalHours)+'</strong></div><div><span class="sales-v4-insight-icon">▦</span><span>Ресторанов с продажами</span><strong>'+formatNumber(restaurants.filter(r=>Number(r.total_sales)>0).length)+'</strong></div></div></section></div>';
             DOM.content.querySelectorAll('[data-turnover-mode]').forEach(button=>button.addEventListener('click',()=>{
                 const mode=button.dataset.turnoverMode;
@@ -333,8 +337,8 @@
             inlineTo.addEventListener('change',applyInlineDates);
             const search=document.getElementById('rest-search');
             search.addEventListener('input',()=>{const term=search.value.toLocaleLowerCase('ru');DOM.content.querySelectorAll('.rest-restaurant-check').forEach(input=>{input.closest('label').hidden=!input.closest('label').textContent.toLocaleLowerCase('ru').includes(term);});});
-            document.getElementById('rest-all').addEventListener('change',()=>{DOM.restaurantSelect.value='';loadDashboard();});
-            DOM.content.querySelectorAll('.rest-restaurant-check').forEach(input=>input.addEventListener('change',()=>{DOM.restaurantSelect.value=input.value;loadDashboard();}));
+            document.getElementById('rest-all').addEventListener('change',e=>{state.selectedRestaurants=e.target.checked?null:[];DOM.restaurantSelect.value='';loadDashboard();});
+            DOM.content.querySelectorAll('.rest-restaurant-check').forEach(input=>input.addEventListener('change',()=>{const keys=Array.from(DOM.content.querySelectorAll('.rest-restaurant-check:checked')).map(el=>el.value);state.selectedRestaurants=keys.length===state.restaurants.length?null:keys;DOM.restaurantSelect.value='';loadDashboard();}));
             const chartControls=Array.from(DOM.content.querySelectorAll('[data-sales-chart-series]'));
             const drawLeadingChart=()=>renderTurnoverChart(turnoverChart,chartControls.filter(el=>el.checked).map(el=>el.dataset.salesChartSeries));
             chartControls.forEach(el=>el.addEventListener('change',drawLeadingChart));
@@ -460,7 +464,7 @@
         points.forEach((p,i)=>{
             if(i%step!==0&&i!==points.length-1)return;
             const x=pad.left+(points.length===1?width/2:width*i/(points.length-1));
-            const label=chart.granularity==='day'?String(p.label||'').slice(5):p.label;
+            const label=chart.granularity==='day'?String(p.label||'').slice(8,10)+'.'+String(p.label||'').slice(5,7):p.label;
             ctx.fillText(label,x,H-13);
         });
         if(!visible.length){ctx.textAlign='center';ctx.fillStyle='#6b7280';ctx.fillText('Выберите показатель',W/2,H/2);}

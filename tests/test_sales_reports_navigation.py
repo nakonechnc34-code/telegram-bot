@@ -13,10 +13,10 @@ def test_three_primary_sales_sections():
         assert f"<span>{title}</span>" in HTML
 
 
-def test_reports_tab_displays_hourly_comparison():
+def test_reports_tab_displays_catalog():
     assert "else if(view==='reports')" in JS
     reports = JS.split("} else if(view==='reports') {", 1)[1].split("} else if(view==='imports') {", 1)[0]
-    assert reports.strip() == "renderHourlyComparison();"
+    assert reports.strip() == "renderReportCatalog();"
     assert "Сравнение ежечастно" in JS
     assert "reportList.map(item=>table(" not in JS
 
@@ -39,3 +39,12 @@ def test_hourly_report_uses_assigned_territories_and_scoped_restaurants():
     assert 'r.territory_manager_id' in JS
     assert "sum('current',g.items)" in JS
     assert 'Без территории' in JS
+
+
+def test_catalog_opens_hourly_report_and_returns_to_list():
+    assert "const salesReportCatalog=[" in JS
+    assert "open:renderHourlyComparison" in JS
+    assert "salesReportCatalog[Number(button.dataset.reportIndex)].open()" in JS
+    assert 'id="sales-report-back"' in JS
+    assert "getElementById('sales-report-back').addEventListener('click',renderReportCatalog)" in JS
+    assert "'/api/sales/hourly-comparison'" in JS

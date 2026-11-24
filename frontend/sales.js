@@ -163,11 +163,20 @@
     }
 
 
+    // Register implemented reports here; the catalog is the reports landing page.
+    const salesReportCatalog=[
+        {name:'Сравнение ежечастно',description:'Сравнение накопленного товарооборота ресторанов за две даты до выбранного часа: зал, доставка, общий ТО и динамика.',open:renderHourlyComparison}
+    ];
+    function renderReportCatalog(){
+        DOM.content.innerHTML='<section class="panel sales-report-catalog"><h2>Список отчётов</h2><p class="section-note">Выберите отчёт для просмотра и анализа.</p><div class="sales-report-catalog-list"><div class="sales-report-catalog-header"><span>№</span><span>Наименование</span><span>Описание</span><span></span></div>'+salesReportCatalog.map((report,i)=>'<button type="button" class="sales-report-catalog-row" data-report-index="'+i+'"><span class="sales-report-number">'+(i+1)+'</span><strong>'+esc(report.name)+'</strong><span class="sales-report-description">'+esc(report.description)+'</span><span aria-hidden="true" class="sales-report-arrow">›</span></button>').join('')+'</div></section>';
+        DOM.content.querySelectorAll('[data-report-index]').forEach(button=>button.addEventListener('click',()=>salesReportCatalog[Number(button.dataset.reportIndex)].open()));
+    }
     function renderHourlyComparison(){
         const now=new Date(), today=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
         const priorDate=new Date(today+'T12:00:00Z');priorDate.setUTCDate(priorDate.getUTCDate()-7);
         const hour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Moscow',hour:'2-digit',hourCycle:'h23'}).format(now));
-        DOM.content.innerHTML='<section class="panel sales-hourly-report"><h2>Сравнение ежечастно</h2><p>Накопленный ТО до выбранного часа (МСК). Сравниваются одинаковые часы обеих дат.</p><div class="hourly-report-filters"><label>Предыдущая дата <input class="form-input" type="date" id="hourly-prior" value="'+priorDate.toISOString().slice(0,10)+'"></label><label>Текущая дата <input class="form-input" type="date" id="hourly-current" value="'+today+'"></label><label>До времени <select class="form-input" id="hourly-cutoff">'+Array.from({length:25},(_,h)=>'<option value="'+h+'" '+(h===hour?'selected':'')+'>'+String(h).padStart(2,'0')+':00</option>').join('')+'</select></label><button class="btn btn-primary" id="hourly-refresh">Сформировать</button></div><div id="hourly-result" aria-live="polite"></div></section>';
+        DOM.content.innerHTML='<section class="panel sales-hourly-report"><button type="button" class="btn sales-report-back" id="sales-report-back">← К списку отчётов</button><h2>Сравнение ежечастно</h2><p>Накопленный ТО до выбранного часа (МСК). Сравниваются одинаковые часы обеих дат.</p><div class="hourly-report-filters"><label>Предыдущая дата <input class="form-input" type="date" id="hourly-prior" value="'+priorDate.toISOString().slice(0,10)+'"></label><label>Текущая дата <input class="form-input" type="date" id="hourly-current" value="'+today+'"></label><label>До времени <select class="form-input" id="hourly-cutoff">'+Array.from({length:25},(_,h)=>'<option value="'+h+'" '+(h===hour?'selected':'')+'>'+String(h).padStart(2,'0')+':00</option>').join('')+'</select></label><button class="btn btn-primary" id="hourly-refresh">Сформировать</button></div><div id="hourly-result" aria-live="polite"></div></section>';
+        document.getElementById('sales-report-back').addEventListener('click',renderReportCatalog);
         const result=document.getElementById('hourly-result');
         let request=0;
         async function load(){
@@ -282,7 +291,7 @@
             DOM.content.innerHTML=intro('ТО ресторанов','Сравнение ресторанов по товарообороту.')+
             table('Рейтинг ресторанов',['№','Ресторан','ТО'],restRows(restaurants));
         } else if(view==='reports') {
-            renderHourlyComparison();
+            renderReportCatalog();
         } else if(view==='imports') {
             DOM.content.innerHTML=intro('Импорт iiko','Загружайте XLSX/CSV из iiko и контролируйте историю обработки.')+ '<div class="sales-section-stats"><div><span>Загрузок в истории</span><strong>'+imports.length+'</strong></div><div><span>Форматы</span><strong>XLSX / CSV</strong></div><div><span>Повторная загрузка</span><strong>Замена данных</strong></div></div>'+
             '<section class="panel sales-import-hero"><div class="sales-import-hero-mark" aria-hidden="true">⇧</div><h3>Новый отчёт</h3><p class="section-note">Выберите ресторан и загрузите файл до 10 МБ. Данные за совпадающие даты и рестораны будут заменены, а не сложены.</p><button class="btn btn-primary" id="import-from-panel">＋ Загрузить файл iiko</button></section>'+

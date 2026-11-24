@@ -248,7 +248,19 @@
                 const n=growth(current,prior);
                 return '<span class="sales-change '+growthClass(current,prior)+'">'+(n===null?'Нет базы':(n>0?'↑ ':n<0?'↓ ':'→ ')+Math.abs(n).toFixed(1)+'%')+'</span>';
             };
-            const kpi=(icon,title,value,subtitle,change)=>'<article class="sales-v2-kpi"><div class="sales-v2-kpi-heading"><span class="sales-v2-icon" aria-hidden="true">'+icon+'</span><span>'+title+'</span></div><strong>'+value+'</strong><div class="sales-v2-kpi-footer">'+(change||'')+'<span>'+subtitle+'</span></div><span class="sales-v3-kpi-corner" aria-hidden="true"></span></article>';
+            const prior=o.previous_metrics||{};
+            const comparison=(current,previous,format,share=false)=>{
+                const dates=prior.date_from&&prior.date_to?formatDate(prior.date_from)+(prior.date_from===prior.date_to?'':' — '+formatDate(prior.date_to)):'Аналогичный период';
+                let delta='';
+                if(current!=null&&previous!=null){
+                    if(share){const d=current-previous;delta='<span class="sales-kpi-delta '+(d>0?'up':d<0?'down':'')+'">'+(d>0?'+':'')+d.toFixed(1)+' п.п.</span>';}
+                    else if(previous>0){const d=(current/previous-1)*100;delta='<span class="sales-kpi-delta '+(d>0?'up':d<0?'down':'')+'">'+(d>0?'+':'')+d.toFixed(1)+'%</span>';}
+                }
+                return '<div class="sales-kpi-comparison"><small>'+esc(dates)+'</small><div><b>'+(previous==null?'Нет данных':format(previous))+'</b>'+delta+'</div></div>';
+            };
+            const kpi=(icon,title,value,subtitle,change)=>'<article class="sales-v2-kpi"><div class="sales-v2-kpi-heading"><span class="sales-v2-icon" aria-hidden="true">'+icon+'</span><span>'+title+'</span></div><strong>'+value+'</strong><div class="sales-v2-kpi-footer"><span>'+subtitle+'</span></div>'+change+'</article>';
+            const deliveryShare=total>0?100*orderTypes.filter(r=>r.type==='Доставка').reduce((n,r)=>n+Number(r.sales||0),0)/total:null;
+
             const availableDates=DOM.dateFrom.value&&DOM.dateTo.value?formatDate(DOM.dateFrom.value)+' — '+formatDate(DOM.dateTo.value):(trend.length?formatDate(trend[0].date)+' — '+formatDate(trend[trend.length-1].date):'Нет загруженных данных');
             const selectedRestaurants=state.selectedRestaurants===null?state.restaurants.map(r=>r.key):state.selectedRestaurants;
             const options=state.restaurants.map(r=>'<label class="rest-restaurant-option"><input type="checkbox" class="rest-restaurant-check" value="'+esc(r.key)+'" '+(selectedRestaurants.includes(r.key)?'checked':'')+'><span>'+esc(r.name)+'</span></label>').join('');
@@ -257,11 +269,11 @@
                 '<div class="sales-v2-heading"><div><div class="sales-v2-eyebrow">WOKKER SALES <span class="sales-v3-slash">/</span> КОМАНДНЫЙ ЦЕНТР</div><h2>Пульс продаж<span class="sales-v3-heading-period"> · обзор</span></h2><p>Контроль товарооборота, динамики и эффективности ресторанов · '+esc(availableDates)+'</p></div><div class="sales-v2-status"><span class="sales-v2-status-dot"></span> Источник: iiko</div></div>'+ 
                 '<div class="sales-v2-toolbar"><div class="sales-v2-presets">'+[['1d','Сегодня'],['7d','7 дней'],['30d','30 дней'],['90d','90 дней'],['365d','Год']].map(p=>'<button type="button" class="rest-period '+(DOM.periodSelect.value===p[0]?'selected':'')+'" data-rest-period="'+p[0]+'">'+p[1]+'</button>').join('')+'</div><div class="sales-v2-date-range"><label>С даты <input type="date" id="sales-inline-date-from" value="'+esc(DOM.dateFrom.value||'')+'"></label><label>По дату <input type="date" id="sales-inline-date-to" value="'+esc(DOM.dateTo.value||'')+'"></label></div></div>'+
                 '<div class="sales-v2-kpis sales-v4-kpis sales-compact-kpis">'+
-                  kpi('₽','Продажи',money(total),'к предыдущему периоду',signedChange(total,previous))+
-                  kpi('▤','Средний чек',o.avg_check==null?'—':money(o.avg_check),o.sales_per_guest==null?'На гостя: нет данных':'На гостя: '+money(o.sales_per_guest),'')+
-                  kpi('▣','Чеки',o.checks==null?'—':formatNumber(o.checks),o.guests==null?'Гости: нет данных':'Гости: '+formatNumber(o.guests),'')+
-                  kpi('%','Скидки',o.discounts==null?'—':money(o.discounts),o.discounts==null?'Нет данных в отчёте':'За выбранный период','')+
-                  kpi('%','Доля доставки',total>0?(100*orderTypes.filter(r=>r.type==='Доставка').reduce((n,r)=>n+Number(r.sales||0),0)/total).toFixed(1)+'%':'—','За выбранный период','')+
+                  kpi('₽','Продажи',money(total),'к предыдущему периоду',comparison(total,prior.total_sales,money))+
+                  kpi('▤','Средний чек',o.avg_check==null?'—':money(o.avg_check),o.sales_per_guest==null?'На гостя: нет данных':'На гостя: '+money(o.sales_per_guest),comparison(o.avg_check,prior.avg_check,money))+
+                  kpi('▣','Чеки',o.checks==null?'—':formatNumber(o.checks),o.guests==null?'Гости: нет данных':'Гости: '+formatNumber(o.guests),comparison(o.checks,prior.checks,formatNumber))+
+                  kpi('%','Скидки',o.discounts==null?'—':money(o.discounts),o.discounts==null?'Нет данных в отчёте':'За выбранный период',comparison(o.discounts,prior.discounts,money))+
+                  kpi('%','Доля доставки',total>0?(100*orderTypes.filter(r=>r.type==='Доставка').reduce((n,r)=>n+Number(r.sales||0),0)/total).toFixed(1)+'%':'—','За выбранный период',comparison(deliveryShare,prior.delivery_share,v=>v.toFixed(1)+'%',true))+
                 '</div>'+
                 '<div class="sales-chart-filter-layout">'+
                 '<section class="sales-v2-panel sales-leading-chart"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">ТОВАРООБОРОТ</div><h3>'+(turnoverChart.granularity==='hour'?'Почасовой ТО':'ТО по дням')+'</h3></div><span class="sales-v2-muted">'+esc(availableDates)+'</span></div>'+

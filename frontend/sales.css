@@ -554,9 +554,6 @@ button:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-v
 .hourly-report-filters{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin:16px 0}.hourly-report-filters label{display:grid;gap:5px;font-size:12px;color:#64748b}.hourly-table-scroll{overflow:auto}.hourly-report-table{border-collapse:collapse;width:100%;min-width:620px;font-variant-numeric:tabular-nums}.hourly-report-table th,.hourly-report-table td{padding:9px 12px;border:1px solid #e2e6ec;text-align:right}.hourly-report-table th:first-child,.hourly-report-table td:nth-last-child(4){text-align:left}.hourly-report-table thead{background:#f5f6f8}.hourly-total{font-weight:700;background:#f8fafc}.hourly-summary{background:#fff0d8;font-weight:700}.hourly-up{color:#15803d}.hourly-down{color:#c92535}
 
 /* Visually separate each three-row restaurant group. */
-.hourly-report-table tbody tr:nth-child(6n+1),.hourly-report-table tbody tr:nth-child(6n+2),.hourly-report-table tbody tr:nth-child(6n+3){background:#fff}
-.hourly-report-table tbody tr:nth-child(6n+4),.hourly-report-table tbody tr:nth-child(6n+5),.hourly-report-table tbody tr:nth-child(6n+6){background:#f1f4f8}
-.hourly-report-table tbody tr:nth-child(3n+1)>*{border-top:2px solid #aebaca}
 .hourly-report-table tbody th[ rowspan="3"]{font-weight:800;text-align:left;vertical-align:middle;border-left:4px solid #c92535;color:#1e293b}
 .hourly-report-table tbody tr.hourly-total td{font-weight:800;border-top:1px solid #aebaca}
 .hourly-report-table tbody tr.hourly-summary{background:#fff0d8;font-weight:800}
@@ -593,3 +590,16 @@ button:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-v
 
 .hourly-territory-details{margin:12px 0;border:1px solid #dce2ea;border-radius:10px;overflow:hidden}.hourly-territory-details>summary{cursor:pointer;background:#dfe6ef;padding:12px;font-weight:700;color:#24364a}.hourly-company-top{margin:16px 0;padding:12px;border:1px solid #e5b9bf;border-radius:12px;background:#fff5f5}.hourly-company-top h3{margin:0 0 10px}.hourly-report-table{width:100%;table-layout:fixed;min-width:0}.hourly-report-table th:first-child{width:24%}.hourly-report-table th,.hourly-report-table td{padding:8px 10px}.hourly-report-table thead th{position:sticky;top:0;z-index:2;background:#f1f4f8}.hourly-territory-details .hourly-table-scroll{max-height:65vh;overflow:auto}.hourly-restaurant-heading th{background:#e9edf3;text-align:left!important;font-weight:700}.hourly-restaurant-heading.hourly-summary th{background:#fff0d8}.hourly-analysis-controls{margin:12px 0}.hourly-mobile-card table th:first-child{width:24%}.hourly-mobile-card table th,.hourly-mobile-card table td{overflow-wrap:anywhere}.hourly-mobile-card .hourly-up{color:#15803d}.hourly-mobile-card .hourly-down{color:#c92535}
 @media(max-width:850px){.hourly-territory-details .hourly-mobile-results{padding:8px}.hourly-mobile-card table{font-size:10px}.hourly-company-top{padding:8px}.hourly-territory-details>summary{font-size:13px}}
+
+/* Four-row restaurant blocks: explicit styling, no legacy positional striping. */
+.hourly-report-table tbody tr{background:#fff}
+.hourly-report-table tbody tr>th,.hourly-report-table tbody tr>td{border:1px solid #e2e6ec;padding:7px 12px}
+.hourly-report-table tbody tr>td:nth-last-child(4){text-align:right}
+.hourly-report-table tbody tr>th:first-child{text-align:left;font-weight:500}
+.hourly-report-table tbody tr.hourly-restaurant-heading>th{background:#e9edf3;color:#243449;font-weight:750;border-top:2px solid #cbd5e1;padding:9px 12px}
+.hourly-report-table tbody tr.hourly-total{background:#f1f4f8;font-weight:750}
+.hourly-report-table tbody tr.hourly-total>th{font-weight:750}
+.hourly-report-table tbody tr.hourly-summary>th{background:#fff0d8}
+.hourly-report-table tbody tr.hourly-total td{border-top:1px solid #e2e6ec}
+.hourly-report-table thead th{font-size:13px;white-space:nowrap}
+.hourly-report-table tbody{font-size:13px}

@@ -593,6 +593,13 @@ async def sales_dashboard(request: web.Request) -> web.Response:
     # None means all restaurants (unrestricted admin). An empty list means no
     # restaurants. Never silently replace "all" with the TU's first restaurant.
     scoped_keys = [key] if key else allowed
+    if "restaurant_keys" in body and body["restaurant_keys"] is not None:
+        selected = body["restaurant_keys"]
+        if not isinstance(selected, list) or any(not isinstance(k, str) or not k for k in selected):
+            return web.json_response({"error": "Некорректный список ресторанов"}, status=400)
+        if allowed is not None and any(k not in allowed for k in selected):
+            return web.json_response({"error": "Forbidden"}, status=403)
+        scoped_keys = list(dict.fromkeys(selected))
     if period == "custom":
         try:
             date_from = date.fromisoformat(body["date_from"])

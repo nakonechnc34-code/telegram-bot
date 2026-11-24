@@ -641,6 +641,45 @@ async def sales_hourly_comparison(request: web.Request) -> web.Response:
          "previous": buckets.get((r["key"], previous))} for r in restaurants]})
 
 
+@routes.post("/api/sales/restaurant-turnover")
+@sales_required
+async def sales_restaurant_turnover(request: web.Request) -> web.Response:
+    try:
+        body = await request.json()
+        start = date.fromisoformat(body["date_from"])
+        end = date.fromisoformat(body["date_to"])
+        if not 0 <= (end - start).days <= 366:
+            raise ValueError()
+    except (ValueError, TypeError, KeyError):
+        return web.json_response({"error": "Выберите период от 1 до 367 дней"}, status=400)
+    allowed = await _allowed_rests(request["admin"])
+    async with db.get_pool(request.app).acquire() as conn:
+        restaurants = await conn.fetch(
+            "SELECT r.key, r.name, r.territory_manager_id, u.full_name AS territory_manager_name "
+            "FROM restaurants r LEFT JOIN users u ON u.user_id = r.territory_manager_id" +
+            (" WHERE r.key = ANY($1)" if allowed is not None else "") +
+            " ORDER BY r.sort NULLS FIRST, r.name", *([allowed] if allowed is not None else []))
+        rows = await conn.fetch("""
+            SELECT restaurant_key, payment_method, SUM(total_amount) AS sales
+            FROM sales_records WHERE sale_date BETWEEN $1 AND $2
+            AND restaurant_key = ANY($3::text[]) GROUP BY 1, 2
+        """, start, end, [r["key"] for r in restaurants])
+        mapping = await _order_type_mapping(conn)
+    buckets = {}
+    for row in rows:
+        bucket = buckets.setdefault(row["restaurant_key"], {"hall": 0.0, "delivery": 0.0, "total": 0.0})
+        amount = float(row["sales"] or 0)
+        bucket["total"] += amount
+        channel = {"Зал": "hall", "Доставка": "delivery"}.get(mapping.get(row["payment_method"] or ""))
+        if channel:
+            bucket[channel] += amount
+    return web.json_response({"success": True, "data": [
+        {"key": r["key"], "name": r["name"],
+         "territory_manager_id": str(r["territory_manager_id"]) if r["territory_manager_id"] is not None else None,
+         "territory_manager_name": r["territory_manager_name"], "turnover": buckets.get(r["key"])}
+        for r in restaurants]})
+
+
 @routes.post("/api/sales/dashboard")
 @sales_required
 async def sales_dashboard(request: web.Request) -> web.Response:

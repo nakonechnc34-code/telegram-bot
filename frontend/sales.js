@@ -165,12 +165,38 @@
 
     // Register implemented reports here; the catalog is the reports landing page.
     const salesReportCatalog=[
-        {name:'Сравнение ежечастно',description:'Сравнение накопленного товарооборота ресторанов за две даты до выбранного часа: зал, доставка, общий ТО и динамика.',open:renderHourlyComparison}
+        {name:'Сравнение ежечастно',description:'Сравнение накопленного товарооборота ресторанов за две даты до выбранного часа: зал, доставка, общий ТО и динамика.',open:renderHourlyComparison},
+        {name:'Товарооборот по ресторанам',description:'ТО ресторанов за выбранную дату или период: зал, доставка и итоги.',open:renderRestaurantTurnoverReport}
     ];
     function renderReportCatalog(){
         DOM.content.innerHTML='<section class="panel sales-report-catalog"><h2>Список отчётов</h2><p class="section-note">Выберите отчёт для просмотра и анализа.</p><div class="sales-report-catalog-list"><div class="sales-report-catalog-header"><span>№</span><span>Наименование</span><span>Описание</span><span></span></div>'+salesReportCatalog.map((report,i)=>'<button type="button" class="sales-report-catalog-row" data-report-index="'+i+'"><span class="sales-report-number">'+(i+1)+'</span><strong>'+esc(report.name)+'</strong><span class="sales-report-description">'+esc(report.description)+'</span><span aria-hidden="true" class="sales-report-arrow">›</span></button>').join('')+'</div></section>';
         DOM.content.querySelectorAll('[data-report-index]').forEach(button=>button.addEventListener('click',()=>salesReportCatalog[Number(button.dataset.reportIndex)].open()));
     }
+    function renderRestaurantTurnoverReport(){
+        const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+        DOM.content.innerHTML='<section class="panel"><button type="button" class="btn sales-report-back" id="turnover-back">← К списку отчётов</button><h2>Товарооборот по ресторанам</h2><div class="hourly-report-filters"><label>С даты <input type="date" class="form-input" id="turnover-from" value="'+today+'"></label><label>По дату <input type="date" class="form-input" id="turnover-to" value="'+today+'"></label><button class="btn btn-primary" id="turnover-load">Сформировать</button></div><div id="turnover-result" aria-live="polite"></div></section>';
+        document.getElementById('turnover-back').addEventListener('click',renderReportCatalog);
+        const result=document.getElementById('turnover-result');
+        let request=0;
+        async function load(){
+            const id=++request, date_from=document.getElementById('turnover-from').value,date_to=document.getElementById('turnover-to').value;
+            if(!date_from||!date_to||date_from>date_to){result.textContent='Выберите корректный период';return;}
+            result.textContent='Загрузка…';
+            try{
+                const res=await apiFetch('/api/sales/restaurant-turnover',{method:'POST',body:JSON.stringify({date_from,date_to})});
+                if(id!==request||!result.isConnected)return;
+                const rows=res.data||[],groups=new Map();
+                for(const r of rows){const key=r.territory_manager_id??'unassigned';if(!groups.has(key))groups.set(key,{name:r.territory_manager_name||'Без территории',items:[]});groups.get(key).items.push(r);}
+                const sum=items=>{const available=items.filter(r=>r.turnover!=null);return available.length?Object.fromEntries(['hall','delivery','total'].map(k=>[k,available.reduce((a,r)=>a+r.turnover[k],0)])):null;};
+                const cells=v=>['hall','delivery','total'].map(k=>'<td>'+ (v==null?'—':money(v[k]))+'</td>').join('');
+                const line=(name,v,cls='')=>'<tr class="'+cls+'"><th scope="row">'+esc(name)+'</th>'+cells(v)+'</tr>';
+                const coverage=items=>items.filter(r=>r.turnover!=null).length+'/'+items.length;
+                result.innerHTML='<h3>Итог компании: '+(sum(rows)==null?'—':money(sum(rows).total))+'</h3><p class="section-note">'+esc(formatDate(date_from))+' — '+esc(formatDate(date_to))+' · Рестораны с данными: '+coverage(rows)+'</p><div class="turnover-report-scroll"><table class="turnover-report-table"><thead><tr><th>Ресторан</th><th>Зал</th><th>Доставка</th><th>Общий ТО</th></tr></thead><tbody>'+Array.from(groups.values()).map(g=>'<tr class="turnover-territory"><th colspan="4">'+esc(g.name)+' · '+coverage(g.items)+'</th></tr>'+g.items.map(r=>line(r.name,r.turnover)).join('')+line('Итого по территории',sum(g.items),'turnover-total')).join('')+line('Итого компания',sum(rows),'turnover-total')+'</tbody></table></div><p class="section-note">— нет данных. Итоги включают доступные отчёты; общий ТО включает нераспределённые каналы.</p>';
+            }catch(e){if(id===request&&result.isConnected)result.textContent='Ошибка: '+e.message;}
+        }
+        document.getElementById('turnover-load').addEventListener('click',load);load();
+    }
+
     function renderHourlyComparison(){
         const now=new Date(), today=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
         const priorDate=new Date(today+'T12:00:00Z');priorDate.setUTCDate(priorDate.getUTCDate()-7);

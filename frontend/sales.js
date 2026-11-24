@@ -183,8 +183,15 @@
                 const cell=v=>v==null?'—':money(v);
                 const delta=(a,b)=>a==null||b==null?'<td>—</td>':'<td class="'+(a>b?'hourly-up':a<b?'hourly-down':'')+'">'+(a>b?'+':'')+money(a-b)+'</td>';
                 const renderRow=(r,summary=false)=>['hall','delivery','total'].map((k,i)=>'<tr class="'+(summary?'hourly-summary ': '')+(k==='total'?'hourly-total':'')+'">'+(i===0?'<th rowspan="3">'+esc(r.name)+'</th>':'')+'<td>'+({hall:'Зал',delivery:'Доставка',total:'Общий ТО'}[k])+'</td><td>'+cell(value(r.previous,k))+'</td><td>'+cell(value(r.current,k))+'</td>'+delta(value(r.current,k),value(r.previous,k))+'</tr>').join('');
-                const sum=side=>rows.length&&rows.every(r=>r[side]!=null)?Object.fromEntries(['hall','delivery','total'].map(k=>[k,rows.reduce((a,r)=>a+r[side][k],0)])):null;
-                result.innerHTML='<div class="hourly-table-scroll"><table class="hourly-report-table"><thead><tr><th>Ресторан</th><th>Канал продаж</th><th>'+esc(formatDate(previous))+'</th><th>'+esc(formatDate(current))+'</th><th>Разница</th></tr></thead><tbody>'+rows.map(r=>renderRow(r)).join('')+renderRow({name:'Компания (доступные рестораны)',current:sum('current'),previous:sum('previous')},true)+'</tbody></table></div><p class="section-note">— нет почасовых данных. Общий ТО включает нераспределённые каналы. Итог компании доступен при наличии данных по всем доступным ресторанам.</p>';
+                const sum=(side,items=rows)=>items.length&&items.every(r=>r[side]!=null)?Object.fromEntries(['hall','delivery','total'].map(k=>[k,items.reduce((a,r)=>a+r[side][k],0)])):null;
+                const groups=new Map();
+                for(const r of rows){
+                    const key=r.territory_manager_id??'unassigned';
+                    if(!groups.has(key))groups.set(key,{name:r.territory_manager_name||(r.territory_manager_id==null?'Без территории':'ТУ #'+r.territory_manager_id),items:[]});
+                    groups.get(key).items.push(r);
+                }
+                const groupedRows=Array.from(groups.values()).sort((a,b)=>a.name.localeCompare(b.name,'ru')).map(g=>'<tr class="hourly-territory-heading"><th colspan="5">Территория: '+esc(g.name)+'</th></tr>'+g.items.map(r=>renderRow(r)).join('')+renderRow({name:'Итого: '+g.name,current:sum('current',g.items),previous:sum('previous',g.items)},true)).join('');
+                result.innerHTML='<div class="hourly-table-scroll"><table class="hourly-report-table"><thead><tr><th>Ресторан</th><th>Канал продаж</th><th>'+esc(formatDate(previous))+'</th><th>'+esc(formatDate(current))+'</th><th>Разница</th></tr></thead><tbody>'+groupedRows+renderRow({name:'Компания (доступные рестораны)',current:sum('current'),previous:sum('previous')},true).replaceAll('hourly-summary','hourly-summary hourly-company')+'</tbody></table></div><p class="section-note">— нет почасовых данных. Общий ТО включает нераспределённые каналы. Итог компании доступен при наличии данных по всем доступным ресторанам.</p>';
             }catch(e){if(id===request&&result.isConnected)result.textContent='Ошибка: '+e.message;}
         }
         document.getElementById('hourly-refresh').addEventListener('click',load);

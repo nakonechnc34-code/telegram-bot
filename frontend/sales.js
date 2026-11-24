@@ -166,7 +166,8 @@
     // Register implemented reports here; the catalog is the reports landing page.
     const salesReportCatalog=[
         {name:'Сравнение ежечастно',description:'Сравнение накопленного товарооборота ресторанов за две даты до выбранного часа: зал, доставка, общий ТО и динамика.',open:renderHourlyComparison},
-        {name:'Товарооборот по ресторанам',description:'ТО ресторанов за выбранную дату или период: зал, доставка и итоги.',open:renderRestaurantTurnoverReport}
+        {name:'Товарооборот по ресторанам',description:'ТО ресторанов за выбранную дату или период: зал, доставка и итоги.',open:renderRestaurantTurnoverReport},
+        {name:'По типу заказа',description:'ТО, чеки и доли зала и доставки за выбранный период.',open:renderOrderTypeReport}
     ];
     function renderReportCatalog(){
         DOM.content.innerHTML='<section class="panel sales-report-catalog"><h2>Список отчётов</h2><p class="section-note">Выберите отчёт для просмотра и анализа.</p><div class="sales-report-catalog-list"><div class="sales-report-catalog-header"><span>№</span><span>Наименование</span><span>Описание</span><span></span></div>'+salesReportCatalog.map((report,i)=>'<button type="button" class="sales-report-catalog-row" data-report-index="'+i+'"><span class="sales-report-number">'+(i+1)+'</span><strong>'+esc(report.name)+'</strong><span class="sales-report-description">'+esc(report.description)+'</span><span aria-hidden="true" class="sales-report-arrow">›</span></button>').join('')+'</div></section>';
@@ -195,6 +196,42 @@
             }catch(e){if(id===request&&result.isConnected)result.textContent='Ошибка: '+e.message;}
         }
         document.getElementById('turnover-load').addEventListener('click',load);load();
+    }
+
+    function renderOrderTypeReport(){
+        const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+        DOM.content.innerHTML='<section class="panel"><button type="button" class="btn sales-report-back" id="order-type-back">← К списку отчётов</button><h2>По типу заказа</h2><div class="hourly-report-filters"><label>С даты <input type="date" class="form-input" id="order-type-from" value="'+today+'"></label><label>По дату <input type="date" class="form-input" id="order-type-to" value="'+today+'"></label><button class="btn btn-primary" id="order-type-load">Сформировать</button></div><div id="order-type-result" aria-live="polite"></div></section>';
+        document.getElementById('order-type-back').addEventListener('click',renderReportCatalog);
+        const result=document.getElementById('order-type-result');
+        let request=0;
+        async function load(){
+            const id=++request, date_from=document.getElementById('order-type-from').value,date_to=document.getElementById('order-type-to').value;
+            if(!date_from||!date_to||date_from>date_to){result.textContent='Выберите корректный период';return;}
+            result.textContent='Загрузка…';
+            try{
+                const res=await apiFetch('/api/sales/order-type-report',{method:'POST',body:JSON.stringify({date_from,date_to})});
+                if(id!==request||!result.isConnected)return;
+                const rows=res.data||[],groups=new Map();
+                for(const r of rows){const key=r.territory_manager_id??'unassigned';if(!groups.has(key))groups.set(key,{name:r.territory_manager_name||'Без территории',items:[]});groups.get(key).items.push(r);}
+                const sum=items=>{
+                    const available=items.filter(r=>r.metrics!=null);
+                    if(!available.length)return null;
+                    return Object.fromEntries(['total','hall','delivery'].map(k=>[k,{sales:available.reduce((a,r)=>a+r.metrics[k].sales,0),checks:available.some(r=>r.metrics[k].checks==null)?null:available.reduce((a,r)=>a+r.metrics[k].checks,0)}]));
+                };
+                const pct=(n,d)=>n==null||d==null||d===0?'—':(100*n/d).toLocaleString('ru-RU',{maximumFractionDigits:1})+'%';
+                const count=n=>n==null?'—':n.toLocaleString('ru-RU');
+                const cells=v=>{
+                    if(v==null)return '<td>—</td>'.repeat(10);
+                    const values=[money(v.total.sales),count(v.total.checks)];
+                    for(const k of ['hall','delivery'])values.push(money(v[k].sales),pct(v[k].sales,v.total.sales),count(v[k].checks),pct(v[k].checks,v.total.checks));
+                    return values.map(t=>'<td>'+esc(t)+'</td>').join('');
+                };
+                const line=(name,v,cls='')=>'<tr class="'+cls+'"><th scope="row">'+esc(name)+'</th>'+cells(v)+'</tr>';
+                const coverage=items=>items.filter(r=>r.metrics!=null).length+'/'+items.length;
+                result.innerHTML='<p class="section-note">'+esc(formatDate(date_from))+' — '+esc(formatDate(date_to))+' · Рестораны с данными: '+coverage(rows)+'</p><div class="turnover-report-scroll"><table class="turnover-report-table order-type-report"><thead><tr><th rowspan="2">Ресторан</th><th colspan="2">Общие</th><th colspan="4" class="order-type-hall">Зал</th><th colspan="4" class="order-type-delivery">Доставка</th></tr><tr><th>Общий ТО</th><th>Общие чеки</th>'+('<th>ТО</th><th>% ТО</th><th>Чеки</th><th>% чеков</th>').repeat(2)+'</tr></thead><tbody>'+Array.from(groups.values()).map(g=>'<tr class="turnover-territory"><th colspan="11">'+esc(g.name)+' · '+coverage(g.items)+'</th></tr>'+g.items.map(r=>line(r.name,r.metrics)).join('')+line('Итого по территории',sum(g.items),'turnover-total')).join('')+line('Итого компания (доступные рестораны)',sum(rows),'turnover-total')+'</tbody></table></div><p class="section-note">— нет данных, неполные данные по чекам или нулевой знаменатель. Итоги по доступным отчётам. Общие показатели включают нераспределённые каналы, поэтому доли могут не составлять 100%.</p>';
+            }catch(e){if(id===request&&result.isConnected)result.textContent='Ошибка: '+e.message;}
+        }
+        document.getElementById('order-type-load').addEventListener('click',load);load();
     }
 
     function renderHourlyComparison(){

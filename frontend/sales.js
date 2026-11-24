@@ -162,6 +162,35 @@
         }
     }
 
+
+    function renderHourlyComparison(){
+        const now=new Date(), today=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
+        const priorDate=new Date(today+'T12:00:00Z');priorDate.setUTCDate(priorDate.getUTCDate()-7);
+        const hour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Moscow',hour:'2-digit',hourCycle:'h23'}).format(now));
+        DOM.content.innerHTML='<section class="panel sales-hourly-report"><h2>Сравнение ежечастно</h2><p>Накопленный ТО до выбранного часа (МСК). Сравниваются одинаковые часы обеих дат.</p><div class="hourly-report-filters"><label>Предыдущая дата <input class="form-input" type="date" id="hourly-prior" value="'+priorDate.toISOString().slice(0,10)+'"></label><label>Текущая дата <input class="form-input" type="date" id="hourly-current" value="'+today+'"></label><label>До времени <select class="form-input" id="hourly-cutoff">'+Array.from({length:25},(_,h)=>'<option value="'+h+'" '+(h===hour?'selected':'')+'>'+String(h).padStart(2,'0')+':00</option>').join('')+'</select></label><button class="btn btn-primary" id="hourly-refresh">Сформировать</button></div><div id="hourly-result" aria-live="polite"></div></section>';
+        const result=document.getElementById('hourly-result');
+        let request=0;
+        async function load(){
+            const id=++request;
+            const current=document.getElementById('hourly-current').value,previous=document.getElementById('hourly-prior').value,cutoff=Number(document.getElementById('hourly-cutoff').value);
+            if(!current||!previous||current===previous){result.textContent='Выберите две разные даты';return;}
+            result.textContent='Загрузка…';
+            try{
+                const res=await apiFetch('/api/sales/hourly-comparison',{method:'POST',body:JSON.stringify({current,previous,cutoff})});
+                if(id!==request||!result.isConnected)return;
+                const rows=res.data||[];
+                const value=(x,k)=>x==null?null:x[k];
+                const cell=v=>v==null?'—':money(v);
+                const delta=(a,b)=>a==null||b==null?'<td>—</td>':'<td class="'+(a>b?'hourly-up':a<b?'hourly-down':'')+'">'+(a>b?'+':'')+money(a-b)+'</td>';
+                const renderRow=(r,summary=false)=>['hall','delivery','total'].map((k,i)=>'<tr class="'+(summary?'hourly-summary ': '')+(k==='total'?'hourly-total':'')+'">'+(i===0?'<th rowspan="3">'+esc(r.name)+'</th>':'')+'<td>'+({hall:'Зал',delivery:'Доставка',total:'Общий ТО'}[k])+'</td><td>'+cell(value(r.previous,k))+'</td><td>'+cell(value(r.current,k))+'</td>'+delta(value(r.current,k),value(r.previous,k))+'</tr>').join('');
+                const sum=side=>rows.length&&rows.every(r=>r[side]!=null)?Object.fromEntries(['hall','delivery','total'].map(k=>[k,rows.reduce((a,r)=>a+r[side][k],0)])):null;
+                result.innerHTML='<div class="hourly-table-scroll"><table class="hourly-report-table"><thead><tr><th>Ресторан</th><th>Канал продаж</th><th>'+esc(formatDate(previous))+'</th><th>'+esc(formatDate(current))+'</th><th>Разница</th></tr></thead><tbody>'+rows.map(r=>renderRow(r)).join('')+renderRow({name:'Компания (доступные рестораны)',current:sum('current'),previous:sum('previous')},true)+'</tbody></table></div><p class="section-note">— нет почасовых данных. Общий ТО включает нераспределённые каналы. Итог компании доступен при наличии данных по всем доступным ресторанам.</p>';
+            }catch(e){if(id===request&&result.isConnected)result.textContent='Ошибка: '+e.message;}
+        }
+        document.getElementById('hourly-refresh').addEventListener('click',load);
+        load();
+    }
+
     const money = formatCurrency;
     function restRows(rows) {
         return rows.map((r,i) => '<tr><td>'+(i+1)+'</td><td><strong>'+esc(r.name)+'</strong></td><td>'+money(r.total_sales)+'</td></tr>').join('');
@@ -223,7 +252,7 @@
             DOM.content.innerHTML=intro('ТО ресторанов','Сравнение ресторанов по товарообороту.')+
             table('Рейтинг ресторанов',['№','Ресторан','ТО'],restRows(restaurants));
         } else if(view==='reports') {
-            DOM.content.innerHTML='';
+            renderHourlyComparison();
         } else if(view==='imports') {
             DOM.content.innerHTML=intro('Импорт iiko','Загружайте XLSX/CSV из iiko и контролируйте историю обработки.')+ '<div class="sales-section-stats"><div><span>Загрузок в истории</span><strong>'+imports.length+'</strong></div><div><span>Форматы</span><strong>XLSX / CSV</strong></div><div><span>Повторная загрузка</span><strong>Замена данных</strong></div></div>'+
             '<section class="panel sales-import-hero"><div class="sales-import-hero-mark" aria-hidden="true">⇧</div><h3>Новый отчёт</h3><p class="section-note">Выберите ресторан и загрузите файл до 10 МБ. Данные за совпадающие даты и рестораны будут заменены, а не сложены.</p><button class="btn btn-primary" id="import-from-panel">＋ Загрузить файл iiko</button></section>'+

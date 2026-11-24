@@ -384,10 +384,17 @@
             total:{color:'#c92c35',value:p=>Number(p.total||0)},
             hall:{color:'#2563eb',value:p=>Number(p.hall||0)},
             delivery:{color:'#0d9488',value:p=>Number(p.delivery||0)},
-            previous:{color:'#9b72c7',value:p=>Number((p.previous||{}).total||0)}
         };
-        const visible=selected.filter(key=>series[key]&&(key!=='previous'||chart.previous_has_data));
-        const hasData=(p,key)=>key==='previous'?p.previous_has_data!==false:p.has_data!==false;
+        const channels=selected.filter(key=>Object.prototype.hasOwnProperty.call(series,key));
+        const visible=[...channels];
+        if(selected.includes('previous')&&chart.previous_has_data){
+            channels.forEach(key=>{
+                const priorKey='previous_'+key;
+                series[priorKey]={color:series[key].color,value:p=>Number((p.previous||{})[key]||0),previous:true};
+                visible.push(priorKey);
+            });
+        }
+        const hasData=(p,key)=>series[key].previous?p.previous_has_data!==false:p.has_data!==false;
         const pad={left:65,right:20,top:20,bottom:44}, width=Math.max(1,W-pad.left-pad.right), height=Math.max(1,H-pad.top-pad.bottom);
         const amounts=points.flatMap(p=>visible.filter(key=>hasData(p,key)).map(key=>series[key].value(p)));
         const max=Math.max(1,...amounts);
@@ -399,7 +406,7 @@
         }
         visible.forEach(key=>{
             const item=series[key];ctx.strokeStyle=item.color;ctx.lineWidth=2.5;
-            ctx.setLineDash(key==='previous'?[6,4]:[]);
+            ctx.setLineDash(item.previous?[6,4]:[]);
             ctx.beginPath();let drawing=false;
             points.forEach((p,i)=>{
                 if(!hasData(p,key)){drawing=false;return;}

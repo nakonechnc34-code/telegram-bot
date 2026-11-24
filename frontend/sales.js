@@ -284,6 +284,13 @@
                 '<div class="sales-v2-dashboard">'+
                 '<div class="sales-v2-heading"><div><div class="sales-v2-eyebrow">WOKKER SALES <span class="sales-v3-slash">/</span> КОМАНДНЫЙ ЦЕНТР</div><h2>Пульс продаж<span class="sales-v3-heading-period"> · обзор</span></h2><p>Контроль товарооборота, динамики и эффективности ресторанов · '+esc(availableDates)+'</p></div><div class="sales-v2-status"><span class="sales-v2-status-dot"></span> Источник: iiko</div></div>'+ 
                 '<div class="sales-v2-toolbar"><div class="sales-v2-presets">'+[['1d','Сегодня'],['7d','7 дней'],['30d','30 дней'],['90d','90 дней'],['365d','Год']].map(p=>'<button type="button" class="rest-period '+(DOM.periodSelect.value===p[0]?'selected':'')+'" data-rest-period="'+p[0]+'">'+p[1]+'</button>').join('')+'</div><div class="sales-v2-date-range"><label>С даты <input type="date" id="sales-inline-date-from" value="'+esc(DOM.dateFrom.value||'')+'"></label><label>По дату <input type="date" id="sales-inline-date-to" value="'+esc(DOM.dateTo.value||'')+'"></label></div></div>'+
+                '<div class="sales-v2-kpis sales-v4-kpis sales-compact-kpis">'+
+                  kpi('₽','Продажи',money(total),'к предыдущему периоду',signedChange(total,previous))+
+                  kpi('▤','Средний чек',o.avg_check==null?'—':money(o.avg_check),o.sales_per_guest==null?'На гостя: нет данных':'На гостя: '+money(o.sales_per_guest),'')+
+                  kpi('▣','Чеки',o.checks==null?'—':formatNumber(o.checks),o.guests==null?'Гости: нет данных':'Гости: '+formatNumber(o.guests),'')+
+                  kpi('%','Скидки',o.discounts==null?'—':money(o.discounts),o.discounts==null?'Нет данных в отчёте':'За выбранный период','')+
+                  kpi('%','Доля доставки',total>0?(100*orderTypes.filter(r=>r.type==='Доставка').reduce((n,r)=>n+Number(r.sales||0),0)/total).toFixed(1)+'%':'—','За выбранный период','')+
+                '</div>'+
                 '<div class="sales-chart-filter-layout">'+
                 '<section class="sales-v2-panel sales-leading-chart"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">ТОВАРООБОРОТ</div><h3>'+(turnoverChart.granularity==='hour'?'Почасовой ТО':'ТО по дням')+'</h3></div><span class="sales-v2-muted">'+esc(availableDates)+'</span></div>'+
                 '<div class="sales-chart-switches"><label><input type="checkbox" data-sales-chart-series="total" checked> Общий ТО</label><label><input type="checkbox" data-sales-chart-series="hall"> Зал</label><label><input type="checkbox" data-sales-chart-series="delivery"> Доставка</label><label><input type="checkbox" data-sales-chart-series="previous" '+(turnoverChart.previous_has_data?'':'disabled')+'> '+esc(turnoverChart.comparison_label||'Аналогичный период')+'</label></div>'+
@@ -293,13 +300,6 @@
                 '</div>'+
                 restaurantTurnoverPanel+
                 '<div class="sales-v3-context-strip"><div><span class="sales-v3-context-label">АКТИВНЫЙ ПЕРИОД</span><strong>'+esc(availableDates)+'</strong></div><div><span class="sales-v3-context-label">ОХВАТ</span><strong>'+(state.selectedRestaurants===null?'Все доступные рестораны':'Выбрано: '+state.selectedRestaurants.length)+'</strong></div><div><span class="sales-v3-context-label">ИСТОЧНИК ДАННЫХ</span><strong>Загруженные отчёты iiko</strong></div></div>'+
-                '<div class="sales-v2-kpis sales-v4-kpis">'+ 
-                  kpi('₽','Товарооборот',money(total),'к предыдущему периоду',signedChange(total,previous))+
-                  kpi('▤','Средний чек','—','нет данных в сводке iiko','')+
-                  kpi('▣','Количество заказов','—','нет данных в сводке iiko','')+
-                  kpi('◉','Гостей','—','нет данных в сводке iiko','')+
-                  kpi('%','Доля доставки','—','нет данных в сводке iiko','')+
-                '</div>'+
                 '<div class="sales-v4-secondary-stats"><div><span>Предыдущий период</span><strong>'+money(previous)+'</strong></div><div><span>Выручка по часам</span><strong>'+money(totalHours)+'</strong></div><div><span>Рестораны с продажами</span><strong>'+formatNumber(restaurants.filter(r=>Number(r.total_sales)>0).length)+'</strong></div></div>'+
                 '<div class="sales-v3-section-title"><div><span class="sales-v3-section-index">01 /</span><h3>Динамика и сравнение</h3></div><span>Выручка в разрезе дат и часов</span></div>'+
                 '<div class="sales-v2-layout sales-v4-layout"><div class="sales-v2-main">'+ 

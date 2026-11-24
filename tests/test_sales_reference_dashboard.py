@@ -22,8 +22,8 @@ def test_reference_dashboard_layout():
         assert item in JS
         assert item in CSS
     for label in ("Товарооборот", "Предыдущий период", "Выручка по часам",
-                  "Рестораны с продажами", "Средний чек", "Количество заказов",
-                  "Гостей", "Доля доставки", "Динамика", "Каналы продаж"):
+                  "Рестораны с продажами", "Средний чек", "Чеки",
+                  "Гости", "Доля доставки", "Динамика", "Каналы продаж"):
         assert label in JS
 
 
@@ -33,12 +33,15 @@ def test_unavailable_metrics_not_fabricated():
     overview = JS.split("function renderDashboard(data)", 1)[1].split(
         "async function loadOrderTypeSettings()", 1
     )[0]
-    assert "kpi('₽','Товарооборот'" in overview
+    assert "kpi('₽','Продажи'" in overview
     assert "sales-v4-secondary-stats" in overview
-    assert "kpi('%','Доля доставки','—'" in overview
-    assert "kpi('▤','Средний чек','—'" in overview
-    assert "kpi('▣','Количество заказов','—'" in overview
-    assert "kpi('₽','Скидки'" not in overview
+    assert "kpi('%','Доля доставки',total>0?" in overview
+    assert "kpi('▤','Средний чек',o.avg_check==null?'—'" in overview
+    assert "kpi('▣','Чеки',o.checks==null?'—'" in overview
+    assert "kpi('%','Скидки',o.discounts==null?'—'" in overview
+    assert overview.index("sales-compact-kpis") < overview.index("sales-chart-filter-layout")
+    assert 'metrics[coverage] == metrics["rows_count"]' in API
+    assert 'ts / overview["checks"] if overview["checks"] else None' in API
     dashboard_cards = overview.split("const signedChange =", 1)[1]
     assert "formatNumber(h.checks)" not in dashboard_cards
 

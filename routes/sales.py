@@ -11,6 +11,7 @@ import asyncio
 import uuid
 import secrets
 import hashlib
+import logging
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 from functools import wraps
@@ -380,19 +381,22 @@ async def _recalc_summary(conn, restaurant_key):
             COUNT(DISTINCT product_name) AS unique_products
         FROM sales_records WHERE restaurant_key = $1 GROUP BY sale_date ORDER BY sale_date
     """, restaurant_key)
+    batch = []
     for r in rows:
         ts = float(r["total_sales"] or 0); items = r["total_items_sold"] or 0
-        await conn.execute("""
+        batch.append((restaurant_key, r["sale_date"], ts, float(r["total_cost"] or 0), float(r["total_profit"] or 0),
+            float(r["avg_margin"] or 0), items, r["total_transactions"] or 0,
+            round(ts / items, 2) if items else 0,
+            float(r["cash_sales"] or 0), float(r["card_sales"] or 0), float(r["online_sales"] or 0),
+            r["unique_products"] or 0))
+    if batch:
+        await conn.executemany("""
             INSERT INTO sales_daily_summary
             (restaurant_key, summary_date, total_sales, total_cost, total_profit,
              avg_margin, total_items_sold, total_transactions, avg_check,
              cash_sales, card_sales, online_sales, unique_products)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-        """, restaurant_key, r["sale_date"], ts, float(r["total_cost"] or 0), float(r["total_profit"] or 0),
-            float(r["avg_margin"] or 0), items, r["total_transactions"] or 0,
-            round(ts / items, 2) if items else 0,
-            float(r["cash_sales"] or 0), float(r["card_sales"] or 0), float(r["online_sales"] or 0),
-            r["unique_products"] or 0)
+        """, batch)
 
 
 # ==================== РОУТЫ ====================
@@ -487,6 +491,9 @@ async def upload_sales_file(request: web.Request) -> web.Response:
             async with conn.transaction():
                 await conn.execute("SET LOCAL lock_timeout = '5s'")
                 await conn.execute("SELECT pg_advisory_xact_lock(814726, 1)")
+                # A cancelled import must never write sales after deletion.
+                if await conn.fetchval("SELECT status FROM sales_imports WHERE id=$1 FOR UPDATE", import_id) != "processing":
+                    return web.json_response({"error": "Загрузка отменена"}, status=409)
                 for rest_key in sorted(by_key):
                     await conn.fetchval("SELECT key FROM restaurants WHERE key = $1 FOR NO KEY UPDATE", rest_key)
                 for rest_key, grouped in by_key.items():
@@ -603,17 +610,18 @@ async def delete_sales_import(request: web.Request) -> web.Response:
                 # Serialize Sales writes before acquiring import or restaurant row locks.
                 await conn.execute("SELECT pg_advisory_xact_lock(814726, 1)")
                 imp = await conn.fetchrow(
-                    "SELECT id, restaurant_key, status FROM sales_imports WHERE id=$1", import_id)
+                    "SELECT id, restaurant_key, status FROM sales_imports WHERE id=$1 FOR UPDATE", import_id)
                 if imp is None:
                     return web.json_response({"error": "Отчёт не найден"}, status=404)
-                if imp["status"] == "processing":
-                    return web.json_response({"error": "Отчёт ещё загружается. Повторите позже."}, status=409)
                 affected = await conn.fetch(
                     "SELECT DISTINCT restaurant_key FROM sales_records WHERE import_id=$1", import_id)
                 keys = {imp["restaurant_key"]} | {row["restaurant_key"] for row in affected}
                 if allowed is not None and not keys.issubset(set(allowed)):
                     return web.json_response({"error": "Отчёт содержит данные ресторанов вне вашей территории."}, status=403)
-                for key in sorted(keys):
+                # Shared advisory lock excludes active database writes. Parsing
+                # uploads can be cancelled: upload rechecks status before writing.
+                logging.info("Sales delete import=%s status=%s restaurants=%s", import_id, imp["status"], len(keys))
+                for key in sorted({row["restaurant_key"] for row in affected}):
                     await conn.fetchval("SELECT key FROM restaurants WHERE key=$1 FOR NO KEY UPDATE", key)
                 deleted = await conn.fetchval(
                     "WITH removed AS (DELETE FROM sales_records WHERE import_id=$1 RETURNING id) "
@@ -621,7 +629,8 @@ async def delete_sales_import(request: web.Request) -> web.Response:
                 for key in sorted({row["restaurant_key"] for row in affected}):
                     await _recalc_summary(conn, key)
                 await conn.execute("DELETE FROM sales_imports WHERE id=$1", import_id)
-    except (LockNotAvailableError, DeadlockDetectedError, QueryCanceledError):
+    except (LockNotAvailableError, DeadlockDetectedError, QueryCanceledError) as exc:
+        logging.warning("Sales delete import=%s contention=%s sqlstate=%s", import_id, type(exc).__name__, exc.sqlstate)
         return web.json_response({"error": "Данные Sales заняты другой операцией. Повторите удаление позже."}, status=409)
 
     return web.json_response({"success": True, "deleted_records": int(deleted or 0)})

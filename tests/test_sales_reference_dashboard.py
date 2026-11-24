@@ -16,14 +16,12 @@ def test_dashboard_period_presets_supported_by_api():
 
 
 def test_reference_dashboard_layout():
-    for item in ("sales-v2-dashboard", "sales-v2-kpis", "sales-v2-trend",
+    for item in ("sales-v2-dashboard", "sales-v2-kpis", "sales-leading-chart",
                  "sales-v2-restaurant-panel", "rest-restaurant-check",
-                 "sales-v2-presets", "sales-v2-compare-grid"):
+                 "sales-v2-presets"):
         assert item in JS
         assert item in CSS
-    for label in ("Товарооборот", "Предыдущий период", "Выручка по часам",
-                  "Рестораны с продажами", "Средний чек", "Чеки",
-                  "Гости", "Доля доставки", "Динамика", "Каналы продаж"):
+    for label in ("ТОВАРООБОРОТ", "Средний чек", "Чеки", "Гости", "Доля доставки"):
         assert label in JS
 
 
@@ -34,7 +32,6 @@ def test_unavailable_metrics_not_fabricated():
         "async function loadOrderTypeSettings()", 1
     )[0]
     assert "kpi('₽','Продажи'" in overview
-    assert "sales-v4-secondary-stats" in overview
     assert "kpi('%','Доля доставки',total>0?" in overview
     assert "kpi('▤','Средний чек',o.avg_check==null?'—'" in overview
     assert "kpi('▣','Чеки',o.checks==null?'—'" in overview
@@ -42,8 +39,6 @@ def test_unavailable_metrics_not_fabricated():
     assert overview.index("sales-compact-kpis") < overview.index("sales-chart-filter-layout")
     assert 'metrics[coverage] == metrics["rows_count"]' in API
     assert 'ts / overview["checks"] if overview["checks"] else None' in API
-    dashboard_cards = overview.split("const signedChange =", 1)[1]
-    assert "formatNumber(h.checks)" not in dashboard_cards
 
 
 def test_restaurant_scope_still_uses_authorized_dashboard_endpoint():
@@ -51,31 +46,25 @@ def test_restaurant_scope_still_uses_authorized_dashboard_endpoint():
     assert "allowed = await _allowed_rests(user)" in API
 
 
-def test_restaurant_turnover_is_first_dashboard_section_with_channel_split():
-    overview = JS.split("function renderDashboard(data)", 1)[1].split(
-        "async function loadOrderTypeSettings()", 1
-    )[0]
-    assert "restaurantTurnoverPanel+" in overview
-    assert overview.index("restaurantTurnoverPanel+") < overview.index("'<div class=\"sales-v3-context-strip\">")
-    assert 'data-turnover-mode="all"' in overview
-    assert 'data-turnover-mode="split"' in overview
-    for label in ("ТО по ресторанам", "Зал / Доставка"):
-        assert label in overview
-    assert "sales-turnover-unassigned" not in overview
-    turnover_panel = overview.split("const restaurantTurnoverPanel=", 1)[1].split("DOM.content.innerHTML=", 1)[0]
-    assert "Не распределено" not in turnover_panel
+def test_restaurant_turnover_api_still_provides_channel_split():
     assert '"restaurant_channels": restaurant_channels' in API
     assert 'restaurant_channel_rows = await conn.fetch(' in API
     assert 'FROM sales_records sr {w}' in API
     assert 'restaurant_channels.setdefault(' in API
 
 
-def test_turnover_chart_defaults_to_today_and_is_first():
+def test_turnover_chart_defaults_to_today_and_ends_dashboard():
     html = (ROOT / "frontend/sales.html").read_text(encoding="utf-8")
     assert '<option value="1d" selected>Сегодня</option>' in html
     assert "period: '1d'" in JS
     assert "sales-leading-chart" in JS
-    assert JS.index("sales-leading-chart") < JS.index("restaurantTurnoverPanel+")
+    dashboard = JS.split("'<div class=\"sales-v2-dashboard\">", 1)[1].split(
+        "DOM.content.querySelectorAll('[data-rest-period]')", 1
+    )[0]
+    assert dashboard.strip().endswith("'</div></div>';")
+    for token in ("restaurantTurnoverPanel", "sales-v3-context-strip",
+                  "sales-v4-secondary-stats", "sales-v4-layout", "sales-v4-insights"):
+        assert token not in dashboard
     for key in ("total", "hall", "delivery", "previous"):
         assert f'data-sales-chart-series="{key}"' in JS
     assert "turnoverChart.granularity==='hour'" in JS

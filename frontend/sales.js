@@ -24,8 +24,6 @@
         DOM.periodSelect = document.getElementById('period-select');
         DOM.dateFrom = document.getElementById('sales-date-from');
         DOM.dateTo = document.getElementById('sales-date-to');
-        DOM.comparisonDate = document.getElementById('comparison-date');
-        DOM.comparisonHour = document.getElementById('comparison-hour');
         DOM.adminAvatar = document.getElementById('sales-topbar-avatar');
         DOM.uploadModal = document.getElementById('upload-modal');
         DOM.detailModal = document.getElementById('detail-modal');
@@ -142,7 +140,7 @@
         try {
             const res = await apiFetch('/api/sales/dashboard', {
                 method: 'POST',
-                body: JSON.stringify({ restaurant_key: restaurantKey, restaurant_keys: state.selectedRestaurants, period, date_from: DOM.dateFrom.value, date_to: DOM.dateTo.value, comparison_date: DOM.comparisonDate.value, comparison_hour: Number(DOM.comparisonHour.value) }),
+                body: JSON.stringify({ restaurant_key: restaurantKey, restaurant_keys: state.selectedRestaurants, period, date_from: DOM.dateFrom.value, date_to: DOM.dateTo.value }),
             });
 
             if (requestId !== state.dashboardRequest) return;
@@ -207,8 +205,7 @@
     }
 
     function renderDashboard(data) {
-        const {overview:o, daily_trend:trend=[], by_restaurant:restaurants=[], hourly_revenue:hourly=[], hourly_by_order_type:hourlyTypes=[], by_order_type:orderTypes=[], previous_total_sales:previousSales=0, same_weekday_comparison:weekCompare=null, imports=[]} = data;
-        const restaurantChannels=data.restaurant_channels||{};
+        const {overview:o, daily_trend:trend=[], by_restaurant:restaurants=[], by_order_type:orderTypes=[], previous_total_sales:previousSales=0, imports=[]} = data;
         const turnoverChart=data.turnover_chart||{points:[],granularity:'day',previous_has_data:false};
         const view=state.view;
         const intro = (title,subtitle,tag='ДАННЫЕ ИЗ ОТЧЁТОВ') => '<div class="intro"><div><h2>'+title+'</h2><p>'+subtitle+'</p></div><span class="eyebrow-tag">'+tag+'</span></div>';
@@ -238,48 +235,17 @@
             loadInlineRecords(1);
         } else {
             const growth=(current,previous)=>previous>0?((current-previous)*100/previous):null;
-            const growthLabel=(current,previous)=>{const n=growth(current,previous);return n===null?'—':(n>0?'+':'')+n.toFixed(1)+'%';};
             const growthClass=(current,previous)=>{const n=growth(current,previous);return n===null?'':n<0?'negative':'positive';};
             const total=o.total_sales||0;
             const previous=previousSales||0;
-            const week=weekCompare||{};
-            const currentWeek=Object.values(week.current||{}).reduce((v,n)=>v+Number(n||0),0);
-            const previousWeek=Object.values(week.previous||{}).reduce((v,n)=>v+Number(n||0),0);
-
-            const currentDate = DOM.comparisonDate.value || new Date().toISOString().slice(0,10);
-            const cutoff = DOM.comparisonHour.value || '24';
-            const isCompared = !!(week.has_current && week.has_previous);
             const signedChange = (current,prior) => {
                 const n=growth(current,prior);
                 return '<span class="sales-change '+growthClass(current,prior)+'">'+(n===null?'Нет базы':(n>0?'↑ ':n<0?'↓ ':'→ ')+Math.abs(n).toFixed(1)+'%')+'</span>';
             };
             const kpi=(icon,title,value,subtitle,change)=>'<article class="sales-v2-kpi"><div class="sales-v2-kpi-heading"><span class="sales-v2-icon" aria-hidden="true">'+icon+'</span><span>'+title+'</span></div><strong>'+value+'</strong><div class="sales-v2-kpi-footer">'+(change||'')+'<span>'+subtitle+'</span></div><span class="sales-v3-kpi-corner" aria-hidden="true"></span></article>';
             const availableDates=DOM.dateFrom.value&&DOM.dateTo.value?formatDate(DOM.dateFrom.value)+' — '+formatDate(DOM.dateTo.value):(trend.length?formatDate(trend[0].date)+' — '+formatDate(trend[trend.length-1].date):'Нет загруженных данных');
-            const totalHours=hourly.reduce((sum,h)=>sum+Number(h.sales||0),0);
-            const topRestaurants=restaurants.filter(r=>Number(r.total_sales)>0).slice(0,8);
-            const maxRestaurant=Math.max(1,...topRestaurants.map(r=>Number(r.total_sales||0)));
-            const maxChannel=Math.max(1,...orderTypes.map(r=>Number(r.sales||0)));
-            const rankedRestaurants=topRestaurants.map((r,i)=>'<div class="sales-v2-rank"><span class="sales-v2-rank-number">'+String(i+1).padStart(2,'0')+'</span><div class="sales-v2-rank-body"><div class="sales-v2-rank-top"><span>'+esc(r.name)+'</span><strong>'+money(r.total_sales)+'</strong></div><div class="sales-v2-meter"><span style="width:'+Math.max(2,Number(r.total_sales||0)/maxRestaurant*100).toFixed(1)+'%"></span></div></div></div>').join('');
-            const channels=orderTypes.map(r=>'<div class="sales-v2-rank"><div class="sales-v2-rank-body"><div class="sales-v2-rank-top"><span>'+esc(r.type||r.typ)+'</span><strong>'+money(r.sales)+'</strong></div><div class="sales-v2-meter channel"><span style="width:'+Math.max(2,Number(r.sales||0)/maxChannel*100).toFixed(1)+'%"></span></div></div></div>').join('');
-            const peakHour=Math.max(1,...hourly.map(h=>Number(h.sales||0)));
-            const hourRows=hourly.map(h=>'<tr><td><span class="sales-v3-hour-label">'+String(h.hour).padStart(2,'0')+':00</span></td><td><div class="sales-v3-hour-cell"><span class="sales-v3-hour-track"><span style="width:'+Math.max(0,Math.min(100,Number(h.sales||0)/peakHour*100)).toFixed(1)+'%"></span></span><strong>'+money(h.sales)+'</strong></div></td></tr>').join('');
-            const comparedHours=(week.hours||[]).map(h=>'<tr><td>'+String(h.hour).padStart(2,'0')+':00</td><td>'+money(h.current)+'</td><td>'+money(h.previous)+'</td><td>'+signedChange(h.current,h.previous)+'</td></tr>').join('');
             const selectedRestaurants=state.selectedRestaurants===null?state.restaurants.map(r=>r.key):state.selectedRestaurants;
             const options=state.restaurants.map(r=>'<label class="rest-restaurant-option"><input type="checkbox" class="rest-restaurant-check" value="'+esc(r.key)+'" '+(selectedRestaurants.includes(r.key)?'checked':'')+'><span>'+esc(r.name)+'</span></label>').join('');
-            const restaurantTurnoverRows=restaurants.map(r=>{
-                const channels=restaurantChannels[r.key]||{};
-                const hall=Number(channels['Зал']||0);
-                const delivery=Number(channels['Доставка']||0);
-                const total=Number(r.total_sales||0);
-                return '<tr data-sales-rest-row><td>'+esc(r.name)+'</td><td class="sales-turnover-total">'+money(total)+'</td><td class="sales-turnover-hall">'+money(hall)+'</td><td class="sales-turnover-delivery">'+money(delivery)+'</td></tr>';
-            }).join('');
-            const restaurantTurnoverPanel='<section class="sales-v2-panel sales-turnover-first" aria-label="ТО ресторанов"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">ОСНОВНОЙ ОТЧЁТ</div><h3>ТО по ресторанам</h3><p class="sales-v3-panel-subtitle">Товарооборот за выбранный период, разбивка по каналам</p></div></div>'+
-                '<div class="sales-turnover-tabs" role="group" aria-label="Разбивка товарооборота">'+
-                '<button type="button" class="sales-turnover-tab selected" data-turnover-mode="all" aria-pressed="true">Общий ТО</button>'+
-                '<button type="button" class="sales-turnover-tab" data-turnover-mode="split" aria-pressed="false">Зал / Доставка</button></div>'+
-                '<div class="sales-v2-table-scroll"><table class="sales-v2-table sales-turnover-table" data-turnover-mode="all"><thead><tr><th>Ресторан</th><th>ТО</th><th class="sales-turnover-detail">Зал</th><th class="sales-turnover-detail">Доставка</th></tr></thead><tbody>'+
-                (restaurantTurnoverRows||'<tr><td colspan="4">Нет данных за выбранный период</td></tr>')+
-                '</tbody></table></div></section>';
             DOM.content.innerHTML=
                 '<div class="sales-v2-dashboard">'+
                 '<div class="sales-v2-heading"><div><div class="sales-v2-eyebrow">WOKKER SALES <span class="sales-v3-slash">/</span> КОМАНДНЫЙ ЦЕНТР</div><h2>Пульс продаж<span class="sales-v3-heading-period"> · обзор</span></h2><p>Контроль товарооборота, динамики и эффективности ресторанов · '+esc(availableDates)+'</p></div><div class="sales-v2-status"><span class="sales-v2-status-dot"></span> Источник: iiko</div></div>'+ 
@@ -297,31 +263,7 @@
                 '<div class="rest-graph-area sales-leading-chart-area"><canvas id="sales-turnover-chart" role="img" aria-label="График товарооборота"></canvas></div>'+
                 '<p class="sales-v2-muted">Для сравнения используются фактически загруженные данные iiko. Зал и доставка определяются настройками типов заказов.</p></section>'+
                 '<section class="sales-v2-panel sales-v2-restaurant-panel"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">ФИЛЬТР</div><h3>Рестораны</h3></div></div><p class="sales-v2-muted">Выбрано '+selectedRestaurants.length+' из '+state.restaurants.length+'</p><input id="rest-search" type="search" placeholder="Найти ресторан…" aria-label="Поиск по ресторанам"><div class="rest-restaurant-list"><label class="rest-restaurant-option"><input type="checkbox" id="rest-all" '+(selectedRestaurants.length===state.restaurants.length?'checked':'')+'> Все рестораны</label>'+options+'</div></section>'+
-                '</div>'+
-                restaurantTurnoverPanel+
-                '<div class="sales-v3-context-strip"><div><span class="sales-v3-context-label">АКТИВНЫЙ ПЕРИОД</span><strong>'+esc(availableDates)+'</strong></div><div><span class="sales-v3-context-label">ОХВАТ</span><strong>'+(state.selectedRestaurants===null?'Все доступные рестораны':'Выбрано: '+state.selectedRestaurants.length)+'</strong></div><div><span class="sales-v3-context-label">ИСТОЧНИК ДАННЫХ</span><strong>Загруженные отчёты iiko</strong></div></div>'+
-                '<div class="sales-v4-secondary-stats"><div><span>Предыдущий период</span><strong>'+money(previous)+'</strong></div><div><span>Выручка по часам</span><strong>'+money(totalHours)+'</strong></div><div><span>Рестораны с продажами</span><strong>'+formatNumber(restaurants.filter(r=>Number(r.total_sales)>0).length)+'</strong></div></div>'+
-                '<div class="sales-v3-section-title"><div><span class="sales-v3-section-index">01 /</span><h3>Динамика и сравнение</h3></div><span>Выручка в разрезе дат и часов</span></div>'+
-                '<div class="sales-v2-layout sales-v4-layout"><div class="sales-v2-main">'+ 
-                  '<section class="sales-v2-panel sales-v2-trend"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">ДИНАМИКА</div><h3>Выручка по дням</h3></div><span class="sales-v2-muted">'+esc(availableDates)+'</span></div>'+(trend.length?'<div class="rest-graph-area"><canvas id="chart-daily-trend" aria-label="Динамика выручки"></canvas></div>':'<div class="empty-state">Нет данных. Загрузите отчёт iiko.</div>')+'<div class="sales-v2-legend"><span><i></i> Выручка за период</span><span>Предыдущий период: '+money(previous)+'</span></div></section>'+
-                  '<section class="sales-v2-panel"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">СРАВНЕНИЕ</div><h3>Этот день / прошлая неделя</h3></div><span class="sales-v2-muted">Срез до '+esc(String(week.cutoff_hour??cutoff).padStart(2,'0'))+':00</span></div>'+
-                    '<div class="sales-v2-compare-grid"><div><span>Выбранный день</span><strong>'+(isCompared?money(currentWeek):'—')+'</strong></div><div><span>Неделю назад</span><strong>'+(isCompared?money(previousWeek):'—')+'</strong></div><div><span>Динамика</span><strong>'+(isCompared?signedChange(currentWeek,previousWeek):'Нет данных')+'</strong></div></div>'+
-                    '<p class="sales-v2-muted">День сравнения: '+esc(formatDate(currentDate))+'. Выберите дату и час в верхней панели.</p>'+
-                    '<div class="sales-v2-table-scroll"><table class="sales-v2-table"><thead><tr><th>Час</th><th>Текущий день</th><th>Неделю назад</th><th>Изменение</th></tr></thead><tbody>'+(isCompared&&comparedHours?comparedHours:'<tr><td colspan="4">Недостаточно данных для сравнения</td></tr>')+'</tbody></table></div></section>'+
-                  '<section class="sales-v2-panel sales-v3-hourly-panel"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">ПОЧАСОВАЯ АНАЛИТИКА</div><h3>Выручка по часам</h3><p class="sales-v3-panel-subtitle">Сравните нагрузку и пиковые часы работы</p></div></div><div class="sales-v2-table-scroll"><table class="sales-v2-table"><thead><tr><th>Час</th><th>Товарооборот</th></tr></thead><tbody>'+(hourRows||'<tr><td colspan="2">Нет почасовых данных</td></tr>')+'</tbody></table></div></section>'+
-                '</div><aside class="sales-v2-aside">'+
-                  '<section class="sales-v2-panel sales-v3-ranking-panel"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">РЕЙТИНГ</div><h3>Рестораны по ТО</h3><p class="sales-v3-panel-subtitle">Лидеры по товарообороту</p></div></div><div class="sales-v2-ranking">'+(rankedRestaurants||'<p>Нет данных</p>')+'</div></section>'+
-                  '<section class="sales-v2-panel sales-v3-channels-panel"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">СТРУКТУРА ПРОДАЖ</div><h3>Каналы продаж</h3><p class="sales-v3-panel-subtitle">Доли выручки по типам заказов</p></div></div><div class="sales-v2-ranking">'+(channels||'<p>Нет данных</p>')+'</div></section>'+
-                '</aside></div><section class="sales-v2-panel sales-v4-insights"><div class="sales-v2-panel-head"><div><div class="sales-v2-eyebrow">ИТОГИ ПЕРИОДА</div><h3>Ключевые выводы</h3></div></div><div class="sales-v4-insight-grid"><div><span class="sales-v4-insight-icon">↗</span><span>Товарооборот к предыдущему периоду</span><strong>'+signedChange(total,previous)+'</strong></div><div><span class="sales-v4-insight-icon">◷</span><span>Почасовая выручка по загруженным данным</span><strong>'+money(totalHours)+'</strong></div><div><span class="sales-v4-insight-icon">▦</span><span>Ресторанов с продажами</span><strong>'+formatNumber(restaurants.filter(r=>Number(r.total_sales)>0).length)+'</strong></div></div></section></div>';
-            DOM.content.querySelectorAll('[data-turnover-mode]').forEach(button=>button.addEventListener('click',()=>{
-                const mode=button.dataset.turnoverMode;
-                DOM.content.querySelector('.sales-turnover-table').dataset.turnoverMode=mode;
-                DOM.content.querySelectorAll('[data-turnover-mode]').forEach(tab=>{
-                    const selected=tab.dataset.turnoverMode===mode;
-                    tab.classList.toggle('selected',selected);
-                    tab.setAttribute('aria-pressed',String(selected));
-                });
-            }));
+                '</div></div>';
             DOM.content.querySelectorAll('[data-rest-period]').forEach(button=>button.addEventListener('click',()=>{DOM.periodSelect.value=button.dataset.restPeriod;DOM.periodSelect.dispatchEvent(new Event('change'));}));
             const inlineFrom=document.getElementById('sales-inline-date-from');
             const inlineTo=document.getElementById('sales-inline-date-to');
@@ -343,7 +285,6 @@
             const drawLeadingChart=()=>renderTurnoverChart(turnoverChart,chartControls.filter(el=>el.checked).map(el=>el.dataset.salesChartSeries));
             chartControls.forEach(el=>el.addEventListener('change',drawLeadingChart));
             requestAnimationFrame(drawLeadingChart);
-            requestAnimationFrame(()=>renderDailyTrendChart(trend));
         }
     }
 
@@ -469,81 +410,6 @@
         });
         if(!visible.length){ctx.textAlign='center';ctx.fillStyle='#6b7280';ctx.fillText('Выберите показатель',W/2,H/2);}
         else if(!points.some(p=>visible.some(key=>hasData(p,key)))){ctx.textAlign='center';ctx.fillStyle='#6b7280';ctx.fillText('Нет данных за выбранный период',W/2,H/2);}
-    }
-
-    function renderDailyTrendChart(trend) {
-        const canvas = document.getElementById('chart-daily-trend');
-        if (!canvas || !trend || trend.length === 0) return;
-
-        const container = canvas.parentElement;
-        const rect = container.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) return;
-
-        const dpr = window.devicePixelRatio || 1;
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
-        canvas.style.width = rect.width + 'px';
-        canvas.style.height = rect.height + 'px';
-
-        const ctx = canvas.getContext('2d');
-        ctx.scale(dpr, dpr);
-        const W = rect.width;
-        const H = rect.height;
-
-        const padding = { top: 20, right: 20, bottom: 40, left: 60 };
-        const chartW = W - padding.left - padding.right;
-        const chartH = H - padding.top - padding.bottom;
-
-        const maxVal = Math.max(...trend.map(t => t.sales || 0), 1);
-
-        ctx.clearRect(0, 0, W, H);
-
-        // Сетка
-        ctx.strokeStyle = '#E5E7EB';
-        ctx.lineWidth = 1;
-        for (let i = 0; i <= 4; i++) {
-            const y = padding.top + (chartH / 4) * i;
-            ctx.beginPath();
-            ctx.moveTo(padding.left, y);
-            ctx.lineTo(W - padding.right, y);
-            ctx.stroke();
-
-            const val = maxVal - (maxVal / 4) * i;
-            ctx.fillStyle = '#6B7280';
-            ctx.font = '11px Inter, sans-serif';
-            ctx.textAlign = 'right';
-            ctx.fillText(formatNumber(val), padding.left - 10, y + 4);
-        }
-
-        // Столбцы
-        const barWidth = Math.max(4, (chartW / trend.length) * 0.5);
-        trend.forEach((t, i) => {
-            const x = padding.left + (i / Math.max(trend.length - 1, 1)) * chartW;
-            const h = ((t.sales || 0) / maxVal) * chartH;
-            const y = padding.top + chartH - h;
-
-            ctx.fillStyle = '#c92c35';
-            ctx.beginPath();
-            if (ctx.roundRect) {
-                ctx.roundRect(x - barWidth / 2, y, barWidth, h, [4, 4, 0, 0]);
-            } else {
-                ctx.rect(x - barWidth / 2, y, barWidth, h);
-            }
-            ctx.fill();
-        });
-
-        // Подписи дат
-        const step = Math.max(1, Math.floor(trend.length / 7));
-        trend.forEach((t, i) => {
-            if (i % step === 0 || i === trend.length - 1) {
-                const x = padding.left + (i / Math.max(trend.length - 1, 1)) * chartW;
-                ctx.fillStyle = '#6B7280';
-                ctx.font = '11px Inter, sans-serif';
-                ctx.textAlign = 'center';
-                const d = new Date(t.date);
-                ctx.fillText(`${d.getDate()}.${d.getMonth() + 1}`, x, H - padding.bottom + 20);
-            }
-        });
     }
 
     // --- MODALS ---
@@ -693,8 +559,6 @@
         DOM.dateFrom.addEventListener('change', () => { if (DOM.periodSelect.value === 'custom') loadDashboard(); });
         DOM.dateTo.addEventListener('change', () => { if (DOM.periodSelect.value === 'custom') loadDashboard(); });
         DOM.restaurantSelect.addEventListener('change', loadDashboard);
-        DOM.comparisonDate.addEventListener('change', loadDashboard);
-        DOM.comparisonHour.addEventListener('change', loadDashboard);
 
         // Одна кнопка загрузки отчёта iiko
         document.getElementById('btn-import-iiko').addEventListener('click', openUploadModal);
@@ -753,11 +617,6 @@
             DOM.adminAvatar.textContent = (meRes.full_name || 'W').charAt(0).toUpperCase();
         } catch (_) { showSalesLogin('Войдите по логину и паролю'); return; }
         showSalesApp();
-        const moscow = new Date(new Date().toLocaleString('en-US', {timeZone:'Europe/Moscow'}));
-        const pad=n=>String(n).padStart(2,'0');
-        DOM.comparisonDate.value=moscow.getFullYear()+'-'+pad(moscow.getMonth()+1)+'-'+pad(moscow.getDate());
-        DOM.comparisonHour.innerHTML=Array.from({length:25},(_,hour)=>'<option value="'+hour+'">До '+pad(hour)+':00</option>').join('');
-        DOM.comparisonHour.value=String(moscow.getHours());
         await loadRestaurants();
         loadDashboard();
         if (!state.eventsBound) {

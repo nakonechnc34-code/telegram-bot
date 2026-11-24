@@ -38,7 +38,7 @@ def test_unavailable_metrics_not_fabricated():
     assert "kpi('%','Скидки',o.discounts==null?'—'" in overview
     assert overview.index("sales-compact-kpis") < overview.index("sales-chart-filter-layout")
     assert 'metrics[coverage] == metrics["rows_count"]' in API
-    assert 'ts / overview["checks"] if overview["checks"] else None' in API
+    assert 'sales / result["checks"] if result["checks"] else None' in API
 
 
 def test_restaurant_scope_still_uses_authorized_dashboard_endpoint():
@@ -88,3 +88,11 @@ def test_turnover_chart_marks_missing_dates_instead_of_plotting_zero():
 
 def test_dashboard_heading_uses_selected_dates_not_only_imported_dates():
     assert "const availableDates=DOM.dateFrom.value&&DOM.dateTo.value?" in JS
+
+
+def test_kpi_comparison_uses_same_scoped_window_as_chart():
+    assert "period_metrics(chart_previous_where, chart_previous_params, prior_sales)" in API
+    assert 'overview["previous_metrics"]' in API
+    for field in ("total_sales", "avg_check", "checks", "discounts", "delivery_share"):
+        assert "prior." + field in JS
+    assert "previous==null?'Нет данных'" in JS

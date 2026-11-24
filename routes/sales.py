@@ -645,8 +645,9 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             "avg_margin": round(tp * 100 / ts, 2) if ts else 0,
             "total_items_sold": ti, "period_days": days,
         }
-        metrics = await conn.fetchrow(
-            f"""SELECT COUNT(*) AS rows_count,
+        async def period_metrics(where, args, sales):
+            metrics = await conn.fetchrow(
+                f"""SELECT COUNT(*) AS rows_count,
                 SUM(CASE WHEN sr.extra_data::jsonb ? 'check_count'
                          THEN (sr.extra_data::jsonb->>'check_count')::numeric
                          WHEN sr.extra_data::jsonb ? 'source_restaurant' THEN sr.quantity END) AS checks,
@@ -656,11 +657,15 @@ async def sales_dashboard(request: web.Request) -> web.Response:
                            WHEN sr.extra_data::jsonb ? 'source_restaurant' THEN sr.quantity END) AS check_rows,
                 COUNT(sr.extra_data::jsonb->>'guest_count') AS guest_rows,
                 COUNT(sr.extra_data::jsonb->>'reported_discount') AS discount_rows
-                FROM sales_records sr {w}""", *params)
-        for field, coverage in (("checks", "check_rows"), ("guests", "guest_rows"), ("discounts", "discount_rows")):
-            overview[field] = float(metrics[field]) if metrics[field] is not None and metrics[coverage] == metrics["rows_count"] else None
-        overview["avg_check"] = ts / overview["checks"] if overview["checks"] else None
-        overview["sales_per_guest"] = ts / overview["guests"] if overview["guests"] else None
+                FROM sales_records sr {where}""", *args)
+            result = {}
+            for field, coverage in (("checks", "check_rows"), ("guests", "guest_rows"), ("discounts", "discount_rows")):
+                result[field] = float(metrics[field]) if metrics[field] is not None and metrics[coverage] == metrics["rows_count"] else None
+            result["avg_check"] = sales / result["checks"] if result["checks"] else None
+            result["sales_per_guest"] = sales / result["guests"] if result["guests"] else None
+            return result
+
+        overview.update(await period_metrics(w, params, ts))
         daily_trend = await conn.fetch(
             f"SELECT sr.sale_date, SUM(sr.total_amount) s, SUM(sr.cost_amount) c, "
             f"SUM(sr.profit_amount) p, SUM(sr.quantity) q "
@@ -776,6 +781,16 @@ async def sales_dashboard(request: web.Request) -> web.Response:
                 FROM sales_records sr {chart_previous_where}
                 GROUP BY 1, 2, 3""", *chart_previous_params)
         order_mapping = await _order_type_mapping(conn)
+        prior_sales = sum(float(item["sales"] or 0) for item in chart_previous)
+        prior_delivery = sum(float(item["sales"] or 0) for item in chart_previous
+                             if order_mapping.get(item["method"] or "") == "Доставка")
+        overview["previous_metrics"] = {
+            **await period_metrics(chart_previous_where, chart_previous_params, prior_sales),
+            "total_sales": prior_sales if chart_previous else None,
+            "delivery_share": 100 * prior_delivery / prior_sales if prior_sales > 0 else None,
+            "date_from": str(chart_previous_from),
+            "date_to": str(chart_previous_to - timedelta(days=1)),
+        }
 
         def chart_points(rows, start):
             points = {}

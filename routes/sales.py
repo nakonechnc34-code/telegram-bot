@@ -17,7 +17,7 @@ from functools import wraps
 
 from aiohttp import web
 import openpyxl
-from asyncpg.exceptions import UndefinedTableError
+from asyncpg.exceptions import UndefinedTableError, LockNotAvailableError, DeadlockDetectedError, QueryCanceledError
 
 import db
 from middleware.rate_limit import get_client_ip
@@ -485,8 +485,10 @@ async def upload_sales_file(request: web.Request) -> web.Response:
             raise ValueError("В отчёте нет данных обслуживающих гостей ресторанов")
         async with pool.acquire() as conn:
             async with conn.transaction():
+                await conn.execute("SET LOCAL lock_timeout = '5s'")
+                await conn.execute("SELECT pg_advisory_xact_lock(814726, 1)")
                 for rest_key in sorted(by_key):
-                    await conn.fetchval("SELECT key FROM restaurants WHERE key = $1 FOR UPDATE", rest_key)
+                    await conn.fetchval("SELECT key FROM restaurants WHERE key = $1 FOR NO KEY UPDATE", rest_key)
                 for rest_key, grouped in by_key.items():
                     # One authoritative snapshot per restaurant and report date.
                     # Replace only dates included in this file, preserving all
@@ -513,6 +515,11 @@ async def upload_sales_file(request: web.Request) -> web.Response:
         return web.json_response({"success": True, "import_id": import_id, "rows_count": len(records),
                                   "restaurants_count": len(by_key),
                                   "message": f"Загружено {len(records)} записей"})
+    except (LockNotAvailableError, DeadlockDetectedError, QueryCanceledError):
+        async with pool.acquire() as conn:
+            await conn.execute("UPDATE sales_imports SET status='error', error_message=$1 WHERE id=$2",
+                               "Данные Sales заняты другой операцией", import_id)
+        return web.json_response({"error": "Данные Sales заняты другой операцией. Повторите загрузку позже.", "import_id": import_id}, status=409)
     except Exception as e:
         async with pool.acquire() as conn:
             await conn.execute(
@@ -589,26 +596,33 @@ async def delete_sales_import(request: web.Request) -> web.Response:
 
     allowed = await _sales_restaurant_scope(request)
     pool = db.get_pool(request.app)
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            imp = await conn.fetchrow(
-                "SELECT id, restaurant_key FROM sales_imports WHERE id=$1 FOR UPDATE", import_id)
-            if imp is None:
-                return web.json_response({"error": "Отчёт не найден"}, status=404)
-            affected = await conn.fetch(
-                "SELECT DISTINCT restaurant_key FROM sales_records WHERE import_id=$1", import_id)
-            keys = {imp["restaurant_key"]} | {row["restaurant_key"] for row in affected}
-            if allowed is not None and not keys.issubset(set(allowed)):
-                return web.json_response({"error": "Отчёт содержит данные ресторанов вне вашей территории. Удалить его целиком может супер-администратор."}, status=403)
-            # Lock restaurants in stable order, consistent with the upload transaction.
-            for key in sorted(keys):
-                await conn.fetchval("SELECT key FROM restaurants WHERE key=$1 FOR UPDATE", key)
-            deleted = await conn.fetchval(
-                "WITH removed AS (DELETE FROM sales_records WHERE import_id=$1 RETURNING id) "
-                "SELECT COUNT(*) FROM removed", import_id)
-            for key in sorted({row["restaurant_key"] for row in affected}):
-                await _recalc_summary(conn, key)
-            await conn.execute("DELETE FROM sales_imports WHERE id=$1", import_id)
+    try:
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute("SET LOCAL lock_timeout = '5s'")
+                # Serialize Sales writes before acquiring import or restaurant row locks.
+                await conn.execute("SELECT pg_advisory_xact_lock(814726, 1)")
+                imp = await conn.fetchrow(
+                    "SELECT id, restaurant_key, status FROM sales_imports WHERE id=$1", import_id)
+                if imp is None:
+                    return web.json_response({"error": "Отчёт не найден"}, status=404)
+                if imp["status"] == "processing":
+                    return web.json_response({"error": "Отчёт ещё загружается. Повторите позже."}, status=409)
+                affected = await conn.fetch(
+                    "SELECT DISTINCT restaurant_key FROM sales_records WHERE import_id=$1", import_id)
+                keys = {imp["restaurant_key"]} | {row["restaurant_key"] for row in affected}
+                if allowed is not None and not keys.issubset(set(allowed)):
+                    return web.json_response({"error": "Отчёт содержит данные ресторанов вне вашей территории."}, status=403)
+                for key in sorted(keys):
+                    await conn.fetchval("SELECT key FROM restaurants WHERE key=$1 FOR NO KEY UPDATE", key)
+                deleted = await conn.fetchval(
+                    "WITH removed AS (DELETE FROM sales_records WHERE import_id=$1 RETURNING id) "
+                    "SELECT COUNT(*) FROM removed", import_id)
+                for key in sorted({row["restaurant_key"] for row in affected}):
+                    await _recalc_summary(conn, key)
+                await conn.execute("DELETE FROM sales_imports WHERE id=$1", import_id)
+    except (LockNotAvailableError, DeadlockDetectedError, QueryCanceledError):
+        return web.json_response({"error": "Данные Sales заняты другой операцией. Повторите удаление позже."}, status=409)
 
     return web.json_response({"success": True, "deleted_records": int(deleted or 0)})
 

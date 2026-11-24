@@ -34,8 +34,9 @@ def test_accessibility_and_responsive_design():
     assert '@media(max-width:520px)' in CSS
 
 
-def test_reports_tab_empty_without_affecting_imports():
+def test_reports_tab_hourly_without_affecting_imports():
     reports = JS.split("} else if(view==='reports') {", 1)[1].split("} else if(view==='imports') {", 1)[0]
-    assert reports.strip() == "DOM.content.innerHTML='';"
+    assert reports.strip() == "renderHourlyComparison();"
+    assert "Сравнение ежечастно" in JS
     assert "imports.length" in JS
     assert "Замена данных" in JS

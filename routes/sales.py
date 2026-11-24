@@ -608,16 +608,40 @@ async def sales_hourly_comparison(request: web.Request) -> web.Response:
     allowed = await _allowed_rests(request["admin"])
     async with db.get_pool(request.app).acquire() as conn:
         restaurants = await conn.fetch(
-            "SELECT key, name FROM restaurants" +
-            (" WHERE key = ANY($1)" if allowed is not None else "") +
-            " ORDER BY sort NULLS FIRST, name", *([allowed] if allowed is not None else []))
+            "SELECT r.key, r.name, r.territory_manager_id, u.full_name AS territory_manager_name "
+            "FROM restaurants r LEFT JOIN users u ON u.user_id = r.territory_manager_id" +
+            (" WHERE r.key = ANY($1)" if allowed is not None else "") +
+            " ORDER BY r.sort NULLS FIRST, r.name", *([allowed] if allowed is not None else []))
         keys = [r["key"] for r in restaurants]
         rows = await conn.fetch("""
             SELECT restaurant_key, sale_date, payment_method,
                    SUM(CASE WHEN hour < $3 THEN total_amount ELSE 0 END) AS sales
             FROM (
                 SELECT restaurant_key, sale_date, payment_method, total_amount,
-                       CASE WHEN (extra_data::jsonb->>'opening_hour') ~ '^(?:[0-9]|1[0-9]|2[0-3])
+                       CASE WHEN (extra_data::jsonb->>'opening_hour') ~ '^(?:[0-9]|1[0-9]|2[0-3])$'
+                            THEN (extra_data::jsonb->>'opening_hour')::int END AS hour
+                FROM sales_records WHERE sale_date IN ($1, $2) AND restaurant_key = ANY($4::text[])
+            ) records WHERE hour IS NOT NULL
+            GROUP BY 1, 2, 3
+        """, current, previous, cutoff, keys)
+        mapping = await _order_type_mapping(conn)
+    buckets = {}
+    for row in rows:
+        bucket = buckets.setdefault((row["restaurant_key"], row["sale_date"]),
+                                    {"hall": 0.0, "delivery": 0.0, "other": 0.0, "total": 0.0})
+        channel = {"Зал": "hall", "Доставка": "delivery"}.get(mapping.get(row["payment_method"] or ""), "other")
+        amount = float(row["sales"] or 0)
+        bucket[channel] += amount
+        bucket["total"] += amount
+    return web.json_response({"success": True, "data": [
+        {"key": r["key"], "name": r["name"],
+         "territory_manager_id": str(r["territory_manager_id"]) if r["territory_manager_id"] is not None else None,
+         "territory_manager_name": r["territory_manager_name"],
+         "current": buckets.get((r["key"], current)),
+         "previous": buckets.get((r["key"], previous))} for r in restaurants]})
+
+
+@routes.post("/api/sales/dashboard")
 @sales_required
 async def sales_dashboard(request: web.Request) -> web.Response:
     user = request['admin']

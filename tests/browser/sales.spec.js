@@ -16,12 +16,16 @@ async function openSales(page) {
   await expect(page.locator('#sales-turnover-chart')).toBeVisible();
 }
 
-test('Sales desktop sidebar shows the current section and hides empty reports', async ({ page }) => {
+test('Sales desktop sidebar shows the current section and restores reports navigation', async ({ page }) => {
   await openSales(page);
   const sidebar = page.locator('#sales-sidebar');
   await expect(sidebar).toHaveCSS('width', '208px');
   await expect(sidebar.getByRole('button', { name: 'Дашборд' })).toHaveAttribute('aria-current', 'page');
-  await expect(sidebar.locator('[data-view="reports"]')).toBeHidden();
+  const reports = sidebar.getByRole('button', { name: 'Отчёты' });
+  await expect(reports).toBeVisible();
+  await reports.click();
+  await expect(reports).toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('#sales-turnover-chart')).toHaveCount(0);
 
   const imports = sidebar.getByRole('button', { name: 'Импорт iiko' });
   await imports.click();

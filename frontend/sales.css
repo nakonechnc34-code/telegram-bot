@@ -550,3 +550,16 @@ button:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-v
 .sales-kpi-comparison small{display:block;font-size:10px;color:#64748b}
 .sales-kpi-comparison>div{display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-top:3px}
 .sales-kpi-delta{font-size:11px;font-weight:700;color:#64748b}.sales-kpi-delta.up{color:#15803d}.sales-kpi-delta.down{color:#be2535}
+
+.hourly-report-filters{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin:16px 0}.hourly-report-filters label{display:grid;gap:5px;font-size:12px;color:#64748b}.hourly-table-scroll{overflow:auto}.hourly-report-table{border-collapse:collapse;width:100%;min-width:620px;font-variant-numeric:tabular-nums}.hourly-report-table th,.hourly-report-table td{padding:9px 12px;border:1px solid #e2e6ec;text-align:right}.hourly-report-table th:first-child,.hourly-report-table td:nth-last-child(4){text-align:left}.hourly-report-table thead{background:#f5f6f8}.hourly-total{font-weight:700;background:#f8fafc}.hourly-summary{background:#fff0d8;font-weight:700}.hourly-up{color:#15803d}.hourly-down{color:#c92535}
+
+/* Visually separate each three-row restaurant group. */
+.hourly-report-table tbody tr:nth-child(6n+1),.hourly-report-table tbody tr:nth-child(6n+2),.hourly-report-table tbody tr:nth-child(6n+3){background:#fff}
+.hourly-report-table tbody tr:nth-child(6n+4),.hourly-report-table tbody tr:nth-child(6n+5),.hourly-report-table tbody tr:nth-child(6n+6){background:#f1f4f8}
+.hourly-report-table tbody tr:nth-child(3n+1)>*{border-top:2px solid #aebaca}
+.hourly-report-table tbody th[ rowspan="3"]{font-weight:800;text-align:left;vertical-align:middle;border-left:4px solid #c92535;color:#1e293b}
+.hourly-report-table tbody tr.hourly-total td{font-weight:800;border-top:1px solid #aebaca}
+.hourly-report-table tbody tr.hourly-summary{background:#fff0d8;font-weight:800}
+.hourly-report-table tbody tr.hourly-summary th{border-left-color:#b7791f}
+
+.hourly-report-table tbody .hourly-territory-heading th{background:#dfe6ef;color:#243449;text-align:left;font-weight:800;padding:12px;border-top:3px solid #aebaca}.hourly-report-table tbody .hourly-company{background:#fce1e4;font-weight:800}.hourly-report-table tbody .hourly-company th{border-left-color:#c92535}

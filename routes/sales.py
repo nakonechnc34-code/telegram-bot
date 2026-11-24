@@ -156,6 +156,13 @@ def _where(conditions, params):
 
 # ==================== ПАРСЕРЫ ====================
 
+def _optional_metric(value):
+    try:
+        return float(str(value).replace(" ", "").replace(",", ".")) if value is not None else None
+    except (ValueError, TypeError):
+        return None
+
+
 def _parse_iiko_daily(ws) -> list[dict]:
     """Парсит сводный 'Дневной отчет' iiko."""
     rows = list(ws.iter_rows(values_only=True))
@@ -173,6 +180,8 @@ def _parse_iiko_daily(ws) -> list[dict]:
     i_date, i_rest, i_pay = col("учетный день", "дата"), col("торговое предприятие", "ресторан"), col("тип оплаты", "оплата")
     i_sum, i_chk = col("сумма со скидкой", "сумма"), col("чеков", "кол-во")
     i_hour = col("час открытия")
+    i_guests = col("количество гостей", "гостей")
+    i_discount = col("сумма скидки", "скидка")
 
     if i_sum == -1 or i_pay == -1 or i_rest == -1 or i_date == -1:
         return []
@@ -212,7 +221,10 @@ def _parse_iiko_daily(ws) -> list[dict]:
 
         records.append({
             "sale_date": cur_date, "payment_method": str(raw_pay).strip(),
-            "total_amount": total, "quantity": checks or 1,
+            "total_amount": total, "quantity": checks,
+            "check_count": checks if i_chk >= 0 and raw_chk is not None else None,
+            "guest_count": _optional_metric(get(i_guests)),
+            "reported_discount": _optional_metric(get(i_discount)),
             "category": None, "product_name": None,
             "cost_amount": 0, "profit_amount": 0,
             "source_restaurant": cur_rest,
@@ -633,6 +645,22 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             "avg_margin": round(tp * 100 / ts, 2) if ts else 0,
             "total_items_sold": ti, "period_days": days,
         }
+        metrics = await conn.fetchrow(
+            f"""SELECT COUNT(*) AS rows_count,
+                SUM(CASE WHEN sr.extra_data::jsonb ? 'check_count'
+                         THEN (sr.extra_data::jsonb->>'check_count')::numeric
+                         WHEN sr.extra_data::jsonb ? 'source_restaurant' THEN sr.quantity END) AS checks,
+                SUM((sr.extra_data::jsonb->>'guest_count')::numeric) AS guests,
+                SUM((sr.extra_data::jsonb->>'reported_discount')::numeric) AS discounts,
+                COUNT(CASE WHEN sr.extra_data::jsonb ? 'check_count' THEN (sr.extra_data::jsonb->>'check_count')::numeric
+                           WHEN sr.extra_data::jsonb ? 'source_restaurant' THEN sr.quantity END) AS check_rows,
+                COUNT(sr.extra_data::jsonb->>'guest_count') AS guest_rows,
+                COUNT(sr.extra_data::jsonb->>'reported_discount') AS discount_rows
+                FROM sales_records sr {w}""", *params)
+        for field, coverage in (("checks", "check_rows"), ("guests", "guest_rows"), ("discounts", "discount_rows")):
+            overview[field] = float(metrics[field]) if metrics[field] is not None and metrics[coverage] == metrics["rows_count"] else None
+        overview["avg_check"] = ts / overview["checks"] if overview["checks"] else None
+        overview["sales_per_guest"] = ts / overview["guests"] if overview["guests"] else None
         daily_trend = await conn.fetch(
             f"SELECT sr.sale_date, SUM(sr.total_amount) s, SUM(sr.cost_amount) c, "
             f"SUM(sr.profit_amount) p, SUM(sr.quantity) q "

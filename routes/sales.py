@@ -150,6 +150,22 @@ async def _allowed_rests(user):
     return await db._run(_sync_get_tu_rests, user["user_id"]) if _is_tu(user) else None
 
 
+def _is_sales_office(name):
+    return str(name or "").strip().casefold() == "офис"
+
+
+async def _sales_restaurant_scope(request, conn=None):
+    """Sales-only scope; never modify the shared restaurant directory."""
+    allowed = await _allowed_rests(request["admin"])
+    if conn is None:
+        async with db.get_pool(request.app).acquire() as connection:
+            rows = await connection.fetch("SELECT key, name FROM restaurants")
+    else:
+        rows = await conn.fetch("SELECT key, name FROM restaurants")
+    return [r["key"] for r in rows if not _is_sales_office(r["name"])
+            and (allowed is None or r["key"] in allowed)]
+
+
 def _where(conditions, params):
     return f"WHERE {' AND '.join(conditions)}" if conditions else "", params
 
@@ -391,7 +407,7 @@ async def upload_sales_file(request: web.Request) -> web.Response:
     key = (reader.get("restaurant_key") or "").strip()
     if not key: return web.json_response({"error": "Укажите restaurant_key"}, status=400)
 
-    allowed = await _allowed_rests(user)
+    allowed = await _sales_restaurant_scope(request)
     if allowed is not None and key not in allowed:
         return web.json_response({"error": "Нет прав"}, status=403)
 
@@ -443,6 +459,7 @@ async def upload_sales_file(request: web.Request) -> web.Response:
                 value = re.sub(r"[^\w\s]", " ", value)
                 value = " ".join(value.split())
                 return re.sub(r"^мега\s+", "", value)
+            office_keys = {restaurant["key"] for restaurant in db_rests if _is_sales_office(restaurant["name"])}
             matches = {}
             for restaurant in db_rests:
                 matches.setdefault(norm_name(restaurant["name"]), []).append(restaurant["key"])
@@ -454,6 +471,8 @@ async def upload_sales_file(request: web.Request) -> web.Response:
                     unknown.append(name or "(без названия)")
                     continue
                 rest_key = candidates[0]
+                if rest_key in office_keys:
+                    continue
                 if allowed is not None and rest_key not in allowed:
                     raise PermissionError("Нет прав на ресторан: " + str(name))
                 by_key.setdefault(rest_key, []).append(rec)
@@ -462,6 +481,8 @@ async def upload_sales_file(request: web.Request) -> web.Response:
         else:
             by_key[key] = records
 
+        if not by_key:
+            raise ValueError("В отчёте нет данных обслуживающих гостей ресторанов")
         async with pool.acquire() as conn:
             async with conn.transaction():
                 for rest_key in sorted(by_key):
@@ -545,7 +566,7 @@ async def sales_order_type_settings(request: web.Request) -> web.Response:
                 return web.json_response({"error": "Требуется миграция database/004_sales_order_type_settings.sql"}, status=503)
         mapping = await _order_type_mapping(conn)
         # Discover methods actually present in accessible Sales records.
-        allowed = await _allowed_rests(user)
+        allowed = await _sales_restaurant_scope(request, conn)
         if allowed is None:
             rows = await conn.fetch("SELECT DISTINCT payment_method FROM sales_records WHERE payment_method IS NOT NULL ORDER BY payment_method")
         else:
@@ -566,7 +587,7 @@ async def delete_sales_import(request: web.Request) -> web.Response:
     if type(import_id) is not int or import_id <= 0:
         return web.json_response({"error": "Некорректный идентификатор отчёта"}, status=400)
 
-    allowed = await _allowed_rests(user)
+    allowed = await _sales_restaurant_scope(request)
     pool = db.get_pool(request.app)
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -605,7 +626,7 @@ async def sales_hourly_comparison(request: web.Request) -> web.Response:
             raise ValueError()
     except (ValueError, TypeError, KeyError):
         return web.json_response({"error": "Укажите две разные даты и час от 0 до 24"}, status=400)
-    allowed = await _allowed_rests(request["admin"])
+    allowed = await _sales_restaurant_scope(request)
     async with db.get_pool(request.app).acquire() as conn:
         restaurants = await conn.fetch(
             "SELECT r.key, r.name, r.territory_manager_id, u.full_name AS territory_manager_name "
@@ -652,7 +673,7 @@ async def sales_restaurant_turnover(request: web.Request) -> web.Response:
             raise ValueError()
     except (ValueError, TypeError, KeyError):
         return web.json_response({"error": "Выберите период от 1 до 367 дней"}, status=400)
-    allowed = await _allowed_rests(request["admin"])
+    allowed = await _sales_restaurant_scope(request)
     async with db.get_pool(request.app).acquire() as conn:
         restaurants = await conn.fetch(
             "SELECT r.key, r.name, r.territory_manager_id, u.full_name AS territory_manager_name "
@@ -687,7 +708,7 @@ async def sales_dashboard(request: web.Request) -> web.Response:
     body = await request.json()
     period = body.get("period", "1d")
     key = body.get("restaurant_key")
-    allowed = await _allowed_rests(user)
+    allowed = await _sales_restaurant_scope(request)
     if allowed is not None and key and key not in allowed:
         return web.json_response({"error": "Forbidden"}, status=403)
     # None means all restaurants (unrestricted admin). An empty list means no
@@ -1040,7 +1061,7 @@ async def sales_products(request: web.Request) -> web.Response:
     user = request["admin"]
     body = await request.json()
     key = body.get("restaurant_key")
-    allowed = await _allowed_rests(user)
+    allowed = await _sales_restaurant_scope(request)
     if allowed is not None and key and key not in allowed:
         return web.json_response({"error": "Forbidden"}, status=403)
 
@@ -1091,7 +1112,7 @@ async def sales_records(request: web.Request) -> web.Response:
     df, dt = _to_date(body.get("date_from")), _to_date(body.get("date_to"))
     cat = body.get("category"); prod = body.get("product_name")
     page = max(1, int(body.get("page", 1) or 1)); limit = max(1, min(500, int(body.get("limit", 100) or 100)))
-    allowed = await _allowed_rests(user)
+    allowed = await _sales_restaurant_scope(request)
 
     cond, params, idx = [], [], 1
     if allowed is not None:
@@ -1136,7 +1157,7 @@ def _rec_to_json(r):
 @sales_required
 async def sales_restaurants(request: web.Request) -> web.Response:
     user = request['admin']
-    allowed = await _allowed_rests(user)
+    allowed = await _sales_restaurant_scope(request)
     pool = db.get_pool(request.app)
     async with pool.acquire() as conn:
         if allowed is not None:
@@ -1169,7 +1190,7 @@ async def export_sales(request: web.Request) -> web.Response:
     if not df and isinstance(body.get("period"), str):
         days = {"7d": 7, "30d": 30, "90d": 90}.get(body["period"], 30)
         df = datetime.utcnow().date() - timedelta(days=days)
-    allowed = await _allowed_rests(user)
+    allowed = await _sales_restaurant_scope(request)
 
     cond, params, idx = [], [], 1
     if allowed is not None:

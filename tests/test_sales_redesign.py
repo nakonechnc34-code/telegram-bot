@@ -235,7 +235,7 @@ def test_turnover_comparison_and_hourly_order_types():
     assert '"hourly_by_order_type":' in source
     assert "previous_from = date_from - timedelta(days=days)" in source
     assert "previous_total_sales:previousSales=0" in JS
-    assert "signedChange(total,previous)" in JS
+    assert "comparison(total,prior.total_sales,money)" in JS
     assert "Прибыль по отчёту',money(o.total_profit)" not in JS
 
 

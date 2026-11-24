@@ -7,7 +7,7 @@ CSS = (ROOT / "frontend/sales.css").read_text(encoding="utf-8")
 
 
 def test_dashboard_retains_visual_hierarchy():
-    for token in ("sales-v3-kpi-corner", "sales-compact-kpis",
+    for token in ("sales-kpi-comparison", "sales-compact-kpis",
                   "sales-leading-chart", "sales-v2-restaurant-panel"):
         assert token in JS
         assert token in CSS

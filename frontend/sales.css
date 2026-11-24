@@ -541,3 +541,12 @@ button:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-v
 .sales-compact-kpis .sales-v3-kpi-corner{display:none}
 @media(max-width:1100px){.sales-compact-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:650px){.sales-compact-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.sales-compact-kpis .sales-v2-kpi:first-child .sales-v2-kpi-heading,.sales-compact-kpis .sales-v2-kpi:first-child .sales-v2-kpi-footer,.sales-compact-kpis .sales-v2-kpi:first-child .sales-v2-kpi-footer span{color:#64748b}
+.sales-compact-kpis .sales-v2-kpi:first-child .sales-v2-icon{background:#fff0f1;color:#c92535}
+.sales-compact-kpis .sales-v2-kpi:first-child{border-top:3px solid #c92535}
+.sales-compact-kpis .sales-v2-kpi:first-child .sales-v2-kpi-heading{color:#b51e2b}
+.sales-kpi-comparison{margin-top:10px;padding-top:9px;border-top:1px solid #e5e7eb;color:#475569;font-size:12px}
+.sales-kpi-comparison small{display:block;font-size:10px;color:#64748b}
+.sales-kpi-comparison>div{display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-top:3px}
+.sales-kpi-delta{font-size:11px;font-weight:700;color:#64748b}.sales-kpi-delta.up{color:#15803d}.sales-kpi-delta.down{color:#be2535}

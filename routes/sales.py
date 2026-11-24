@@ -662,6 +662,684 @@ async def sales_hourly_comparison(request: web.Request) -> web.Response:
          "previous": buckets.get((r["key"], previous))} for r in restaurants]})
 
 
+@routes.post("/api/sales/hourly-average")
+@sales_required
+async def sales_hourly_average(request: web.Request) -> web.Response:
+    allowed = await _sales_restaurant_scope(request)
+    body = await request.json()
+    if not isinstance(body, dict):
+        return web.json_response({"error": "Некорректный запрос"}, status=400)
+    key = body.get("restaurant_key")
+    today = datetime.now(ZoneInfo("Europe/Moscow")).date()
+    dates = [today - timedelta(days=i) for i in range(1, 22)]
+    async with db.get_pool(request.app).acquire() as conn:
+        restaurants = await conn.fetch(
+            "SELECT key, name FROM restaurants WHERE key = ANY($1::text[]) ORDER BY sort NULLS FIRST, name", allowed)
+        if key is None:
+            key = restaurants[0]["key"] if restaurants else None
+        if key is not None and (not isinstance(key, str) or key not in allowed):
+            return web.json_response({"error": "Ресторан недоступен"}, status=403)
+        rows = await conn.fetch("""
+            SELECT sale_date, hour, SUM(total_amount) AS sales FROM (
+                SELECT sale_date, total_amount,
+                       CASE WHEN (extra_data::jsonb->>'opening_hour') ~ '^(?:[0-9]|1[0-9]|2[0-3])
+@sales_required
+async def sales_restaurant_turnover(request: web.Request) -> web.Response:
+    try:
+        body = await request.json()
+        start = date.fromisoformat(body["date_from"])
+        end = date.fromisoformat(body["date_to"])
+        if not 0 <= (end - start).days <= 366:
+            raise ValueError()
+    except (ValueError, TypeError, KeyError):
+        return web.json_response({"error": "Выберите период от 1 до 367 дней"}, status=400)
+    allowed = await _sales_restaurant_scope(request)
+    async with db.get_pool(request.app).acquire() as conn:
+        restaurants = await conn.fetch(
+            "SELECT r.key, r.name, r.territory_manager_id, u.full_name AS territory_manager_name "
+            "FROM restaurants r LEFT JOIN users u ON u.user_id = r.territory_manager_id" +
+            (" WHERE r.key = ANY($1)" if allowed is not None else "") +
+            " ORDER BY r.sort NULLS FIRST, r.name", *([allowed] if allowed is not None else []))
+        rows = await conn.fetch("""
+            SELECT restaurant_key, payment_method, SUM(total_amount) AS sales
+            FROM sales_records WHERE sale_date BETWEEN $1 AND $2
+            AND restaurant_key = ANY($3::text[]) GROUP BY 1, 2
+        """, start, end, [r["key"] for r in restaurants])
+        mapping = await _order_type_mapping(conn)
+    buckets = {}
+    for row in rows:
+        bucket = buckets.setdefault(row["restaurant_key"], {"hall": 0.0, "delivery": 0.0, "total": 0.0})
+        amount = float(row["sales"] or 0)
+        bucket["total"] += amount
+        channel = {"Зал": "hall", "Доставка": "delivery"}.get(mapping.get(row["payment_method"] or ""))
+        if channel:
+            bucket[channel] += amount
+    return web.json_response({"success": True, "data": [
+        {"key": r["key"], "name": r["name"],
+         "territory_manager_id": str(r["territory_manager_id"]) if r["territory_manager_id"] is not None else None,
+         "territory_manager_name": r["territory_manager_name"], "turnover": buckets.get(r["key"])}
+        for r in restaurants]})
+
+
+@routes.post("/api/sales/order-type-report")
+@sales_required
+async def sales_order_type_report(request: web.Request) -> web.Response:
+    try:
+        body = await request.json()
+        start = date.fromisoformat(body["date_from"])
+        end = date.fromisoformat(body["date_to"])
+        if not 0 <= (end - start).days <= 366:
+            raise ValueError()
+    except (ValueError, TypeError, KeyError):
+        return web.json_response({"error": "Выберите период от 1 до 367 дней"}, status=400)
+    allowed = await _sales_restaurant_scope(request)
+    async with db.get_pool(request.app).acquire() as conn:
+        restaurants = await conn.fetch(
+            "SELECT r.key, r.name, r.territory_manager_id, u.full_name AS territory_manager_name "
+            "FROM restaurants r LEFT JOIN users u ON u.user_id = r.territory_manager_id" +
+            (" WHERE r.key = ANY($1)" if allowed is not None else "") +
+            " ORDER BY r.sort NULLS FIRST, r.name", *([allowed] if allowed is not None else []))
+        rows = await conn.fetch("""
+            SELECT restaurant_key, payment_method, SUM(total_amount) AS sales,
+                   COUNT(*) AS row_count,
+                   COUNT(CASE WHEN extra_data::jsonb ? 'check_count' THEN (extra_data::jsonb->>'check_count')::numeric WHEN extra_data::jsonb ? 'source_restaurant' THEN quantity END) AS check_rows,
+                   SUM(CASE WHEN extra_data::jsonb ? 'check_count' THEN (extra_data::jsonb->>'check_count')::numeric WHEN extra_data::jsonb ? 'source_restaurant' THEN quantity END) AS checks
+            FROM sales_records WHERE sale_date BETWEEN $1 AND $2
+            AND restaurant_key = ANY($3::text[]) GROUP BY 1, 2
+        """, start, end, [r["key"] for r in restaurants])
+        mapping = await _order_type_mapping(conn)
+    buckets = {}
+    for row in rows:
+        bucket = buckets.setdefault(row["restaurant_key"], {k: {"sales": 0.0, "checks": 0} for k in ("total", "hall", "delivery")})
+        channel = {"Зал": "hall", "Доставка": "delivery"}.get(mapping.get(row["payment_method"] or ""))
+        for key in ("total", channel):
+            if key is None:
+                continue
+            metric = bucket[key]
+            metric["sales"] += float(row["sales"] or 0)
+            if row["check_rows"] != row["row_count"] or row["checks"] is None:
+                metric["checks"] = None
+            elif metric["checks"] is not None:
+                metric["checks"] += int(row["checks"])
+    return web.json_response({"success": True, "data": [
+        {"key": r["key"], "name": r["name"],
+         "territory_manager_id": str(r["territory_manager_id"]) if r["territory_manager_id"] is not None else None,
+         "territory_manager_name": r["territory_manager_name"], "metrics": buckets.get(r["key"])}
+        for r in restaurants]})
+
+
+@routes.post("/api/sales/dashboard")
+@sales_required
+async def sales_dashboard(request: web.Request) -> web.Response:
+    user = request['admin']
+    body = await request.json()
+    period = body.get("period", "1d")
+    key = body.get("restaurant_key")
+    allowed = await _sales_restaurant_scope(request)
+    if allowed is not None and key and key not in allowed:
+        return web.json_response({"error": "Forbidden"}, status=403)
+    # None means all restaurants (unrestricted admin). An empty list means no
+    # restaurants. Never silently replace "all" with the TU's first restaurant.
+    scoped_keys = [key] if key else allowed
+    if "restaurant_keys" in body and body["restaurant_keys"] is not None:
+        selected = body["restaurant_keys"]
+        if not isinstance(selected, list) or any(not isinstance(k, str) or not k for k in selected):
+            return web.json_response({"error": "Некорректный список ресторанов"}, status=400)
+        if allowed is not None and any(k not in allowed for k in selected):
+            return web.json_response({"error": "Forbidden"}, status=403)
+        scoped_keys = list(dict.fromkeys(selected))
+    if period == "custom":
+        try:
+            date_from = date.fromisoformat(body["date_from"])
+            date_to = date.fromisoformat(body["date_to"])
+        except (ValueError, TypeError, KeyError):
+            return web.json_response({"error": "Укажите корректные даты начала и окончания"}, status=400)
+        if date_to < date_from or (date_to - date_from).days > 366:
+            return web.json_response({"error": "Период должен быть от 1 до 367 дней"}, status=400)
+        days = (date_to - date_from).days + 1
+    else:
+        days = {"1d": 1, "7d": 7, "30d": 30, "90d": 90, "365d": 365}.get(period, 30)
+        date_to = datetime.now(ZoneInfo("Europe/Moscow")).date()
+        date_from = date_to - timedelta(days=days - 1)
+    end_exclusive = date_to + timedelta(days=1)
+    conditions = ["sr.sale_date >= $1", "sr.sale_date < $2"]
+    params = [date_from, end_exclusive]
+    if scoped_keys is not None:
+        conditions.append("sr.restaurant_key = ANY($3)")
+        params.append(scoped_keys)
+    w, _ = _where(conditions, params)
+
+    pool = db.get_pool(request.app)
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            f"SELECT COALESCE(SUM(sr.total_amount), 0) AS s, COALESCE(SUM(sr.cost_amount), 0) AS c, "
+            f"COALESCE(SUM(sr.profit_amount), 0) AS p, COALESCE(SUM(sr.quantity), 0) AS i "
+            f"FROM sales_records sr {w}", *params)
+        ts, tc, tp, ti = float(row["s"]), float(row["c"]), float(row["p"]), int(row["i"])
+        overview = {
+            "total_sales": ts, "total_cost": tc, "total_profit": tp,
+            "avg_margin": round(tp * 100 / ts, 2) if ts else 0,
+            "total_items_sold": ti, "period_days": days,
+        }
+        async def period_metrics(where, args, sales):
+            metrics = await conn.fetchrow(
+                f"""SELECT COUNT(*) AS rows_count,
+                SUM(CASE WHEN sr.extra_data::jsonb ? 'check_count'
+                         THEN (sr.extra_data::jsonb->>'check_count')::numeric
+                         WHEN sr.extra_data::jsonb ? 'source_restaurant' THEN sr.quantity END) AS checks,
+                SUM((sr.extra_data::jsonb->>'guest_count')::numeric) AS guests,
+                SUM((sr.extra_data::jsonb->>'reported_discount')::numeric) AS discounts,
+                COUNT(CASE WHEN sr.extra_data::jsonb ? 'check_count' THEN (sr.extra_data::jsonb->>'check_count')::numeric
+                           WHEN sr.extra_data::jsonb ? 'source_restaurant' THEN sr.quantity END) AS check_rows,
+                COUNT(sr.extra_data::jsonb->>'guest_count') AS guest_rows,
+                COUNT(sr.extra_data::jsonb->>'reported_discount') AS discount_rows
+                FROM sales_records sr {where}""", *args)
+            result = {}
+            for field, coverage in (("checks", "check_rows"), ("guests", "guest_rows"), ("discounts", "discount_rows")):
+                result[field] = float(metrics[field]) if metrics[field] is not None and metrics[coverage] == metrics["rows_count"] else None
+            result["avg_check"] = sales / result["checks"] if result["checks"] else None
+            result["sales_per_guest"] = sales / result["guests"] if result["guests"] else None
+            return result
+
+        overview.update(await period_metrics(w, params, ts))
+        daily_trend = await conn.fetch(
+            f"SELECT sr.sale_date, SUM(sr.total_amount) s, SUM(sr.cost_amount) c, "
+            f"SUM(sr.profit_amount) p, SUM(sr.quantity) q "
+            f"FROM sales_records sr {w} GROUP BY sr.sale_date ORDER BY sr.sale_date", *params)
+
+        # Restrict both the LEFT JOIN and restaurant rows to the same scope.
+        rest_filter = "WHERE r.key = ANY($3)" if scoped_keys is not None else ""
+        join_filter = "AND sr.restaurant_key = ANY($3)" if scoped_keys is not None else ""
+        by_rest = await conn.fetch(f"""
+            SELECT r.name, r.key, COALESCE(SUM(sr.total_amount),0) total,
+                   COALESCE(SUM(sr.profit_amount),0) profit
+            FROM restaurants r LEFT JOIN sales_records sr
+              ON sr.restaurant_key = r.key AND sr.sale_date >= $1 AND sr.sale_date < $2 {join_filter}
+            {rest_filter}
+            GROUP BY r.key, r.name ORDER BY total DESC""", *params)
+
+        # Per-restaurant channel split uses the same authorized scope and date range.
+        restaurant_channel_rows = await conn.fetch(
+            f"""SELECT sr.restaurant_key, sr.payment_method, SUM(sr.total_amount) AS sales
+                FROM sales_records sr {w}
+                GROUP BY sr.restaurant_key, sr.payment_method""", *params)
+
+        # Aggregate only records that carry a valid opening hour.
+        hour_conditions = conditions + [
+            "sr.extra_data IS NOT NULL",
+            "(sr.extra_data::jsonb->>'opening_hour') ~ '^(?:[0-9]|1[0-9]|2[0-3])$'"
+        ]
+        hour_where, _ = _where(hour_conditions, params)
+        hourly = await conn.fetch(
+            f"""SELECT (sr.extra_data::jsonb->>'opening_hour')::int AS opening_hour,
+                       SUM(sr.total_amount) sales, SUM(sr.quantity) checks
+                FROM sales_records sr {hour_where}
+                GROUP BY 1 ORDER BY 1""", *params)
+
+        # Previous equal-length period: turnover and Hall/Delivery comparison.
+        previous_from = date_from - timedelta(days=days)
+        previous_conditions = [
+            "sr.sale_date >= $1",
+            "sr.sale_date < $2",
+        ]
+        previous_params = [previous_from, date_from]
+        if scoped_keys is not None:
+            previous_conditions.append("sr.restaurant_key = ANY($3)")
+            previous_params.append(scoped_keys)
+        previous_where, _ = _where(previous_conditions, previous_params)
+        previous_rows = await conn.fetch(
+            f"""SELECT sr.payment_method method, SUM(sr.total_amount) sales
+                FROM sales_records sr {previous_where}
+                GROUP BY sr.payment_method""", *previous_params)
+
+        # Hour-by-hour breakdown by payment method, then map to order type.
+        hourly_methods = await conn.fetch(
+            f"""SELECT (sr.extra_data::jsonb->>'opening_hour')::int AS opening_hour,
+                       sr.payment_method method, SUM(sr.total_amount) sales
+                FROM sales_records sr {hour_where}
+                GROUP BY 1, 2 ORDER BY 1""", *params)
+
+        # Compare one selected day with the same weekday seven days earlier.
+        # Cutoff is exclusive: 16:00 means sales through 15:59.
+        try:
+            comparison_day = date.fromisoformat(body.get("comparison_date") or str(datetime.now(ZoneInfo("Europe/Moscow")).date()))
+            cutoff_hour = int(body.get("comparison_hour", datetime.now(ZoneInfo("Europe/Moscow")).hour))
+        except (TypeError, ValueError):
+            return web.json_response({"error": "Некорректная дата или час сравнения"}, status=400)
+        if not 0 <= cutoff_hour <= 24:
+            return web.json_response({"error": "Час сравнения должен быть от 0 до 24"}, status=400)
+        last_week_day = comparison_day - timedelta(days=7)
+        compare_filter = "AND sr.restaurant_key = ANY($4)" if scoped_keys is not None else ""
+        compare_args = [comparison_day, last_week_day, cutoff_hour]
+        if scoped_keys is not None:
+            compare_args.append(scoped_keys)
+        compare_rows = await conn.fetch(f"""
+            SELECT sr.sale_date, (sr.extra_data::jsonb->>'opening_hour')::int AS opening_hour,
+                   sr.payment_method AS method, SUM(sr.total_amount) AS sales
+            FROM sales_records sr
+            WHERE sr.sale_date IN ($1, $2)
+              AND sr.extra_data IS NOT NULL
+              AND (sr.extra_data::jsonb->>'opening_hour') ~ '^(?:[0-9]|1[0-9]|2[0-3])$'
+              AND (sr.extra_data::jsonb->>'opening_hour')::int < $3
+              {compare_filter}
+            GROUP BY 1, 2, 3 ORDER BY 1, 2
+        """, *compare_args)
+        comparison_days_present = await conn.fetch(
+            "SELECT DISTINCT sale_date FROM sales_records WHERE sale_date IN ($1, $2)"
+            + (" AND restaurant_key = ANY($3)" if scoped_keys is not None else ""),
+            *([comparison_day, last_week_day, scoped_keys]
+              if scoped_keys is not None else [comparison_day, last_week_day]))
+        # Time-series for the leading chart. Both windows use the same restaurant scope.
+        # Today compares with the same weekday last week; longer periods compare
+        # with the immediately preceding period of equal length.
+        chart_previous_from = date_from - timedelta(days=7) if days == 1 else previous_from
+        chart_previous_to = chart_previous_from + timedelta(days=days)
+        chart_previous_params = [chart_previous_from, chart_previous_to]
+        if scoped_keys is not None:
+            chart_previous_params.append(scoped_keys)
+        chart_previous_where, _ = _where(previous_conditions, chart_previous_params)
+        chart_current = await conn.fetch(
+            f"""SELECT sr.sale_date AS day, sr.payment_method AS method,
+                       CASE WHEN sr.extra_data IS NOT NULL
+                             AND (sr.extra_data::jsonb->>'opening_hour') ~ '^(?:[0-9]|1[0-9]|2[0-3])$'
+                            THEN (sr.extra_data::jsonb->>'opening_hour')::int
+                            ELSE NULL END AS hour,
+                       SUM(sr.total_amount) AS sales
+                FROM sales_records sr {w}
+                GROUP BY 1, 2, 3""", *params)
+        chart_previous = await conn.fetch(
+            f"""SELECT sr.sale_date AS day, sr.payment_method AS method,
+                       CASE WHEN sr.extra_data IS NOT NULL
+                             AND (sr.extra_data::jsonb->>'opening_hour') ~ '^(?:[0-9]|1[0-9]|2[0-3])$'
+                            THEN (sr.extra_data::jsonb->>'opening_hour')::int
+                            ELSE NULL END AS hour,
+                       SUM(sr.total_amount) AS sales
+                FROM sales_records sr {chart_previous_where}
+                GROUP BY 1, 2, 3""", *chart_previous_params)
+        order_mapping = await _order_type_mapping(conn)
+        prior_sales = sum(float(item["sales"] or 0) for item in chart_previous)
+        prior_delivery = sum(float(item["sales"] or 0) for item in chart_previous
+                             if order_mapping.get(item["method"] or "") == "Доставка")
+        overview["previous_metrics"] = {
+            **await period_metrics(chart_previous_where, chart_previous_params, prior_sales),
+            "total_sales": prior_sales if chart_previous else None,
+            "delivery_share": 100 * prior_delivery / prior_sales if prior_sales > 0 else None,
+            "date_from": str(chart_previous_from),
+            "date_to": str(chart_previous_to - timedelta(days=1)),
+        }
+
+        def chart_points(rows, start):
+            points = {}
+            for item in rows:
+                offset = (item["day"] - start).days
+                idx = item["hour"] if days == 1 else offset
+                if idx is None or idx < 0 or idx >= (24 if days == 1 else days):
+                    continue
+                category = order_mapping.get(item["method"] or "", "Не распределено")
+                point = points.setdefault(idx, {"total": 0.0, "hall": 0.0, "delivery": 0.0})
+                amount = float(item["sales"] or 0)
+                point["total"] += amount
+                if category == "Зал":
+                    point["hall"] += amount
+                elif category == "Доставка":
+                    point["delivery"] += amount
+            return points
+
+        chart_current_points = chart_points(chart_current, date_from)
+        chart_previous_points = chart_points(chart_previous, chart_previous_from)
+        chart_length = 24 if days == 1 else days
+        chart_series = {
+            "granularity": "hour" if days == 1 else "day",
+            "comparison_label": "Тот же день прошлой недели" if days == 1 else "Предыдущий аналогичный период",
+            "previous_has_data": bool(chart_previous),
+            "points": [
+                {
+                    "label": f"{i:02d}:00" if days == 1 else str(date_from + timedelta(days=i)),
+                    **chart_current_points.get(i, {"total": 0.0, "hall": 0.0, "delivery": 0.0}),
+                    "has_data": i in chart_current_points,
+                    "previous_has_data": i in chart_previous_points,
+                    "previous": chart_previous_points.get(i, {"total": 0.0, "hall": 0.0, "delivery": 0.0}),
+                }
+                for i in range(chart_length)
+            ],
+        }
+        order_rows = await conn.fetch(
+            f"""SELECT sr.payment_method method, SUM(sr.total_amount) sales,
+                       SUM(sr.quantity) checks
+                FROM sales_records sr {w}
+                GROUP BY sr.payment_method""", *params)
+        restaurant_channels = {}
+        for item in restaurant_channel_rows:
+            key = item["restaurant_key"]
+            category = order_mapping.get(item["payment_method"] or "", "Не распределено")
+            if category not in ("Зал", "Доставка"):
+                category = "Не распределено"
+            channel_totals = restaurant_channels.setdefault(
+                key, {"Зал": 0.0, "Доставка": 0.0, "Не распределено": 0.0})
+            channel_totals[category] += float(item["sales"] or 0)
+
+        order_types = {name: {"type": name, "sales": 0.0, "checks": 0}
+                       for name in ("Зал", "Доставка", "Не распределено")}
+        for item in order_rows:
+            method = item["method"] or ""
+            category = order_mapping.get(method, "Не распределено")
+            if category not in order_types:
+                category = "Не распределено"
+            order_types[category]["sales"] += float(item["sales"] or 0)
+            order_types[category]["checks"] += int(item["checks"] or 0)
+
+        day_comparison = {
+            "date": str(comparison_day), "previous_date": str(last_week_day),
+            "cutoff_hour": cutoff_hour,
+            "has_current": comparison_day in {r["sale_date"] for r in comparison_days_present},
+            "has_previous": last_week_day in {r["sale_date"] for r in comparison_days_present},
+            "current": {"Зал": 0.0, "Доставка": 0.0, "Не распределено": 0.0},
+            "previous": {"Зал": 0.0, "Доставка": 0.0, "Не распределено": 0.0},
+            "hours": {},
+        }
+        for item in compare_rows:
+            bucket = "current" if item["sale_date"] == comparison_day else "previous"
+            category = order_mapping.get(item["method"] or "", "Не распределено")
+            if category not in day_comparison[bucket]:
+                category = "Не распределено"
+            amount = float(item["sales"] or 0)
+            day_comparison[bucket][category] += amount
+            hour = int(item["opening_hour"])
+            slot = day_comparison["hours"].setdefault(hour, {"hour": hour, "current": 0.0, "previous": 0.0})
+            slot[bucket] += amount
+        day_comparison["hours"] = [day_comparison["hours"][h] for h in sorted(day_comparison["hours"])]
+
+        previous_types = {name: 0.0 for name in order_types}
+        for item in previous_rows:
+            category = order_mapping.get(item["method"] or "", "Не распределено")
+            previous_types[category if category in previous_types else "Не распределено"] += float(item["sales"] or 0)
+        hourly_types = {}
+        for item in hourly_methods:
+            hour = int(item["opening_hour"])
+            category = order_mapping.get(item["method"] or "", "Не распределено")
+            if category not in previous_types:
+                category = "Не распределено"
+            hourly_types.setdefault(hour, {"hour": hour, "Зал": 0.0,
+                                            "Доставка": 0.0, "Не распределено": 0.0})
+            hourly_types[hour][category] += float(item["sales"] or 0)
+
+        by_payment = await conn.fetch(
+            f"SELECT COALESCE(sr.payment_method,'Не указан') method, "
+            f"SUM(sr.total_amount) total, COUNT(*) c "
+            f"FROM sales_records sr {w} GROUP BY sr.payment_method ORDER BY total DESC", *params)
+
+        # An import may contain rows for multiple restaurants even when its
+        # history record is attached to a single restaurant. Match deletion scope.
+        import_filter = "WHERE si.restaurant_key = ANY($1)" if scoped_keys is not None else ""
+        deletion_scope = (
+            "NOT EXISTS (SELECT 1 FROM sales_records sr WHERE sr.import_id = si.id "
+            "AND NOT (sr.restaurant_key = ANY($2::text[])))"
+            if allowed is not None else "TRUE"
+        )
+        imports = await conn.fetch(f"""
+            SELECT si.*, u.full_name uploader_name,
+                   {deletion_scope} AS can_delete
+            FROM sales_imports si
+            LEFT JOIN users u ON u.user_id = si.uploaded_by
+            {import_filter} ORDER BY si.upload_date DESC LIMIT 20""",
+            *([scoped_keys, allowed] if scoped_keys is not None and allowed is not None else ([scoped_keys] if scoped_keys is not None else [])))
+
+        summary_filter = "AND restaurant_key = ANY($3)" if scoped_keys is not None else ""
+        summaries = await conn.fetch(
+            f"SELECT * FROM sales_daily_summary WHERE summary_date >= $1 AND summary_date < $2 {summary_filter} "
+            f"ORDER BY summary_date DESC LIMIT 30", *params)
+
+    return web.json_response({"success": True, "data": {
+        "overview": overview,
+        "daily_trend": [{"date": str(r["sale_date"]), "sales": float(r["s"] or 0),
+                         "cost": float(r["c"] or 0), "profit": float(r["p"] or 0),
+                         "items": int(r["q"] or 0)} for r in daily_trend],
+        "by_order_type": [{**v, "previous_sales": previous_types[k]} for k, v in order_types.items()],
+        "previous_total_sales": sum(previous_types.values()),
+        "same_weekday_comparison": day_comparison,
+        "hourly_by_order_type": [hourly_types[k] for k in sorted(hourly_types)],
+        "hourly_revenue": [{"hour": int(r["opening_hour"]), "sales": float(r["sales"] or 0),
+                            "checks": int(r["checks"] or 0)} for r in hourly],
+        "restaurant_channels": restaurant_channels,
+        "turnover_chart": chart_series,
+        "by_restaurant": [{"key": r["key"], "name": r["name"],
+                           "total_sales": float(r["total"] or 0), "profit": float(r["profit"] or 0)} for r in by_rest],
+        "by_payment": [{"method": r["method"], "total_sales": float(r["total"] or 0),
+                        "count": int(r["c"] or 0)} for r in by_payment],
+        "imports": [{"id": i["id"], "filename": i["filename"], "restaurant_key": i["restaurant_key"],
+                     "upload_date": str(i["upload_date"]), "rows_count": int(i["rows_count"] or 0),
+                     "status": i["status"], "can_delete": i["can_delete"], "error_message": i["error_message"],
+                     "uploader_name": i["uploader_name"]} for i in imports],
+        "daily_summaries": [{"date": str(s["summary_date"]), "total_sales": float(s["total_sales"] or 0),
+                             "total_cost": float(s["total_cost"] or 0), "total_profit": float(s["total_profit"] or 0),
+                             "avg_margin": float(s["avg_margin"] or 0), "items_sold": int(s["total_items_sold"] or 0),
+                             "transactions": int(s["total_transactions"] or 0), "avg_check": float(s["avg_check"] or 0),
+                             "cash_sales": float(s["cash_sales"] or 0), "card_sales": float(s["card_sales"] or 0),
+                             "online_sales": float(s["online_sales"] or 0),
+                             "unique_products": int(s["unique_products"] or 0)} for s in summaries],
+    }})
+
+
+
+@routes.post("/api/sales/products")
+@sales_required
+async def sales_products(request: web.Request) -> web.Response:
+    """Aggregated products and categories, scoped to authorized restaurants."""
+    user = request["admin"]
+    body = await request.json()
+    key = body.get("restaurant_key")
+    allowed = await _sales_restaurant_scope(request)
+    if allowed is not None and key and key not in allowed:
+        return web.json_response({"error": "Forbidden"}, status=403)
+
+    days = {"7d": 7, "30d": 30, "90d": 90}.get(body.get("period"), 30)
+    since = datetime.utcnow().date() - timedelta(days=days - 1)
+    scoped = [key] if key else allowed
+    conditions = ["sr.sale_date >= $1", "NULLIF(TRIM(sr.product_name), '') IS NOT NULL"]
+    params = [since]
+    if scoped is not None:
+        conditions.append("sr.restaurant_key = ANY($2)")
+        params.append(scoped)
+    where, _ = _where(conditions, params)
+    pool = db.get_pool(request.app)
+    async with pool.acquire() as conn:
+        products = await conn.fetch(
+            f"""SELECT sr.product_name name, COALESCE(sr.category, 'Без категории') category,
+                 SUM(sr.quantity) quantity, SUM(sr.total_amount) sales,
+                 SUM(sr.cost_amount) cost, SUM(sr.profit_amount) profit
+                 FROM sales_records sr {where}
+                 GROUP BY sr.product_name, COALESCE(sr.category, 'Без категории')
+                 ORDER BY sales DESC LIMIT 100""", *params)
+        categories = await conn.fetch(
+            f"""SELECT COALESCE(sr.category, 'Без категории') name,
+                 SUM(sr.quantity) quantity, SUM(sr.total_amount) sales,
+                 SUM(sr.profit_amount) profit
+                 FROM sales_records sr {where}
+                 GROUP BY COALESCE(sr.category, 'Без категории')
+                 ORDER BY sales DESC LIMIT 50""", *params)
+    def normalize(rows, include_product_fields=False):
+        return [{"name": r["name"],
+                 "category": r["category"] if include_product_fields else None,
+                 "quantity": float(r["quantity"] or 0),
+                 "sales": float(r["sales"] or 0),
+                 "profit": float(r["profit"] or 0),
+                 **({"cost": float(r["cost"] or 0)} if include_product_fields else {})} for r in rows]
+    return web.json_response({"success": True, "data": {
+        "products": normalize(products, True), "categories": normalize(categories),
+        "period_days": days,
+    }})
+
+
+@routes.post("/api/sales/records")
+@sales_required
+async def sales_records(request: web.Request) -> web.Response:
+    user = request['admin']
+    body = await request.json()
+    key = body.get("restaurant_key")
+    df, dt = _to_date(body.get("date_from")), _to_date(body.get("date_to"))
+    cat = body.get("category"); prod = body.get("product_name")
+    page = max(1, int(body.get("page", 1) or 1)); limit = max(1, min(500, int(body.get("limit", 100) or 100)))
+    allowed = await _sales_restaurant_scope(request)
+
+    cond, params, idx = [], [], 1
+    if allowed is not None:
+        if key and key not in allowed: return web.json_response({"error": "Forbidden"}, status=403)
+        cond.append(f"sr.restaurant_key = ANY(${idx})"); params.append([key] if key else allowed); idx += 1
+    elif key:
+        cond.append(f"sr.restaurant_key = ${idx}"); params.append(key); idx += 1
+    if df: cond.append(f"sr.sale_date >= ${idx}"); params.append(df); idx += 1
+    if dt: cond.append(f"sr.sale_date <= ${idx}"); params.append(dt); idx += 1
+    if cat: cond.append(f"sr.category ILIKE ${idx}"); params.append(f"%{cat}%"); idx += 1
+    if prod: cond.append(f"sr.product_name ILIKE ${idx}"); params.append(f"%{prod}%"); idx += 1
+    w, _ = _where(cond, params)
+
+    pool = db.get_pool(request.app)
+    async with pool.acquire() as conn:
+        total = await conn.fetchval(f"SELECT COUNT(*) FROM sales_records sr {w}", *params)
+        rows = await conn.fetch(
+            f"SELECT sr.*, r.name restaurant_name FROM sales_records sr "
+            f"LEFT JOIN restaurants r ON r.key = sr.restaurant_key {w} "
+            f"ORDER BY sr.sale_date DESC, sr.id DESC LIMIT ${idx} OFFSET ${idx+1}",
+            *params, limit, (page - 1) * limit)
+
+    return web.json_response({"success": True, "data": {
+        "records": [_rec_to_json(r) for r in rows],
+        "total": total, "page": page, "limit": limit,
+        "pages": (total + limit - 1) // limit if limit > 0 else 1,
+    }})
+
+
+def _rec_to_json(r):
+    return {"id": r["id"], "restaurant_key": r["restaurant_key"], "restaurant_name": r["restaurant_name"],
+            "sale_date": str(r["sale_date"]), "category": r["category"], "subcategory": r["subcategory"],
+            "product_name": r["product_name"], "sku": r["sku"], "quantity": int(r["quantity"] or 0),
+            "unit_price": float(r["unit_price"] or 0), "total_amount": float(r["total_amount"] or 0),
+            "cost_amount": float(r["cost_amount"] or 0), "profit_amount": float(r["profit_amount"] or 0),
+            "profit_margin": float(r["profit_margin"] or 0), "payment_method": r["payment_method"],
+            "shift_number": int(r["shift_number"] or 0), "employee_name": r["employee_name"],
+            "discount_amount": float(r["discount_amount"] or 0)}
+
+
+@routes.post("/api/sales/restaurants")
+@sales_required
+async def sales_restaurants(request: web.Request) -> web.Response:
+    user = request['admin']
+    allowed = await _sales_restaurant_scope(request)
+    pool = db.get_pool(request.app)
+    async with pool.acquire() as conn:
+        if allowed is not None:
+            rows = await conn.fetch("""
+                SELECT r.key, r.name, r.address,
+                  (SELECT COUNT(*) FROM sales_records sr WHERE sr.restaurant_key = r.key) total_records,
+                  (SELECT COALESCE(SUM(total_amount),0) FROM sales_records sr WHERE sr.restaurant_key = r.key) total_sales,
+                  (SELECT MAX(sale_date) FROM sales_records sr WHERE sr.restaurant_key = r.key) last_sale_date
+                FROM restaurants r WHERE r.key = ANY($1) ORDER BY r.sort NULLS FIRST, r.name""", allowed)
+        else:
+            rows = await conn.fetch("""
+                SELECT r.key, r.name, r.address,
+                  (SELECT COUNT(*) FROM sales_records sr WHERE sr.restaurant_key = r.key) total_records,
+                  (SELECT COALESCE(SUM(total_amount),0) FROM sales_records sr WHERE sr.restaurant_key = r.key) total_sales,
+                  (SELECT MAX(sale_date) FROM sales_records sr WHERE sr.restaurant_key = r.key) last_sale_date
+                FROM restaurants r ORDER BY r.sort NULLS FIRST, r.name""")
+    return web.json_response({"success": True, "data": [
+        {"key": r["key"], "name": r["name"], "address": r["address"],
+         "total_records": int(r["total_records"] or 0), "total_sales": float(r["total_sales"] or 0),
+         "last_sale_date": str(r["last_sale_date"]) if r["last_sale_date"] else None} for r in rows]})
+
+
+@routes.post("/api/sales/export")
+@sales_required
+async def export_sales(request: web.Request) -> web.Response:
+    user = request['admin']
+    body = await request.json()
+    key = body.get("restaurant_key")
+    df, dt = _to_date(body.get("date_from")), _to_date(body.get("date_to"))
+    if not df and isinstance(body.get("period"), str):
+        days = {"7d": 7, "30d": 30, "90d": 90}.get(body["period"], 30)
+        df = datetime.utcnow().date() - timedelta(days=days)
+    allowed = await _sales_restaurant_scope(request)
+
+    cond, params, idx = [], [], 1
+    if allowed is not None:
+        if key and key not in allowed: return web.json_response({"error": "Forbidden"}, status=403)
+        cond.append(f"sr.restaurant_key = ANY(${idx})"); params.append([key] if key else allowed); idx += 1
+    elif key:
+        cond.append(f"sr.restaurant_key = ${idx}"); params.append(key); idx += 1
+    if df: cond.append(f"sr.sale_date >= ${idx}"); params.append(df); idx += 1
+    if dt: cond.append(f"sr.sale_date <= ${idx}"); params.append(dt); idx += 1
+    w, _ = _where(cond, params)
+
+    pool = db.get_pool(request.app)
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            f"SELECT sr.sale_date, sr.restaurant_key, r.name restaurant_name, sr.category, "
+            f"sr.product_name, sr.quantity, sr.unit_price, sr.total_amount, sr.cost_amount, "
+            f"sr.profit_amount, sr.payment_method, sr.employee_name "
+            f"FROM sales_records sr LEFT JOIN restaurants r ON r.key = sr.restaurant_key {w} "
+            f"ORDER BY sr.sale_date DESC", *params)
+
+    def make_xlsx():
+        from openpyxl.styles import Font, PatternFill
+        wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Товарооборот"
+        ws.append(["Дата", "Ресторан", "Ключ", "Категория", "Товар", "Кол-во",
+                   "Цена", "Сумма", "Себестоимость", "Прибыль", "Оплата", "Сотрудник"])
+        fill = PatternFill("solid", start_color="667eea")
+        for c in ws[1]: c.fill = fill; c.font = Font(bold=True, color="FFFFFF")
+        for r in rows:
+            ws.append([r["sale_date"], r["restaurant_name"], r["restaurant_key"], r["category"],
+                       r["product_name"], r["quantity"], r["unit_price"], r["total_amount"],
+                       r["cost_amount"], r["profit_amount"], r["payment_method"], r["employee_name"]])
+        for col in ws.columns:
+            width = max((len(str(c.value)) for c in col if c.value), default=0) + 4
+            ws.column_dimensions[col[0].column_letter].width = min(width, 40)
+        out = io.BytesIO(); wb.save(out); out.seek(0); wb.close()
+        return out.read()
+
+    data = await asyncio.to_thread(make_xlsx)
+    return web.Response(body=data,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=sales_{datetime.utcnow():%Y%m%d_%H%M%S}.xlsx"})
+
+
+@routes.get("/api/sales/template")
+@sales_required
+async def sales_template(request: web.Request) -> web.Response:
+    def make():
+        from openpyxl.styles import Font, PatternFill
+        wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Шаблон"
+        headers = ["sale_date", "restaurant_key", "category", "subcategory", "product_name", "sku",
+                   "quantity", "unit_price", "total_amount", "cost_amount", "profit_amount",
+                   "profit_margin", "payment_method", "shift_number", "employee_name", "discount_amount"]
+        ws.append(headers)
+        ws.append(["2026-11-20", "restaurant_1", "Напитки", "Кофе", "Капучино", "SKU001",
+                   15, 250, 3750, 1200, 2550, 68.0, "Карта", 1, "Иванов И.И.", 0])
+        fill = PatternFill("solid", start_color="667eea")
+        for c in ws[1]: c.fill = fill; c.font = Font(bold=True, color="FFFFFF")
+        out = io.BytesIO(); wb.save(out); out.seek(0); wb.close()
+        return out.read()
+    data = await asyncio.to_thread(make)
+    return web.Response(body=data,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=sales_template.xlsx"})
+
+                            THEN (extra_data::jsonb->>'opening_hour')::int END AS hour
+                FROM sales_records WHERE restaurant_key=$1 AND sale_date BETWEEN $2 AND $3
+            ) records WHERE hour IS NOT NULL GROUP BY 1, 2
+        """, key, dates[-1], dates[0]) if key is not None else []
+    daily = {(r["sale_date"], r["hour"]): float(r["sales"] or 0) for r in rows}
+    covered = {r["sale_date"] for r in rows}
+    days = []
+    for weekday in range(7):
+        expected = sorted(d for d in dates if d.weekday() == weekday)
+        available = [d for d in expected if d in covered]
+        days.append({"dates": [d.isoformat() for d in expected],
+                     "available": [d.isoformat() for d in available],
+                     "hours": [sum(daily.get((d, h), 0) for d in available) / len(available)
+                               if available else None for h in range(24)]})
+    return web.json_response({"success": True, "restaurants": [dict(r) for r in restaurants],
+                              "restaurant_key": key, "days": days})
+
+
 @routes.post("/api/sales/restaurant-turnover")
 @sales_required
 async def sales_restaurant_turnover(request: web.Request) -> web.Response:

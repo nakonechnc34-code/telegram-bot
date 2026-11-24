@@ -29,3 +29,16 @@ def test_import_history_has_delete_confirmation_and_refresh():
     assert "window.confirm(" in source
     assert "'/api/sales/imports/delete'" in source
     assert 'await loadDashboard()' in source
+
+
+def test_sales_writes_share_bounded_transaction_lock():
+    source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
+    upload = source.split("async def upload_sales_file(", 1)[1].split("DEFAULT_ORDER_TYPES", 1)[0]
+    delete = source.split("async def delete_sales_import(", 1)[1].split("@routes.post", 1)[0]
+    for route in (upload, delete):
+        assert route.index("SET LOCAL lock_timeout") < route.index("pg_advisory_xact_lock(814726, 1)")
+        assert route.index("pg_advisory_xact_lock(814726, 1)") < route.index("FOR NO KEY UPDATE")
+        assert "LockNotAvailableError, DeadlockDetectedError, QueryCanceledError" in route
+        assert "status=409" in route
+    assert 'imp["status"] == "processing"' in delete
+    assert "FOR UPDATE" not in delete

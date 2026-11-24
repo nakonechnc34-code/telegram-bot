@@ -40,5 +40,8 @@ def test_sales_writes_share_bounded_transaction_lock():
         assert route.index("pg_advisory_xact_lock(814726, 1)") < route.index("FOR NO KEY UPDATE")
         assert "LockNotAvailableError, DeadlockDetectedError, QueryCanceledError" in route
         assert "status=409" in route
-    assert 'imp["status"] == "processing"' in delete
-    assert "FOR UPDATE" not in delete
+    assert 'SELECT status FROM sales_imports WHERE id=$1 FOR UPDATE' in upload
+    assert upload.index("pg_advisory_xact_lock(814726, 1)") < upload.index("SELECT status FROM sales_imports") < upload.index("await _save_records")
+    assert 'imp["status"] == "processing"' not in delete
+    assert delete.index("pg_advisory_xact_lock(814726, 1)") < delete.index("FOR UPDATE")
+    assert "contention=%s sqlstate=%s" in delete

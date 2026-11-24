@@ -185,7 +185,8 @@
                 const percent=(a,b)=>a==null||b==null||b===0?null:(a/b-1)*100;
                 const tone=d=>d>0?'hourly-up':d<0?'hourly-down':'';
                 const delta=(a,b)=>{const d=change(a,b),p=percent(a,b);return '<td class="'+tone(d)+'">'+(d==null?'—':(d>0?'+':'')+money(d))+'</td><td class="'+tone(p)+'">'+(p==null?'—':(p>0?'+':'')+p.toFixed(1).replace('.',',')+'%')+'</td>';};
-                const sum=(side,items=rows)=>items.length&&items.every(r=>r[side]!=null)?Object.fromEntries(['hall','delivery','total'].map(k=>[k,items.reduce((a,r)=>a+r[side][k],0)])):null;
+                const sum=(side,items=rows)=>Object.fromEntries(['hall','delivery','total'].map(k=>{const values=items.map(r=>value(r[side],k)).filter(v=>v!=null&&Number.isFinite(Number(v)));return [k,values.length?values.reduce((a,v)=>a+Number(v),0):null];}));
+                const coverage=(items=rows)=>'Отчёты: '+items.filter(r=>value(r.previous,'total')!=null).length+'/'+items.length+' за '+formatDate(previous)+'; '+items.filter(r=>value(r.current,'total')!=null).length+'/'+items.length+' за '+formatDate(current);
                 const groups=new Map();
                 for(const r of rows){
                     const key=r.territory_manager_id??'unassigned';
@@ -197,7 +198,7 @@
                 const lines=r=>['hall','delivery','total'].map(k=>'<tr class="'+(k==='total'?'hourly-total':'')+'"><th>'+({hall:'Зал',delivery:'Доставка',total:'Общий ТО'}[k])+'</th><td>'+cell(value(r.previous,k))+'</td><td>'+cell(value(r.current,k))+'</td>'+delta(value(r.current,k),value(r.previous,k))+'</tr>').join('');
                 const block=(r,kind='')=>'<tr class="hourly-restaurant-heading '+kind+'"><th colspan="5">'+esc(r.name)+'</th></tr>'+lines(r);
                 const mobileCard=(r,kind='')=>'<article class="hourly-mobile-card '+kind+'"><h4>'+esc(r.name)+'</h4><table>'+heading+'<tbody>'+lines(r)+'</tbody></table></article>';
-                result.innerHTML='<div class="hourly-company-top"><h3>Итог компании</h3><div class="hourly-table-scroll"><table class="hourly-report-table">'+heading+'<tbody>'+lines(company)+'</tbody></table></div><div class="hourly-mobile-results">'+mobileCard(company,'hourly-company')+'</div></div><div class="hourly-report-filters hourly-analysis-controls"><label>Рестораны<select class="form-input" id="hourly-direction"><option value="all">Все</option><option value="up">Рост</option><option value="down">Падение</option></select></label><label>Сортировка<select class="form-input" id="hourly-sort"><option value="name">По названию</option><option value="up">Наибольший рост, %</option><option value="down">Наибольшее падение, %</option></select></label></div><div id="hourly-groups"></div><p class="section-note">— нет данных или базы сравнения. Общий ТО включает нераспределённые каналы. Итоги по всем доступным ресторанам территории и компании, независимо от фильтра; при неполных данных итог не рассчитывается.</p>';
+                result.innerHTML='<div class="hourly-company-top"><h3>Итог компании</h3><p class="section-note">'+esc(coverage())+'</p><div class="hourly-table-scroll"><table class="hourly-report-table">'+heading+'<tbody>'+lines(company)+'</tbody></table></div><div class="hourly-mobile-results">'+mobileCard(company,'hourly-company')+'</div></div><div class="hourly-report-filters hourly-analysis-controls"><label>Рестораны<select class="form-input" id="hourly-direction"><option value="all">Все</option><option value="up">Рост</option><option value="down">Падение</option></select></label><label>Сортировка<select class="form-input" id="hourly-sort"><option value="name">По названию</option><option value="up">Наибольший рост, %</option><option value="down">Наибольшее падение, %</option></select></label></div><div id="hourly-groups"></div><p class="section-note">— нет данных или базы сравнения. Общий ТО включает нераспределённые каналы. Итоги по всем доступным ресторанам территории и компании, независимо от фильтра; итоги суммируют имеющиеся отчёты; при неполном покрытии сравнение может быть нерепрезентативным.</p>';
                 const direction=result.querySelector('#hourly-direction'),sort=result.querySelector('#hourly-sort'),target=result.querySelector('#hourly-groups');
                 const metric=r=>percent(value(r.current,'total'),value(r.previous,'total'));
                 const renderGroups=()=>{
@@ -209,7 +210,7 @@
                             return sort.value==='up'?y-x:x-y;
                         });
                         if(!items.length)return '';
-                        const summary={name:'Итого: '+g.name,current:sum('current',g.items),previous:sum('previous',g.items)};
+                        const summary={name:'Итого: '+g.name+' · '+coverage(g.items),current:sum('current',g.items),previous:sum('previous',g.items)};
                         return '<details class="hourly-territory-details" data-group="'+esc(String(key))+'" '+(collapsed.has(String(key))?'':'open')+'><summary>Территория: '+esc(g.name)+' · '+items.length+' / '+g.items.length+'</summary><div class="hourly-table-scroll"><table class="hourly-report-table">'+heading+'<tbody>'+items.map(r=>block(r)).join('')+block(summary,'hourly-summary')+'</tbody></table></div><div class="hourly-mobile-results">'+items.map(r=>mobileCard(r)).join('')+mobileCard(summary,'hourly-summary')+'</div></details>';
                     }).join('')||'<p>Нет ресторанов по выбранному фильтру</p>';
                 };

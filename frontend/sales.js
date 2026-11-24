@@ -167,7 +167,8 @@
     const salesReportCatalog=[
         {name:'Сравнение ежечастно',description:'Сравнение накопленного товарооборота ресторанов за две даты до выбранного часа: зал, доставка, общий ТО и динамика.',open:renderHourlyComparison},
         {name:'Товарооборот по ресторанам',description:'ТО ресторанов за выбранную дату или период: зал, доставка и итоги.',open:renderRestaurantTurnoverReport},
-        {name:'По типу заказа',description:'ТО, чеки и доли зала и доставки за выбранный период.',open:renderOrderTypeReport}
+        {name:'По типу заказа',description:'ТО, чеки и доли зала и доставки за выбранный период.',open:renderOrderTypeReport},
+        {name:'SSSG и SSTG',description:'Динамика ТО и чеков: общий, зал, доставка; три режима сравнения.',open:renderSameStoreGrowth}
     ];
     function renderReportCatalog(){
         DOM.content.innerHTML='<section class="panel sales-report-catalog"><h2>Список отчётов</h2><p class="section-note">Выберите отчёт для просмотра и анализа.</p><div class="sales-report-catalog-list"><div class="sales-report-catalog-header"><span>№</span><span>Наименование</span><span>Описание</span><span></span></div>'+salesReportCatalog.map((report,i)=>'<button type="button" class="sales-report-catalog-row" data-report-index="'+i+'"><span class="sales-report-number">'+(i+1)+'</span><strong>'+esc(report.name)+'</strong><span class="sales-report-description">'+esc(report.description)+'</span><span aria-hidden="true" class="sales-report-arrow">›</span></button>').join('')+'</div></section>';
@@ -232,6 +233,59 @@
             }catch(e){if(id===request&&result.isConnected)result.textContent='Ошибка: '+e.message;}
         }
         document.getElementById('order-type-load').addEventListener('click',load);load();
+    }
+
+    function renderSameStoreGrowth(){
+        const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+        const shift=(value,mode)=>{
+            const d=new Date(value+'T12:00:00Z');
+            if(mode==='week')d.setUTCDate(d.getUTCDate()-7);
+            else {const m=d.getUTCMonth();d.setUTCFullYear(d.getUTCFullYear()-1);if(d.getUTCMonth()!==m)d.setUTCDate(0);}
+            return d.toISOString().slice(0,10);
+        };
+        DOM.content.innerHTML='<section class="panel"><button type="button" class="btn sales-report-back" id="growth-back">← К списку отчётов</button><h2>SSSG и SSTG</h2><div class="hourly-report-filters"><label>Режим <select class="form-input" id="growth-mode"><option value="year">Прошлый год</option><option value="week">Прошлая неделя</option><option value="custom">Свой период</option></select></label><label>Текущий с <input type="date" class="form-input" id="growth-from" value="'+today+'"></label><label>Текущий по <input type="date" class="form-input" id="growth-to" value="'+today+'"></label><label>Сравнение с <input type="date" class="form-input" id="growth-prior-from"></label><label>Сравнение по <input type="date" class="form-input" id="growth-prior-to"></label><button class="btn btn-primary" id="growth-load">Сформировать</button></div><div id="growth-result" aria-live="polite"></div></section>';
+        const el=id=>document.getElementById('growth-'+id);
+        const result=el('result');
+        let request=0;
+        function sync(){
+            const mode=el('mode').value;
+            for(const k of ['from','to']){
+                const prior=el('prior-'+k);
+                prior.disabled=mode!=='custom';
+                if(mode!=='custom')prior.value=el(k).value?shift(el(k).value,mode):'';
+            }
+        }
+        async function load(){
+            const id=++request;sync();
+            const a={date_from:el('from').value,date_to:el('to').value},b={date_from:el('prior-from').value,date_to:el('prior-to').value};
+            const valid=p=>p.date_from&&p.date_to&&p.date_from<=p.date_to;
+            if(!valid(a)||!valid(b)){result.textContent='Выберите корректные периоды';return;}
+            const duration=p=>(Date.parse(p.date_to)-Date.parse(p.date_from))/86400000;
+            if(duration(a)!==duration(b)&&el('mode').value==='custom'){result.textContent='Выберите периоды одинаковой продолжительности';return;}
+            result.textContent='Загрузка…';
+            try{
+                const fetchPeriod=p=>apiFetch('/api/sales/order-type-report',{method:'POST',body:JSON.stringify(p)});
+                const [current,prior]=await Promise.all([fetchPeriod(a),fetchPeriod(b)]);
+                if(id!==request||!result.isConnected)return;
+                const previous=new Map((prior.data||[]).map(r=>[r.key,r.metrics]));
+                const rows=(current.data||[]).map(r=>({...r,prior:previous.get(r.key)})),groups=new Map();
+                for(const r of rows){const k=r.territory_manager_id??'unassigned';if(!groups.has(k))groups.set(k,{name:r.territory_manager_name||'Без территории',items:[]});groups.get(k).items.push(r);}
+                const comparable=items=>items.filter(r=>r.metrics!=null&&r.prior!=null);
+                const growth=(items,k,m)=>{
+                    const paired=comparable(items).filter(r=>r.metrics[k][m]!=null&&r.prior[k][m]!=null);
+                    if(!paired.length)return null;
+                    const base=paired.reduce((n,r)=>n+r.prior[k][m],0),now=paired.reduce((n,r)=>n+r.metrics[k][m],0);
+                    return base===0?null:100*(now-base)/base;
+                };
+                const cell=v=>v==null?'<td>—</td>':'<td class="'+(v>0?'growth-positive':v<0?'growth-negative':'')+'">'+(v>0?'+':'')+v.toLocaleString('ru-RU',{maximumFractionDigits:1})+'%</td>';
+                const line=(name,items,cls='')=>'<tr class="'+cls+'"><th scope="row">'+esc(name)+'</th>'+['total','hall','delivery'].map(k=>cell(growth(items,k,'sales'))+cell(growth(items,k,'checks'))).join('')+'</tr>';
+                const coverage=items=>comparable(items).length+'/'+items.length;
+                result.innerHTML='<p class="section-note">Текущий: '+esc(formatDate(a.date_from))+' — '+esc(formatDate(a.date_to))+' · База: '+esc(formatDate(b.date_from))+' — '+esc(formatDate(b.date_to))+' · Сопоставимые рестораны: '+coverage(rows)+'</p><div class="turnover-report-scroll"><table class="turnover-report-table growth-report"><thead><tr><th rowspan="2">Ресторан</th><th colspan="2">Общие</th><th colspan="2" class="order-type-hall">Зал</th><th colspan="2" class="order-type-delivery">Доставка</th></tr><tr>'+('<th>SSSG</th><th>SSTG</th>').repeat(3)+'</tr></thead><tbody>'+Array.from(groups.values()).map(g=>'<tr class="turnover-territory"><th colspan="7">'+esc(g.name)+' · '+coverage(g.items)+'</th></tr>'+g.items.map(r=>line(r.name,[r])).join('')+line('Итого по территории',g.items,'turnover-total')).join('')+line('Итого компания (доступные рестораны)',rows,'turnover-total')+'</tbody></table></div><p class="section-note">SSSG — динамика ТО, SSTG — динамика чеков. Сопоставимость определяется наличием данных в обоих периодах, а не датой открытия. Для каждого показателя используются парные доступные данные; полнота всех дней не гарантируется. — нет базы или база равна нулю.</p>';
+            }catch(e){if(id===request&&result.isConnected)result.textContent='Ошибка: '+e.message;}
+        }
+        el('back').addEventListener('click',renderReportCatalog);
+        for(const k of ['mode','from','to','prior-from','prior-to'])el(k).addEventListener('change',()=>{++request;sync();result.textContent='Нажмите «Сформировать»';});
+        el('load').addEventListener('click',load);load();
     }
 
     function renderHourlyComparison(){

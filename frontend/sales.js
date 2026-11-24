@@ -168,7 +168,8 @@
         {name:'Сравнение ежечастно',description:'Сравнение накопленного товарооборота ресторанов за две даты до выбранного часа: зал, доставка, общий ТО и динамика.',open:renderHourlyComparison},
         {name:'Товарооборот по ресторанам',description:'ТО ресторанов за выбранную дату или период: зал, доставка и итоги.',open:renderRestaurantTurnoverReport},
         {name:'По типу заказа',description:'ТО, чеки и доли зала и доставки за выбранный период.',open:renderOrderTypeReport},
-        {name:'SSSG и SSTG',description:'Динамика ТО и чеков: общий, зал, доставка; три режима сравнения.',open:renderSameStoreGrowth}
+        {name:'SSSG и SSTG',description:'Динамика ТО и чеков: общий, зал, доставка; три режима сравнения.',open:renderSameStoreGrowth},
+        {name:'Почасовая выручка',description:'Средняя выручка по часам за три последних одноимённых дня недели.',open:renderHourlyAverage}
     ];
     function renderReportCatalog(){
         DOM.content.innerHTML='<section class="panel sales-report-catalog"><h2>Список отчётов</h2><p class="section-note">Выберите отчёт для просмотра и анализа.</p><div class="sales-report-catalog-list"><div class="sales-report-catalog-header"><span>№</span><span>Наименование</span><span>Описание</span><span></span></div>'+salesReportCatalog.map((report,i)=>'<button type="button" class="sales-report-catalog-row" data-report-index="'+i+'"><span class="sales-report-number">'+(i+1)+'</span><strong>'+esc(report.name)+'</strong><span class="sales-report-description">'+esc(report.description)+'</span><span aria-hidden="true" class="sales-report-arrow">›</span></button>').join('')+'</div></section>';
@@ -233,6 +234,30 @@
             }catch(e){if(id===request&&result.isConnected)result.textContent='Ошибка: '+e.message;}
         }
         document.getElementById('order-type-load').addEventListener('click',load);load();
+    }
+
+    function renderHourlyAverage(){
+        DOM.content.innerHTML='<section class="panel"><button type="button" class="btn sales-report-back" id="avg-back">← К списку отчётов</button><h2>Почасовая выручка</h2><div class="hourly-report-filters"><label>Ресторан <select class="form-input" id="avg-rest" disabled></select></label><button class="btn btn-primary" id="avg-load">Обновить</button></div><div id="avg-result" aria-live="polite"></div></section>';
+        const select=document.getElementById('avg-rest'),result=document.getElementById('avg-result');
+        let seq=0;
+        async function load(){
+            const id=++seq;
+            result.textContent='Загрузка…';
+            try{
+                const res=await apiFetch('/api/sales/hourly-average',{method:'POST',body:JSON.stringify({restaurant_key:select.value||null})});
+                if(id!==seq||!result.isConnected)return;
+                select.replaceChildren(...(res.restaurants||[]).map(r=>new Option(r.name,r.key)));
+                select.value=res.restaurant_key||'';select.disabled=!res.restaurants.length;
+                if(!res.restaurant_key){result.textContent='Нет доступных ресторанов';return;}
+                const names=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'],days=res.days;
+                const cell=v=>'<td>'+esc(v==null?'—':money(v))+'</td>';
+                const rows=Array.from({length:24},(_,h)=>'<tr><th scope="row">'+String(h).padStart(2,'0')+':00</th>'+days.map(d=>cell(d.hours[h])).join('')+'</tr>').join('');
+                result.innerHTML='<div class="turnover-report-scroll"><table class="turnover-report-table"><thead><tr><th>Час</th>'+days.map((d,i)=>'<th>'+names[i]+' ('+d.available.length+'/3)</th>').join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div><p class="section-note">Средняя выручка за отдельный час, не накопительно. Последние три завершённых одноимённых дня по Москве. Отсутствующие дни исключаются; отсутствующий час в загруженном дне считается нулём. Полнота загрузки дня не проверяется.</p><p class="section-note">'+days.map((d,i)=>names[i]+': '+d.dates.map(x=>esc(formatDate(x))+(d.available.includes(x)?'':' (нет данных)')).join(', ')).join(' · ')+'</p>';
+            }catch(e){if(id===seq&&result.isConnected)result.textContent='Ошибка: '+e.message;}
+        }
+        document.getElementById('avg-back').addEventListener('click',renderReportCatalog);
+        document.getElementById('avg-load').addEventListener('click',load);
+        select.addEventListener('change',load);load();
     }
 
     function renderSameStoreGrowth(){

@@ -662,6 +662,45 @@ async def sales_hourly_comparison(request: web.Request) -> web.Response:
          "previous": buckets.get((r["key"], previous))} for r in restaurants]})
 
 
+@routes.post("/api/sales/hourly-average")
+@sales_required
+async def sales_hourly_average(request: web.Request) -> web.Response:
+    allowed = await _sales_restaurant_scope(request)
+    body = await request.json()
+    if not isinstance(body, dict):
+        return web.json_response({"error": "Некорректный запрос"}, status=400)
+    key = body.get("restaurant_key")
+    today = datetime.now(ZoneInfo("Europe/Moscow")).date()
+    dates = [today - timedelta(days=i) for i in range(1, 22)]
+    async with db.get_pool(request.app).acquire() as conn:
+        restaurants = await conn.fetch(
+            "SELECT key, name FROM restaurants WHERE key = ANY($1::text[]) ORDER BY sort NULLS FIRST, name", allowed)
+        if key is None:
+            key = restaurants[0]["key"] if restaurants else None
+        if key is not None and (not isinstance(key, str) or key not in allowed):
+            return web.json_response({"error": "Ресторан недоступен"}, status=403)
+        rows = await conn.fetch("""
+            SELECT sale_date, hour, SUM(total_amount) AS sales FROM (
+                SELECT sale_date, total_amount,
+                       CASE WHEN (extra_data::jsonb->>'opening_hour') ~ '^(?:[0-9]|1[0-9]|2[0-3])$'
+                            THEN (extra_data::jsonb->>'opening_hour')::int END AS hour
+                FROM sales_records WHERE restaurant_key=$1 AND sale_date BETWEEN $2 AND $3
+            ) records WHERE hour IS NOT NULL GROUP BY 1, 2
+        """, key, dates[-1], dates[0]) if key is not None else []
+    daily = {(r["sale_date"], r["hour"]): float(r["sales"] or 0) for r in rows}
+    covered = {r["sale_date"] for r in rows}
+    days = []
+    for weekday in range(7):
+        expected = sorted(d for d in dates if d.weekday() == weekday)
+        available = [d for d in expected if d in covered]
+        days.append({"dates": [d.isoformat() for d in expected],
+                     "available": [d.isoformat() for d in available],
+                     "hours": [sum(daily.get((d, h), 0) for d in available) / len(available)
+                               if available else None for h in range(24)]})
+    return web.json_response({"success": True, "restaurants": [dict(r) for r in restaurants],
+                              "restaurant_key": key, "days": days})
+
+
 @routes.post("/api/sales/restaurant-turnover")
 @sales_required
 async def sales_restaurant_turnover(request: web.Request) -> web.Response:

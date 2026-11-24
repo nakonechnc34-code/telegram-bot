@@ -8,7 +8,7 @@ def test_delete_import_requires_auth_and_checks_all_restaurants():
     source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
     route = source.split('async def delete_sales_import(', 1)[1].split('@routes.post("/api/sales/dashboard")', 1)[0]
     assert '@sales_required' in source.split('async def delete_sales_import(', 1)[0][-100:]
-    assert 'allowed = await _allowed_rests(user)' in route
+    assert 'allowed = await _sales_restaurant_scope(request)' in route
     assert 'keys.issubset(set(allowed))' in route
     assert 'SELECT DISTINCT restaurant_key FROM sales_records WHERE import_id=$1' in route
     assert 'async with conn.transaction():' in route

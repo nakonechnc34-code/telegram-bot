@@ -561,3 +561,5 @@ button:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-v
 .hourly-report-table tbody tr.hourly-total td{font-weight:800;border-top:1px solid #aebaca}
 .hourly-report-table tbody tr.hourly-summary{background:#fff0d8;font-weight:800}
 .hourly-report-table tbody tr.hourly-summary th{border-left-color:#b7791f}
+
+.hourly-report-table tbody .hourly-territory-heading th{background:#dfe6ef;color:#243449;text-align:left;font-weight:800;padding:12px;border-top:3px solid #aebaca}.hourly-report-table tbody .hourly-company{background:#fce1e4;font-weight:800}.hourly-report-table tbody .hourly-company th{border-left-color:#c92535}

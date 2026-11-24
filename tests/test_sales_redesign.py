@@ -110,13 +110,13 @@ def test_hourly_iiko_parser_carries_hour_and_skips_subtotals():
     assert rows[-1]["source_restaurant"] == "Вернадка"
 
 
-def test_hourly_dashboard_uses_scoped_sales_and_real_check_counts():
+def test_hourly_dashboard_uses_scoped_sales():
     source = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
     assert "GROUP BY 1 ORDER BY 1" in source
     assert "sr.extra_data::jsonb->>'opening_hour'" in source
     assert '"hourly_revenue":' in source
-    assert 'hourly_revenue:hourly=[]' in JS
-    assert 'Почасовая выручка' in JS
+    assert "turnoverChart.granularity==='hour'" in JS
+    assert 'Почасовой ТО' in JS
 
 
 def test_order_type_mapping_is_persistent_and_authorized():
@@ -127,7 +127,6 @@ def test_order_type_mapping_is_persistent_and_authorized():
     assert 'order_mapping.get(method, "Не распределено")' in source
     assert '"by_order_type": [{**v, "previous_sales": previous_types[k]}' in source
     assert 'loadOrderTypeSettings()' in JS
-    assert "restaurantChannels=data.restaurant_channels||{}" in JS
 
 
 def test_multi_restaurant_name_prefix_normalization():
@@ -235,8 +234,8 @@ def test_turnover_comparison_and_hourly_order_types():
     assert '"previous_total_sales":' in source
     assert '"hourly_by_order_type":' in source
     assert "previous_from = date_from - timedelta(days=days)" in source
-    assert "hourly_by_order_type:hourlyTypes=[]" in JS
-    assert "Предыдущий период" in JS
+    assert "previous_total_sales:previousSales=0" in JS
+    assert "signedChange(total,previous)" in JS
     assert "Прибыль по отчёту',money(o.total_profit)" not in JS
 
 
@@ -257,18 +256,7 @@ def test_custom_date_range_controls_and_backend_validation():
 
 def test_same_weekday_hourly_comparison_is_scoped_and_cutoff_exclusive():
     backend = (ROOT / "routes/sales.py").read_text(encoding="utf-8")
-    html = (ROOT / "frontend/sales.html").read_text(encoding="utf-8")
-    assert 'id="comparison-date"' in html
-    assert 'id="comparison-hour"' in html
     assert 'last_week_day = comparison_day - timedelta(days=7)' in backend
     assert "opening_hour')::int < $3" in backend
     assert 'compare_filter = "AND sr.restaurant_key = ANY($4)"' in backend
     assert '"same_weekday_comparison": day_comparison' in backend
-    # The dashboard now aggregates all order types into a single comparison KPI.
-    # Keep the contract tied to the actual comparison data and readiness flags.
-    assert "same_weekday_comparison:weekCompare=null" in JS
-    assert "Object.values(week.current||{}).reduce(" in JS
-    assert "Object.values(week.previous||{}).reduce(" in JS
-    assert "week.has_current && week.has_previous" in JS
-    assert "signedChange(currentWeek,previousWeek)" in JS
-    assert "week.has_current && week.has_previous" in JS

@@ -181,8 +181,10 @@
                 const rows=res.data||[];
                 const value=(x,k)=>x==null?null:x[k];
                 const cell=v=>v==null?'—':money(v);
-                const delta=(a,b)=>a==null||b==null?'<td>—</td>':'<td class="'+(a>b?'hourly-up':a<b?'hourly-down':'')+'">'+(a>b?'+':'')+money(a-b)+'</td>';
-                const renderRow=(r,summary=false)=>['hall','delivery','total'].map((k,i)=>'<tr class="'+(summary?'hourly-summary ': '')+(k==='total'?'hourly-total':'')+'">'+(i===0?'<th rowspan="3">'+esc(r.name)+'</th>':'')+'<td>'+({hall:'Зал',delivery:'Доставка',total:'Общий ТО'}[k])+'</td><td>'+cell(value(r.previous,k))+'</td><td>'+cell(value(r.current,k))+'</td>'+delta(value(r.current,k),value(r.previous,k))+'</tr>').join('');
+                const change=(a,b)=>a==null||b==null?null:a-b;
+                const percent=(a,b)=>a==null||b==null||b===0?null:(a/b-1)*100;
+                const tone=d=>d>0?'hourly-up':d<0?'hourly-down':'';
+                const delta=(a,b)=>{const d=change(a,b),p=percent(a,b);return '<td class="'+tone(d)+'">'+(d==null?'—':(d>0?'+':'')+money(d))+'</td><td class="'+tone(p)+'">'+(p==null?'—':(p>0?'+':'')+p.toFixed(1).replace('.',',')+'%')+'</td>';};
                 const sum=(side,items=rows)=>items.length&&items.every(r=>r[side]!=null)?Object.fromEntries(['hall','delivery','total'].map(k=>[k,items.reduce((a,r)=>a+r[side][k],0)])):null;
                 const groups=new Map();
                 for(const r of rows){
@@ -190,10 +192,28 @@
                     if(!groups.has(key))groups.set(key,{name:r.territory_manager_name||(r.territory_manager_id==null?'Без территории':'ТУ #'+r.territory_manager_id),items:[]});
                     groups.get(key).items.push(r);
                 }
-                const groupedRows=Array.from(groups.values()).sort((a,b)=>a.name.localeCompare(b.name,'ru')).map(g=>'<tr class="hourly-territory-heading"><th colspan="5">Территория: '+esc(g.name)+'</th></tr>'+g.items.map(r=>renderRow(r)).join('')+renderRow({name:'Итого: '+g.name,current:sum('current',g.items),previous:sum('previous',g.items)},true)).join('');
-                const mobileCard=(r,kind='')=>'<article class="hourly-mobile-card '+kind+'"><h4>'+esc(r.name)+'</h4><table><thead><tr><th>Канал</th><th>'+esc(formatDate(previous).slice(0,5))+'</th><th>'+esc(formatDate(current).slice(0,5))+'</th><th>Разница</th></tr></thead><tbody>'+['hall','delivery','total'].map(k=>'<tr class="'+(k==='total'?'hourly-total':'')+'"><th>'+({hall:'Зал',delivery:'Доставка',total:'Общий ТО'}[k])+'</th><td>'+cell(value(r.previous,k))+'</td><td>'+cell(value(r.current,k))+'</td>'+delta(value(r.current,k),value(r.previous,k))+'</tr>').join('')+'</tbody></table></article>';
-                const mobileRows=Array.from(groups.values()).sort((a,b)=>a.name.localeCompare(b.name,'ru')).map(g=>'<section class="hourly-mobile-territory"><h3>Территория: '+esc(g.name)+'</h3>'+g.items.map(r=>mobileCard(r)).join('')+mobileCard({name:'Итого: '+g.name,current:sum('current',g.items),previous:sum('previous',g.items)},'hourly-summary')+'</section>').join('')+mobileCard({name:'Компания (доступные рестораны)',current:sum('current'),previous:sum('previous')},'hourly-company');
-                result.innerHTML='<div class="hourly-table-scroll"><table class="hourly-report-table"><thead><tr><th>Ресторан</th><th>Канал продаж</th><th>'+esc(formatDate(previous))+'</th><th>'+esc(formatDate(current))+'</th><th>Разница</th></tr></thead><tbody>'+groupedRows+renderRow({name:'Компания (доступные рестораны)',current:sum('current'),previous:sum('previous')},true).replaceAll('hourly-summary','hourly-summary hourly-company')+'</tbody></table></div><div class="hourly-mobile-results">'+mobileRows+'</div><p class="section-note">— нет почасовых данных. Общий ТО включает нераспределённые каналы. Итог компании доступен при наличии данных по всем доступным ресторанам.</p>';
+                const company={name:'Компания (доступные рестораны)',current:sum('current'),previous:sum('previous')};
+                const heading='<thead><tr><th>Канал продаж</th><th>'+esc(formatDate(previous))+'</th><th>'+esc(formatDate(current))+'</th><th>Разница, ₽</th><th>Динамика, %</th></tr></thead>';
+                const lines=r=>['hall','delivery','total'].map(k=>'<tr class="'+(k==='total'?'hourly-total':'')+'"><th>'+({hall:'Зал',delivery:'Доставка',total:'Общий ТО'}[k])+'</th><td>'+cell(value(r.previous,k))+'</td><td>'+cell(value(r.current,k))+'</td>'+delta(value(r.current,k),value(r.previous,k))+'</tr>').join('');
+                const block=(r,kind='')=>'<tr class="hourly-restaurant-heading '+kind+'"><th colspan="5">'+esc(r.name)+'</th></tr>'+lines(r);
+                const mobileCard=(r,kind='')=>'<article class="hourly-mobile-card '+kind+'"><h4>'+esc(r.name)+'</h4><table>'+heading+'<tbody>'+lines(r)+'</tbody></table></article>';
+                result.innerHTML='<div class="hourly-company-top"><h3>Итог компании</h3><div class="hourly-table-scroll"><table class="hourly-report-table">'+heading+'<tbody>'+lines(company)+'</tbody></table></div><div class="hourly-mobile-results">'+mobileCard(company,'hourly-company')+'</div></div><div class="hourly-report-filters hourly-analysis-controls"><label>Рестораны<select class="form-input" id="hourly-direction"><option value="all">Все</option><option value="up">Рост</option><option value="down">Падение</option></select></label><label>Сортировка<select class="form-input" id="hourly-sort"><option value="name">По названию</option><option value="up">Наибольший рост, %</option><option value="down">Наибольшее падение, %</option></select></label></div><div id="hourly-groups"></div><p class="section-note">— нет данных или базы сравнения. Общий ТО включает нераспределённые каналы. Итоги по всем доступным ресторанам территории и компании, независимо от фильтра; при неполных данных итог не рассчитывается.</p>';
+                const direction=result.querySelector('#hourly-direction'),sort=result.querySelector('#hourly-sort'),target=result.querySelector('#hourly-groups');
+                const metric=r=>percent(value(r.current,'total'),value(r.previous,'total'));
+                const renderGroups=()=>{
+                    const collapsed=new Set(Array.from(target.querySelectorAll('details:not([open])')).map(d=>d.dataset.group));
+                    target.innerHTML=Array.from(groups.entries()).sort((a,b)=>a[1].name.localeCompare(b[1].name,'ru')).map(([key,g])=>{
+                        const items=g.items.filter(r=>{const d=change(value(r.current,'total'),value(r.previous,'total'));return direction.value==='all'||(direction.value==='up'?d>0:d<0);}).sort((a,b)=>{
+                            if(sort.value==='name')return a.name.localeCompare(b.name,'ru');
+                            const x=metric(a),y=metric(b);if(x==null||y==null)return x==null?(y==null?0:1):-1;
+                            return sort.value==='up'?y-x:x-y;
+                        });
+                        if(!items.length)return '';
+                        const summary={name:'Итого: '+g.name,current:sum('current',g.items),previous:sum('previous',g.items)};
+                        return '<details class="hourly-territory-details" data-group="'+esc(String(key))+'" '+(collapsed.has(String(key))?'':'open')+'><summary>Территория: '+esc(g.name)+' · '+items.length+' / '+g.items.length+'</summary><div class="hourly-table-scroll"><table class="hourly-report-table">'+heading+'<tbody>'+items.map(r=>block(r)).join('')+block(summary,'hourly-summary')+'</tbody></table></div><div class="hourly-mobile-results">'+items.map(r=>mobileCard(r)).join('')+mobileCard(summary,'hourly-summary')+'</div></details>';
+                    }).join('')||'<p>Нет ресторанов по выбранному фильтру</p>';
+                };
+                direction.addEventListener('change',renderGroups);sort.addEventListener('change',renderGroups);renderGroups();
             }catch(e){if(id===request&&result.isConnected)result.textContent='Ошибка: '+e.message;}
         }
         document.getElementById('hourly-refresh').addEventListener('click',load);

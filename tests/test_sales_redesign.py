@@ -10,7 +10,7 @@ CSS = (ROOT / "frontend/sales.css").read_text(encoding="utf-8")
 def test_sales_views_have_navigation():
     for view in ("overview", "reports", "imports", "settings"):
         assert f'data-view="{view}"' in HTML
-    assert "state.view=button.dataset.view" in JS
+    assert "state.view = button.dataset.view" in JS
     assert 'data-view="products"' not in HTML
     assert 'data-view="records"' not in HTML
 

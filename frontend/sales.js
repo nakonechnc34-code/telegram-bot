@@ -37,12 +37,18 @@
         DOM.recordsTbody = document.getElementById('records-tbody');
         DOM.recordsPagination = document.getElementById('records-pagination');
         DOM.toastContainer = document.getElementById('toast-container');
+        DOM.sidebar = document.getElementById('sales-sidebar');
+        DOM.sidebarClose = document.getElementById('sales-sidebar-close');
+        DOM.sidebarBackdrop = document.getElementById('sales-sidebar-backdrop');
+        DOM.menuToggle = document.getElementById('menu-toggle');
+        DOM.workspace = document.querySelector('.workspace');
     }
 
     function getToken() { return sessionStorage.getItem('wokker_sales_token') || null; }
     function showSalesLogin(message='') {
         sessionStorage.removeItem('wokker_sales_token');
         state.token = null;
+        setSalesMenuOpen(false, false);
         document.getElementById('sales-app-shell').hidden = true;
         document.getElementById('sales-login-screen').hidden = false;
         document.getElementById('sales-login-error').textContent = message;
@@ -515,24 +521,38 @@
     window._salesPrevPage = () => loadRecords(state.detailPage - 1);
     window._salesNextPage = () => loadRecords(state.detailPage + 1);
 
+    function setSalesMenuOpen(open, restoreFocus = true) {
+        const wasOpen = DOM.sidebar.classList.contains('open');
+        DOM.sidebar.classList.toggle('open', open);
+        DOM.menuToggle.setAttribute('aria-expanded', String(open));
+        DOM.workspace.inert = open;
+        if (open) DOM.sidebarClose.focus();
+        else if (wasOpen && restoreFocus) DOM.menuToggle.focus();
+    }
+
     function bindEvents() {
-        document.querySelectorAll('[data-view]').forEach(button=>button.addEventListener('click',()=>{
-            state.view=button.dataset.view;
+        const navLinks = document.querySelectorAll('.side-nav [data-view]:not([hidden])');
+        navLinks.forEach(button => button.addEventListener('click', () => {
+            state.view = button.dataset.view;
             ++state.recordsRequest;
             ++state.productsRequest;
-            document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b===button));
-            document.getElementById('view-title').textContent=button.textContent.trim();
-            document.getElementById('sales-sidebar').classList.remove('open');
+            navLinks.forEach(link => {
+                const active = link === button;
+                link.classList.toggle('active', active);
+                if (active) link.setAttribute('aria-current', 'page');
+                else link.removeAttribute('aria-current');
+            });
+            document.getElementById('view-title').textContent = button.textContent.trim();
+            setSalesMenuOpen(false);
             if(state.view==='settings') renderDashboard(state.dashboardData||{overview:{},daily_trend:[],by_restaurant:[],imports:[]});
             else if(state.dashboardData) renderDashboard(state.dashboardData); else loadDashboard();
         }));
-        const salesSidebar=document.getElementById('sales-sidebar');
-        const salesMenuToggle=document.getElementById('menu-toggle');
-        const setSalesMenuOpen=(open)=>{
-            salesSidebar.classList.toggle('open',open);
-            salesMenuToggle.setAttribute('aria-expanded',String(open));
-            salesMenuToggle.setAttribute('aria-label',open?'Закрыть меню':'Открыть меню');
-        };
+
+        DOM.menuToggle.addEventListener('click', () => setSalesMenuOpen(true));
+        DOM.sidebarClose.addEventListener('click', () => setSalesMenuOpen(false));
+        DOM.sidebarBackdrop.addEventListener('click', () => setSalesMenuOpen(false));
+        window.matchMedia('(max-width: 850px)').addEventListener('change', () => setSalesMenuOpen(false, false));
+
         const mobileFilterToggle=document.getElementById('sales-mobile-filter-toggle');
         const salesTopbar=document.querySelector('.topbar');
         const setMobileFiltersOpen=open=>{
@@ -540,13 +560,10 @@
             mobileFilterToggle.setAttribute('aria-expanded',String(open));
         };
         mobileFilterToggle.addEventListener('click',()=>setMobileFiltersOpen(!salesTopbar.classList.contains('mobile-filters-open')));
-        document.addEventListener('keydown',event=>{if(event.key==='Escape')setMobileFiltersOpen(false);});
-        salesMenuToggle.setAttribute('aria-expanded','false');
-        salesMenuToggle.addEventListener('click',()=>setSalesMenuOpen(!salesSidebar.classList.contains('open')));
-        salesSidebar.querySelectorAll('.nav-link').forEach(link=>link.addEventListener('click',()=>setSalesMenuOpen(false)));
-        document.addEventListener('keydown',event=>{if(event.key==='Escape')setSalesMenuOpen(false);});
-        document.addEventListener('click',event=>{
-            if(salesSidebar.classList.contains('open') && !salesSidebar.contains(event.target) && !salesMenuToggle.contains(event.target))setSalesMenuOpen(false);
+        document.addEventListener('keydown', event => {
+            if (event.key !== 'Escape') return;
+            if (DOM.sidebar.classList.contains('open')) setSalesMenuOpen(false);
+            else setMobileFiltersOpen(false);
         });
 
         function updateDateControls() {

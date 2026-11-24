@@ -25,19 +25,24 @@
 </div>
 <div class="app-shell" id="sales-app-shell" hidden>
   <aside class="sidebar" id="sales-sidebar">
-    <div class="brand"><span class="brand-mark">W</span><span>WOKKER <small>SALES</small></span></div>
-    <div class="nav-caption">РАБОЧЕЕ ПРОСТРАНСТВО</div>
+    <div class="sidebar-header">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">W</span><span>WOKKER <small>SALES</small></span></div>
+      <button type="button" class="sidebar-close" id="sales-sidebar-close" aria-label="Закрыть меню"><svg class="sales-nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    </div>
     <nav class="side-nav" aria-label="Разделы Sales">
-      <button class="nav-link active" data-view="overview"><span aria-hidden="true">◫</span><span>Дашборд</span></button>
-      <button class="nav-link" data-view="reports"><span aria-hidden="true">▦</span><span>Отчёты</span></button>
-      <button class="nav-link" data-view="imports"><span aria-hidden="true">⇧</span><span>Импорт iiko</span></button>
-      <button class="nav-link" data-view="settings"><span aria-hidden="true">⚙</span><span>Настройки</span></button>
+      <button type="button" class="nav-link active" data-view="overview" aria-current="page"><svg class="sales-nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 16v-3m5 3V8m5 8v-5"/></svg><span>Дашборд</span></button>
+      <button type="button" class="nav-link" data-view="reports" hidden><span>Отчёты</span></button>
+      <button type="button" class="nav-link" data-view="imports"><svg class="sales-nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4m-4 4 4-4 4 4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg><span>Импорт iiko</span></button>
+      <button type="button" class="nav-link" data-view="settings"><svg class="sales-nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h5m4 0h7M4 12h9m4 0h3M4 18h3m4 0h9"/><circle cx="11" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg><span>Настройки</span></button>
     </nav>
-    <div class="sidebar-bottom"><span class="sidebar-system-label"><span class="system-indicator" aria-hidden="true"></span> WOKKER Sales · Отдельная система</span><button class="btn btn-secondary" id="sales-logout">Выйти из Sales</button></div>
+    <div class="sidebar-bottom">
+      <button type="button" class="nav-link" id="sales-logout"><svg class="sales-nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3m10-8h6a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/></svg><span>Выйти</span></button>
+    </div>
   </aside>
+  <div class="sidebar-backdrop" id="sales-sidebar-backdrop" aria-hidden="true"></div>
   <div class="workspace">
     <header class="topbar">
-      <div class="topbar-left"><button id="menu-toggle" class="mobile-menu" aria-label="Открыть меню">☰</button><div class="eyebrow">АНАЛИТИЧЕСКАЯ ПЛАТФОРМА <span class="eyebrow-divider">/</span> WOKKER SALES</div><h1 class="page-title" id="view-title">Дашборд</h1><button type="button" class="mobile-filter-toggle" id="sales-mobile-filter-toggle" aria-controls="sales-topbar-filters" aria-expanded="false">Фильтры <span aria-hidden="true">⌄</span></button></div>
+      <div class="topbar-left"><button type="button" id="menu-toggle" class="mobile-menu" aria-label="Открыть меню" aria-controls="sales-sidebar" aria-expanded="false"><svg class="sales-nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><div class="eyebrow">АНАЛИТИЧЕСКАЯ ПЛАТФОРМА <span class="eyebrow-divider">/</span> WOKKER SALES</div><h1 class="page-title" id="view-title">Дашборд</h1><button type="button" class="mobile-filter-toggle" id="sales-mobile-filter-toggle" aria-controls="sales-topbar-filters" aria-expanded="false">Фильтры <span aria-hidden="true">⌄</span></button></div>
       <div class="topbar-right" id="sales-topbar-filters">
         <label class="filter-field"><span>Ресторан</span><select class="topbar-select" id="restaurant-select"><option value="">Все доступные рестораны</option></select></label>
         <label class="filter-field"><span>Период</span><select class="topbar-select" id="period-select"><option value="1d" selected>Сегодня</option><option value="7d">Неделя</option><option value="30d">Месяц</option><option value="90d">Квартал</option><option value="365d">Год</option><option value="custom">Свои даты</option></select></label><label class="filter-field" id="custom-from-field" hidden><span>С даты</span><input class="topbar-select" type="date" id="sales-date-from"></label><label class="filter-field" id="custom-to-field" hidden><span>По дату</span><input class="topbar-select" type="date" id="sales-date-to"></label>

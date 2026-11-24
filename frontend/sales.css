@@ -603,3 +603,17 @@ button:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-v
 .hourly-report-table tbody tr.hourly-total td{border-top:1px solid #e2e6ec}
 .hourly-report-table thead th{font-size:13px;white-space:nowrap}
 .hourly-report-table tbody{font-size:13px}
+
+/* Compact hourly report: restaurant headers distinct from turnover totals. */
+.hourly-report-table tbody tr.hourly-restaurant-heading>th{background:#34465c;color:#fff;border-top:2px solid #fff;border-left:4px solid #c92535;padding:5px 10px;font-weight:700;line-height:1.3}
+.hourly-report-table tbody tr.hourly-restaurant-heading.hourly-summary>th{background:#fff0d8;color:#704a15;border-left-color:#b7791f}
+.hourly-report-table tbody tr:not(.hourly-restaurant-heading)>th,.hourly-report-table tbody tr:not(.hourly-restaurant-heading)>td{padding:4px 10px;line-height:1.35}
+.hourly-report-table thead th{padding:6px 10px}
+@media(max-width:850px){
+.hourly-mobile-card{padding:0;overflow:hidden}
+.hourly-mobile-card h4{background:#34465c;color:#fff;border-left:4px solid #c92535;padding:6px 9px;margin:0}
+.hourly-mobile-card.hourly-summary h4{background:#fff0d8;color:#704a15;border-left-color:#b7791f}
+.hourly-mobile-card.hourly-company h4{background:#fce1e4;color:#9f2030}
+.hourly-mobile-card table th,.hourly-mobile-card table td{padding:4px 2px;line-height:1.3}
+.hourly-mobile-results{gap:6px}
+}

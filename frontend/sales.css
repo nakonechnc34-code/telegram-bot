@@ -491,3 +491,11 @@ button:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-v
 .sales-chart-filter-layout .rest-restaurant-list{max-height:360px;overflow-y:auto}
 .sales-chart-filter-layout .rest-restaurant-option[hidden]{display:none!important}
 @media(max-width:850px){.sales-chart-filter-layout{grid-template-columns:minmax(0,1fr)}.sales-chart-filter-layout>.sales-v2-restaurant-panel{grid-row:1}.sales-chart-filter-layout .rest-restaurant-list{max-height:180px}}
+
+.sales-compact-kpis{grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin:0 0 16px}
+.sales-compact-kpis .sales-v2-kpi:nth-child(n){grid-column:auto;min-height:112px;padding:14px 16px;background:#fff;color:#202b3c;border:1px solid #e2e6ec;box-shadow:none}
+.sales-compact-kpis .sales-v2-kpi:nth-child(n) strong{font-size:clamp(18px,2vw,26px);color:#202b3c}
+.sales-compact-kpis .sales-v2-kpi-heading,.sales-compact-kpis .sales-v2-kpi-footer{color:#64748b}
+.sales-compact-kpis .sales-v3-kpi-corner{display:none}
+@media(max-width:1100px){.sales-compact-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:650px){.sales-compact-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}

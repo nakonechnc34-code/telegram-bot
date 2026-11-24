@@ -143,3 +143,19 @@ api('/api/timesheet/restaurants').then(({ restaurants }) => {
     fillRestaurants(byId('import-restaurant'), restaurants);
 }).catch(error => { statusLine.textContent = error.message; });
 loadDay();
+
+const pageNames = ['Главная','Табель','Начисления','Отчёты','Согласование','Настройки'];
+function showPage(index) {
+    byId('page-title').textContent = pageNames[index];
+    byId('home-panel').hidden = index !== 0;
+    byId('timesheet-panel').hidden = index !== 1;
+    byId('future-panel').hidden = index < 2;
+    document.querySelectorAll('nav [data-page]').forEach(button => {
+        if (Number(button.dataset.page) === index) button.setAttribute('aria-current','page');
+        else button.removeAttribute('aria-current');
+    });
+}
+document.querySelectorAll('[data-page]').forEach(button => {
+    button.addEventListener('click', () => showPage(Number(button.dataset.page)));
+});
+showPage(0);

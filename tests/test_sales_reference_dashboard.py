@@ -96,3 +96,11 @@ def test_kpi_comparison_uses_same_scoped_window_as_chart():
     for field in ("total_sales", "avg_check", "checks", "discounts", "delivery_share"):
         assert "prior." + field in JS
     assert "previous==null?'Нет данных'" in JS
+
+
+def test_turnover_comparison_follows_selected_channels():
+    assert "channels.forEach(key=>" in JS
+    assert "const priorKey='previous_'+key" in JS
+    assert "(p.previous||{})[key]" in JS
+    assert "color:series[key].color" in JS
+    assert "ctx.setLineDash(item.previous?[6,4]:[])" in JS

@@ -19,12 +19,27 @@
     dialog { max-width: min(90vw, 500px); border: 1px solid #c5cedd; border-radius: 12px; }
     #edit-form label { flex: 1 1 100%; justify-content: space-between; }
     [role="status"] { white-space: pre-line; }
+    [hidden]{display:none!important}
+    body{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:100vh}
+    aside{background:#26354a;color:white;padding:24px 16px}
+    aside strong{display:block;font-size:21px;margin-bottom:24px}
+    nav{display:grid;gap:8px}
+    nav button{text-align:left;background:transparent;color:white;border:0;border-radius:8px;padding:12px}
+    nav button[aria-current="page"]{background:#b91c1c}
+    main{box-sizing:border-box;width:100%;max-width:1400px}
+    .home-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+    .home-grid button{background:white;border:1px solid #dce2ed;border-radius:10px;padding:20px;text-align:left;color:#26354a}
+    @media(max-width:700px){body{display:block}aside{padding:12px}aside strong{margin-bottom:12px}nav{grid-template-columns:repeat(2,minmax(0,1fr))}main{padding:12px}}
   </style>
   <script src="/timesheet.js" defer></script>
 </head>
 <body>
+<aside><strong>WOKKER ТАБЕЛЬ</strong><nav aria-label="Разделы"><button type="button" data-page="0" aria-current="page">Главная</button><button type="button" data-page="1">Табель</button><button type="button" data-page="2">Начисления</button><button type="button" data-page="3">Отчёты</button><button type="button" data-page="4">Согласование</button><button type="button" data-page="5">Настройки</button></nav></aside>
 <main>
-  <header><h1>Табель</h1><a href="/" id="back">На главную</a></header>
+  <header><h1 id="page-title">Главная</h1><a href="/" id="back">На главную</a></header>
+  <div id="home-panel"><section><h2>Управление рабочим временем</h2><p>Выберите раздел для работы с табелем.</p><div class="home-grid"><button type="button" data-page="1">Табель</button><button type="button" data-page="2">Начисления</button><button type="button" data-page="3">Отчёты</button><button type="button" data-page="4">Согласование</button><button type="button" data-page="5">Настройки</button></div></section></div>
+  <div id="future-panel" hidden><section><p>Раздел готовится к подключению. Данные и настройки пока не изменяются.</p></section></div>
+  <div id="timesheet-panel" hidden>
   <section class="toolbar" aria-label="Дата и экспорт">
     <label>Дата <input type="date" id="date" required></label>
     <button id="export" type="button">Скачать Excel</button>
@@ -43,6 +58,7 @@
       <button type="submit">Импортировать</button>
     </form>
   </section>
+  </div>
   <dialog id="editor">
     <h2 id="employee-name"></h2>
     <form id="edit-form">

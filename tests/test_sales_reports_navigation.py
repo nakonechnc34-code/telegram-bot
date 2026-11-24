@@ -33,7 +33,7 @@ def test_hourly_report_uses_assigned_territories_and_scoped_restaurants():
     report = api.split('async def sales_hourly_comparison', 1)[1].split('async def sales_dashboard', 1)[0]
     assert 'r.territory_manager_id' in report
     assert 'u.user_id = r.territory_manager_id' in report
-    assert '_allowed_rests(request["admin"])' in report
+    assert '_sales_restaurant_scope(request)' in report
     assert 'WHERE r.key = ANY($1)' in report
     assert 'restaurant_key = ANY($4::text[])' in report
     assert 'r.territory_manager_id' in JS

@@ -43,7 +43,7 @@ def test_unavailable_metrics_not_fabricated():
 
 def test_restaurant_scope_still_uses_authorized_dashboard_endpoint():
     assert "'/api/sales/dashboard'" in JS
-    assert "allowed = await _allowed_rests(user)" in API
+    assert "allowed = await _sales_restaurant_scope(request)" in API
 
 
 def test_restaurant_turnover_api_still_provides_channel_split():
@@ -104,3 +104,23 @@ def test_turnover_comparison_follows_selected_channels():
     assert "(p.previous||{})[key]" in JS
     assert "color:series[key].color" in JS
     assert "ctx.setLineDash(item.previous?[6,4]:[])" in JS
+
+
+def test_sales_office_scope_preserves_existing_permissions():
+    import ast
+    import asyncio
+    from types import SimpleNamespace
+    tree = ast.parse(API)
+    funcs = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in ("_is_sales_office", "_sales_restaurant_scope")]
+    async def allowed(user):
+        return user["allowed"]
+    class Request(dict):
+        pass
+    class Connection:
+        async def fetch(self, query):
+            return [{"key": "office", "name": " ОФИС "}, {"key": "a", "name": "Беляево"}, {"key": "b", "name": "Вернадка"}]
+    ns = {"_allowed_rests": allowed}
+    exec(compile(ast.Module(body=funcs, type_ignores=[]), "<scope>", "exec"), ns)
+    for permissions, expected in [(None, ["a", "b"]), (["office", "a"], ["a"]), (["office"], []), ([], [])]:
+        request = Request(admin={"allowed": permissions})
+        assert asyncio.run(ns["_sales_restaurant_scope"](request, Connection())) == expected

@@ -701,6 +701,53 @@ async def sales_restaurant_turnover(request: web.Request) -> web.Response:
         for r in restaurants]})
 
 
+@routes.post("/api/sales/order-type-report")
+@sales_required
+async def sales_order_type_report(request: web.Request) -> web.Response:
+    try:
+        body = await request.json()
+        start = date.fromisoformat(body["date_from"])
+        end = date.fromisoformat(body["date_to"])
+        if not 0 <= (end - start).days <= 366:
+            raise ValueError()
+    except (ValueError, TypeError, KeyError):
+        return web.json_response({"error": "Выберите период от 1 до 367 дней"}, status=400)
+    allowed = await _sales_restaurant_scope(request)
+    async with db.get_pool(request.app).acquire() as conn:
+        restaurants = await conn.fetch(
+            "SELECT r.key, r.name, r.territory_manager_id, u.full_name AS territory_manager_name "
+            "FROM restaurants r LEFT JOIN users u ON u.user_id = r.territory_manager_id" +
+            (" WHERE r.key = ANY($1)" if allowed is not None else "") +
+            " ORDER BY r.sort NULLS FIRST, r.name", *([allowed] if allowed is not None else []))
+        rows = await conn.fetch("""
+            SELECT restaurant_key, payment_method, SUM(total_amount) AS sales,
+                   COUNT(*) AS row_count,
+                   COUNT(CASE WHEN extra_data::jsonb ? 'check_count' THEN (extra_data::jsonb->>'check_count')::numeric WHEN extra_data::jsonb ? 'source_restaurant' THEN quantity END) AS check_rows,
+                   SUM(CASE WHEN extra_data::jsonb ? 'check_count' THEN (extra_data::jsonb->>'check_count')::numeric WHEN extra_data::jsonb ? 'source_restaurant' THEN quantity END) AS checks
+            FROM sales_records WHERE sale_date BETWEEN $1 AND $2
+            AND restaurant_key = ANY($3::text[]) GROUP BY 1, 2
+        """, start, end, [r["key"] for r in restaurants])
+        mapping = await _order_type_mapping(conn)
+    buckets = {}
+    for row in rows:
+        bucket = buckets.setdefault(row["restaurant_key"], {k: {"sales": 0.0, "checks": 0} for k in ("total", "hall", "delivery")})
+        channel = {"Зал": "hall", "Доставка": "delivery"}.get(mapping.get(row["payment_method"] or ""))
+        for key in ("total", channel):
+            if key is None:
+                continue
+            metric = bucket[key]
+            metric["sales"] += float(row["sales"] or 0)
+            if row["check_rows"] != row["row_count"] or row["checks"] is None:
+                metric["checks"] = None
+            elif metric["checks"] is not None:
+                metric["checks"] += int(row["checks"])
+    return web.json_response({"success": True, "data": [
+        {"key": r["key"], "name": r["name"],
+         "territory_manager_id": str(r["territory_manager_id"]) if r["territory_manager_id"] is not None else None,
+         "territory_manager_name": r["territory_manager_name"], "metrics": buckets.get(r["key"])}
+        for r in restaurants]})
+
+
 @routes.post("/api/sales/dashboard")
 @sales_required
 async def sales_dashboard(request: web.Request) -> web.Response:

@@ -223,7 +223,8 @@ def test_reimport_replaces_existing_restaurant_dates_transactionally():
     upload = source.split("async def upload_sales_file(", 1)[1].split(
         '@routes.post("/api/sales/dashboard")', 1)[0]
     assert "async with conn.transaction():" in upload
-    assert "FOR UPDATE" in upload
+    assert "FOR NO KEY UPDATE" in upload
+    assert upload.index("pg_advisory_xact_lock(814726, 1)") < upload.index("FOR NO KEY UPDATE")
     assert "DELETE FROM sales_records WHERE restaurant_key=$1 AND sale_date=ANY($2::date[])" in upload
     assert upload.index("DELETE FROM sales_records WHERE restaurant_key=$1") < upload.index("await _save_records(conn, import_id")
     assert "status='replaced'" in upload

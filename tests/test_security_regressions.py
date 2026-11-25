@@ -134,7 +134,8 @@ def test_save_cell_preserves_zero_hour_removal_and_overnight_shifts(monkeypatch)
     employee = {"user_id": 123, "is_super_admin": True}
     monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(employee, None)))
     cursor = mock_cursor(timesheet, monkeypatch)
-    cursor.fetchone.return_value = None
+    cursor.description = [("user_id",), ("is_super_admin",)]
+    cursor.fetchone.side_effect = [None, (123, True), None, (123, True)]
     body = {"user_id": "123", "work_date": "2026-11-20", "hours": 0}
     assert asyncio.run(timesheet.handle_timesheet_save_cell(request(body))).status == 200
     assert cursor.execute.call_args.args[0].startswith("DELETE")
@@ -275,3 +276,20 @@ def test_personal_export_escapes_formula(monkeypatch):
     sheet = load_workbook(io.BytesIO(response.body)).active
     assert sheet["A2"].value == "=1+1" and sheet["A2"].data_type == "s"
     assert sheet["F2"].value == 2975
+
+
+@pytest.mark.parametrize("hours,destination", [(0, None), (8, None), (8, "a")])
+def test_save_cell_rejects_existing_foreign_restaurant(monkeypatch, hours, destination):
+    cursor = mock_cursor(timesheet, monkeypatch)
+    cursor.description = [("user_id",), ("position",), ("restaurant_key",)]
+    cursor.fetchone.side_effect = [None, (42, "Управляющий сменой", "a"), ("a",), ("b",)]
+    assert timesheet._sync_save_cell(42, 123, "2026-11-20", hours, "work", destination) == "forbidden"
+    assert not any(call.args[0].lstrip().startswith(("DELETE", "INSERT", "UPDATE")) for call in cursor.execute.call_args_list)
+
+
+def test_save_cell_allows_existing_local_restaurant(monkeypatch):
+    cursor = mock_cursor(timesheet, monkeypatch)
+    cursor.description = [("user_id",), ("position",), ("restaurant_key",)]
+    cursor.fetchone.side_effect = [None, (42, "Управляющий сменой", "a"), ("a",), ("a",)]
+    assert timesheet._sync_save_cell(42, 123, "2026-11-20", 8, "work", "a") is True
+    assert cursor.execute.call_args.args[0].startswith("INSERT")

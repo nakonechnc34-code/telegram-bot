@@ -667,6 +667,37 @@ async def handle_delete_attendance(request):
     logging.getLogger(__name__).info("attendance_import_deleted actor=%s import_id=%s restaurant=%r deleted_count=%s",\n                                    user["user_id"], import_id, restaurant_key, deleted)\n    return web.json_response({"ok": True, "deleted_count": deleted}, headers={"Cache-Control": "no-store"})
 
 
+def _attendance_saved_conflict(cur, records, employee_ids):
+    """Check surviving staged records before replacing restaurant/date pairs."""
+    from utils.attendance_minutes import shift_interval
+    replacements = {(r["restaurant_key"], r["date"]) for r in records}
+    for record in records:
+        day = date.fromisoformat(record["date"])
+        cur.execute("""SELECT d.restaurant_key, d.work_date::text AS work_date,
+            d.status, i.start_minute, i.end_minute
+            FROM attendance_import_days d
+            LEFT JOIN attendance_import_intervals i ON i.day_id = d.id
+            WHERE d.user_id = %s AND d.work_date BETWEEN %s::date - 1 AND %s::date + 1""",
+                    (employee_ids[record["personnel_number"]], day, day))
+        offset = day.toordinal() * 1440
+        incoming = [(offset + a, offset + b) for a, b in
+                    (shift_interval(v) for v in record["shifts"])]
+        for saved in cur.fetchall():
+            if (saved["restaurant_key"], saved["work_date"]) in replacements:
+                continue
+            if saved["work_date"] == record["date"] and (
+                saved["status"] != "work" or record.get("status", "work") != "work"
+            ):
+                return True
+            if saved["start_minute"] is None:
+                continue
+            base = date.fromisoformat(saved["work_date"]).toordinal() * 1440
+            left, right = base + saved["start_minute"], base + saved["end_minute"]
+            if any(start < right and left < end for start, end in incoming):
+                return True
+    return False
+
+
 def _sync_stage_attendance(user, rows, default_rest_key=None):
     """Store a validated batch for review, without affecting legacy payroll."""
     from utils.attendance_minutes import shift_interval
@@ -678,6 +709,15 @@ def _sync_stage_attendance(user, rows, default_rest_key=None):
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             # Serialize staged replacements; delete only exact restaurant/date pairs.
             cur.execute("SELECT pg_advisory_xact_lock(814726, 2)")
+            employee_ids = {}
+            for number in sorted({r["personnel_number"] for r in records}):
+                cur.execute("SELECT user_id FROM users WHERE personnel_number IS NOT NULL AND BTRIM(personnel_number::text) = %s AND COALESCE(is_fired, FALSE) = FALSE FOR SHARE", (number,))
+                employees = cur.fetchall()
+                if len(employees) != 1:
+                    raise ValueError("Employee changed during import")
+                employee_ids[number] = employees[0]["user_id"]
+            if _attendance_saved_conflict(cur, records, employee_ids):
+                return {"ok": False, "errors": ["Конфликт с ранее загруженным отчётом: пересечение смен или статусов отсутствия. Проверьте данные."]}
             for key, day in sorted({(r["restaurant_key"], r["date"]) for r in records}):
                 cur.execute("DELETE FROM attendance_import_days WHERE restaurant_key = %s AND work_date = %s", (key, day))
             cur.execute("DELETE FROM attendance_imports i WHERE NOT EXISTS (SELECT 1 FROM attendance_import_days d WHERE d.import_id = i.id)")
@@ -685,15 +725,10 @@ def _sync_stage_attendance(user, rows, default_rest_key=None):
                         (user["user_id"], min(r["date"] for r in records), max(r["date"] for r in records)))
             import_id = cur.fetchone()["id"]
             for record in records:
-                cur.execute("SELECT user_id FROM users WHERE personnel_number IS NOT NULL AND BTRIM(personnel_number::text) = %s AND COALESCE(is_fired, FALSE) = FALSE FOR SHARE",
-                            (record["personnel_number"],))
-                employees = cur.fetchall()
-                if len(employees) != 1:
-                    raise ValueError("Employee changed during import")
                 cur.execute("""INSERT INTO attendance_import_days
                     (import_id, user_id, work_date, restaurant_key, status, worked_minutes)
                     VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
-                    (import_id, employees[0]["user_id"], record["date"], record["restaurant_key"],
+                    (import_id, employee_ids[record["personnel_number"]], record["date"], record["restaurant_key"],
                      record.get("status", "work"), record["minutes"]))
                 day_id = cur.fetchone()["id"]
                 for start, end in sorted({shift_interval(v) for v in record["shifts"]}):

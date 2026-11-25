@@ -293,6 +293,27 @@ def _sync_save_cell(user_id, target_uid, work_date, hours, status, restaurant_ke
                         (target_uid, work_date))
             if cur.fetchone():
                 return False
+            cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+            actor_row = cur.fetchone()
+            if not actor_row:
+                return "forbidden"
+            actor = dict(zip([d[0] for d in cur.description], actor_row))
+            if not _is_hr_or_super(actor):
+                cur.execute("SELECT restaurant_key FROM users WHERE user_id = %s", (target_uid,))
+                target = cur.fetchone()
+                if not target:
+                    return "forbidden"
+                home = target[0]
+                territory = ()
+                if _is_tu(actor):
+                    cur.execute("SELECT key FROM restaurants WHERE territory_manager_id = %s", (user_id,))
+                    territory = tuple(row[0] for row in cur.fetchall())
+                cur.execute("SELECT restaurant_key FROM timesheet_records WHERE user_id = %s AND work_date = %s FOR UPDATE", (target_uid, work_date))
+                existing = cur.fetchone()
+                if not _restaurant_in_scope(actor, home, territory) or not _restaurant_in_scope(actor, restaurant_key or home, territory):
+                    return "forbidden"
+                if existing and not _restaurant_in_scope(actor, existing[0] or home, territory):
+                    return "forbidden"
             if hours <= 0 and status == 'work':
                 cur.execute("DELETE FROM timesheet_records WHERE user_id = %s AND work_date = %s", (target_uid, work_date))
             else:
@@ -347,6 +368,8 @@ async def handle_timesheet_save_cell(request):
             return web.json_response({"error": "forbidden_restaurant"}, status=403)
 
     saved = await _run(_sync_save_cell, user["user_id"], target_uid, work_date, hours, status, restaurant_key, start_time, end_time)
+    if saved == "forbidden":
+        return web.json_response({"error": "forbidden_restaurant"}, status=403)
     if saved is False:
         return web.json_response({"error": "День закрыт импортированным отчётом"}, status=409)
     return web.json_response({"ok": True})

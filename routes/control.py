@@ -420,12 +420,12 @@ async def list_tasks(request):
         return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
     scope = await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
-        rows = await conn.fetch("""SELECT t.*,c.restaurant_key,
+        rows = await conn.fetch("""SELECT t.*,c.restaurant_key, CASE WHEN $4::boolean OR NOT EXISTS (SELECT 1 FROM users g WHERE g.user_id=t.assignee_id AND lower(btrim(COALESCE(g.position, '')))='тайный гость') THEN t.assignee_id ELSE NULL END AS assignee_id,
             (t.due_at<NOW() AND t.status!='closed') AS overdue
             FROM control_tasks t JOIN control_checks c ON c.id=t.check_id
             WHERE ($1::text[] IS NULL OR c.restaurant_key=ANY($1))
             AND ($2::boolean OR t.assignee_id=$3)
-            ORDER BY t.critical DESC,t.id DESC LIMIT 200""",scope,task_manager(user),user["user_id"])
+            ORDER BY t.critical DESC,t.id DESC LIMIT 200""",scope,task_manager(user),user["user_id"],_is_hr_or_super(user))
     items=[]
     for row in rows:
         item=dict(row)
@@ -513,10 +513,11 @@ async def task_history(request):
         return web.json_response({"error":"invalid_request"},status=400,headers=NO_STORE)
     scope=await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
-        rows=await conn.fetch("""SELECT h.actor_id,h.action,h.details,h.created_at FROM control_task_history h
+        rows=await conn.fetch("""SELECT CASE WHEN $5::boolean OR NOT EXISTS (SELECT 1 FROM users g WHERE g.user_id=h.actor_id AND lower(btrim(COALESCE(g.position, '')))='тайный гость') THEN h.actor_id ELSE NULL END AS actor_id,h.action,
+            CASE WHEN $5::boolean THEN h.details ELSE h.details::jsonb - 'assignee_id' - 'previous_assignee_id' END AS details,h.created_at FROM control_task_history h
             JOIN control_tasks t ON t.id=h.task_id JOIN control_checks c ON c.id=t.check_id
             WHERE t.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))
-            AND ($3::boolean OR t.assignee_id=$4) ORDER BY h.id""",body["id"],scope,task_manager(user),user["user_id"])
+            AND ($3::boolean OR t.assignee_id=$4) ORDER BY h.id""",body["id"],scope,task_manager(user),user["user_id"],_is_hr_or_super(user))
     return web.json_response({"history":[{"actor_id":r["actor_id"],"action":r["action"],"details":json.loads(r["details"]) if isinstance(r["details"],str) else r["details"],"created_at":r["created_at"].isoformat()} for r in rows]},headers=NO_STORE)
 
 

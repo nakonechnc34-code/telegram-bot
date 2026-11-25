@@ -281,7 +281,7 @@ def test_personal_export_escapes_formula(monkeypatch):
     req.query = {"only_me": "true", "date_from": "2026-11-01", "date_to": "2026-11-30"}
     response = asyncio.run(timesheet.handle_timesheet_export_excel(req))
     assert response.status == 200
-    run.assert_awaited_once_with(timesheet._sync_reports, 123, "2026-11-01", "2026-11-30", True)
+    run.assert_awaited_once_with(timesheet._sync_approved_reports, 123, "2026-11-01", "2026-11-30", True)
     sheet = load_workbook(io.BytesIO(response.body)).active
     assert sheet["A2"].value == "=1+1" and sheet["A2"].data_type == "s"
     assert sheet["F2"].value == 2975
@@ -390,7 +390,7 @@ def test_accruals_uses_authenticated_scope(monkeypatch):
     assert response.status == 200
     assert response.headers["Cache-Control"] == "no-store"
     assert json.loads(response.body)["report"][0]["total_salary"] == 2970
-    run.assert_awaited_once_with(timesheet._sync_reports, 42, "2026-11-01", "2026-11-30", False)
+    run.assert_awaited_once_with(timesheet._sync_approved_reports, 42, "2026-11-01", "2026-11-30", False)
 
 
 def test_accruals_denies_without_permission(monkeypatch):

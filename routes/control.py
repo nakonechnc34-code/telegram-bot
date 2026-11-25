@@ -303,3 +303,111 @@ async def complete_check(request):
                 if q.get("create_task") or q.get("critical"):
                     await conn.execute("INSERT INTO control_tasks(check_id,question_key,description,critical) VALUES($1,$2,$3,$4)",row["id"],key,q["text"],bool(q.get("critical")))
     return web.json_response({"score":score,"violations":len(violations)},headers=NO_STORE)
+
+
+def task_manager(user):
+    return bool(user.get("is_super_admin") or _is_tu(user))
+
+def task_transition(status, action, manager, assigned, comment):
+    if action == "start" and status == "new" and assigned:
+        return "in_progress"
+    if action == "submit" and status == "in_progress" and assigned and comment:
+        return "review"
+    if action == "approve" and status == "review" and manager and not assigned:
+        return "closed"
+    if action == "return" and status == "review" and manager and not assigned and comment:
+        return "in_progress"
+    raise ValueError("invalid_transition")
+
+@routes.post("/api/control/tasks")
+async def list_tasks(request):
+    user = await control_user(request)
+    if not user:
+        return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
+    scope = await restaurant_scope(user)
+    async with db.get_pool(request.app).acquire() as conn:
+        rows = await conn.fetch("""SELECT t.*,c.restaurant_key,
+            (t.due_at<NOW() AND t.status!='closed') AS overdue
+            FROM control_tasks t JOIN control_checks c ON c.id=t.check_id
+            WHERE ($1::text[] IS NULL OR c.restaurant_key=ANY($1))
+            AND ($2::boolean OR t.assignee_id=$3)
+            ORDER BY t.critical DESC,t.id DESC LIMIT 200""",scope,task_manager(user),user["user_id"])
+    items=[]
+    for row in rows:
+        item=dict(row)
+        for key in ("created_at","due_at"):
+            item[key]=item[key].isoformat() if item[key] else None
+        items.append(item)
+    return web.json_response({"tasks":items,"manager":task_manager(user),"user_id":user["user_id"]},headers=NO_STORE)
+
+@routes.post("/api/control/tasks/change")
+async def change_task(request):
+    from datetime import datetime
+    user=await control_user(request)
+    if not user:
+        return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
+    try:
+        body=await request.json()
+        if not isinstance(body,dict) or type(body.get("id")) is not int:
+            raise ValueError()
+        action=body.get("action")
+        comment=body.get("comment","")
+        if not isinstance(comment,str) or len(comment)>4000:
+            raise ValueError()
+        comment=comment.strip()
+    except (ValueError,TypeError):
+        return web.json_response({"error":"invalid_request"},status=400,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    manager=task_manager(user)
+    async with db.get_pool(request.app).acquire() as conn:
+        async with conn.transaction():
+            row=await conn.fetchrow("""SELECT t.*,c.restaurant_key FROM control_tasks t
+                JOIN control_checks c ON c.id=t.check_id WHERE t.id=$1
+                AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2)) FOR UPDATE OF t""",body["id"],scope)
+            if not row or (not manager and row["assignee_id"]!=user["user_id"]):
+                return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
+            details={"comment":comment,"previous_status":row["status"]}
+            if action=="assign":
+                if not manager or row["status"] not in ("new","in_progress"):
+                    return web.json_response({"error":"forbidden"},status=403,headers=NO_STORE)
+                try:
+                    assignee=body["assignee_id"]
+                    due=datetime.fromisoformat(body["due_at"])
+                    if type(assignee) is not int or due.tzinfo is None:
+                        raise ValueError()
+                except (ValueError,TypeError,KeyError):
+                    return web.json_response({"error":"invalid_assignment"},status=400,headers=NO_STORE)
+                target=await conn.fetchrow("SELECT * FROM users WHERE user_id=$1 AND restaurant_key=$2",assignee,row["restaurant_key"])
+                if not target or not control_allowed(dict(target)):
+                    return web.json_response({"error":"invalid_assignee"},status=400,headers=NO_STORE)
+                await conn.execute("UPDATE control_tasks SET assignee_id=$1,due_at=$2 WHERE id=$3",assignee,due,row["id"])
+                details.update({"assignee_id":assignee,"due_at":due.isoformat(),"previous_assignee_id":row["assignee_id"]})
+                status=row["status"]
+            else:
+                try:
+                    status=task_transition(row["status"],action,manager,row["assignee_id"]==user["user_id"],comment)
+                except ValueError as exc:
+                    return web.json_response({"error":str(exc)},status=409,headers=NO_STORE)
+                await conn.execute("UPDATE control_tasks SET status=$1 WHERE id=$2",status,row["id"])
+            details["status"]=status
+            await conn.execute("INSERT INTO control_task_history(task_id,actor_id,action,details) VALUES($1,$2,$3,$4::jsonb)",row["id"],user["user_id"],action,json.dumps(details,ensure_ascii=False))
+    return web.json_response({"status":status},headers=NO_STORE)
+
+@routes.post("/api/control/tasks/history")
+async def task_history(request):
+    user=await control_user(request)
+    if not user:
+        return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
+    try:
+        body=await request.json()
+        if not isinstance(body,dict) or type(body.get("id")) is not int:
+            raise ValueError()
+    except (ValueError,TypeError):
+        return web.json_response({"error":"invalid_request"},status=400,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    async with db.get_pool(request.app).acquire() as conn:
+        rows=await conn.fetch("""SELECT h.actor_id,h.action,h.details,h.created_at FROM control_task_history h
+            JOIN control_tasks t ON t.id=h.task_id JOIN control_checks c ON c.id=t.check_id
+            WHERE t.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))
+            AND ($3::boolean OR t.assignee_id=$4) ORDER BY h.id""",body["id"],scope,task_manager(user),user["user_id"])
+    return web.json_response({"history":[{"actor_id":r["actor_id"],"action":r["action"],"details":json.loads(r["details"]) if isinstance(r["details"],str) else r["details"],"created_at":r["created_at"].isoformat()} for r in rows]},headers=NO_STORE)

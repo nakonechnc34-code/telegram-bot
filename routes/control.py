@@ -23,7 +23,9 @@ def control_allowed(user):
             perms = json.loads(perms)
         except (ValueError, TypeError):
             return False
-    return isinstance(perms, dict) and perms.get("control_access") is True
+    return (isinstance(perms, dict) and perms.get("control_access") is True
+            and bool(user.get("is_admin") or _is_tu(user) or control_is_us(user)
+                     or perms.get("control_view_all") is True or perms.get("control_manage") is True))
 
 def token_hash(request):
     auth = request.headers.get("Authorization", "")

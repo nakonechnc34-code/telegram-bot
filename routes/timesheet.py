@@ -2,6 +2,7 @@ from aiohttp import web
 from psycopg2.extras import RealDictCursor
 from db import get_conn, _run
 from utils.auth_helpers import get_auth_user, denied, _is_hr_or_super, _is_tu, _sync_user_has_perm, _sync_get_tu_rests
+from utils.attendance_rounding import allocate_daily_minutes, round_daily_minutes
 import calendar
 from datetime import datetime, date, time
 import io
@@ -264,6 +265,22 @@ def _sync_timesheet_matrix(user_id, date_from, date_to, include_imports=False):
                     imported[r["user_id"]].setdefault(day, {})[r["restaurant_key"]] = {
                         "h": r["worked_minutes"] / 60, "minutes": r["worked_minutes"],
                         "s": r["status"], "rk": r["restaurant_key"], "imported": True}
+            if include_imports:
+                for eid in emp_ids:
+                    for day, cells in imported[eid].items():
+                        raw = {key: cell["minutes"] for key, cell in cells.items()}
+                        rounded = allocate_daily_minutes(raw)
+                        for key, cell in cells.items():
+                            cell["raw_minutes"] = raw[key]
+                            cell["minutes"] = rounded[key]
+                            cell["h"] = rounded[key] / 60
+                    for day, cell in full_date_map[eid].items():
+                        if day not in imported[eid]:
+                            raw = int(round(cell["h"] * 60))
+                            if 0 <= raw <= 1440:
+                                cell["raw_minutes"] = raw
+                                cell["minutes"] = round_daily_minutes(raw)
+                                cell["h"] = cell["minutes"] / 60
             for e in employees:
                 e["imported_by_date"] = imported[e["user_id"]]
                 e["data"] = data_map[e["user_id"]]

@@ -2,7 +2,7 @@ from aiohttp import web
 from psycopg2.extras import RealDictCursor, Json
 from psycopg2 import sql
 from db import get_conn, _run
-from utils.auth_helpers import get_admin_user, denied, require_perm, _is_tu, _sync_user_has_perm
+from utils.auth_helpers import get_admin_user, denied, require_perm, _is_tu, _sync_user_has_perm, _is_hr_or_super
 import datetime
 import calendar
 import json
@@ -114,7 +114,7 @@ def _sync_get_medbook_refs():
     return doctors, tests, vaccines
 
 
-def _sync_medbooks_full(user_id, is_tu_flag):
+def _sync_medbooks_full(user_id, is_tu_flag, include_guests=False):
     doctors, tests, vaccines = _sync_get_medbook_refs()
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -123,15 +123,17 @@ def _sync_medbooks_full(user_id, is_tu_flag):
                     "SELECT u.user_id, u.full_name, u.position, u.medbook, r.name AS restaurant_name "
                     "FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key "
                     "WHERE COALESCE(u.is_admin, FALSE) = FALSE AND COALESCE(u.is_fired, FALSE) = FALSE "
-                    "AND u.login IS NOT NULL AND r.territory_manager_id = %s ORDER BY u.full_name",
-                    (user_id,)
+                    "AND u.login IS NOT NULL AND r.territory_manager_id = %s "
+                    "AND (%s OR lower(btrim(COALESCE(u.position, ''))) <> 'тайный гость') ORDER BY u.full_name",
+                    (user_id, include_guests)
                 )
             else:
                 cur.execute(
                     "SELECT u.user_id, u.full_name, u.position, u.medbook, r.name AS restaurant_name "
                     "FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key "
                     "WHERE COALESCE(u.is_admin, FALSE) = FALSE AND COALESCE(u.is_fired, FALSE) = FALSE "
-                    "AND u.login IS NOT NULL ORDER BY u.full_name"
+                    "AND u.login IS NOT NULL AND (%s OR lower(btrim(COALESCE(u.position, ''))) <> 'тайный гость') ORDER BY u.full_name",
+                    (include_guests,)
                 )
             users = [dict(r) for r in cur.fetchall()]
     for u in users:
@@ -147,7 +149,7 @@ async def handle_admin_medbooks(request):
         return denied(err)
     if not _can_read_medbooks(admin):
         return denied(403)
-    doctors, tests, vaccines, users = await _run(_sync_medbooks_full, admin["user_id"], _is_tu(admin))
+    doctors, tests, vaccines, users = await _run(_sync_medbooks_full, admin["user_id"], _is_tu(admin), _is_hr_or_super(admin))
     return web.json_response({"doctors": doctors, "tests": tests, "vaccines": vaccines, "users": users})
 
 
@@ -169,6 +171,8 @@ async def handle_admin_medbook_get(request):
     def _sync():
         scope = " AND r.territory_manager_id = %s" if _is_tu(admin) else ""
         params = (uid, admin["user_id"]) if scope else (uid,)
+        scope += " AND (%s OR lower(btrim(COALESCE(u.position, ''))) <> 'тайный гость')"
+        params += (_is_hr_or_super(admin),)
         with get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(
@@ -224,6 +228,8 @@ async def handle_admin_medbook_save(request):
     def _sync():
         query = "UPDATE users SET medbook = %s WHERE user_id = %s"
         params = (Json(mb), uid)
+        query += " AND (%s OR lower(btrim(COALESCE(position, ''))) <> 'тайный гость')"
+        params += (_is_hr_or_super(admin),)
         if _is_tu(admin):
             query += (" AND restaurant_key IN "
                       "(SELECT key FROM restaurants WHERE territory_manager_id = %s)")

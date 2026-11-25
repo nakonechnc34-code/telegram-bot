@@ -82,19 +82,14 @@ async def me(request):
     user = await control_user(request)
     if not user:
         return web.json_response({"error": "Доступ запрещён"}, status=403, headers=NO_STORE)
-    return web.json_response({"full_name": user.get("full_name"), "position": user.get("position")}, headers=NO_STORE)
+    return web.json_response({"full_name": user.get("full_name"), "position": user.get("position"), "template_editor":control_template_edit(user)}, headers=NO_STORE)
 
 @routes.post("/api/control/restaurants")
 async def restaurants(request):
     user = await control_user(request)
     if not user:
         return web.json_response({"error": "Доступ запрещён"}, status=403, headers=NO_STORE)
-    if user.get("is_super_admin"):
-        allowed = None
-    elif _is_tu(user):
-        allowed = await db._run(_sync_get_tu_rests, user["user_id"])
-    else:
-        allowed = [user["restaurant_key"]] if user.get("restaurant_key") else []
+    allowed = await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
         rows = await conn.fetch("SELECT key,name FROM restaurants ORDER BY name")
     return web.json_response({"restaurants": [dict(r) for r in rows if allowed is None or r["key"] in allowed]}, headers=NO_STORE)
@@ -135,13 +130,12 @@ async def template_editor(request):
     user = await control_user(request)
     if not user:
         return None
-    # Network-wide templates are restricted to superadmins until scoped editing is implemented.
-    return user if user.get("is_super_admin") else None
+    return user if control_template_edit(user) else None
 
 @routes.post("/api/control/templates")
 async def templates(request):
     user=await control_user(request)
-    if not user or not task_manager(user):
+    if not user or not (task_manager(user) or control_template_edit(user)):
         return web.json_response({"error": "Доступ запрещён"}, status=403, headers=NO_STORE)
     async with db.get_pool(request.app).acquire() as conn:
         rows = await conn.fetch("""SELECT t.id,t.title,v.version,v.definition
@@ -189,12 +183,35 @@ async def save_template(request):
     return web.json_response({"id": tid, "version": version}, headers=NO_STORE)
 
 
-async def restaurant_scope(user):
+def control_permission(user,key):
+    perms=user.get("permissions")
+    if isinstance(perms,str):
+        try:
+            perms=json.loads(perms)
+        except (ValueError,TypeError):
+            return False
+    return isinstance(perms,dict) and perms.get(key) is True
+
+def control_network_view(user):
+    if not control_allowed(user):
+        return False
     if user.get("is_super_admin"):
+        return True
+    position=(user.get("position") or "").strip().lower()
+    if position in ("ус","управляющий смены","управляющий сменой","управляющий сменой ресторана"):
+        return False
+    return bool(_is_tu(user) or control_permission(user,"control_view_all"))
+
+def control_template_edit(user):
+    return bool(control_allowed(user) and (user.get("is_super_admin") or user.get("is_admin")))
+
+async def restaurant_scope(user):
+    if not control_allowed(user):
+        return []
+    if control_network_view(user):
         return None
-    if _is_tu(user):
-        return list(await db._run(_sync_get_tu_rests, user["user_id"]) or [])
     return [user["restaurant_key"]] if user.get("restaurant_key") else []
+
 
 def score_check(definition, answers):
     if not isinstance(answers, dict):
@@ -312,7 +329,7 @@ async def complete_check(request):
 def task_manager(user):
     if not control_allowed(user):
         return False
-    if user.get("is_super_admin") or _is_tu(user):
+    if user.get("is_super_admin") or _is_tu(user) or control_network_view(user):
         return True
     perms=user.get("permissions")
     if isinstance(perms,str):
@@ -697,8 +714,8 @@ async def documents(request):
 
 @routes.post("/api/control/documents/save")
 async def save_document(request):
-    user=await template_editor(request)
-    if not user:
+    user=await control_user(request)
+    if not user or not user.get("is_super_admin"):
         return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
     try:
         b=await request.json()

@@ -643,3 +643,115 @@ async def academy_statistics(request):
             ORDER BY u.restaurant_key,u.full_name,u.user_id LIMIT 1001""",scope)
         courses=await conn.fetchval("SELECT COUNT(*) FROM academy_courses WHERE COALESCE(is_published,TRUE)")
     return web.json_response({"employees":[dict(r) for r in rows[:1000]],"published_courses":courses,"truncated":len(rows)>1000},headers=NO_STORE)
+
+
+DOCUMENT_CATEGORIES=("standards","instructions","technology","sanitation","equipment","other")
+
+def validate_document(body):
+    if not isinstance(body,dict):
+        raise ValueError("invalid_document")
+    title,content,category=body.get("title"),body.get("content"),body.get("category")
+    if not isinstance(title,str) or not title.strip() or len(title)>200:
+        raise ValueError("invalid_title")
+    if not isinstance(content,str) or not content.strip() or len(content)>100000:
+        raise ValueError("invalid_content")
+    if category not in DOCUMENT_CATEGORIES:
+        raise ValueError("invalid_category")
+    key=body.get("restaurant_key")
+    if key is not None and (not isinstance(key,str) or not key or len(key)>200):
+        raise ValueError("invalid_restaurant")
+    return title.strip(),content.strip(),category,key
+
+@routes.post("/api/control/documents")
+async def documents(request):
+    user=await control_user(request)
+    if not user:
+        return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    async with db.get_pool(request.app).acquire() as conn:
+        rows=await conn.fetch("""SELECT d.id,d.category,d.restaurant_key,v.id AS version_id,v.version,v.title,v.published_at,
+            a.acknowledged_at FROM control_documents d JOIN LATERAL
+            (SELECT * FROM control_document_versions WHERE document_id=d.id ORDER BY version DESC LIMIT 1) v ON TRUE
+            LEFT JOIN control_acknowledgements a ON a.version_id=v.id AND a.user_id=$2
+            WHERE NOT d.archived AND (d.restaurant_key IS NULL OR $1::text[] IS NULL OR d.restaurant_key=ANY($1))
+            ORDER BY v.published_at DESC LIMIT 501""",scope,user["user_id"])
+    return web.json_response({"documents":[journal_json(r) for r in rows[:500]],"truncated":len(rows)>500,"editor":bool(user.get("is_super_admin"))},headers=NO_STORE)
+
+@routes.post("/api/control/documents/save")
+async def save_document(request):
+    user=await template_editor(request)
+    if not user:
+        return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
+    try:
+        b=await request.json()
+        title,content,category,key=validate_document(b)
+        did=b.get("id")
+        expected=b.get("version")
+        if did is not None and (type(did) is not int or did<=0 or type(expected) is not int or expected<=0):
+            raise ValueError("invalid_version")
+    except (ValueError,TypeError) as exc:
+        return web.json_response({"error":str(exc)[:100]},status=400,headers=NO_STORE)
+    async with db.get_pool(request.app).acquire() as conn:
+        async with conn.transaction():
+            if did is None:
+                if key is not None and not await conn.fetchval("SELECT 1 FROM restaurants WHERE key=$1",key):
+                    return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
+                did=await conn.fetchval("INSERT INTO control_documents(category,restaurant_key,created_by) VALUES($1,$2,$3) RETURNING id",category,key,user["user_id"])
+                version=1
+            else:
+                row=await conn.fetchrow("SELECT * FROM control_documents WHERE id=$1 AND NOT archived FOR UPDATE",did)
+                if not row:
+                    return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
+                if row["restaurant_key"]!=key or row["category"]!=category:
+                    return web.json_response({"error":"immutable_scope"},status=409,headers=NO_STORE)
+                current=await conn.fetchval("SELECT MAX(version) FROM control_document_versions WHERE document_id=$1",did)
+                if current!=expected:
+                    return web.json_response({"error":"version_conflict"},status=409,headers=NO_STORE)
+                version=current+1
+            vid=await conn.fetchval("INSERT INTO control_document_versions(document_id,version,title,content,published_by) VALUES($1,$2,$3,$4,$5) RETURNING id",did,version,title,content,user["user_id"])
+    return web.json_response({"id":did,"version":version,"version_id":vid},status=201,headers=NO_STORE)
+
+@routes.post("/api/control/documents/read")
+async def read_document(request):
+    user=await control_user(request)
+    if not user:
+        return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
+    try:
+        b=await request.json()
+        vid=b["version_id"]
+        if type(vid) is not int:
+            raise ValueError()
+    except (ValueError,TypeError,KeyError):
+        return web.json_response({"error":"invalid_id"},status=400,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    async with db.get_pool(request.app).acquire() as conn:
+        row=await conn.fetchrow("""SELECT v.*,d.category,d.restaurant_key FROM control_document_versions v JOIN control_documents d ON d.id=v.document_id
+            WHERE v.id=$1 AND NOT d.archived AND (d.restaurant_key IS NULL OR $2::text[] IS NULL OR d.restaurant_key=ANY($2))""",vid,scope)
+    if not row:
+        return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
+    return web.json_response({"document":journal_json(row)},headers=NO_STORE)
+
+@routes.post("/api/control/documents/acknowledge")
+async def acknowledge_document(request):
+    user=await control_user(request)
+    if not user:
+        return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
+    try:
+        b=await request.json()
+        vid=b["version_id"]
+        if type(vid) is not int:
+            raise ValueError()
+    except (ValueError,TypeError,KeyError):
+        return web.json_response({"error":"invalid_id"},status=400,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    async with db.get_pool(request.app).acquire() as conn:
+        async with conn.transaction():
+            row=await conn.fetchrow("""SELECT d.id FROM control_documents d JOIN control_document_versions v ON v.document_id=d.id
+                WHERE v.id=$1 AND NOT d.archived AND (d.restaurant_key IS NULL OR $2::text[] IS NULL OR d.restaurant_key=ANY($2)) FOR SHARE OF d""",vid,scope)
+            if not row:
+                return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
+            latest=await conn.fetchval("SELECT id FROM control_document_versions WHERE document_id=$1 ORDER BY version DESC LIMIT 1",row["id"])
+            if latest!=vid:
+                return web.json_response({"error":"version_changed"},status=409,headers=NO_STORE)
+            await conn.execute("INSERT INTO control_acknowledgements(version_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING",vid,user["user_id"])
+    return web.json_response({"ok":True},headers=NO_STORE)

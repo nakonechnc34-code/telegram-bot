@@ -845,14 +845,26 @@ def _sync_reports(user_id, date_from, date_to, only_me=False):
             is_tu = _is_tu(u)
             is_us = "управляющий сменой" in (u.get("position") or "").lower()
 
-            base = "WITH effective_attendance AS (" + _EFFECTIVE_ATTENDANCE_SQL + """) SELECT u.full_name, u.position,
+            base = "WITH effective_attendance AS (" + _EFFECTIVE_ATTENDANCE_SQL + """),
+                period_attendance AS (
+                    SELECT * FROM effective_attendance WHERE work_date BETWEEN %s::date AND %s::date
+                ), salary_restaurant AS (
+                    SELECT DISTINCT ON (e.user_id) e.user_id,
+                        COALESCE(e.restaurant_key, owner.restaurant_key) AS restaurant_key
+                    FROM period_attendance e JOIN users owner ON owner.user_id = e.user_id
+                    ORDER BY e.user_id,
+                        (COALESCE(e.restaurant_key, owner.restaurant_key) IS NOT DISTINCT FROM owner.restaurant_key) DESC,
+                        COALESCE(e.restaurant_key, owner.restaurant_key) NULLS LAST
+                )
+                SELECT u.full_name, u.position,
                        COALESCE(tr.name, r.name) AS restaurant_name,
                        COALESCE(SUM(t.hours), 0) as total_hours,
                        COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, u.payment_type,
-                       CASE WHEN u.payment_type = 'fixed' THEN CASE WHEN ROW_NUMBER() OVER (PARTITION BY u.user_id ORDER BY (COALESCE(t.restaurant_key, u.restaurant_key) IS NOT DISTINCT FROM u.restaurant_key) DESC, COALESCE(t.restaurant_key, u.restaurant_key) NULLS LAST) = 1 THEN COALESCE(NULLIF(u.rate, 0), pr.rate, 0) ELSE 0 END
+                       CASE WHEN u.payment_type = 'fixed' THEN CASE WHEN COALESCE(t.restaurant_key, u.restaurant_key) IS NOT DISTINCT FROM CASE WHEN sr.user_id IS NULL THEN u.restaurant_key ELSE sr.restaurant_key END THEN COALESCE(NULLIF(u.rate, 0), pr.rate, 0) ELSE 0 END
                             ELSE (COALESCE(SUM(t.hours), 0) * COALESCE(NULLIF(u.rate, 0), pr.rate, 0)) END as total_salary
                 FROM users u 
-                LEFT JOIN effective_attendance t ON u.user_id = t.user_id AND t.work_date >= %s::date AND t.work_date <= %s::date
+                LEFT JOIN period_attendance t ON u.user_id = t.user_id
+                LEFT JOIN salary_restaurant sr ON sr.user_id = u.user_id
                 LEFT JOIN restaurants r ON u.restaurant_key = r.key
                 LEFT JOIN restaurants tr ON t.restaurant_key = tr.key
                 LEFT JOIN position_rates pr ON u.position = pr.position_name
@@ -873,7 +885,7 @@ def _sync_reports(user_id, date_from, date_to, only_me=False):
                 base += " AND u.user_id = %s"
                 params.append(user_id)
                 
-            base += " GROUP BY u.user_id, u.full_name, u.position, COALESCE(tr.name, r.name), COALESCE(t.restaurant_key, u.restaurant_key), u.restaurant_key, u.rate, pr.rate, u.payment_type ORDER BY COALESCE(tr.name, r.name), u.full_name"
+            base += " GROUP BY u.user_id, u.full_name, u.position, COALESCE(tr.name, r.name), COALESCE(t.restaurant_key, u.restaurant_key), u.restaurant_key, sr.user_id, sr.restaurant_key, u.rate, pr.rate, u.payment_type ORDER BY COALESCE(tr.name, r.name), u.full_name"
 
             cur.execute(base, params)
             return [dict(r) for r in cur.fetchall()]

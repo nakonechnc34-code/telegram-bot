@@ -74,3 +74,23 @@ def test_preview_adjacent_night_shifts():
     ])
     assert result["ok"]
     assert result["total_minutes"] == 660
+
+
+def test_preview_absence_statuses():
+    result = preview([
+        ("2026-11-16", "021", "В", "A"),
+        ("2026-11-17", "021", "Б", "A"),
+        ("2026-11-18", "021", "Н", "A"),
+    ])
+    assert result["ok"]
+    assert result["total_minutes"] == 0
+    assert {r["status"] for r in result["records"]} == {"vacation", "sick", "absent"}
+
+
+def test_preview_absence_work_conflict():
+    result = preview([
+        ("2026-11-16", "021", "В", "A"),
+        ("2026-11-16", "021", "09:00-12:00", "B"),
+    ])
+    assert not result["ok"]
+    assert result["total_minutes"] is None

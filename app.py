@@ -546,6 +546,14 @@ app.router.add_get("/timesheet.js", handle_timesheet_js)
 async def handle_control_page(request):
     return await _handle_html("control.html", _STATIC_FILES_CACHE.setdefault("control.html", {"data": None, "mtime": 0.0}))
 
+async def handle_control_css(request):
+    return await _send_static_file("control.css", "text/css")
+
+async def handle_control_js(request):
+    return await _send_static_file("control.js", "application/javascript")
+
+app.router.add_get("/control.css", handle_control_css)
+app.router.add_get("/control.js", handle_control_js)
 app.router.add_get("/control", handle_control_page)
 app.router.add_get("/control/", handle_control_page)
 app.router.add_get("/sales", handle_sales_page)

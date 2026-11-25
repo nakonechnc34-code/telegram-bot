@@ -489,7 +489,7 @@ async def change_task(request):
                         if not isinstance(encoded,str) or len(encoded)>6990510:
                             raise ValueError()
                         data=base64.b64decode(encoded,validate=True)
-                        mime=photo_content_type(data)
+                        data,mime=sanitize_photo(data)
                     except (ValueError,TypeError):
                         return web.json_response({"error":"Требуется фото устранения JPG или PNG до 5 МБ"},status=400,headers=NO_STORE)
                     pid=await conn.fetchval("""INSERT INTO control_task_photos(task_id,uploaded_by,content_type,content)
@@ -880,6 +880,27 @@ def photo_content_type(data):
         return "image/png"
     raise ValueError("invalid_photo_type")
 
+def sanitize_photo(data):
+    from io import BytesIO
+    from PIL import Image, ImageOps
+    mime = photo_content_type(data)
+    expected = "JPEG" if mime == "image/jpeg" else "PNG"
+    try:
+        with Image.open(BytesIO(data)) as source:
+            if source.format != expected or source.width * source.height > 20_000_000 or getattr(source, "n_frames", 1) != 1:
+                raise ValueError("invalid_photo")
+            source.load()
+            oriented = ImageOps.exif_transpose(source).convert("RGB")
+            clean = Image.new("RGB", oriented.size)
+            clean.paste(oriented)
+            output = BytesIO()
+            clean.save(output, format=expected, **({"quality": 88} if expected == "JPEG" else {}))
+            result = output.getvalue()
+            photo_content_type(result)
+            return result, mime
+    except (OSError, SyntaxError, Image.DecompressionBombError) as exc:
+        raise ValueError("invalid_photo") from exc
+
 @routes.post("/api/control/checks/photo")
 async def upload_check_photo(request):
     import base64
@@ -892,7 +913,7 @@ async def upload_check_photo(request):
         if type(cid) is not int or not isinstance(key,str) or not isinstance(encoded,str) or len(encoded)>6990510:
             raise ValueError("invalid_photo")
         data=base64.b64decode(encoded,validate=True)
-        mime=photo_content_type(data)
+        data,mime=sanitize_photo(data)
     except (ValueError,TypeError,KeyError):
         return web.json_response({"error":"invalid_photo"},status=400,headers=NO_STORE)
     scope=await restaurant_scope(user)

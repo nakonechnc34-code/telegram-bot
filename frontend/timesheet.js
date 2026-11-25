@@ -157,6 +157,38 @@ editForm.addEventListener('submit', async event => {
     }
 });
 
+let historyVersion = 0;
+async function loadAttendanceHistory() {
+    const version = ++historyVersion;
+    const status = byId('attendance-history-status');
+    const rows = byId('attendance-history-rows');
+    rows.replaceChildren();
+    status.textContent = 'Загрузка истории…';
+    try {
+        const result = await api('/api/timesheet/import_attendance/history', {method: 'GET'});
+        if (version !== historyVersion) return;
+        const fragment = document.createDocumentFragment();
+        for (const record of result.records) {
+            const row = document.createElement('tr');
+            const minutes = Number(record.total_minutes);
+            const values = ['№' + record.id, record.created_at,
+                restaurantNames.get(record.restaurant_key) || record.restaurant_key,
+                record.date_from + ' — ' + record.date_to, record.record_count,
+                Math.floor(minutes / 60) + ' ч ' + (minutes % 60) + ' мин'];
+            for (const value of values) {
+                const cell = document.createElement('td');
+                cell.textContent = value;
+                row.append(cell);
+            }
+            fragment.append(row);
+        }
+        rows.replaceChildren(fragment);
+        status.textContent = result.records.length ? 'Последние записи: ' + result.records.length : 'Нет загруженных отчётов';
+    } catch (error) {
+        if (version === historyVersion) status.textContent = error.message;
+    }
+}
+byId('refresh-attendance-history').addEventListener('click', loadAttendanceHistory);
 let previewVersion = 0;
 let verifiedAttendance = null;
 let stagingAttendance = false;
@@ -234,6 +266,7 @@ byId('confirm-attendance').addEventListener('click', async () => {
         byId('upload-status').textContent = result.ok
             ? 'Отчёт №' + result.import_id + ' сохранён. Записей: ' + result.success_count + '. Зарплата не изменена.'
             : (result.errors || ['Отчёт не сохранён']).join('\n');
+        if (result.ok) await loadAttendanceHistory();
     } catch (error) {
         if (verified.version === previewVersion) byId('upload-status').textContent = error.message + ' Проверьте историю загрузок перед повторной отправкой.';
     } finally {
@@ -264,6 +297,9 @@ dateInput.value = [today.getFullYear(), String(today.getMonth() + 1).padStart(2,
     String(today.getDate()).padStart(2, '0')].join('-');
 for (const [key, label] of Object.entries(labels)) editForm.elements.status.add(new Option(label, key));
 function clearSession(){
+    historyVersion++;
+    byId('attendance-history-rows').replaceChildren();
+    byId('attendance-history-status').textContent = '';
     clearAttendancePreview();
     sessionStorage.removeItem('wokker_timesheet_token');
     token=null;loadVersion++;employeesData=[];loadedRange=null;table.replaceChildren();
@@ -313,6 +349,7 @@ function showPage(index) {
     byId('timesheet-panel').hidden = index !== 1;
     byId('future-panel').hidden = index < 2 || index === 6;
     byId('upload-panel').hidden = index !== 6;
+    if (index === 6 && token) loadAttendanceHistory();
     document.querySelectorAll('nav [data-page]').forEach(button => {
         if (Number(button.dataset.page) === index) button.setAttribute('aria-current','page');
         else button.removeAttribute('aria-current');

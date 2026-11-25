@@ -82,13 +82,15 @@
     dialog{padding:24px;box-shadow:0 20px 60px #17233433}
     dialog::backdrop{background:#17233466}
     @media(max-width:900px){body{display:block}aside{position:static;height:auto;padding:14px}nav{grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:4px}nav button{padding:9px}main{padding:16px}#matrix-scroll .employee-col{width:170px;min-width:170px;max-width:170px}#export{margin-left:0}}
+  #login-panel{grid-column:1/-1;width:min(420px,92vw);margin:10vh auto;padding:32px}#login-panel form{display:grid;gap:16px}#login-panel label{display:grid}#login-panel button{background:#b91c1c;color:white}body:has(#login-panel:not([hidden])){display:block}
   </style>
   <script src="/timesheet.js" defer></script>
 </head>
 <body>
-<aside><strong>WOKKER ТАБЕЛЬ</strong><nav aria-label="Разделы"><button type="button" data-page="0" aria-current="page">Главная</button><button type="button" data-page="1">Табель</button><button type="button" data-page="2">Начисления</button><button type="button" data-page="3">Отчёты</button><button type="button" data-page="4">Согласование</button><button type="button" data-page="6">Панель загрузки</button><button type="button" data-page="5">Настройки</button></nav></aside>
-<main>
-  <header><h1 id="page-title">Главная</h1><a href="/" id="back">На главную</a></header>
+<section id="login-panel"><h1>WOKKER ТАБЕЛЬ</h1><p>Войдите в систему</p><form id="login-form"><label>Логин<input name="login" autocomplete="username" required></label><label>Пароль<input name="password" type="password" autocomplete="current-password" required></label><button type="submit">Войти</button><p id="login-error" role="status"></p></form></section>
+<aside hidden><strong>WOKKER ТАБЕЛЬ</strong><nav aria-label="Разделы"><button type="button" data-page="0" aria-current="page">Главная</button><button type="button" data-page="1">Табель</button><button type="button" data-page="2">Начисления</button><button type="button" data-page="3">Отчёты</button><button type="button" data-page="4">Согласование</button><button type="button" data-page="6">Панель загрузки</button><button type="button" data-page="5">Настройки</button></nav></aside>
+<main hidden>
+  <header><h1 id="page-title">Главная</h1><button id="logout" type="button">Выйти</button></header>
   <div id="home-panel"><section><h2>Управление рабочим временем</h2><p>Выберите раздел для работы с табелем.</p><div class="home-grid"><button type="button" data-page="1">Табель</button><button type="button" data-page="2">Начисления</button><button type="button" data-page="3">Отчёты</button><button type="button" data-page="4">Согласование</button><button type="button" data-page="6">Панель загрузки</button><button type="button" data-page="5">Настройки</button></div></section></div>
   <div id="future-panel" hidden><section><p>Раздел готовится к подключению. Данные и настройки пока не изменяются.</p></section></div>
   <div id="timesheet-panel" hidden>

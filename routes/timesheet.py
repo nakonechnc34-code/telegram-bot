@@ -1440,3 +1440,42 @@ async def handle_approval_transition(request):
     status, result = await _run(_sync_approval_transition,user,key,month,action,comment.strip(),revision)
     return web.json_response(result,status=status,headers={"Cache-Control":"no-store"})
 
+
+
+def _sync_approval_status(user, key, month):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT territory_manager_id FROM restaurants WHERE key=%s", (key,))
+            restaurant = cur.fetchone()
+            if not restaurant or not _timesheet_role_allowed(user):
+                return None
+            privileged = _is_hr_or_super(user)
+            if not privileged and restaurant["territory_manager_id"] != user["user_id"]:
+                return None
+            cur.execute("SELECT status,revision FROM timesheet_approvals WHERE restaurant_key=%s AND month_start=%s", (key,month))
+            row = cur.fetchone() or {"status":"draft","revision":0}
+            cur.execute("""SELECT h.revision,h.previous_status,h.new_status,h.comment,
+                           h.created_at::text AS created_at,u.full_name AS actor_name
+                           FROM timesheet_approval_history h LEFT JOIN users u ON u.user_id=h.actor_id
+                           WHERE h.restaurant_key=%s AND h.month_start=%s AND h.revision<=%s
+                           ORDER BY h.revision DESC""", (key,month,row["revision"]))
+            return {**row,"can_review":privileged,"history":[dict(h) for h in cur.fetchall()]}
+
+
+@routes.post('/api/timesheet/approval/status')
+async def handle_approval_status(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    try:
+        body = await request.json()
+        key = body["restaurant_key"]
+        month = date.fromisoformat(body["month_start"])
+        if not isinstance(key,str) or not key or len(key)>255 or month.day != 1:
+            raise ValueError()
+    except (ValueError,TypeError,KeyError,OverflowError):
+        return web.json_response({"error":"invalid_approval"},status=400)
+    result = await _run(_sync_approval_status,user,key,month)
+    if result is None:
+        return denied(403)
+    return web.json_response(result,headers={"Cache-Control":"no-store"})

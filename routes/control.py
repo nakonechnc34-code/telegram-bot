@@ -12,6 +12,9 @@ from utils.auth_helpers import _is_tu, _sync_get_tu_rests
 routes = web.RouteTableDef()
 NO_STORE = {"Cache-Control": "no-store"}
 
+def is_mystery_guest(user):
+    return (user.get("position") or "").strip().casefold()=="тайный гость" and not user.get("is_super_admin")
+
 def control_allowed(user):
     if not user or user.get("is_fired"):
         return False
@@ -24,7 +27,7 @@ def control_allowed(user):
         except (ValueError, TypeError):
             return False
     return (isinstance(perms, dict) and perms.get("control_access") is True
-            and bool(user.get("is_admin") or _is_tu(user) or control_is_us(user)
+            and bool(user.get("is_admin") or _is_tu(user) or control_is_us(user) or is_mystery_guest(user)
                      or perms.get("control_view_all") is True or perms.get("control_manage") is True))
 
 def token_hash(request):
@@ -45,7 +48,13 @@ async def control_user(request):
             JOIN users u ON u.user_id=s.user_id
             WHERE s.token_hash=$1 AND s.expires_at>NOW()""", digest)
     user = dict(row) if row else None
-    return user if control_allowed(user) else None
+    if not control_allowed(user):
+        return None
+    if is_mystery_guest(user) and request.path not in (
+        "/api/control/me","/api/control/checks","/api/control/checks/complete","/api/control/checks/photo"
+    ):
+        return None
+    return user
 
 @routes.post("/api/control/login")
 async def login(request):
@@ -84,7 +93,7 @@ async def me(request):
     user = await control_user(request)
     if not user:
         return web.json_response({"error": "Доступ запрещён"}, status=403, headers=NO_STORE)
-    return web.json_response({"full_name": user.get("full_name"), "position": user.get("position"), "template_editor":control_template_edit(user)}, headers=NO_STORE)
+    return web.json_response({"full_name": user.get("full_name"), "position": user.get("position"), "template_editor":control_template_edit(user),"mystery_guest":is_mystery_guest(user)}, headers=NO_STORE)
 
 @routes.post("/api/control/restaurants")
 async def restaurants(request):
@@ -278,8 +287,17 @@ async def assign_check(request):
         definition = json.loads(row["definition"]) if isinstance(row["definition"],str) else row["definition"]
         if any(q["type"]!="yes_no_na" or q.get("comment_required") for sec in definition["sections"] for q in sec["questions"]):
             return web.json_response({"error":"Шаблон требует ещё не реализованных типов ответов или доказательств"},status=400,headers=NO_STORE)
-        cid = await conn.fetchval("""INSERT INTO control_checks(restaurant_key,version_id,assigned_by,due_at)
-            VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING id""",key,row["id"],user["user_id"],due)
+        if definition.get("category")=="mystery_guest":
+            guest=body.get("guest_id")
+            if type(guest) is not int or not 0<guest<2**63:
+                return web.json_response({"error":"Укажите ID тайного гостя"},status=400,headers=NO_STORE)
+            target=await conn.fetchrow("SELECT * FROM users WHERE user_id=$1",guest)
+            if not target or not is_mystery_guest(dict(target)) or not control_allowed(dict(target)):
+                return web.json_response({"error":"Недоступный тайный гость"},status=400,headers=NO_STORE)
+        else:
+            guest=None
+        cid = await conn.fetchval("""INSERT INTO control_checks(restaurant_key,version_id,assigned_by,due_at,guest_id)
+            VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING id""",key,row["id"],user["user_id"],due,guest)
     return web.json_response({"id":cid},status=201 if cid else 409,headers=NO_STORE)
 
 @routes.post("/api/control/checks")
@@ -291,7 +309,7 @@ async def list_checks(request):
     async with db.get_pool(request.app).acquire() as conn:
         rows = await conn.fetch("""SELECT c.id,c.restaurant_key,c.due_at,c.completed_at,c.score,v.definition
             FROM control_checks c JOIN control_template_versions v ON v.id=c.version_id
-            WHERE ($1::text[] IS NULL OR c.restaurant_key=ANY($1)) ORDER BY c.due_at DESC LIMIT 200""",scope)
+            WHERE (CASE WHEN $2::bigint IS NOT NULL THEN c.guest_id=$2 AND v.definition->>'category'='mystery_guest' ELSE ($1::text[] IS NULL OR c.restaurant_key=ANY($1)) END) ORDER BY c.due_at DESC LIMIT 200""",scope,user['user_id'] if is_mystery_guest(user) else None)
     items=[]
     for row in rows:
         item=dict(row)
@@ -318,7 +336,7 @@ async def complete_check(request):
     async with db.get_pool(request.app).acquire() as conn:
         async with conn.transaction():
             row=await conn.fetchrow("""SELECT c.*,v.definition FROM control_checks c JOIN control_template_versions v ON v.id=c.version_id
-                WHERE c.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2)) FOR UPDATE OF c""",body["id"],scope)
+                WHERE c.id=$1 AND (CASE WHEN $3::bigint IS NOT NULL THEN c.guest_id=$3 AND v.definition->>'category'='mystery_guest' ELSE c.guest_id IS NULL AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2)) END) FOR UPDATE OF c""",body["id"],scope,user['user_id'] if is_mystery_guest(user) else None)
             if not row:
                 return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
             if row["completed_at"]:
@@ -649,6 +667,8 @@ async def save_schedule(request):
         definition=json.loads(row["definition"]) if isinstance(row["definition"],str) else row["definition"]
         if any(q["type"]!="yes_no_na" or q.get("comment_required") for sec in definition["sections"] for q in sec["questions"]):
             return web.json_response({"error":"unsupported_template"},status=400,headers=NO_STORE)
+        if definition.get("category")=="mystery_guest":
+            return web.json_response({"error":"Назначьте тайного гостя вручную"},status=400,headers=NO_STORE)
         sid=await conn.fetchval("""INSERT INTO control_schedules(restaurant_key,version_id,created_by,frequency,next_due,anchor_day)
             VALUES($1,$2,$3,$4,$5,$6) RETURNING id""",key,row["id"],user["user_id"],freq,due,due.astimezone(ZoneInfo("Europe/Moscow")).day)
     return web.json_response({"id":sid},status=201,headers=NO_STORE)
@@ -843,7 +863,7 @@ async def upload_check_photo(request):
         async with conn.transaction():
             row=await conn.fetchrow("""SELECT c.completed_at,v.definition FROM control_checks c
                 JOIN control_template_versions v ON v.id=c.version_id WHERE c.id=$1
-                AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2)) FOR UPDATE OF c""",cid,scope)
+                AND (CASE WHEN $3::bigint IS NOT NULL THEN c.guest_id=$3 AND v.definition->>'category'='mystery_guest' ELSE c.guest_id IS NULL AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2)) END) FOR UPDATE OF c""",cid,scope,user['user_id'] if is_mystery_guest(user) else None)
             if not row:
                 return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
             if row["completed_at"]:

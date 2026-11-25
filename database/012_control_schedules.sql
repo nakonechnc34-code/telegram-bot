@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS control_schedules (
  created_by BIGINT NOT NULL REFERENCES users(user_id),
  frequency TEXT NOT NULL CHECK(frequency IN ('daily','weekly','monthly')),
  next_due TIMESTAMPTZ NOT NULL,
+ anchor_day INTEGER NOT NULL CHECK(anchor_day BETWEEN 1 AND 31),
  active BOOLEAN NOT NULL DEFAULT TRUE
 );
 CREATE INDEX IF NOT EXISTS idx_control_schedules_due ON control_schedules(next_due) WHERE active;

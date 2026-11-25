@@ -476,13 +476,14 @@ async function loadApproval(){
         }
         const options=[];
         if(['draft','returned'].includes(data.status))options.push(['submit','Отправить на согласование']);
-        if(data.can_review&&data.status==='pending')options.push(['return','Вернуть на доработку']);
+        if(data.can_review&&data.status==='pending')options.push(['approve','Утвердить'],['return','Вернуть на доработку']);
         if(data.can_review&&data.status==='approved')options.push(['reopen','Открыть повторно']);
         for(const [action,label] of options){
             const button=document.createElement('button');button.type='button';button.textContent=label;
             button.addEventListener('click',async()=>{
                 const comment=byId('approval-comment').value.trim();
                 if(['return','reopen'].includes(action)&&!comment){status.textContent='Укажите причину';return;}
+                if(action==='approve'&&!window.confirm('Утвердить табель за '+month+'? Начисления будут зафиксированы.'))return;
                 for(const b of actions.querySelectorAll('button'))b.disabled=true;
                 try{
                     await api('/api/timesheet/approval/transition',{body:JSON.stringify({...payload,action,comment,revision:data.revision})});

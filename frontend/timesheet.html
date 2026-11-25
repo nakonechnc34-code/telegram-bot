@@ -39,6 +39,49 @@
     .home-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
     .home-grid button{background:white;border:1px solid #dce2ed;border-radius:10px;padding:20px;text-align:left;color:#26354a}
     @media(max-width:700px){body{display:block}aside{padding:12px}aside strong{margin-bottom:12px}nav{grid-template-columns:repeat(2,minmax(0,1fr))}main{padding:12px}}
+    /* Workspace refresh */
+    :root{color-scheme:light;--ink:#182335;--muted:#64748b;--line:#e2e8f0;--accent:#b91c1c}
+    *{box-sizing:border-box}
+    body{font:14px/1.5 system-ui,sans-serif;background:#f5f7fa;grid-template-columns:224px minmax(0,1fr)}
+    aside{background:#172334;position:sticky;top:0;height:100dvh;padding:28px 14px;overflow:auto}
+    aside strong{font-size:18px;letter-spacing:.06em;padding:0 10px}
+    nav button{font-weight:550;color:#cbd5e1;transition:background .15s}
+    nav button:hover{background:#2b394d;color:white}
+    nav button[aria-current="page"]{background:#b91c1c;color:white}
+    main{max-width:none;margin:0;padding:32px;min-width:0}
+    header h1{font-size:28px;letter-spacing:-.035em;margin:0}
+    header a{color:var(--muted);text-decoration:none;font-weight:600}
+    section{border-color:var(--line);box-shadow:0 2px 8px #17233406;border-radius:14px}
+    .toolbar{gap:12px;padding:16px;align-items:end}
+    .toolbar label{display:grid;gap:5px;color:var(--muted);font-size:12px;font-weight:600}
+    input,select,button{border:1px solid #d5deea;border-radius:8px;background:white;color:var(--ink);padding:9px 12px}
+    button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #b91c1c;outline-offset:2px}
+    #prev,#next{min-width:40px;font-size:17px;padding:6px}
+    #period-title{align-self:center;font-size:15px;color:var(--ink);white-space:nowrap}
+    #export{background:var(--accent);color:white;border-color:var(--accent);font-weight:600;margin-left:auto}
+    .matrix-legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin:14px 0}
+    .matrix-legend b{color:var(--ink)}
+    #matrix-scroll{max-height:72vh;border-radius:14px;box-shadow:0 4px 16px #17233408}
+    #matrix-scroll th,#matrix-scroll td{padding:8px 10px;min-width:64px;border-bottom:1px solid #edf0f4;font-variant-numeric:tabular-nums}
+    #matrix-scroll th{background:#f0f3f8;font-size:12px;font-weight:700;color:#475569}
+    #matrix-scroll .employee-col{width:250px;min-width:250px;max-width:250px;padding:10px 14px;box-shadow:2px 0 5px #17233408}
+    #matrix-scroll th.employee-col{background:#f0f3f8}
+    .employee-name{display:block;font-weight:650;color:var(--ink);line-height:1.35}
+    .employee-position{display:block;color:var(--muted);font-size:11px;margin-top:3px}
+    #matrix-scroll .restaurant-row td{background:#26354a;color:white;border-bottom:0;padding-block:10px}
+    #matrix-scroll .restaurant-row .employee-col{font-weight:700}
+    #matrix-scroll .total-row td{background:#eef2f7;color:#334155;font-weight:700}
+    #matrix-scroll .cell-button{min-height:34px;border:1px solid transparent;background:#f6f8fb;color:#94a3b8;font-weight:600;border-radius:7px;padding:5px 8px}
+    #matrix-scroll .cell-button.has-hours{background:#e8f4ed;color:#166534}
+    #matrix-scroll .cell-button.has-status{background:#fff3dc;color:#92400e}
+    #matrix-scroll .cell-button:hover{border-color:#94a3b8;filter:brightness(.97)}
+    #matrix-scroll .employee-row:hover td{background:#fafbfd}
+    #matrix-scroll .hours-total{font-weight:700;color:#172334;background:#f8fafc}
+    #matrix-scroll .weekend{color:#b91c1c}
+    #status:empty{display:none}
+    dialog{padding:24px;box-shadow:0 20px 60px #17233433}
+    dialog::backdrop{background:#17233466}
+    @media(max-width:900px){body{display:block}aside{position:static;height:auto;padding:14px}nav{grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:4px}nav button{padding:9px}main{padding:16px}#matrix-scroll .employee-col{width:170px;min-width:170px;max-width:170px}#export{margin-left:0}}
   </style>
   <script src="/timesheet.js" defer></script>
 </head>
@@ -54,7 +97,7 @@
     <button id="export" type="button">Скачать Excel</button>
   </section>
   <p id="status" role="status"></p>
-  <p>В — отпуск, Б — больничный, Н — неявка. Итог — фактически отработанные часы.</p><section class="table" id="matrix-scroll">
+  <div class="matrix-legend"><span><b>В</b> — отпуск</span><span><b>Б</b> — больничный</span><span><b>Н</b> — неявка</span><span>Итог — фактически отработанные часы</span></div><section class="table" id="matrix-scroll">
     <table>
       <thead id="matrix-head"></thead>
       <tbody id="employees"></tbody>

@@ -216,7 +216,7 @@ def test_matrix_restaurant_scope_postgres(monkeypatch):
                     (1,'2026-11-17','b',7,'work',NULL,NULL),
                     (1,'2026-11-18',NULL,6,'work',NULL,NULL);
                 INSERT INTO attendance_import_days VALUES
-                    (1,'2026-11-19','a','work',485),(1,'2026-11-19','b','work',35)""")
+                    (1,'2026-11-19','a','work',242),(1,'2026-11-19','b','work',242)""")
         monkeypatch.setattr(timesheet, "get_conn", lambda: nullcontext(conn))
         monkeypatch.setattr(timesheet, "_is_hr_or_super", lambda u: u["user_id"] == 30)
         monkeypatch.setattr(timesheet, "_is_tu", lambda u: u["user_id"] == 10)
@@ -228,7 +228,11 @@ def test_matrix_restaurant_scope_postgres(monkeypatch):
                 assert "2026-11-16" in row["data_by_date"]
                 assert "2026-11-18" in row["data_by_date"]
                 imported = row["imported_by_date"]["2026-11-19"]
-                assert imported["a"]["minutes"] == 485
+                assert imported["a"]["minutes"] == 243
+                assert imported["a"]["raw_minutes"] == 242
+                if unrestricted:
+                    assert imported["b"]["minutes"] == 242
+                    assert sum(cell["minutes"] for cell in imported.values()) == 485
                 assert ("b" in imported) == unrestricted
     finally:
         conn.rollback()

@@ -34,13 +34,16 @@ async def handle_academy_courses(request):
                 cur.execute(
                     """SELECT c.id, c.title, c.description, c.category, c.sort,
                               COUNT(DISTINCT l.id) AS lessons_count,
-                              COUNT(DISTINCT q.id) AS questions_count
+                              COUNT(DISTINCT q.id) AS questions_count,
+                              CASE WHEN EXISTS (SELECT 1 FROM academy_test_results t WHERE t.course_id=c.id AND t.user_id=%s AND t.passed) THEN 'completed' WHEN EXISTS (SELECT 1 FROM academy_test_results t WHERE t.course_id=c.id AND t.user_id=%s) THEN 'in_progress' ELSE 'new' END AS status,
+                              (SELECT MAX(t.score_pct) FROM academy_test_results t WHERE t.course_id=c.id AND t.user_id=%s) AS score
                        FROM academy_courses c
                        LEFT JOIN academy_lessons l ON l.course_id = c.id
                        LEFT JOIN academy_questions q ON q.course_id = c.id
                        WHERE COALESCE(c.is_published, TRUE) = TRUE
                        GROUP BY c.id
-                       ORDER BY c.sort, c.id"""
+                       ORDER BY c.sort, c.id""",
+                    (user["user_id"], user["user_id"], user["user_id"])
                 )
                 return [dict(r) for r in cur.fetchall()]
 
@@ -162,7 +165,7 @@ async def handle_admin_academy_courses(request):
     if err:
         return denied(err)
     perm_err = require_perm(admin, "academy_edit")
-    if perm_err:
+    if perm_err is not None:
         return perm_err
 
     def _sync():
@@ -190,7 +193,7 @@ async def handle_admin_academy_course_save(request):
     if err:
         return denied(err)
     perm_err = require_perm(admin, "academy_edit")
-    if perm_err:
+    if perm_err is not None:
         return perm_err
     try:
         body = await request.json()
@@ -236,7 +239,7 @@ async def handle_admin_academy_course_delete(request):
     if err:
         return denied(err)
     perm_err = require_perm(admin, "academy_edit")
-    if perm_err:
+    if perm_err is not None:
         return perm_err
     try:
         body = await request.json()
@@ -265,7 +268,7 @@ async def handle_admin_academy_lesson_save(request):
     if err:
         return denied(err)
     perm_err = require_perm(admin, "academy_edit")
-    if perm_err:
+    if perm_err is not None:
         return perm_err
     try:
         body = await request.json()
@@ -306,7 +309,7 @@ async def handle_admin_academy_lesson_delete(request):
     if err:
         return denied(err)
     perm_err = require_perm(admin, "academy_edit")
-    if perm_err:
+    if perm_err is not None:
         return perm_err
     try:
         body = await request.json()
@@ -331,7 +334,7 @@ async def handle_admin_academy_question_save(request):
     if err:
         return denied(err)
     perm_err = require_perm(admin, "academy_edit")
-    if perm_err:
+    if perm_err is not None:
         return perm_err
     try:
         body = await request.json()
@@ -373,7 +376,7 @@ async def handle_admin_academy_question_delete(request):
     if err:
         return denied(err)
     perm_err = require_perm(admin, "academy_edit")
-    if perm_err:
+    if perm_err is not None:
         return perm_err
     try:
         body = await request.json()
@@ -390,3 +393,39 @@ async def handle_admin_academy_question_delete(request):
 
     await _run(_sync)
     return web.json_response({"ok": True})
+
+
+@routes.post('/api/admin/academy/course/detail')
+async def handle_admin_academy_course_detail(request):
+    admin, err = await get_admin_user(request)
+    if err:
+        return denied(err)
+    perm_err = require_perm(admin, "academy_edit")
+    if perm_err is not None:
+        return perm_err
+    try:
+        body = await request.json()
+        cid = body.get("course_id")
+        if type(cid) is not int or cid <= 0:
+            raise ValueError()
+    except (ValueError, TypeError, AttributeError):
+        return web.json_response({"error": "invalid_data"}, status=400)
+
+    def _sync():
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM academy_courses WHERE id=%s", (cid,))
+                course = cur.fetchone()
+                if not course:
+                    return None
+                cur.execute("SELECT * FROM academy_lessons WHERE course_id=%s ORDER BY sort,id", (cid,))
+                lessons = [dict(row) for row in cur.fetchall()]
+                cur.execute("SELECT * FROM academy_questions WHERE course_id=%s ORDER BY id", (cid,))
+                questions = [dict(row) for row in cur.fetchall()]
+                for question in questions:
+                    question["options"] = _parse_json_field(question["options"], [])
+                return {"course": dict(course), "lessons": lessons, "questions": questions}
+    result = await _run(_sync)
+    if result is None:
+        return web.json_response({"error": "not_found"}, status=404)
+    return web.json_response(result)

@@ -64,6 +64,7 @@ from routes.content import routes as content_routes
 from routes.core import routes as core_routes
 from routes.academy import routes as academy_routes
 from routes.sales import routes as sales_routes
+from routes.control import routes as control_routes
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -149,6 +150,7 @@ def run_migrations():
                 cur.execute((migrations / "004_sales_order_type_settings.sql").read_text(encoding="utf-8"))
                 cur.execute((migrations / "005_sales_sessions.sql").read_text(encoding="utf-8"))
                 cur.execute((migrations / "006_timesheet_sessions.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "007_control_sessions.sql").read_text(encoding="utf-8"))
                 cur.execute("SELECT 1 FROM users LIMIT 1")
                 if cur.fetchone() is None:
                     if not config.LOGIN_RE.fullmatch(config.ADMIN_LOGIN):
@@ -518,6 +520,7 @@ app.add_routes(content_routes)
 app.add_routes(core_routes)
 app.add_routes(academy_routes)
 app.add_routes(sales_routes)
+app.add_routes(control_routes)
 
 app.router.add_get("/", handle_index)
 app.router.add_get("/admin", handle_admin_page)
@@ -531,6 +534,11 @@ app.router.add_get("/academy/", handle_academy_page)
 app.router.add_get("/timesheet", handle_timesheet_page)
 app.router.add_get("/timesheet/", handle_timesheet_page)
 app.router.add_get("/timesheet.js", handle_timesheet_js)
+async def handle_control_page(request):
+    return await _handle_html("control.html", _STATIC_FILES_CACHE.setdefault("control.html", {"data": None, "mtime": 0.0}))
+
+app.router.add_get("/control", handle_control_page)
+app.router.add_get("/control/", handle_control_page)
 app.router.add_get("/sales", handle_sales_page)
 app.router.add_get("/sales/", handle_sales_page)
 app.router.add_get("/sales.css", handle_sales_css)

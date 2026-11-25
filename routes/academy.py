@@ -57,6 +57,8 @@ async def handle_academy_course_detail(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
+    if not isinstance(body, dict):
+        return web.json_response({"error": "invalid_data"}, status=400)
     cid = safe_int(body.get("course_id") or body.get("id"))
     if cid <= 0:
         return web.json_response({"error": "invalid_id"}, status=400)
@@ -84,9 +86,10 @@ async def handle_academy_course_detail(request):
     course, lessons, questions = await _run(_sync)
     if not course:
         return web.json_response({"error": "not_found"}, status=404)
-    return web.json_response({"course": course, "lessons": lessons, "questions": questions})
+    return web.json_response({"course": course, "lessons": lessons, "questions": questions, "tests": questions})
 
 
+@routes.post('/api/academy/submit-test')
 @routes.post('/api/academy/submit')
 async def handle_academy_submit_test(request):
     user, err = await get_auth_user(request)
@@ -96,6 +99,8 @@ async def handle_academy_submit_test(request):
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid_json"}, status=400)
+    if not isinstance(body, dict):
+        return web.json_response({"error": "invalid_data"}, status=400)
     cid = safe_int(body.get("course_id") or body.get("id"))
     answers = body.get("answers") or {}
     if cid <= 0 or not isinstance(answers, dict):
@@ -112,31 +117,33 @@ async def handle_academy_submit_test(request):
                 )
                 if cur.fetchone() is None:
                     return None
-                cur.execute("SELECT id, correct_index FROM academy_questions WHERE course_id = %s ORDER BY id", (cid,))
+                cur.execute("SELECT id, correct_index, options FROM academy_questions WHERE course_id = %s ORDER BY id", (cid,))
                 rows = cur.fetchall()
                 total = len(rows)
                 if total == 0:
                     return 0, 0, False
                 correct_db = {str(r["id"]): r["correct_index"] for r in rows}
+                if set(norm_answers) != set(correct_db) or any(type(norm_answers[str(r["id"])]) is not int or not 0 <= norm_answers[str(r["id"])] < len(_parse_json_field(r["options"], [])) for r in rows):
+                    return "invalid_answers"
                 correct = 0
                 for qid, expected_idx in correct_db.items():
                     if qid in norm_answers and str(norm_answers[qid]) == str(expected_idx):
                         correct += 1
                 score_pct = round((correct / total) * 100)
                 passed = score_pct >= 80
-                try:
-                    cur.execute(
-                        """INSERT INTO academy_test_results (user_id, course_id, correct_count, total_count, score_pct, passed)
-                           VALUES (%s, %s, %s, %s, %s, %s)""",
-                        (user["user_id"], cid, correct, total, score_pct, passed)
-                    )
-                except Exception:
-                    conn.rollback()
+                cur.execute(
+                    """INSERT INTO academy_test_results (user_id, course_id, correct_count, total_count, score_pct, passed)
+                       VALUES (%s, %s, %s, %s, %s, %s)""",
+                    (user["user_id"], cid, correct, total, score_pct, passed)
+                )
+
                 return correct, total, passed
 
     result = await _run(_sync)
     if result is None:
         return web.json_response({"error": "not_found"}, status=404)
+    if result == "invalid_answers":
+        return web.json_response({"error": "invalid_answers"}, status=400)
     correct, total, passed = result
     score = round((correct / total) * 100) if total else 0
     return web.json_response({
@@ -242,9 +249,7 @@ async def handle_admin_academy_course_delete(request):
     def _sync():
         with get_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute("DELETE FROM academy_questions WHERE course_id = %s", (cid,))
-                cur.execute("DELETE FROM academy_lessons WHERE course_id = %s", (cid,))
-                cur.execute("DELETE FROM academy_courses WHERE id = %s", (cid,))
+                cur.execute("UPDATE academy_courses SET is_published = FALSE WHERE id = %s", (cid,))
                 cur.execute(
                     "INSERT INTO admin_audit (admin_id, action, target_type, target_id, details) VALUES (%s,%s,%s,%s,%s)",
                     (admin["user_id"], "academy_course_delete", "academy_course", str(cid), "")

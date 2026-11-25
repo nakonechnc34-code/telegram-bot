@@ -994,3 +994,51 @@ async def control_analytics(request):
     summary["average_score"]=round(total/scored,2) if scored else None
     items.sort(key=lambda i:(i["average_score"] is None,-(i["average_score"] or 0),i["name"]))
     return web.json_response({"summary":summary,"restaurants":items},headers=NO_STORE)
+
+@routes.post("/api/control/analytics/trends")
+async def analytics_trends(request):
+    from datetime import timedelta
+    user=await control_user(request)
+    if not user:
+        return web.json_response({"error":"forbidden"},status=403,headers=NO_STORE)
+    try:
+        body=await request.json()
+        start,end=analytics_period(body)
+        previous=start-(end-start)
+        key=body.get("restaurant_key")
+        if key is not None and not isinstance(key,str):
+            raise ValueError()
+    except (ValueError,TypeError,KeyError,OverflowError):
+        return web.json_response({"error":"invalid_period"},status=400,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    if key is not None:
+        if scope is not None and key not in scope:
+            return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
+        scope=[key]
+    async with db.get_pool(request.app).acquire() as conn:
+        checks=await conn.fetch("""SELECT (completed_at AT TIME ZONE 'Europe/Moscow')::date AS day,
+            COUNT(*) AS completed,COUNT(score) AS scored,SUM(score) AS score_sum
+            FROM control_checks WHERE completed_at>=($1::date::timestamp AT TIME ZONE 'Europe/Moscow')
+            AND completed_at<($2::date::timestamp AT TIME ZONE 'Europe/Moscow')
+            AND ($3::text[] IS NULL OR restaurant_key=ANY($3)) GROUP BY 1 ORDER BY 1""",previous,end,scope)
+        readings=await conn.fetch("""SELECT (r.recorded_at AT TIME ZONE 'Europe/Moscow')::date AS day,
+            COUNT(*) AS readings,COUNT(*) FILTER(WHERE r.deviation) AS deviations
+            FROM control_readings r JOIN control_equipment e ON e.id=r.equipment_id
+            WHERE r.recorded_at>=($1::date::timestamp AT TIME ZONE 'Europe/Moscow')
+            AND r.recorded_at<($2::date::timestamp AT TIME ZONE 'Europe/Moscow')
+            AND ($3::text[] IS NULL OR e.restaurant_key=ANY($3)) GROUP BY 1 ORDER BY 1""",previous,end,scope)
+    def summarize(lo,hi):
+        cs=[r for r in checks if lo<=r["day"]<hi]
+        rs=[r for r in readings if lo<=r["day"]<hi]
+        n=sum(r["scored"] for r in cs)
+        return {"completed":sum(r["completed"] for r in cs),
+                "average_score":round(sum(float(r["score_sum"] or 0) for r in cs)/n,2) if n else None,
+                "readings":sum(r["readings"] for r in rs),"deviations":sum(r["deviations"] for r in rs)}
+    current=summarize(start,end)
+    prior=summarize(previous,start)
+    daily=[]
+    for offset in range((end-start).days):
+        day=start+timedelta(days=offset)
+        daily.append({"date":day.isoformat(),**summarize(day,day+timedelta(days=1))})
+    return web.json_response({"current":current,"previous":prior,"previous_start":previous.isoformat(),
+        "previous_end":(start-timedelta(days=1)).isoformat(),"daily":daily},headers=NO_STORE)

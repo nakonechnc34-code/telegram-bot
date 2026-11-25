@@ -261,6 +261,18 @@ def score_check(definition, answers, photo_keys=()):
             violations.append((key,q))
     return (round(100*earned/possible,2) if possible else None), violations
 
+@routes.post("/api/control/guests")
+async def list_guests(request):
+    user = await control_user(request)
+    if not user or not task_manager(user) or is_mystery_guest(user):
+        return web.json_response({"error": "Доступ запрещён"}, status=403, headers=NO_STORE)
+    async with db.get_pool(request.app).acquire() as conn:
+        rows = await conn.fetch("SELECT user_id, full_name, position, is_fired, is_super_admin, permissions FROM users WHERE lower(btrim(position)) = $1 ORDER BY full_name, user_id", "тайный гость")
+    guests = [{"id": str(row["user_id"]), "name": row["full_name"] or str(row["user_id"])}
+              for row in rows if is_mystery_guest(dict(row)) and control_allowed(dict(row))]
+    return web.json_response({"guests": guests}, headers=NO_STORE)
+
+
 @routes.post("/api/control/checks/assign")
 async def assign_check(request):
     user=await control_user(request)

@@ -185,3 +185,51 @@ def test_excel_import_replace_delete_payroll_postgres(monkeypatch):
     finally:
         conn.rollback()
         conn.close()
+
+
+def test_matrix_restaurant_scope_postgres(monkeypatch):
+    from contextlib import nullcontext
+    from routes import timesheet
+    dsn = os.getenv("ATTENDANCE_TEST_DSN")
+    if not dsn:
+        pytest.skip("ATTENDANCE_TEST_DSN not configured")
+    conn = psycopg2.connect(dsn)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""CREATE TEMP TABLE users
+                (user_id bigint, full_name text, position text, restaurant_key text,
+                 rate numeric, payment_type text, is_fired boolean, login text, is_admin boolean);
+                CREATE TEMP TABLE restaurants (key text, name text, territory_manager_id bigint);
+                CREATE TEMP TABLE position_rates (position_name text, rate numeric);
+                CREATE TEMP TABLE timesheet_records
+                (user_id bigint, work_date date, restaurant_key text, hours numeric,
+                 status text, start_time time, end_time time);
+                CREATE TEMP TABLE attendance_import_days
+                (user_id bigint, work_date date, restaurant_key text, status text, worked_minutes integer);
+                INSERT INTO users VALUES (1,'Cook','Cook','a',360,'hourly',false,'cook',false),
+                    (10,'TU','TU','a',0,'hourly',false,'tu',true),
+                    (20,'US','Управляющий сменой','a',0,'hourly',false,'us',true),
+                    (30,'HR','HR','a',0,'hourly',false,'hr',true);
+                INSERT INTO restaurants VALUES ('a','A',10),('b','B',99);
+                INSERT INTO timesheet_records VALUES
+                    (1,'2026-11-16','a',8,'work',NULL,NULL),
+                    (1,'2026-11-17','b',7,'work',NULL,NULL),
+                    (1,'2026-11-18',NULL,6,'work',NULL,NULL);
+                INSERT INTO attendance_import_days VALUES
+                    (1,'2026-11-19','a','work',485),(1,'2026-11-19','b','work',35)""")
+        monkeypatch.setattr(timesheet, "get_conn", lambda: nullcontext(conn))
+        monkeypatch.setattr(timesheet, "_is_hr_or_super", lambda u: u["user_id"] == 30)
+        monkeypatch.setattr(timesheet, "_is_tu", lambda u: u["user_id"] == 10)
+        for start, end in [("2026-11-16", "2026-11-22"), ("2026-11-01", "2026-11-30")]:
+            for actor in (10, 20, 30, 1):
+                row = next(e for e in timesheet._sync_timesheet_matrix(actor, start, end, True) if e["user_id"] == 1)
+                unrestricted = actor in (30, 1)
+                assert ("2026-11-17" in row["data_by_date"]) == unrestricted
+                assert "2026-11-16" in row["data_by_date"]
+                assert "2026-11-18" in row["data_by_date"]
+                imported = row["imported_by_date"]["2026-11-19"]
+                assert imported["a"]["minutes"] == 485
+                assert ("b" in imported) == unrestricted
+    finally:
+        conn.rollback()
+        conn.close()

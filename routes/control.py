@@ -411,3 +411,115 @@ async def task_history(request):
             WHERE t.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))
             AND ($3::boolean OR t.assignee_id=$4) ORDER BY h.id""",body["id"],scope,task_manager(user),user["user_id"])
     return web.json_response({"history":[{"actor_id":r["actor_id"],"action":r["action"],"details":json.loads(r["details"]) if isinstance(r["details"],str) else r["details"],"created_at":r["created_at"].isoformat()} for r in rows]},headers=NO_STORE)
+
+
+HACCP_KINDS = {"fridge":"°C","freezer":"°C","food_temperature":"°C","fryer_oil":"%","equipment":"ед."}
+
+def reading_number(value):
+    from decimal import Decimal, InvalidOperation
+    if type(value) not in (int,float,str):
+        raise ValueError("invalid_number")
+    try:
+        number=Decimal(str(value))
+        if not number.is_finite() or abs(number)>1000000 or number.as_tuple().exponent < -4:
+            raise ValueError("invalid_number")
+        return number
+    except InvalidOperation:
+        raise ValueError("invalid_number")
+
+def reading_deviation(value, lower, upper):
+    return not lower <= value <= upper
+
+def journal_json(row):
+    from decimal import Decimal
+    from datetime import datetime
+    return {k: str(v) if isinstance(v,Decimal) else v.isoformat() if isinstance(v,datetime) else v for k,v in dict(row).items()}
+
+@routes.post("/api/control/haccp/equipment")
+async def haccp_equipment(request):
+    user=await control_user(request)
+    if not user:
+        return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    async with db.get_pool(request.app).acquire() as conn:
+        rows=await conn.fetch("""SELECT e.*,r.value AS last_value,r.recorded_at AS last_recorded_at,r.deviation AS last_deviation
+            FROM control_equipment e LEFT JOIN LATERAL
+            (SELECT value,recorded_at,deviation FROM control_readings WHERE equipment_id=e.id ORDER BY id DESC LIMIT 1) r ON TRUE
+            WHERE ($1::text[] IS NULL OR e.restaurant_key=ANY($1)) ORDER BY e.restaurant_key,e.name LIMIT 500""",scope)
+    return web.json_response({"equipment":[journal_json(r) for r in rows],"manager":task_manager(user),"kinds":HACCP_KINDS},headers=NO_STORE)
+
+@routes.post("/api/control/haccp/equipment/save")
+async def haccp_save_equipment(request):
+    user=await control_user(request)
+    if not user or not task_manager(user):
+        return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
+    try:
+        body=await request.json()
+        key,name,kind=body["restaurant_key"],body["name"],body["kind"]
+        if not all(isinstance(x,str) for x in (key,name,kind)) or not name.strip() or len(name)>200 or kind not in HACCP_KINDS:
+            raise ValueError()
+        lower,upper=reading_number(body["lower_limit"]),reading_number(body["upper_limit"])
+        if lower>upper:
+            raise ValueError()
+    except (ValueError,TypeError,KeyError):
+        return web.json_response({"error":"invalid_equipment"},status=400,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    if scope is not None and key not in scope:
+        return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
+    async with db.get_pool(request.app).acquire() as conn:
+        if not await conn.fetchval("SELECT 1 FROM restaurants WHERE key=$1",key):
+            return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
+        eid=await conn.fetchval("""INSERT INTO control_equipment(restaurant_key,name,kind,unit,lower_limit,upper_limit,created_by)
+            VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id""",key,name.strip(),kind,HACCP_KINDS[kind],lower,upper,user["user_id"])
+    return web.json_response({"id":eid},status=201,headers=NO_STORE)
+
+@routes.post("/api/control/haccp/readings/add")
+async def haccp_add_reading(request):
+    user=await control_user(request)
+    if not user:
+        return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
+    try:
+        body=await request.json()
+        eid=body["equipment_id"]
+        value=reading_number(body["value"])
+        comment=body.get("comment","")
+        if type(eid) is not int or not isinstance(comment,str) or len(comment)>4000:
+            raise ValueError()
+    except (ValueError,TypeError,KeyError,AttributeError):
+        return web.json_response({"error":"invalid_reading"},status=400,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    async with db.get_pool(request.app).acquire() as conn:
+        async with conn.transaction():
+            e=await conn.fetchrow("SELECT * FROM control_equipment WHERE id=$1 AND ($2::text[] IS NULL OR restaurant_key=ANY($2)) FOR SHARE",eid,scope)
+            if not e:
+                return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
+            deviation=reading_deviation(value,e["lower_limit"],e["upper_limit"])
+            if deviation and not comment.strip():
+                return web.json_response({"error":"Укажите комментарий к отклонению"},status=400,headers=NO_STORE)
+            rid=await conn.fetchval("""INSERT INTO control_readings(equipment_id,value,lower_limit,upper_limit,deviation,comment,recorded_by)
+                VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id""",eid,value,e["lower_limit"],e["upper_limit"],deviation,comment.strip(),user["user_id"])
+    return web.json_response({"id":rid,"deviation":deviation},status=201,headers=NO_STORE)
+
+@routes.post("/api/control/haccp/readings")
+async def haccp_readings(request):
+    from datetime import date,timedelta
+    user=await control_user(request)
+    if not user:
+        return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
+    try:
+        body=await request.json()
+        eid=body["equipment_id"]
+        start,end=date.fromisoformat(body["start"]),date.fromisoformat(body["end"])
+        if type(eid) is not int or not 0 <= (end-start).days <= 366:
+            raise ValueError()
+        exclusive=end+timedelta(days=1)
+    except (ValueError,TypeError,KeyError,OverflowError):
+        return web.json_response({"error":"invalid_period"},status=400,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    async with db.get_pool(request.app).acquire() as conn:
+        rows=await conn.fetch("""SELECT r.* FROM control_readings r JOIN control_equipment e ON e.id=r.equipment_id
+            WHERE e.id=$1 AND ($2::text[] IS NULL OR e.restaurant_key=ANY($2))
+            AND r.recorded_at >= ($3::date::timestamp AT TIME ZONE 'Europe/Moscow')
+            AND r.recorded_at < ($4::date::timestamp AT TIME ZONE 'Europe/Moscow')
+            ORDER BY r.id DESC LIMIT 1001""",eid,scope,start,exclusive)
+    return web.json_response({"readings":[journal_json(r) for r in rows[:1000]],"truncated":len(rows)>1000},headers=NO_STORE)

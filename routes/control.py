@@ -1042,3 +1042,59 @@ async def analytics_trends(request):
         daily.append({"date":day.isoformat(),**summarize(day,day+timedelta(days=1))})
     return web.json_response({"current":current,"previous":prior,"previous_start":previous.isoformat(),
         "previous_end":(start-timedelta(days=1)).isoformat(),"daily":daily},headers=NO_STORE)
+
+RATING_WEIGHTS={"audits":35,"checklists":20,"haccp":20,"tasks":15,"learning":5,"mystery_guest":5}
+
+def calculate_control_rating(values):
+    available={k:v for k,v in values.items() if k in RATING_WEIGHTS and v is not None}
+    coverage=sum(RATING_WEIGHTS[k] for k in available)
+    points=sum(RATING_WEIGHTS[k]*float(v)/100 for k,v in available.items())
+    return {"rating":round(points,2) if coverage==100 else None,
+            "provisional":round(points*100/coverage,2) if coverage else None,
+            "coverage":coverage,"components":{k:values.get(k) for k in RATING_WEIGHTS}}
+
+@routes.post("/api/control/analytics/rating")
+async def analytics_rating(request):
+    user=await control_user(request)
+    if not user:
+        return web.json_response({"error":"forbidden"},status=403,headers=NO_STORE)
+    try:
+        body=await request.json()
+        start,end=analytics_period(body)
+        key=body.get("restaurant_key")
+        if key is not None and not isinstance(key,str):
+            raise ValueError()
+    except (ValueError,TypeError,KeyError,OverflowError):
+        return web.json_response({"error":"invalid_period"},status=400,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    if key is not None:
+        if scope is not None and key not in scope:
+            return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
+        scope=[key]
+    async with db.get_pool(request.app).acquire() as conn:
+        rows=await conn.fetch("""WITH bounds AS (
+            SELECT ($1::date::timestamp AT TIME ZONE 'Europe/Moscow') lo,
+                   ($2::date::timestamp AT TIME ZONE 'Europe/Moscow') hi
+        ), checks AS (
+            SELECT restaurant_key,AVG(score) score FROM control_checks CROSS JOIN bounds
+            WHERE completed_at>=lo AND completed_at<hi GROUP BY restaurant_key
+        ), haccp AS (
+            SELECT e.restaurant_key,100.0*COUNT(*) FILTER(WHERE NOT r.deviation)/COUNT(*) score
+            FROM control_readings r JOIN control_equipment e ON e.id=r.equipment_id CROSS JOIN bounds
+            WHERE r.recorded_at>=lo AND r.recorded_at<hi GROUP BY e.restaurant_key
+        ), tasks AS (
+            SELECT c.restaurant_key,100.0*COUNT(*) FILTER(WHERE EXISTS(
+                SELECT 1 FROM control_task_history h WHERE h.task_id=t.id AND h.action='approve' AND h.created_at<=t.due_at
+            ))/COUNT(*) score
+            FROM control_tasks t JOIN control_checks c ON c.id=t.check_id CROSS JOIN bounds
+            WHERE t.due_at>=lo AND t.due_at<hi AND t.due_at<=NOW() GROUP BY c.restaurant_key
+        )
+        SELECT r.key,r.name,c.score AS checklists,h.score AS haccp,t.score AS tasks
+        FROM restaurants r LEFT JOIN checks c ON c.restaurant_key=r.key
+        LEFT JOIN haccp h ON h.restaurant_key=r.key LEFT JOIN tasks t ON t.restaurant_key=r.key
+        WHERE ($3::text[] IS NULL OR r.key=ANY($3)) ORDER BY r.name""",start,end,scope)
+    items=[]
+    for r in rows:
+        values={k:round(float(r[k]),2) if r[k] is not None else None for k in ("checklists","haccp","tasks")}
+        items.append({"restaurant_key":r["key"],"name":r["name"],**calculate_control_rating(values)})
+    return web.json_response({"weights":RATING_WEIGHTS,"restaurants":items},headers=NO_STORE)

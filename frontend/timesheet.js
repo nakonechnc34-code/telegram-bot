@@ -456,11 +456,62 @@ function openReports(){
 }
 
 const pageNames = ['Главная','Табель','Начисления','Отчёты','Согласование','Настройки','Панель загрузки'];
+
+const approvalLabels = {draft:'Черновик',pending:'На согласовании',approved:'Утверждён',returned:'Возвращён на доработку'};
+let approvalVersion = 0;
+async function loadApproval(){
+    const version=++approvalVersion, key=byId('approval-restaurant').value, month=byId('approval-month').value;
+    const status=byId('approval-status'), actions=byId('approval-actions'), history=byId('approval-history');
+    actions.replaceChildren();history.replaceChildren();status.textContent='Загрузка…';
+    if(!key||!month){status.textContent='Выберите ресторан и месяц';return;}
+    const payload={restaurant_key:key,month_start:month+'-01'};
+    try{
+        const data=await api('/api/timesheet/approval/status',{body:JSON.stringify(payload)});
+        if(version!==approvalVersion)return;
+        status.textContent=approvalLabels[data.status]||data.status;
+        for(const h of data.history){
+            const line=document.createElement('p');
+            line.textContent=[h.created_at,h.actor_name,approvalLabels[h.previous_status]+' → '+approvalLabels[h.new_status],h.comment].filter(Boolean).join(' · ');
+            history.append(line);
+        }
+        const options=[];
+        if(['draft','returned'].includes(data.status))options.push(['submit','Отправить на согласование']);
+        if(data.can_review&&data.status==='pending')options.push(['return','Вернуть на доработку']);
+        if(data.can_review&&data.status==='approved')options.push(['reopen','Открыть повторно']);
+        for(const [action,label] of options){
+            const button=document.createElement('button');button.type='button';button.textContent=label;
+            button.addEventListener('click',async()=>{
+                const comment=byId('approval-comment').value.trim();
+                if(['return','reopen'].includes(action)&&!comment){status.textContent='Укажите причину';return;}
+                for(const b of actions.querySelectorAll('button'))b.disabled=true;
+                try{
+                    await api('/api/timesheet/approval/transition',{body:JSON.stringify({...payload,action,comment,revision:data.revision})});
+                    if(version===approvalVersion){byId('approval-comment').value='';await loadApproval();}
+                }catch(e){if(version===approvalVersion){status.textContent=e.message;for(const b of actions.querySelectorAll('button'))b.disabled=false;}}
+            });
+            actions.append(button);
+        }
+    }catch(e){if(version===approvalVersion)status.textContent=e.message;}
+}
+function openApproval(){
+    const select=byId('approval-restaurant'), previous=select.value;
+    select.replaceChildren(new Option('Выберите ресторан',''));
+    for(const [key,name] of restaurantNames)if(key)select.add(new Option(name,key));
+    select.value=previous;
+    if(!byId('approval-month').value)byId('approval-month').value=iso(new Date()).slice(0,7);
+    loadApproval();
+}
+byId('approval-form').addEventListener('submit',e=>{e.preventDefault();loadApproval();});
+for(const id of ['approval-restaurant','approval-month'])byId(id).addEventListener('change',()=>{byId('approval-comment').value='';loadApproval();});
+
 function showPage(index) {
     byId('page-title').textContent = pageNames[index];
     byId('home-panel').hidden = index !== 0;
     byId('timesheet-panel').hidden = index !== 1;
-    byId('future-panel').hidden = index !== 4 && index !== 5;
+    byId('future-panel').hidden = index !== 5;
+    byId('approval-panel').hidden = index !== 4;
+    if(index === 4 && token) openApproval();
+    else approvalVersion++;
     byId('reports-panel').hidden = index !== 3;
     if(index === 3) openReports();
     byId('accruals-panel').hidden = index !== 2;

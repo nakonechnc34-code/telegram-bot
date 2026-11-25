@@ -158,6 +158,29 @@ editForm.addEventListener('submit', async event => {
 });
 
 let historyVersion = 0;
+let deletingAttendance = false;
+async function deleteAttendance(record, button) {
+    if (deletingAttendance || !token) return;
+    const restaurant = restaurantNames.get(record.restaurant_key) || record.restaurant_key;
+    if (!window.confirm('Удалить отчёт №' + record.id + '?\nРесторан: ' + restaurant +
+        '\nПериод: ' + record.date_from + ' — ' + record.date_to +
+        '\nБудут удалены только записи этого отчёта для указанного ресторана. Действующий табель и зарплата не изменятся.')) return;
+    deletingAttendance = true;
+    button.disabled = true;
+    const status = byId('attendance-history-status');
+    status.textContent = 'Удаление отчёта…';
+    try {
+        await api('/api/timesheet/import_attendance/delete', {
+            body: JSON.stringify({import_id: record.id, restaurant_key: record.restaurant_key})
+        });
+        await loadAttendanceHistory();
+    } catch (error) {
+        status.textContent = error.message + ' Обновите историю перед повторной попыткой.';
+    } finally {
+        deletingAttendance = false;
+        button.disabled = false;
+    }
+}
 async function loadAttendanceHistory() {
     const version = ++historyVersion;
     const status = byId('attendance-history-status');
@@ -180,6 +203,14 @@ async function loadAttendanceHistory() {
                 cell.textContent = value;
                 row.append(cell);
             }
+            const actions = document.createElement('td');
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.textContent = 'Удалить';
+            remove.setAttribute('aria-label', 'Удалить отчёт №' + record.id + ' — ' + (restaurantNames.get(record.restaurant_key) || record.restaurant_key));
+            remove.addEventListener('click', () => deleteAttendance(record, remove));
+            actions.append(remove);
+            row.append(actions);
             fragment.append(row);
         }
         rows.replaceChildren(fragment);

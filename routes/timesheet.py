@@ -637,6 +637,11 @@ def _sync_stage_attendance(user, rows, default_rest_key=None):
     records = result["records"]
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Serialize staged replacements; delete only exact restaurant/date pairs.
+            cur.execute("SELECT pg_advisory_xact_lock(814726, 2)")
+            for key, day in sorted({(r["restaurant_key"], r["date"]) for r in records}):
+                cur.execute("DELETE FROM attendance_import_days WHERE restaurant_key = %s AND work_date = %s", (key, day))
+            cur.execute("DELETE FROM attendance_imports i WHERE NOT EXISTS (SELECT 1 FROM attendance_import_days d WHERE d.import_id = i.id)")
             cur.execute("INSERT INTO attendance_imports (uploaded_by, date_from, date_to) VALUES (%s, %s, %s) RETURNING id",
                         (user["user_id"], min(r["date"] for r in records), max(r["date"] for r in records)))
             import_id = cur.fetchone()["id"]

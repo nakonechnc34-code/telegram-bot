@@ -266,16 +266,24 @@ def _sync_timesheet_matrix(user_id, date_from, date_to, include_imports=False):
                         "h": r["worked_minutes"] / 60, "minutes": r["worked_minutes"],
                         "s": r["status"], "rk": r["restaurant_key"], "imported": True}
             if include_imports:
+                cur.execute("""SELECT user_id, work_date, restaurant_key, worked_minutes
+                    FROM attendance_import_days
+                    WHERE user_id = ANY(%s) AND work_date BETWEEN %s::date AND %s::date
+                    ORDER BY work_date, restaurant_key""", (emp_ids, date_from, date_to))
+                all_daily = {}
+                for row in cur.fetchall():
+                    key = (row["user_id"], row["work_date"].isoformat())
+                    all_daily.setdefault(key, {})[row["restaurant_key"]] = row["worked_minutes"]
                 for eid in emp_ids:
                     for day, cells in imported[eid].items():
                         raw = {key: cell["minutes"] for key, cell in cells.items()}
-                        rounded = allocate_daily_minutes(raw)
+                        rounded = allocate_daily_minutes(all_daily[(eid, day)])
                         for key, cell in cells.items():
                             cell["raw_minutes"] = raw[key]
                             cell["minutes"] = rounded[key]
                             cell["h"] = rounded[key] / 60
                     for day, cell in full_date_map[eid].items():
-                        if day not in imported[eid]:
+                        if (eid, day) not in all_daily:
                             raw = int(round(cell["h"] * 60))
                             if 0 <= raw <= 1440:
                                 cell["raw_minutes"] = raw

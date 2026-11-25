@@ -975,11 +975,11 @@ async def control_analytics(request):
               AND ($3::text[] IS NULL OR c.restaurant_key=ANY($3))
             GROUP BY c.restaurant_key
         )
-        SELECT r.key AS restaurant_key,r.name,COALESCE(c.completed,0) AS completed,
+        SELECT r.key AS restaurant_key,r.name,r.territory_manager_id,u.full_name AS territory_manager,COALESCE(c.completed,0) AS completed,
             COALESCE(c.scored,0) AS scored,c.score_sum,
             COALESCE(t.tasks_created,0) AS tasks_created,COALESCE(t.critical_tasks,0) AS critical_tasks,
             COALESCE(o.overdue_now,0) AS overdue_now
-        FROM restaurants r LEFT JOIN checks c ON c.restaurant_key=r.key
+        FROM restaurants r LEFT JOIN users u ON u.user_id=r.territory_manager_id LEFT JOIN checks c ON c.restaurant_key=r.key
         LEFT JOIN tasks t ON t.restaurant_key=r.key LEFT JOIN overdue o ON o.restaurant_key=r.key
         WHERE ($3::text[] IS NULL OR r.key=ANY($3)) ORDER BY r.name""",start,end,scope)
     items=[]
@@ -993,7 +993,18 @@ async def control_analytics(request):
     summary={k:sum(i[k] for i in items) for k in ("completed","scored","tasks_created","critical_tasks","overdue_now")}
     summary["average_score"]=round(total/scored,2) if scored else None
     items.sort(key=lambda i:(i["average_score"] is None,-(i["average_score"] or 0),i["name"]))
-    return web.json_response({"summary":summary,"restaurants":items},headers=NO_STORE)
+    territories={}
+    for row in rows:
+        tid=row["territory_manager_id"]
+        group=territories.setdefault(tid,{"manager_id":tid,"name":row["territory_manager"] or "Без закреплённого ТУ","restaurants":0,"completed":0,"scored":0,"tasks_created":0,"critical_tasks":0,"overdue_now":0,"score_sum":0.0})
+        group["restaurants"]+=1
+        for field in ("completed","scored","tasks_created","critical_tasks","overdue_now"):
+            group[field]+=row[field]
+        group["score_sum"]+=float(row["score_sum"] or 0)
+    for group in territories.values():
+        total=group.pop("score_sum")
+        group["average_score"]=round(total/group["scored"],2) if group["scored"] else None
+    return web.json_response({"summary":summary,"restaurants":items,"territories":list(territories.values())},headers=NO_STORE)
 
 @routes.post("/api/control/analytics/trends")
 async def analytics_trends(request):

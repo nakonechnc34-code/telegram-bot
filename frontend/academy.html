@@ -10,8 +10,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #F8F5F2; --card-bg: #FFFFFF; --text-main: #1C1C1E; --text-muted: #8E8E93;
-    --accent: #1C1C1E; --accent-soft: #F0EAE1; --pink: #FF007F; --orange: #FF7A00;
+    --bg: #F3F4F6; --card-bg: #FFFFFF; --text-main: #1C1C1E; --text-muted: #8E8E93;
+    --accent: #D71920; --accent-soft: #F0EAE1; --pink: #FF007F; --orange: #FF7A00;
     --green: #E8F5E9; --green-text: #2E7D32;
     --red: #FFEBEE; --red-text: #C62828;
     --shadow: 0 12px 36px rgba(0, 0, 0, 0.04);
@@ -32,7 +32,7 @@
 
   .course-card { background: #fff; border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); margin-bottom: 16px; cursor: pointer; display: flex; align-items: center; gap: 20px; transition: transform 0.2s; }
   .course-card:active { transform: scale(0.98); }
-  .course-icon { width: 70px; height: 70px; border-radius: 24px; display: flex; align-items: center; justify-content: center; font-size: 32px; flex-shrink: 0; background: linear-gradient(135deg, var(--pink), var(--orange)); color: #fff; box-shadow: 0 8px 20px rgba(255, 0, 127, 0.2); }
+  .course-icon { width: 70px; height: 70px; border-radius: 24px; display: flex; align-items: center; justify-content: center; font-size: 32px; flex-shrink: 0; background: #D71920; color: #fff; box-shadow: 0 8px 20px rgba(255, 0, 127, 0.2); }
   .course-info { flex: 1; min-width: 0; }
   .course-title { font-size: 20px; font-weight: 800; color: var(--text-main); margin-bottom: 6px; }
   .course-desc { font-size: 14px; color: var(--text-muted); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -71,7 +71,7 @@
 <body>
 
 <div class="header">
-  <div class="logo">🎓 Академия</div>
+  <div class="logo">WOKKER ACADEMY</div>
   <a href="/" class="btn-close">← На портал</a>
 </div>
 
@@ -112,28 +112,31 @@ function showToast(text, type) {
 }
 
 // ================== СКАЧИВАНИЕ ФАЙЛОВ ==================
-function downloadProtectedFile(fileUrl) {
-    const token = getToken();
-    if (!token) {
-        showToast('Вы не авторизованы', 'error');
-        return;
-    }
-    // GET-запрос — токен в URL допустим (backend читает query)
-    const urlWithToken = `${fileUrl}?webToken=${token}`;
-    window.open(urlWithToken, '_blank');
+async function downloadProtectedFile(fileUrl) {
+    try {
+        const response = await fetch(fileUrl, {headers: {'Authorization': 'Bearer ' + getToken()}});
+        if (!response.ok) throw new Error('download');
+        const url = URL.createObjectURL(await response.blob());
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = decodeURIComponent(fileUrl.split('/').pop());
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) { showToast('Ошибка скачивания', 'error'); }
 }
 
 function formatContent(content) {
-    if (!content) return '';
-    let safe = esc(content);
-    const fileRegex = /(\/uploads\/[^\s<]+)/g;
-    safe = safe.replace(fileRegex, (match) => {
-        const fileName = match.split('/').pop();
-        const apiUrl = '/api/download/' + fileName;
-        return `<br><a href="javascript:void(0)" onclick="downloadProtectedFile('${apiUrl}')" class="file-btn">📄 Скачать: ${fileName}</a>`;
-    });
-    return safe;
+    return String(content || '').split(/(\/uploads\/[A-Za-z0-9_.-]+)/g).map((part, i) => {
+        if (i % 2 === 0) return esc(part);
+        const name = part.split('/').pop();
+        if (name === '.' || name === '..') return esc(part);
+        return '<br><button type="button" class="file-btn" data-download="' + esc(name) + '">📄 Скачать: ' + esc(name) + '</button>';
+    }).join('');
 }
+document.addEventListener('click', event => {
+    const button = event.target.closest('[data-download]');
+    if (button) downloadProtectedFile('/api/download/' + encodeURIComponent(button.dataset.download));
+});
 // =========================================================
 
 // ✅ ИСПРАВЛЕНО: токен теперь в заголовке Authorization, а не в теле
@@ -205,7 +208,7 @@ async function openCourse(courseId) {
       </div>
     `).join('');
 
-    const hasTests = res.tests && res.tests.length > 0;
+    const hasTests = (res.questions || res.tests || []).length > 0;
     let testHtml = '';
 
     if (hasTests) {
@@ -215,7 +218,7 @@ async function openCourse(courseId) {
           <p style="color: var(--text-muted); margin-top: 8px;">Ответьте на вопросы, чтобы завершить курс.</p>
         </div>
         <div id="test-container">
-          ${res.tests.map((t, idx) => `
+          ${(res.questions || res.tests || []).map((t, idx) => `
             <div class="test-question">
               <div class="test-q-text">${idx + 1}. ${esc(t.question)}</div>
               <div class="test-options" data-qid="${t.id}">

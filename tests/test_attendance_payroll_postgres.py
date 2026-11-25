@@ -135,3 +135,53 @@ def test_attendance_migration_preserves_legacy_postgres():
     finally:
         conn.rollback()
         conn.close()
+
+
+def test_excel_import_replace_delete_payroll_postgres(monkeypatch):
+    from contextlib import nullcontext
+    from io import BytesIO
+    from pathlib import Path
+    from openpyxl import Workbook
+    from routes import timesheet
+    dsn = os.getenv("ATTENDANCE_TEST_DSN")
+    if not dsn:
+        pytest.skip("ATTENDANCE_TEST_DSN not configured")
+    conn = psycopg2.connect(dsn)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("CREATE SCHEMA attendance_cycle_test")
+            cur.execute("SET LOCAL search_path TO attendance_cycle_test")
+            cur.execute("""CREATE TABLE users (user_id bigint PRIMARY KEY, personnel_number text,
+                full_name text, position text, restaurant_key text, rate numeric,
+                payment_type text, is_fired boolean, login text, is_super_admin boolean);
+                CREATE TABLE restaurants (key text PRIMARY KEY, name text, territory_manager_id bigint);
+                CREATE TABLE position_rates (position_name text, rate numeric);
+                CREATE TABLE timesheet_records (user_id bigint, work_date date, restaurant_key text, hours numeric);
+                INSERT INTO users VALUES (1,'021','Test Cook','Cook','a',360,'hourly',false,'cook',false),
+                    (2,NULL,'Admin','Admin','a',0,'hourly',false,'admin',true);
+                INSERT INTO restaurants VALUES ('a','A',2);
+                INSERT INTO timesheet_records VALUES (1,'2026-11-16','a',8)""")
+            cur.execute((Path(__file__).resolve().parents[1] / "database" / "007_attendance_imports.sql").read_text(encoding="utf-8"))
+        monkeypatch.setattr(timesheet, "get_conn", lambda: nullcontext(conn))
+        actor = {"user_id": 2, "is_super_admin": True}
+        def upload(shift):
+            wb = Workbook()
+            wb.active.append(["Табельный номер", "Ресторан", "16.11.2026"])
+            wb.active.append(["021", "A", shift])
+            buf = BytesIO()
+            wb.save(buf)
+            return timesheet._sync_stage_attendance(actor, timesheet._parse_excel_rows(buf.getvalue()))
+        def salary():
+            return sum(r["total_salary"] for r in timesheet._sync_reports(1, "2026-11-01", "2026-11-30", True))
+        assert salary() == 2880
+        first = upload("09:00-17:15")
+        assert first["ok"]
+        assert salary() == 2970
+        second = upload("09:00-18:30")
+        assert second["ok"] and second["import_id"] != first["import_id"]
+        assert salary() == 3420
+        assert timesheet._sync_delete_attendance(actor, second["import_id"], "a") == 1
+        assert salary() == 2880
+    finally:
+        conn.rollback()
+        conn.close()

@@ -13,7 +13,72 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from utils.common import safe_int, safe_float
 
+import secrets
+import hashlib
+from middleware.rate_limit import get_client_ip
+from utils.security import validate_login_data, verify_password, _check_rate_limit, _reset_rate_limit
+from routes.auth import _sync_get_user_by_login
+from utils.auth_helpers import _extract_token
+
 routes = web.RouteTableDef()
+
+def _session_hash(token):
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+def _sync_timesheet_session(token):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT u.* FROM timesheet_sessions s JOIN users u ON u.user_id=s.user_id WHERE s.token_hash=%s AND s.expires_at>NOW()", (_session_hash(token),))
+            return cur.fetchone()
+
+async def _timesheet_user(request):
+    token = await _extract_token(request, allow_query=False)
+    user = await _run(_sync_timesheet_session, token) if token else None
+    if not user:
+        return None, 401
+    if user.get("is_fired") or not _sync_user_has_perm(user, "timesheet_access"):
+        return None, 403
+    return user, None
+
+def _sync_timesheet_create(user_id, token):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO timesheet_sessions(token_hash,user_id) VALUES(%s,%s)", (_session_hash(token),user_id))
+
+def _sync_timesheet_delete(token):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM timesheet_sessions WHERE token_hash=%s", (_session_hash(token),))
+
+@routes.post('/api/timesheet/login')
+async def timesheet_login(request):
+    try:
+        body = await request.json()
+    except (ValueError, TypeError):
+        return web.json_response({"error":"Некорректный запрос"}, status=400)
+    data, err = validate_login_data(body)
+    if err:
+        return web.json_response({"error":"Некорректный логин или пароль"}, status=400)
+    ip = get_client_ip(request)
+    if not _check_rate_limit(ip):
+        return web.json_response({"error":"Слишком много попыток"}, status=429)
+    user = await _run(_sync_get_user_by_login, data["login"])
+    if not user or not verify_password(data["password"], user.get("password_hash") or ""):
+        return web.json_response({"error":"Неверный логин или пароль"}, status=401)
+    if user.get("is_fired") or not _sync_user_has_perm(user,"timesheet_access"):
+        return web.json_response({"error":"Нет доступа к Табелю"}, status=403)
+    _reset_rate_limit(ip)
+    token = secrets.token_urlsafe(48)
+    await _run(_sync_timesheet_create,user["user_id"],token)
+    return web.json_response({"token":token},headers={"Cache-Control":"no-store"})
+
+@routes.post('/api/timesheet/logout')
+async def timesheet_logout(request):
+    token = await _extract_token(request, allow_query=False)
+    if token:
+        await _run(_sync_timesheet_delete,token)
+    return web.json_response({"ok":True},headers={"Cache-Control":"no-store"})
+
 
 
 def _require_timesheet_access(user):
@@ -96,7 +161,7 @@ def _check_can_edit_user(editor_user, target_uid):
 
 @routes.post('/api/timesheet/restaurants')
 async def handle_timesheet_restaurants(request):
-    user, err = await get_auth_user(request)
+    user, err = await _timesheet_user(request)
     if err:
         return denied(err)
     _require_timesheet_access(user)
@@ -181,7 +246,7 @@ def _sync_timesheet_matrix(user_id, date_from, date_to):
 
 @routes.post('/api/timesheet/matrix')
 async def handle_timesheet_matrix(request):
-    user, err = await get_auth_user(request)
+    user, err = await _timesheet_user(request)
     if err:
         return denied(err)
     _require_timesheet_access(user)
@@ -222,7 +287,7 @@ def _sync_save_cell(user_id, target_uid, work_date, hours, status, restaurant_ke
 
 @routes.post('/api/timesheet/save_cell')
 async def handle_timesheet_save_cell(request):
-    user, err = await get_auth_user(request)
+    user, err = await _timesheet_user(request)
     if err:
         return denied(err)
     _require_timesheet_access(user)
@@ -457,7 +522,7 @@ def _parse_excel_rows(file_data):
 
 @routes.post('/api/timesheet/import_attendance')
 async def handle_import_attendance(request):
-    user, err = await get_auth_user(request)
+    user, err = await _timesheet_user(request)
     if err:
         return denied(err)
     _require_timesheet_access(user)
@@ -560,7 +625,9 @@ async def handle_timesheet_reports(request):
 
 @routes.get('/api/timesheet/export_excel')
 async def handle_timesheet_export_excel(request):
-    user, err = await get_auth_user(request)
+    user, err = await _timesheet_user(request)
+    if err and request.query.get("only_me") == "true":
+        user, err = await get_auth_user(request)
     if err:
         return denied(err)
     # ИСПРАВЛЕНО: убрали _require_timesheet_access(user)
@@ -652,7 +719,7 @@ def _sync_settings_get(user_id):
 
 @routes.post('/api/timesheet/settings')
 async def handle_timesheet_settings_get(request):
-    user, err = await get_auth_user(request)
+    user, err = await _timesheet_user(request)
     if err:
         return denied(err)
     settings = await _run(_sync_settings_get, user["user_id"])
@@ -661,7 +728,7 @@ async def handle_timesheet_settings_get(request):
 
 @routes.post('/api/timesheet/settings/save')
 async def handle_timesheet_settings_save(request):
-    user, err = await get_auth_user(request)
+    user, err = await _timesheet_user(request)
     if err:
         return denied(err)
     if not _is_hr_or_super(user):
@@ -701,7 +768,7 @@ async def handle_timesheet_settings_save(request):
 # ===================== ВЫПЛАТЫ =====================
 @routes.post('/api/payments/add')
 async def handle_payment_add(request):
-    user, err = await get_auth_user(request)
+    user, err = await _timesheet_user(request)
     if err:
         return denied(err)
     _require_timesheet_access(user)
@@ -747,7 +814,7 @@ async def handle_payment_add(request):
 # ===================== НАЧИСЛЕНИЯ =====================
 @routes.post('/api/accruals/add')
 async def handle_accrual_add(request):
-    user, err = await get_auth_user(request)
+    user, err = await _timesheet_user(request)
     if err:
         return denied(err)
     _require_timesheet_access(user)
@@ -796,7 +863,7 @@ async def handle_accrual_add(request):
 
 @routes.post('/api/accruals/approve')
 async def handle_accrual_approve(request):
-    user, err = await get_auth_user(request)
+    user, err = await _timesheet_user(request)
     if err:
         return denied(err)
     if not _is_hr_or_super(user):
@@ -827,7 +894,7 @@ async def handle_accrual_approve(request):
 
 @routes.post('/api/accruals/reject')
 async def handle_accrual_reject(request):
-    user, err = await get_auth_user(request)
+    user, err = await _timesheet_user(request)
     if err:
         return denied(err)
     if not _is_hr_or_super(user):

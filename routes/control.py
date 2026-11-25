@@ -126,7 +126,10 @@ def validate_template(body):
                     raise ValueError("invalid_flag")
     if total > 500:
         raise ValueError("too_many_questions")
-    return {"title": title.strip(), "sections": sections}
+    category=body.get("category","checklist")
+    if category not in ("checklist","audit","mystery_guest"):
+        raise ValueError("invalid_category")
+    return {"title": title.strip(), "sections": sections,"category":category}
 
 async def template_editor(request):
     user = await control_user(request)
@@ -1087,8 +1090,12 @@ async def analytics_rating(request):
             SELECT ($1::date::timestamp AT TIME ZONE 'Europe/Moscow') lo,
                    ($2::date::timestamp AT TIME ZONE 'Europe/Moscow') hi
         ), checks AS (
-            SELECT restaurant_key,AVG(score) score FROM control_checks CROSS JOIN bounds
-            WHERE completed_at>=lo AND completed_at<hi GROUP BY restaurant_key
+            SELECT c.restaurant_key,
+                AVG(c.score) FILTER(WHERE COALESCE(v.definition->>'category','checklist')='checklist') AS checklist_score,
+                AVG(c.score) FILTER(WHERE v.definition->>'category'='audit') AS audit_score,
+                AVG(c.score) FILTER(WHERE v.definition->>'category'='mystery_guest') AS mystery_score
+            FROM control_checks c JOIN control_template_versions v ON v.id=c.version_id CROSS JOIN bounds
+            WHERE c.completed_at>=lo AND c.completed_at<hi GROUP BY c.restaurant_key
         ), haccp AS (
             SELECT e.restaurant_key,100.0*COUNT(*) FILTER(WHERE NOT r.deviation)/COUNT(*) score
             FROM control_readings r JOIN control_equipment e ON e.id=r.equipment_id CROSS JOIN bounds
@@ -1100,12 +1107,12 @@ async def analytics_rating(request):
             FROM control_tasks t JOIN control_checks c ON c.id=t.check_id CROSS JOIN bounds
             WHERE t.due_at>=lo AND t.due_at<hi AND t.due_at<=NOW() GROUP BY c.restaurant_key
         )
-        SELECT r.key,r.name,c.score AS checklists,h.score AS haccp,t.score AS tasks
+        SELECT r.key,r.name,c.checklist_score AS checklists,c.audit_score AS audits,c.mystery_score AS mystery_guest,h.score AS haccp,t.score AS tasks
         FROM restaurants r LEFT JOIN checks c ON c.restaurant_key=r.key
         LEFT JOIN haccp h ON h.restaurant_key=r.key LEFT JOIN tasks t ON t.restaurant_key=r.key
         WHERE ($3::text[] IS NULL OR r.key=ANY($3)) ORDER BY r.name""",start,end,scope)
     items=[]
     for r in rows:
-        values={k:round(float(r[k]),2) if r[k] is not None else None for k in ("checklists","haccp","tasks")}
+        values={k:round(float(r[k]),2) if r[k] is not None else None for k in ("checklists","audits","mystery_guest","haccp","tasks")}
         items.append({"restaurant_key":r["key"],"name":r["name"],**calculate_control_rating(values)})
     return web.json_response({"weights":RATING_WEIGHTS,"restaurants":items},headers=NO_STORE)

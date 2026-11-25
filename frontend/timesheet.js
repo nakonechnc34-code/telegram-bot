@@ -337,7 +337,7 @@ function clearSession(){
     byId('attendance-history-status').textContent = '';
     clearAttendancePreview();
     sessionStorage.removeItem('wokker_timesheet_token');
-    token=null;loadVersion++;employeesData=[];loadedRange=null;table.replaceChildren();
+    token=null;accrualVersion++;accrualRows=[];byId('accruals-rows').replaceChildren();byId('accruals-total').textContent='';loadVersion++;employeesData=[];loadedRange=null;table.replaceChildren();
     if(editor.open)editor.close();
     document.querySelector('aside').hidden=true;
     document.querySelector('main').hidden=true;
@@ -377,12 +377,69 @@ byId('logout').addEventListener('click',async()=>{
 });
 
 
+let accrualRows = [], accrualVersion = 0;
+const rub = new Intl.NumberFormat('ru-RU', {style:'currency',currency:'RUB'});
+function accrualHours(hours) {
+    const minutes = Math.round(Number(hours)*60);
+    return Math.floor(minutes/60)+':'+String(minutes%60).padStart(2,'0');
+}
+function renderAccruals() {
+    const restaurant = byId('accruals-restaurant').value;
+    const search = byId('accruals-search').value.trim().toLocaleLowerCase('ru');
+    const rows = accrualRows.filter(r => (!restaurant || r.restaurant_name===restaurant) &&
+        String(r.full_name||'').toLocaleLowerCase('ru').includes(search));
+    const tbody = byId('accruals-rows');
+    tbody.replaceChildren();
+    for (const r of rows) {
+        const tr = document.createElement('tr');
+        for (const value of [r.full_name,r.position,r.restaurant_name,accrualHours(r.total_hours),
+            (r.payment_type==='fixed'?'Оклад: ':'')+rub.format(r.rate),rub.format(r.total_salary)]) {
+            const td=document.createElement('td');td.textContent=value??'—';tr.append(td);
+        }
+        tbody.append(tr);
+    }
+    byId('accruals-total').textContent='Итого: '+rub.format(rows.reduce((sum,r)=>sum+Number(r.total_salary),0));
+}
+async function loadAccruals() {
+    const version=++accrualVersion;
+    accrualRows=[];renderAccruals();
+    byId('accruals-status').textContent='Загрузка…';
+    try {
+        const result=await api('/api/timesheet/accruals',{body:JSON.stringify({
+            date_from:byId('accruals-from').value,date_to:byId('accruals-to').value})});
+        if(version!==accrualVersion || !token)return;
+        accrualRows=result.report;
+        const select=byId('accruals-restaurant'), previous=select.value;
+        select.replaceChildren(new Option('Все рестораны',''));
+        for(const name of [...new Set(accrualRows.map(r=>r.restaurant_name).filter(Boolean))].sort())select.add(new Option(name,name));
+        if([...select.options].some(o=>o.value===previous))select.value=previous;
+        renderAccruals();
+        byId('accruals-status').textContent=accrualRows.length?'':'Нет данных за период';
+    } catch(error) {
+        if(version===accrualVersion)byId('accruals-status').textContent=error.message;
+    }
+}
+byId('accruals-form').addEventListener('submit',e=>{e.preventDefault();loadAccruals();});
+byId('accruals-search').addEventListener('input',renderAccruals);
+byId('accruals-restaurant').addEventListener('change',renderAccruals);
+function openAccruals(){
+    if(!byId('accruals-from').value){
+        const today=new Date();
+        const localDate=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+        byId('accruals-from').value=localDate(new Date(today.getFullYear(),today.getMonth(),1));
+        byId('accruals-to').value=localDate(today);
+    }
+    loadAccruals();
+}
+
 const pageNames = ['Главная','Табель','Начисления','Отчёты','Согласование','Настройки','Панель загрузки'];
 function showPage(index) {
     byId('page-title').textContent = pageNames[index];
     byId('home-panel').hidden = index !== 0;
     byId('timesheet-panel').hidden = index !== 1;
-    byId('future-panel').hidden = index < 2 || index === 6;
+    byId('future-panel').hidden = index < 3 || index === 6;
+    byId('accruals-panel').hidden = index !== 2;
+    if(index === 2 && token) openAccruals();
     byId('upload-panel').hidden = index !== 6;
     if (index === 6 && token) loadAttendanceHistory();
     document.querySelectorAll('nav [data-page]').forEach(button => {

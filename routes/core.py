@@ -60,9 +60,9 @@ def _sync_bootstrap(user_id):
             faq_rows = [dict(r) for r in cur.fetchall()]
 
             if _is_tu(user):
-                cur.execute("SELECT * FROM restaurants WHERE key != 'office' AND territory_manager_id = %s ORDER BY sort, name", (user_id,))
+                cur.execute("SELECT r.*, CASE WHEN EXISTS (SELECT 1 FROM users g WHERE g.user_id = r.territory_manager_id AND lower(btrim(COALESCE(g.position, ''))) = 'тайный гость') THEN NULL ELSE r.territory_manager_id END AS territory_manager_id FROM restaurants r WHERE key != 'office' AND territory_manager_id = %s ORDER BY sort, name", (user_id,))
             else:
-                cur.execute("SELECT * FROM restaurants WHERE key != 'office' ORDER BY sort, name")
+                cur.execute("SELECT r.*, CASE WHEN EXISTS (SELECT 1 FROM users g WHERE g.user_id = r.territory_manager_id AND lower(btrim(COALESCE(g.position, ''))) = 'тайный гость') THEN NULL ELSE r.territory_manager_id END AS territory_manager_id FROM restaurants r WHERE key != 'office' ORDER BY sort, name")
             rest_rows = [dict(r) for r in cur.fetchall()]
 
             cur.execute("SELECT * FROM medbook_doctors ORDER BY sort, id")
@@ -82,15 +82,16 @@ def _sync_bootstrap(user_id):
             if can_see_team:
                 cur.execute("""
                     SELECT u.user_id, u.full_name, u.position, u.phone, u.restaurant_key, r.name AS restaurant_name,
-                           COALESCE(u.is_certified, FALSE) AS is_certified, u.medbook, mgr.full_name AS manager_name,
+                           COALESCE(u.is_certified, FALSE) AS is_certified, u.medbook, CASE WHEN %s OR lower(btrim(COALESCE(mgr.position, ''))) <> 'тайный гость' THEN mgr.full_name ELSE NULL END AS manager_name,
                            c.name AS citizenship_name, u.hire_date
                     FROM users u
                     LEFT JOIN restaurants r ON u.restaurant_key = r.key
                     LEFT JOIN users mgr ON r.territory_manager_id = mgr.user_id
                     LEFT JOIN citizenships c ON u.citizenship_id = c.id
                     WHERE u.user_id != %s AND COALESCE(u.is_fired, FALSE) = FALSE AND COALESCE(u.is_admin, FALSE) = FALSE AND u.login IS NOT NULL
+                    AND (%s OR lower(btrim(COALESCE(u.position, ''))) <> 'тайный гость')
                     ORDER BY u.full_name
-                """, (user_id,))
+                """, (is_hr, user_id, is_hr))
                 all_staff = [dict(r) for r in cur.fetchall()]
 
                 if is_us:
@@ -209,32 +210,23 @@ async def handle_bootstrap(request):
 
 
 def _sync_restaurants():
-    cached = get_cached("restaurants_all")
-    if cached is not None:
-        return cached
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT r.*, u.full_name AS territory_manager_name FROM restaurants r LEFT JOIN users u ON r.territory_manager_id = u.user_id ORDER BY r.sort, r.name")
+            cur.execute("SELECT r.*, CASE WHEN lower(btrim(COALESCE(u.position, ''))) = 'тайный гость' THEN NULL ELSE u.full_name END AS territory_manager_name, CASE WHEN lower(btrim(COALESCE(u.position, ''))) = 'тайный гость' THEN NULL ELSE r.territory_manager_id END AS territory_manager_id FROM restaurants r LEFT JOIN users u ON r.territory_manager_id = u.user_id ORDER BY r.sort, r.name")
             result = [dict(r) for r in cur.fetchall()]
-    set_cached("restaurants_all", result, CACHE_TTL_RESTAURANTS)
     return result
 
 
 def _sync_restaurants_by_tu(user_id):
-    cache_key = f"restaurants_tu_{user_id}"
-    cached = get_cached(cache_key)
-    if cached is not None:
-        return cached
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
-                "SELECT r.*, u.full_name AS territory_manager_name FROM restaurants r "
+                "SELECT r.*, CASE WHEN lower(btrim(COALESCE(u.position, ''))) = 'тайный гость' THEN NULL ELSE u.full_name END AS territory_manager_name, CASE WHEN lower(btrim(COALESCE(u.position, ''))) = 'тайный гость' THEN NULL ELSE r.territory_manager_id END AS territory_manager_id FROM restaurants r "
                 "LEFT JOIN users u ON r.territory_manager_id = u.user_id "
                 "WHERE r.territory_manager_id = %s ORDER BY r.sort, r.name",
                 (user_id,)
             )
             result = [dict(r) for r in cur.fetchall()]
-    set_cached(cache_key, result, CACHE_TTL_RESTAURANTS)
     return result
 
 
@@ -537,7 +529,16 @@ async def handle_admin_audit(request):
     def _sync():
         with get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT * FROM admin_audit ORDER BY created_at DESC LIMIT 300")
+                cur.execute("""
+                    SELECT a.* FROM admin_audit a
+                    WHERE %s OR NOT EXISTS (
+                        SELECT 1 FROM users u
+                        WHERE lower(btrim(COALESCE(u.position, ''))) = 'тайный гость'
+                          AND (u.user_id = a.admin_id OR
+                               (a.target_type = 'user' AND u.user_id::text = a.target_id::text))
+                    )
+                    ORDER BY a.created_at DESC LIMIT 300
+                """, (_is_hr_or_super(admin),))
                 return [dict(r) for r in cur.fetchall()]
     return web.json_response({"audit": await _run(_sync)})
 

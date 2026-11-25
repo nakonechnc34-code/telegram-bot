@@ -22,6 +22,10 @@ from utils.auth_helpers import _extract_token
 
 routes = web.RouteTableDef()
 
+def _private_guest(user):
+    return (user.get("position") or "").strip().casefold() == "тайный гость"
+
+
 def _session_hash(token):
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
@@ -36,7 +40,7 @@ async def _timesheet_user(request):
     user = await _run(_sync_timesheet_session, token) if token else None
     if not user:
         return None, 401
-    if user.get("is_fired") or not _sync_user_has_perm(user, "timesheet_access"):
+    if user.get("is_fired") or _private_guest(user) or not _sync_user_has_perm(user, "timesheet_access"):
         return None, 403
     return user, None
 
@@ -65,7 +69,7 @@ async def timesheet_login(request):
     user = await _run(_sync_get_user_by_login, data["login"])
     if not user or not verify_password(data["password"], user.get("password_hash") or ""):
         return web.json_response({"error":"Неверный логин или пароль"}, status=401)
-    if user.get("is_fired") or not _sync_user_has_perm(user,"timesheet_access"):
+    if user.get("is_fired") or _private_guest(user) or not _sync_user_has_perm(user,"timesheet_access"):
         return web.json_response({"error":"Нет доступа к Табелю"}, status=403)
     _reset_rate_limit(ip)
     token = secrets.token_urlsafe(48)
@@ -133,6 +137,8 @@ def _restaurant_in_scope(user, key, territory_keys):
 
 
 def _check_can_edit_user(editor_user, target_uid):
+    if _private_guest(editor_user):
+        return False
     if _is_hr_or_super(editor_user):
         return True
     if editor_user["user_id"] == target_uid:
@@ -144,9 +150,9 @@ def _check_can_edit_user(editor_user, target_uid):
         return False
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT restaurant_key FROM users WHERE user_id = %s", (target_uid,))
+            cur.execute("SELECT restaurant_key, position FROM users WHERE user_id = %s", (target_uid,))
             target = cur.fetchone()
-            if not target:
+            if not target or _private_guest(target):
                 return False
             if is_us:
                 return _restaurant_in_scope(editor_user, target["restaurant_key"], ())
@@ -200,6 +206,8 @@ def _sync_timesheet_matrix(user_id, date_from, date_to):
                   AND u.login IS NOT NULL
                   AND COALESCE(u.payment_type, '') != 'fixed' """
             params = []
+            if not is_hr_or_super:
+                query += " AND lower(btrim(COALESCE(u.position, ''))) <> 'тайный гость'"
             if is_us:
                 query += " AND u.restaurant_key = %s"
                 params.append(u.get("restaurant_key"))
@@ -349,7 +357,8 @@ def _sync_import_attendance(user, rows, default_rest_key=None):
                 SELECT user_id, login, personnel_number, restaurant_key
                 FROM users
                 WHERE personnel_number IS NOT NULL AND personnel_number != '' AND COALESCE(is_fired, FALSE) = FALSE
-            """)
+                  AND (%s OR lower(btrim(COALESCE(position, ''))) <> 'тайный гость')
+            """, (_is_hr_or_super(user),))
             users_map = {str(u["personnel_number"]).strip(): u for u in cur.fetchall()}
 
             cur.execute("SELECT key, name, territory_manager_id FROM restaurants")
@@ -579,6 +588,8 @@ def _sync_reports(user_id, date_from, date_to, only_me=False):
                 WHERE COALESCE(u.is_fired, FALSE) = FALSE AND u.login IS NOT NULL"""
             
             params = [date_from, date_to]
+            if not is_hr_or_super:
+                base += " AND lower(btrim(COALESCE(u.position, ''))) <> 'тайный гость'"
             
             if only_me:
                 base += " AND u.user_id = %s"

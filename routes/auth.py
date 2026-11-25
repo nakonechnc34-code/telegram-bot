@@ -40,7 +40,7 @@ async def handle_auth_login_staff(request):
 
     _reset_rate_limit(ip)
 
-    if user.get("is_fired"):
+    if user.get("is_fired") or (user.get("position") or "").strip().casefold()=="тайный гость":
         return web.json_response({"error": "fired"}, status=403)
 
     token = await _run(_sync_create_session, user["user_id"])
@@ -82,7 +82,7 @@ async def handle_auth_login_admin(request):
 
     _reset_rate_limit(ip)
 
-    if user.get("is_fired"):
+    if user.get("is_fired") or (user.get("position") or "").strip().casefold()=="тайный гость":
         return web.json_response({"error": "fired"}, status=403)
 
     if not (user.get("is_admin") or user.get("is_super_admin")):

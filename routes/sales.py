@@ -33,7 +33,7 @@ routes = web.RouteTableDef()
 
 def _sales_allowed(user):
     """Superadmins have implicit Sales access; other admins require an explicit grant."""
-    if not user or user.get("is_fired"):
+    if not user or user.get("is_fired") or (user.get("position") or "").strip().casefold()=="тайный гость":
         return False
     if user.get("is_super_admin"):
         return True
@@ -652,7 +652,7 @@ async def sales_hourly_comparison(request: web.Request) -> web.Response:
     allowed = await _sales_restaurant_scope(request)
     async with db.get_pool(request.app).acquire() as conn:
         restaurants = await conn.fetch(
-            "SELECT r.key, r.name, r.territory_manager_id, u.full_name AS territory_manager_name "
+            "SELECT r.key, r.name, CASE WHEN lower(btrim(COALESCE(u.position, ''))) = 'тайный гость' THEN NULL ELSE r.territory_manager_id END AS territory_manager_id, CASE WHEN lower(btrim(COALESCE(u.position, ''))) = 'тайный гость' THEN NULL ELSE u.full_name END AS territory_manager_name "
             "FROM restaurants r LEFT JOIN users u ON u.user_id = r.territory_manager_id" +
             (" WHERE r.key = ANY($1)" if allowed is not None else "") +
             " ORDER BY r.sort NULLS FIRST, r.name", *([allowed] if allowed is not None else []))
@@ -738,7 +738,7 @@ async def sales_restaurant_turnover(request: web.Request) -> web.Response:
     allowed = await _sales_restaurant_scope(request)
     async with db.get_pool(request.app).acquire() as conn:
         restaurants = await conn.fetch(
-            "SELECT r.key, r.name, r.territory_manager_id, u.full_name AS territory_manager_name "
+            "SELECT r.key, r.name, CASE WHEN lower(btrim(COALESCE(u.position, ''))) = 'тайный гость' THEN NULL ELSE r.territory_manager_id END AS territory_manager_id, CASE WHEN lower(btrim(COALESCE(u.position, ''))) = 'тайный гость' THEN NULL ELSE u.full_name END AS territory_manager_name "
             "FROM restaurants r LEFT JOIN users u ON u.user_id = r.territory_manager_id" +
             (" WHERE r.key = ANY($1)" if allowed is not None else "") +
             " ORDER BY r.sort NULLS FIRST, r.name", *([allowed] if allowed is not None else []))
@@ -777,7 +777,7 @@ async def sales_order_type_report(request: web.Request) -> web.Response:
     allowed = await _sales_restaurant_scope(request)
     async with db.get_pool(request.app).acquire() as conn:
         restaurants = await conn.fetch(
-            "SELECT r.key, r.name, r.territory_manager_id, u.full_name AS territory_manager_name "
+            "SELECT r.key, r.name, CASE WHEN lower(btrim(COALESCE(u.position, ''))) = 'тайный гость' THEN NULL ELSE r.territory_manager_id END AS territory_manager_id, CASE WHEN lower(btrim(COALESCE(u.position, ''))) = 'тайный гость' THEN NULL ELSE u.full_name END AS territory_manager_name "
             "FROM restaurants r LEFT JOIN users u ON u.user_id = r.territory_manager_id" +
             (" WHERE r.key = ANY($1)" if allowed is not None else "") +
             " ORDER BY r.sort NULLS FIRST, r.name", *([allowed] if allowed is not None else []))
@@ -1119,7 +1119,7 @@ async def sales_dashboard(request: web.Request) -> web.Response:
             if allowed is not None else "TRUE"
         )
         imports = await conn.fetch(f"""
-            SELECT si.*, u.full_name uploader_name,
+            SELECT si.*, CASE WHEN lower(btrim(COALESCE(u.position, ''))) = 'тайный гость' THEN NULL ELSE u.full_name END AS uploader_name,
                    {deletion_scope} AS can_delete
             FROM sales_imports si
             LEFT JOIN users u ON u.user_id = si.uploaded_by

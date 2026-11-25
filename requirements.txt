@@ -13,3 +13,5 @@ python-dotenv>=1.0.0
 # Development (опционально)
 sentry-sdk>=2.0.0
 pytest>=8.0.0
+
+Pillow>=12.1.1

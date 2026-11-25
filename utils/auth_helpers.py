@@ -151,7 +151,7 @@ async def get_auth_user(request):
     user = await _run(_sync_get_user, user_id)
     if not user:
         return None, 401
-    if user.get("is_fired"):
+    if user.get("is_fired") or (user.get("position") or "").strip().casefold()=="тайный гость":
         return None, "fired"
     return user, None
 

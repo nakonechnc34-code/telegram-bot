@@ -64,6 +64,7 @@ from routes.content import routes as content_routes
 from routes.core import routes as core_routes
 from routes.academy import routes as academy_routes
 from routes.sales import routes as sales_routes
+from routes.control import routes as control_routes, schedule_worker
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -149,6 +150,16 @@ def run_migrations():
                 cur.execute((migrations / "004_sales_order_type_settings.sql").read_text(encoding="utf-8"))
                 cur.execute((migrations / "005_sales_sessions.sql").read_text(encoding="utf-8"))
                 cur.execute((migrations / "006_timesheet_sessions.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "007_control_sessions.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "008_control_templates.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "009_control_checks.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "010_control_task_history.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "011_control_haccp.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "012_control_schedules.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "013_control_documents.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "014_control_photos.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "015_control_task_photos.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "016_control_guest.sql").read_text(encoding="utf-8"))
                 cur.execute("SELECT 1 FROM users LIMIT 1")
                 if cur.fetchone() is None:
                     if not config.LOGIN_RE.fullmatch(config.ADMIN_LOGIN):
@@ -518,6 +529,7 @@ app.add_routes(content_routes)
 app.add_routes(core_routes)
 app.add_routes(academy_routes)
 app.add_routes(sales_routes)
+app.add_routes(control_routes)
 
 app.router.add_get("/", handle_index)
 app.router.add_get("/admin", handle_admin_page)
@@ -531,6 +543,19 @@ app.router.add_get("/academy/", handle_academy_page)
 app.router.add_get("/timesheet", handle_timesheet_page)
 app.router.add_get("/timesheet/", handle_timesheet_page)
 app.router.add_get("/timesheet.js", handle_timesheet_js)
+async def handle_control_page(request):
+    return await _handle_html("control.html", _STATIC_FILES_CACHE.setdefault("control.html", {"data": None, "mtime": 0.0}))
+
+async def handle_control_css(request):
+    return await _send_static_file("control.css", "text/css")
+
+async def handle_control_js(request):
+    return await _send_static_file("control.js", "application/javascript")
+
+app.router.add_get("/control.css", handle_control_css)
+app.router.add_get("/control.js", handle_control_js)
+app.router.add_get("/control", handle_control_page)
+app.router.add_get("/control/", handle_control_page)
 app.router.add_get("/sales", handle_sales_page)
 app.router.add_get("/sales/", handle_sales_page)
 app.router.add_get("/sales.css", handle_sales_css)
@@ -572,10 +597,13 @@ async def main():
     logging.info(f"✅ Server on port {port}")
     logging.info(f"👤 Admin: {config.ADMIN_LOGIN}")
 
+    control_worker = asyncio.create_task(schedule_worker(app))
     try:
         await asyncio.Event().wait()
     finally:
         logging.info("🛑 Завершение работы сервера...")
+        control_worker.cancel()
+        await asyncio.gather(control_worker, return_exceptions=True)
         await runner.cleanup()
         await close_async_pool()
         await asyncio.to_thread(close_pool)

@@ -86,7 +86,7 @@ function renderMatrix(){
             groups.get(key).push(employee);
         }
     }
-    const totalRow=(name,hours)=>{const row=table.insertRow();row.className=hours===''?'group-row restaurant-row':'group-row total-row';const label=row.insertCell();label.className='employee-col';label.textContent=name;const blank=row.insertCell();blank.colSpan=dates.length;row.insertCell().textContent=hours===''?'':String(Math.round(hours*100)/100);};
+    const totalRow=(name,hours)=>{const row=table.insertRow();row.className=hours===''?'group-row restaurant-row':'group-row total-row';const label=row.insertCell();label.className='employee-col';label.textContent=name;const blank=row.insertCell();blank.colSpan=dates.length;row.insertCell().textContent=hours===''?'':period.value==='week'?`${Math.floor(hours/60)}:${String(hours%60).padStart(2,'0')}`:String(Math.round(hours/60*100)/100);};
     for(const [key,employees] of groups){
         totalRow(restaurantNames.get(key)||'Без ресторана','');
         let total=0;
@@ -98,7 +98,8 @@ function renderMatrix(){
             for(const date of dates){
                 const legacy=employee.data_by_date?.[date]||{};
                 const imports=employee.imported_by_date?.[date]||{};
-                const cell=imports[key]||legacy;
+                const cell=imports[key]||(Object.keys(imports).length?{}:legacy);
+                if(Object.keys(imports).length&&!imports[key]){row.insertCell().textContent='—';continue;}
                 const actual=cell.rk||employee.main_restaurant_key||'';
                 const td=row.insertCell();
                 if(actual!==key){td.textContent='—';continue;}
@@ -107,9 +108,9 @@ function renderMatrix(){
                 if(cell.s&&cell.s!=='work')button.classList.add('has-status');else if(Number(cell.h)>0)button.classList.add('has-hours');
                 button.setAttribute('aria-label',employee.full_name+' '+date+' '+button.textContent);
                 if(cell.imported){button.disabled=true;button.title='Из отчёта iiko';}else button.addEventListener('click',()=>openEditor(employee,cell,date));td.append(button);
-                if(cell.s==='work')hours+=Number(cell.h)||0;
+                if(cell.s==='work')hours+=cell.imported?cell.minutes:Math.round((Number(cell.h)||0)*60);
             }
-            const totalCell=row.insertCell();totalCell.className='hours-total';totalCell.textContent=String(Math.round(hours*100)/100);total+=hours;
+            const totalCell=row.insertCell();totalCell.className='hours-total';totalCell.textContent=period.value==='week'?`${Math.floor(hours/60)}:${String(hours%60).padStart(2,'0')}`:String(Math.round(hours/60*100)/100);total+=hours;
         }
         totalRow('Итого по ресторану',total);
     }
@@ -166,7 +167,7 @@ async function deleteAttendance(record, button) {
     const restaurant = restaurantNames.get(record.restaurant_key) || record.restaurant_key;
     if (!window.confirm('Удалить отчёт №' + record.id + '?\nРесторан: ' + restaurant +
         '\nПериод: ' + record.date_from + ' — ' + record.date_to +
-        '\nБудут удалены только записи этого отчёта для указанного ресторана. Действующий табель и зарплата не изменятся.')) return;
+        '\nБудут удалены только записи этого отчёта для указанного ресторана. Недельный табель обновится. Зарплата не изменится.')) return;
     deletingAttendance = true;
     button.disabled = true;
     const status = byId('attendance-history-status');
@@ -176,6 +177,7 @@ async function deleteAttendance(record, button) {
             body: JSON.stringify({import_id: record.id, restaurant_key: record.restaurant_key})
         });
         await loadAttendanceHistory();
+        await loadDay();
     } catch (error) {
         status.textContent = error.message + ' Обновите историю перед повторной попыткой.';
     } finally {
@@ -299,7 +301,7 @@ byId('confirm-attendance').addEventListener('click', async () => {
         byId('upload-status').textContent = result.ok
             ? 'Отчёт №' + result.import_id + ' сохранён. Записей: ' + result.success_count + '. Зарплата не изменена.'
             : (result.errors || ['Отчёт не сохранён']).join('\n');
-        if (result.ok) await loadAttendanceHistory();
+        if (result.ok) { await loadAttendanceHistory(); await loadDay(); }
     } catch (error) {
         if (verified.version === previewVersion) byId('upload-status').textContent = error.message + ' Проверьте историю загрузок перед повторной отправкой.';
     } finally {

@@ -280,7 +280,7 @@ async def handle_timesheet_matrix(request):
     except (ValueError, TypeError, OverflowError):
         return web.json_response({"error": "invalid_dates"}, status=400)
 
-    employees = await _run(_sync_timesheet_matrix, user["user_id"], date_from, date_to, body.get("period") == "week")
+    employees = await _run(_sync_timesheet_matrix, user["user_id"], date_from, date_to, body.get("period") in ("week", "month"))
     return web.json_response({"employees": employees})
 
 

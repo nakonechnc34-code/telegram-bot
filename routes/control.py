@@ -1,5 +1,7 @@
 """Independent CONTROL authentication and scoped restaurant directory."""
 import hashlib
+import hmac
+import os
 import json
 import secrets
 from aiohttp import web
@@ -7,7 +9,7 @@ import db
 from middleware.rate_limit import get_client_ip
 from utils.security import validate_login_data, verify_password, _check_rate_limit, _reset_rate_limit
 from routes.auth import _sync_get_user_by_login
-from utils.auth_helpers import _is_tu, _sync_get_tu_rests
+from utils.auth_helpers import _is_tu, _sync_get_tu_rests, _is_hr_or_super
 
 routes = web.RouteTableDef()
 NO_STORE = {"Cache-Control": "no-store"}
@@ -261,6 +263,13 @@ def score_check(definition, answers, photo_keys=()):
             violations.append((key,q))
     return (round(100*earned/possible,2) if possible else None), violations
 
+def guest_alias(user_id):
+    secret = os.environ.get("CONTROL_GUEST_ALIAS_SECRET")
+    if not secret:
+        raise web.HTTPServiceUnavailable(text="Guest alias configuration required")
+    return hmac.new(secret.encode(), str(user_id).encode(), hashlib.sha256).hexdigest()
+
+
 @routes.post("/api/control/guests")
 async def list_guests(request):
     user = await control_user(request)
@@ -268,8 +277,15 @@ async def list_guests(request):
         return web.json_response({"error": "Доступ запрещён"}, status=403, headers=NO_STORE)
     async with db.get_pool(request.app).acquire() as conn:
         rows = await conn.fetch("SELECT user_id, full_name, position, is_fired, is_super_admin, permissions FROM users WHERE lower(btrim(position)) = $1 ORDER BY full_name, user_id", "тайный гость")
-    guests = [{"id": str(row["user_id"]), "name": row["full_name"] or str(row["user_id"])}
-              for row in rows if is_mystery_guest(dict(row)) and control_allowed(dict(row))]
+    guests = []
+    for row in rows:
+        if not is_mystery_guest(dict(row)) or not control_allowed(dict(row)):
+            continue
+        if _is_hr_or_super(user):
+            guests.append({"id": str(row["user_id"]), "name": row["full_name"] or "Тайный гость"})
+        else:
+            guests.append({"id": guest_alias(row["user_id"]), "name": "Тайный гость " + guest_alias(row["user_id"])[:10]})
+    guests.sort(key=lambda item: item["name"])
     return web.json_response({"guests": guests}, headers=NO_STORE)
 
 
@@ -301,6 +317,11 @@ async def assign_check(request):
             return web.json_response({"error":"Шаблон требует ещё не реализованных типов ответов или доказательств"},status=400,headers=NO_STORE)
         if definition.get("category")=="mystery_guest":
             guest=body.get("guest_id")
+            if not _is_hr_or_super(user):
+                if not isinstance(guest, str) or len(guest) != 64:
+                    return web.json_response({"error":"Выберите тайного гостя"},status=400,headers=NO_STORE)
+                candidates = await conn.fetch("SELECT user_id FROM users WHERE lower(btrim(position)) = $1", "тайный гость")
+                guest = next((r["user_id"] for r in candidates if hmac.compare_digest(guest_alias(r["user_id"]), guest)), None)
             if isinstance(guest, str) and 1 <= len(guest) <= 19 and guest.isascii() and guest.isdecimal():
                 guest = int(guest)
             if type(guest) is not int or not 0<guest<2**63:

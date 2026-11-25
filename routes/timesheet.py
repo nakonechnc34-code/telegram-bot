@@ -162,16 +162,20 @@ def _sync_timesheet_matrix(user_id, date_from, date_to):
             records = cur.fetchall()
 
             data_map = {eid: {} for eid in emp_ids}
+            full_date_map = {eid: {} for eid in emp_ids}
             for r in records:
-                data_map[r["user_id"]][str(r["work_date"].day)] = {
+                cell = {
                     "h": float(r["hours"] or 0),
                     "s": r["status"] or "work",
                     "rk": r["restaurant_key"],
                     "st": r["st"] or "",
                     "et": r["et"] or ""
                 }
+                data_map[r["user_id"]][str(r["work_date"].day)] = cell
+                full_date_map[r["user_id"]][r["work_date"].isoformat()] = cell
             for e in employees:
                 e["data"] = data_map[e["user_id"]]
+                e["data_by_date"] = full_date_map[e["user_id"]]
             return employees
 
 

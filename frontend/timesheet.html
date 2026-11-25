@@ -19,6 +19,15 @@
     dialog { max-width: min(90vw, 500px); border: 1px solid #c5cedd; border-radius: 12px; }
     #edit-form label { flex: 1 1 100%; justify-content: space-between; }
     [role="status"] { white-space: pre-line; }
+    #matrix-scroll{max-height:65vh;min-width:0;padding:0;overscroll-behavior-x:contain}
+    #matrix-scroll table{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0}
+    #matrix-scroll th,#matrix-scroll td{text-align:center;min-width:48px;padding:6px}
+    #matrix-scroll th{position:sticky;top:0;background:#f4f6fa;z-index:2}
+    #matrix-scroll .employee-col{position:sticky;left:0;min-width:160px;max-width:220px;text-align:left;background:white;z-index:1}
+    #matrix-scroll th.employee-col{z-index:3;background:#f4f6fa}
+    #matrix-scroll .group-row td{background:#e6eaf1;font-weight:bold}
+    #matrix-scroll .cell-button{width:100%;min-height:36px;border:1px solid #dce2ed;border-radius:5px;background:white}
+    #matrix-scroll .weekend{color:#b91c1c}
     [hidden]{display:none!important}
     body{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:100vh}
     aside{background:#26354a;color:white;padding:24px 16px}
@@ -41,13 +50,13 @@
   <div id="future-panel" hidden><section><p>Раздел готовится к подключению. Данные и настройки пока не изменяются.</p></section></div>
   <div id="timesheet-panel" hidden>
   <section class="toolbar" aria-label="Дата и экспорт">
-    <label>Дата <input type="date" id="date" required></label>
+    <label>Период <select id="period"><option value="week">Неделя</option><option value="month">Месяц</option></select></label><button id="prev" type="button" aria-label="Предыдущий период">←</button><label>Дата <input type="date" id="date" required></label><button id="next" type="button" aria-label="Следующий период">→</button><strong id="period-title"></strong><label>Ресторан <select id="restaurant-filter"><option value="">Все рестораны</option></select></label>
     <button id="export" type="button">Скачать Excel</button>
   </section>
   <p id="status" role="status"></p>
-  <section class="table">
+  <p>В — отпуск, Б — больничный, Н — неявка. Итог — фактически отработанные часы.</p><section class="table" id="matrix-scroll">
     <table>
-      <thead><tr><th>Сотрудник</th><th>Ресторан</th><th>Статус</th><th>Часы</th><th>Смена</th><th></th></tr></thead>
+      <thead id="matrix-head"></thead>
       <tbody id="employees"></tbody>
     </table>
   </section>

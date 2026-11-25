@@ -1385,3 +1385,58 @@ async def handle_employee_payment_summary(request):
     if summary is None:
         return web.json_response({"error": "user_not_found"}, status=404)
     return web.json_response(summary)
+
+
+def _sync_approval_transition(user, key, month, action, comment, revision):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT pg_advisory_xact_lock(814726, 2)")
+            cur.execute("SELECT territory_manager_id FROM restaurants WHERE key=%s", (key,))
+            restaurant = cur.fetchone()
+            if not restaurant or not _timesheet_role_allowed(user):
+                return 403, {"error": "forbidden"}
+            privileged = _is_hr_or_super(user)
+            if not privileged and (restaurant["territory_manager_id"] != user["user_id"] or action != "submit"):
+                return 403, {"error": "forbidden"}
+            cur.execute("INSERT INTO timesheet_approvals(restaurant_key,month_start) VALUES (%s,%s) ON CONFLICT DO NOTHING", (key,month))
+            cur.execute("SELECT status,revision FROM timesheet_approvals WHERE restaurant_key=%s AND month_start=%s FOR UPDATE", (key,month))
+            row = cur.fetchone()
+            transitions = {("draft","submit"):"pending", ("returned","submit"):"pending",
+                           ("pending","approve"):"approved", ("pending","return"):"returned",
+                           ("approved","reopen"):"returned"}
+            target = transitions.get((row["status"],action))
+            if not target or revision != row["revision"]:
+                return 409, {"error":"approval_conflict"}
+            next_revision = revision + 1
+            cur.execute("UPDATE timesheet_approvals SET status=%s,revision=%s,updated_by=%s,updated_at=NOW() WHERE restaurant_key=%s AND month_start=%s",
+                        (target,next_revision,user["user_id"],key,month))
+            cur.execute("INSERT INTO timesheet_approval_history(restaurant_key,month_start,revision,previous_status,new_status,actor_id,comment) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                        (key,month,next_revision,row["status"],target,user["user_id"],comment))
+            return 200, {"status":target,"revision":next_revision}
+
+
+@routes.post('/api/timesheet/approval/transition')
+async def handle_approval_transition(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    try:
+        body = await request.json()
+        key, action = body["restaurant_key"], body["action"]
+        month = date.fromisoformat(body["month_start"])
+        revision = body["revision"]
+        comment = body.get("comment", "")
+        if not isinstance(key,str) or not key or len(key)>255 or month.day != 1:
+            raise ValueError()
+        if action not in ("submit","approve","return","reopen") or type(revision) is not int or not 0 <= revision < 2147483647:
+            raise ValueError()
+        if not isinstance(comment,str) or len(comment)>2000 or (action in ("return","reopen") and not comment.strip()):
+            raise ValueError()
+    except (ValueError, TypeError, KeyError, OverflowError):
+        return web.json_response({"error":"invalid_approval"},status=400)
+    # Approval is disabled until immutable accrual snapshots and edit locks are implemented.
+    if action == "approve":
+        return web.json_response({"error":"approval_not_ready"},status=409)
+    status, result = await _run(_sync_approval_transition,user,key,month,action,comment.strip(),revision)
+    return web.json_response(result,status=status,headers={"Cache-Control":"no-store"})
+

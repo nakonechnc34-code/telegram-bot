@@ -597,6 +597,37 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
             "error_count": len(errors), "errors": errors[:50]}
 
 
+def _sync_stage_attendance(user, rows, default_rest_key=None):
+    """Store a validated batch for review, without affecting legacy payroll."""
+    from utils.attendance_minutes import shift_interval
+    result = _sync_preview_attendance(user, rows, default_rest_key)
+    if not result["ok"] or not result["records"]:
+        return {"ok": False, "errors": result["errors"] or ["Нет записей для загрузки"]}
+    records = result["records"]
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("INSERT INTO attendance_imports (uploaded_by, date_from, date_to) VALUES (%s, %s, %s) RETURNING id",
+                        (user["user_id"], min(r["date"] for r in records), max(r["date"] for r in records)))
+            import_id = cur.fetchone()["id"]
+            for record in records:
+                cur.execute("SELECT user_id FROM users WHERE personnel_number IS NOT NULL AND BTRIM(personnel_number::text) = %s AND COALESCE(is_fired, FALSE) = FALSE FOR SHARE",
+                            (record["personnel_number"],))
+                employees = cur.fetchall()
+                if len(employees) != 1:
+                    raise ValueError("Employee changed during import")
+                cur.execute("""INSERT INTO attendance_import_days
+                    (import_id, user_id, work_date, restaurant_key, status, worked_minutes)
+                    VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
+                    (import_id, employees[0]["user_id"], record["date"], record["restaurant_key"],
+                     record.get("status", "work"), record["minutes"]))
+                day_id = cur.fetchone()["id"]
+                for start, end in sorted({shift_interval(v) for v in record["shifts"]}):
+                    cur.execute("INSERT INTO attendance_import_intervals (day_id, start_minute, end_minute) VALUES (%s, %s, %s)",
+                                (day_id, start, end))
+    return {"ok": True, "import_id": import_id, "success_count": len(records), "staged": True}
+
+
+@routes.post('/api/timesheet/import_attendance/stage')
 @routes.post('/api/timesheet/import_attendance/preview')
 @routes.post('/api/timesheet/import_attendance')
 async def handle_import_attendance(request):
@@ -631,6 +662,15 @@ async def handle_import_attendance(request):
 
     if request.path.endswith("/preview"):
         result = await _run(_sync_preview_attendance, user, rows, default_rest)
+        return web.json_response(result, headers={"Cache-Control": "no-store"})
+
+    if request.path.endswith("/stage"):
+        if not (_is_hr_or_super(user) or _is_tu(user)):
+            return web.json_response({"error": "Нет права на загрузку"}, status=403)
+        try:
+            result = await _run(_sync_stage_attendance, user, rows, default_rest)
+        except ValueError:
+            return web.json_response({"error": "Данные сотрудников изменились. Повторите проверку."}, status=409)
         return web.json_response(result, headers={"Cache-Control": "no-store"})
 
     success, errors = await _run(_sync_import_attendance, user, rows, default_rest)

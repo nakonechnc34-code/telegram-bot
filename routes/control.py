@@ -301,6 +301,8 @@ async def assign_check(request):
             return web.json_response({"error":"Шаблон требует ещё не реализованных типов ответов или доказательств"},status=400,headers=NO_STORE)
         if definition.get("category")=="mystery_guest":
             guest=body.get("guest_id")
+            if isinstance(guest, str) and 1 <= len(guest) <= 19 and guest.isascii() and guest.isdecimal():
+                guest = int(guest)
             if type(guest) is not int or not 0<guest<2**63:
                 return web.json_response({"error":"Укажите ID тайного гостя"},status=400,headers=NO_STORE)
             target=await conn.fetchrow("SELECT * FROM users WHERE user_id=$1",guest)

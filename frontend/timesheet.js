@@ -157,20 +157,52 @@ editForm.addEventListener('submit', async event => {
     }
 });
 
+let previewVersion = 0;
+function clearAttendancePreview() {
+    previewVersion++;
+    byId('attendance-preview').hidden = true;
+    byId('preview-rows').replaceChildren();
+    byId('preview-summary').textContent = '';
+    byId('upload-status').textContent = '';
+}
+byId('import-form').addEventListener('change', clearAttendancePreview);
 byId('import-form').addEventListener('submit', async event => {
     event.preventDefault();
+    clearAttendancePreview();
+    const version = previewVersion;
     const button = event.submitter;
     button.disabled = true;
-    byId('upload-status').textContent = 'Загрузка…';
+    byId('upload-status').textContent = 'Проверка файла…';
     try {
         const data = new FormData(event.currentTarget);
-        const params = new URLSearchParams({ restaurant_key: data.get('restaurant_key') });
+        const params = new URLSearchParams({restaurant_key: data.get('restaurant_key')});
         data.delete('restaurant_key');
-        const result = await api('/api/timesheet/import_attendance?' + params, { body: data });
-        await loadDay();
-        byId('upload-status').textContent = ['Импортировано записей: ' + result.success_count, ...result.errors].join('\n');
+        const result = await api('/api/timesheet/import_attendance/preview?' + params, {body: data});
+        if (version !== previewVersion) return;
+        const records = result.records;
+        const duration = n => Math.floor(n / 60) + ' ч ' + (n % 60) + ' мин';
+        byId('preview-summary').textContent = [
+            'Сотрудников: ' + new Set(records.map(r => r.personnel_number)).size,
+            'Ресторанов: ' + new Set(records.map(r => r.restaurant_key)).size,
+            'Интервалов: ' + records.reduce((n,r) => n + r.shifts.length, 0),
+            'Итого: ' + (result.total_minutes === null ? 'не рассчитано' : duration(result.total_minutes))
+        ].join(' · ');
+        const fragment = document.createDocumentFragment();
+        for (const record of records) {
+            const row = document.createElement('tr');
+            for (const value of [record.personnel_number, record.date, restaurantNames.get(record.restaurant_key) || record.restaurant_key,
+                record.shifts.join(', ') || labels[record.status] || record.status, duration(record.minutes)]) {
+                const cell = document.createElement('td');
+                cell.textContent = value;
+                row.append(cell);
+            }
+            fragment.append(row);
+        }
+        byId('preview-rows').replaceChildren(fragment);
+        byId('attendance-preview').hidden = false;
+        byId('upload-status').textContent = [result.ok ? 'Проверка завершена. Данные не сохранены.' : 'Ошибок: ' + result.error_count, ...result.errors].join('\n');
     } catch (error) {
-        byId('upload-status').textContent = error.message;
+        if (version === previewVersion) byId('upload-status').textContent = error.message;
     } finally {
         button.disabled = false;
     }
@@ -198,6 +230,7 @@ dateInput.value = [today.getFullYear(), String(today.getMonth() + 1).padStart(2,
     String(today.getDate()).padStart(2, '0')].join('-');
 for (const [key, label] of Object.entries(labels)) editForm.elements.status.add(new Option(label, key));
 function clearSession(){
+    clearAttendancePreview();
     sessionStorage.removeItem('wokker_timesheet_token');
     token=null;loadVersion++;employeesData=[];loadedRange=null;table.replaceChildren();
     if(editor.open)editor.close();

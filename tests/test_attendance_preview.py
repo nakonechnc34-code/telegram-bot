@@ -145,3 +145,27 @@ def test_saved_attendance_conflicts():
     cursor.fetchall.return_value = [dict(saved, work_date="2026-11-17",
         status="sick", start_minute=None, end_minute=None)]
     assert _attendance_saved_conflict(cursor, [record], {"021": 1})
+
+
+def test_excel_to_preview_preserves_minutes_and_personnel_number():
+    from datetime import date
+    from io import BytesIO
+    from openpyxl import Workbook
+    from routes.timesheet import _parse_excel_rows
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Отчёт посещаемости"])
+    ws.append(["Табельный номер", "Ресторан", date(2026, 11, 16), date(2026, 11, 17)])
+    ws.append(["021", "A", "09:05-12:20", "22:10-06:05"])
+    ws.append([None, "A", "11:50-13:10", None])
+    ws.append([None, "B", "14:00-14:35", None])
+    buf = BytesIO()
+    wb.save(buf)
+    rows = _parse_excel_rows(buf.getvalue())
+    assert len(rows) == 4
+    assert all(row[1] == "021" for row in rows)
+    result = preview(rows)
+    assert result["ok"]
+    assert result["total_minutes"] == 755
+    assert sorted(record["minutes"] for record in result["records"]) == [35, 245, 475]

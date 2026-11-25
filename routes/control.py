@@ -610,3 +610,36 @@ async def pause_schedule(request):
     async with db.get_pool(request.app).acquire() as conn:
         sid=await conn.fetchval("UPDATE control_schedules SET active=FALSE WHERE id=$1 RETURNING id",b["id"])
     return web.json_response({"ok":bool(sid)},status=200 if sid else 404,headers=NO_STORE)
+
+
+@routes.post("/api/control/academy/statistics")
+async def academy_statistics(request):
+    user=await control_user(request)
+    if not user or not task_manager(user):
+        return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
+    try:
+        body=await request.json()
+        if not isinstance(body,dict):
+            raise ValueError()
+        key=body.get("restaurant_key")
+        if key is not None and (not isinstance(key,str) or not key or len(key)>200):
+            raise ValueError()
+    except (ValueError,TypeError):
+        return web.json_response({"error":"invalid_filter"},status=400,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    if key is not None:
+        if scope is not None and key not in scope:
+            return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
+        scope=[key]
+    async with db.get_pool(request.app).acquire() as conn:
+        rows=await conn.fetch("""SELECT u.user_id,u.full_name,u.restaurant_key,
+            COUNT(DISTINCT r.course_id) AS attempted_courses,
+            COUNT(DISTINCT r.course_id) FILTER (WHERE r.passed) AS passed_courses,
+            COUNT(r.course_id) AS attempts
+            FROM users u LEFT JOIN academy_test_results r ON r.user_id=u.user_id
+            WHERE NOT COALESCE(u.is_fired,FALSE)
+            AND ($1::text[] IS NULL OR u.restaurant_key=ANY($1))
+            GROUP BY u.user_id,u.full_name,u.restaurant_key
+            ORDER BY u.restaurant_key,u.full_name,u.user_id LIMIT 1001""",scope)
+        courses=await conn.fetchval("SELECT COUNT(*) FROM academy_courses WHERE COALESCE(is_published,TRUE)")
+    return web.json_response({"employees":[dict(r) for r in rows[:1000]],"published_courses":courses,"truncated":len(rows)>1000},headers=NO_STORE)

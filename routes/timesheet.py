@@ -560,15 +560,21 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
     records = [{"personnel_number": number, "date": day, "restaurant_key": key,
                 "minutes": worked_minutes(values), "shifts": values}
                for (number, day, key), values in sorted(groups.items())]
-    by_day = {}
+    by_employee = {}
     for (number, day, key), values in groups.items():
-        by_day.setdefault((number, day), []).extend((key, *shift_interval(v)) for v in values)
-    for intervals in by_day.values():
-        intervals.sort(key=lambda item: item[1])
-        for i, (key, start, end) in enumerate(intervals):
-            if any(other != key and left < end and start < right for other, left, right in intervals[i+1:]):
-                errors.append("Пересечение смен в разных ресторанах")
-                break
+        offset = date.fromisoformat(day).toordinal() * 1440
+        for value in values:
+            start, end = shift_interval(value)
+            by_employee.setdefault(number, []).append((offset + start, offset + end, day, key))
+    for intervals in by_employee.values():
+        intervals.sort()
+        for i, (start, end, day, key) in enumerate(intervals):
+            for left, right, other_day, other_key in intervals[i+1:]:
+                if left >= end:
+                    break
+                if start < right and (other_key != key or other_day != day):
+                    errors.append("Пересечение смен в разных ресторанах или рабочих датах")
+                    break
     return {"ok": not errors, "preview": True, "records": records,
             "total_minutes": sum(r["minutes"] for r in records) if not errors else None,
             "error_count": len(errors), "errors": errors[:50]}

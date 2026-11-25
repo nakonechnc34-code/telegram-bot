@@ -248,3 +248,30 @@ def test_legacy_import_endpoint_disabled(monkeypatch):
     req = request()
     req.path = "/api/timesheet/import_attendance"
     assert asyncio.run(timesheet.handle_import_attendance(req)).status == 410
+
+
+def test_shared_timesheet_export_requires_permission(monkeypatch):
+    employee = {"user_id": 123}
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(employee, None)))
+    monkeypatch.setattr(timesheet, "_sync_user_has_perm", Mock(return_value=False))
+    from aiohttp import web
+    with pytest.raises(web.HTTPForbidden):
+        asyncio.run(timesheet.handle_timesheet_export_excel(request()))
+
+
+def test_personal_export_escapes_formula(monkeypatch):
+    import io
+    from openpyxl import load_workbook
+    employee = {"user_id": 123}
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(employee, None)))
+    run = AsyncMock(return_value=[{"full_name": "=1+1", "position": "Cook",
+        "restaurant_name": "A", "total_hours": 8.5, "rate": 350, "total_salary": 2975}])
+    monkeypatch.setattr(timesheet, "_run", run)
+    req = request()
+    req.query = {"only_me": "true", "date_from": "2026-11-01", "date_to": "2026-11-30"}
+    response = asyncio.run(timesheet.handle_timesheet_export_excel(req))
+    assert response.status == 200
+    run.assert_awaited_once_with(timesheet._sync_reports, 123, "2026-11-01", "2026-11-30", True)
+    sheet = load_workbook(io.BytesIO(response.body)).active
+    assert sheet["A2"].value == "=1+1" and sheet["A2"].data_type == "s"
+    assert sheet["F2"].value == 2975

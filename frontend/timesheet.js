@@ -92,12 +92,14 @@ function renderMatrix(){
             groups.get(key).push(employee);
         }
     }
-    const totalRow=(name,hours)=>{const row=table.insertRow();row.className='group-row';const label=row.insertCell();label.className='employee-col';label.textContent=name;const blank=row.insertCell();blank.colSpan=dates.length;row.insertCell().textContent=hours===''?'':String(Math.round(hours*100)/100);};
+    const totalRow=(name,hours)=>{const row=table.insertRow();row.className=hours===''?'group-row restaurant-row':'group-row total-row';const label=row.insertCell();label.className='employee-col';label.textContent=name;const blank=row.insertCell();blank.colSpan=dates.length;row.insertCell().textContent=hours===''?'':String(Math.round(hours*100)/100);};
     for(const [key,employees] of groups){
         totalRow(restaurantNames.get(key)||'Без ресторана','');
         let total=0;
         for(const employee of employees){
-            const row=table.insertRow(),name=row.insertCell();name.className='employee-col';name.textContent=employee.full_name+' · '+(employee.position||'');
+            const row=table.insertRow(),name=row.insertCell();name.className='employee-col';row.className='employee-row';
+            const fullName=document.createElement('span');fullName.className='employee-name';fullName.textContent=employee.full_name;
+            const position=document.createElement('span');position.className='employee-position';position.textContent=employee.position||'';name.append(fullName,position);
             let hours=0;
             for(const date of dates){
                 const cell=employee.data_by_date?.[date]||{};
@@ -106,11 +108,12 @@ function renderMatrix(){
                 if(actual!==key){td.textContent='—';continue;}
                 const button=document.createElement('button');button.type='button';button.className='cell-button';
                 button.textContent=({vacation:'В',sick:'Б',absent:'Н'})[cell.s]??(cell.h||'—');
+                if(cell.s&&cell.s!=='work')button.classList.add('has-status');else if(Number(cell.h)>0)button.classList.add('has-hours');
                 button.setAttribute('aria-label',employee.full_name+' '+date+' '+button.textContent);
                 button.addEventListener('click',()=>openEditor(employee,cell,date));td.append(button);
                 if(cell.s==='work')hours+=Number(cell.h)||0;
             }
-            row.insertCell().textContent=String(Math.round(hours*100)/100);total+=hours;
+            const totalCell=row.insertCell();totalCell.className='hours-total';totalCell.textContent=String(Math.round(hours*100)/100);total+=hours;
         }
         totalRow('Итого по ресторану',total);
     }
@@ -120,7 +123,8 @@ async function loadDay(){
     const version=++loadVersion;
     if(!dateInput.value)return;
     const dates=periodDates();
-    byId('period-title').textContent=dates[0]+' — '+dates[dates.length-1];
+    const formatDate=d=>d.split('-').reverse().join('.');
+    byId('period-title').textContent=formatDate(dates[0])+' — '+formatDate(dates[dates.length-1]);
     statusLine.textContent='Загрузка…';
     try{
         const {employees}=await api('/api/timesheet/matrix',{body:JSON.stringify({date_from:dates[0],date_to:dates[dates.length-1]})});

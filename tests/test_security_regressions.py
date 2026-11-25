@@ -309,3 +309,26 @@ def test_save_cell_role_scope(monkeypatch, position, admin, super_admin, territo
     assert timesheet._sync_save_cell(42, 123, "2026-11-20", 8, "work", "a") == expected
     writes = [call for call in cursor.execute.call_args_list if call.args[0].lstrip().startswith(("INSERT", "DELETE", "UPDATE"))]
     assert bool(writes) == (expected is True)
+
+
+def test_ordinary_employee_cannot_write_timesheet_without_permission(monkeypatch):
+    from aiohttp import web
+    employee = {"user_id": 123, "position": "Повар", "restaurant_key": "a"}
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(employee, None)))
+    monkeypatch.setattr(timesheet, "_sync_user_has_perm", Mock(return_value=False))
+    run = AsyncMock()
+    monkeypatch.setattr(timesheet, "_run", run)
+    with pytest.raises(web.HTTPForbidden):
+        asyncio.run(timesheet.handle_timesheet_save_cell(request({"user_id": 123, "work_date": "2026-11-20", "hours": 8})))
+    run.assert_not_awaited()
+
+
+def test_save_cell_returns_403_on_transaction_scope_denial(monkeypatch):
+    employee = {"user_id": 42, "position": "Управляющий сменой", "restaurant_key": "a"}
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(employee, None)))
+    monkeypatch.setattr(timesheet, "_sync_user_has_perm", Mock(return_value=True))
+    run = AsyncMock(side_effect=[True, "forbidden"])
+    monkeypatch.setattr(timesheet, "_run", run)
+    response = asyncio.run(timesheet.handle_timesheet_save_cell(request({"user_id": 123, "work_date": "2026-11-20", "hours": 0})))
+    assert response.status == 403
+    assert json.loads(response.body)["error"] == "forbidden_restaurant"

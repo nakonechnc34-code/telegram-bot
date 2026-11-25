@@ -293,3 +293,19 @@ def test_save_cell_allows_existing_local_restaurant(monkeypatch):
     cursor.fetchone.side_effect = [None, (42, "Управляющий сменой", "a"), ("a",), ("a",)]
     assert timesheet._sync_save_cell(42, 123, "2026-11-20", 8, "work", "a") is True
     assert cursor.execute.call_args.args[0].startswith("INSERT")
+
+
+@pytest.mark.parametrize("position,admin,super_admin,territory,existing,expected", [
+    ("HR", True, False, [], "b", True),
+    ("", True, True, [], "b", True),
+    ("Территориальный управляющий", False, False, [("a",), ("b",)], "b", True),
+    ("Территориальный управляющий", False, False, [("a",)], "b", "forbidden"),
+])
+def test_save_cell_role_scope(monkeypatch, position, admin, super_admin, territory, existing, expected):
+    cursor = mock_cursor(timesheet, monkeypatch)
+    cursor.description = [(k,) for k in ("user_id", "position", "restaurant_key", "is_admin", "is_super_admin")]
+    cursor.fetchone.side_effect = [None, (42, position, "a", admin, super_admin), ("a",), (existing,)]
+    cursor.fetchall.return_value = territory
+    assert timesheet._sync_save_cell(42, 123, "2026-11-20", 8, "work", "a") == expected
+    writes = [call for call in cursor.execute.call_args_list if call.args[0].lstrip().startswith(("INSERT", "DELETE", "UPDATE"))]
+    assert bool(writes) == (expected is True)

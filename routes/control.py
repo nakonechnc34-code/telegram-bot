@@ -426,6 +426,19 @@ async def change_task(request):
                     status=task_transition(row["status"],action,manager,row["assignee_id"]==user["user_id"],comment)
                 except ValueError as exc:
                     return web.json_response({"error":str(exc)},status=409,headers=NO_STORE)
+                if action=="submit":
+                    import base64
+                    try:
+                        encoded=body.get("photo")
+                        if not isinstance(encoded,str) or len(encoded)>6990510:
+                            raise ValueError()
+                        data=base64.b64decode(encoded,validate=True)
+                        mime=photo_content_type(data)
+                    except (ValueError,TypeError):
+                        return web.json_response({"error":"Требуется фото устранения JPG или PNG до 5 МБ"},status=400,headers=NO_STORE)
+                    pid=await conn.fetchval("""INSERT INTO control_task_photos(task_id,uploaded_by,content_type,content)
+                        VALUES($1,$2,$3,$4) RETURNING id""",row["id"],user["user_id"],mime,data)
+                    details["photo_id"]=pid
                 await conn.execute("UPDATE control_tasks SET status=$1 WHERE id=$2",status,row["id"])
             details["status"]=status
             await conn.execute("INSERT INTO control_task_history(task_id,actor_id,action,details) VALUES($1,$2,$3,$4::jsonb)",row["id"],user["user_id"],action,json.dumps(details,ensure_ascii=False))
@@ -869,6 +882,42 @@ async def get_check_photo(request):
     async with db.get_pool(request.app).acquire() as conn:
         row=await conn.fetchrow("""SELECT p.content,p.content_type FROM control_check_photos p
             JOIN control_checks c ON c.id=p.check_id WHERE p.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))""",int(request.match_info["id"]),scope)
+    if not row:
+        return web.Response(status=404,headers=NO_STORE)
+    return web.Response(body=row["content"],content_type=row["content_type"],headers={**NO_STORE,"X-Content-Type-Options":"nosniff"})
+
+@routes.post("/api/control/tasks/photos")
+async def task_photos(request):
+    user=await control_user(request)
+    if not user:
+        return web.json_response({"error":"forbidden"},status=403,headers=NO_STORE)
+    try:
+        body=await request.json()
+        tid=body["id"]
+        if type(tid) is not int:
+            raise ValueError()
+    except (ValueError,TypeError,KeyError):
+        return web.json_response({"error":"invalid_id"},status=400,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    async with db.get_pool(request.app).acquire() as conn:
+        task=await conn.fetchrow("""SELECT t.check_id,t.question_key FROM control_tasks t JOIN control_checks c ON c.id=t.check_id
+            WHERE t.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2)) AND ($3::boolean OR t.assignee_id=$4)""",tid,scope,task_manager(user),user["user_id"])
+        if not task:
+            return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
+        before=await conn.fetchrow("SELECT id,uploaded_by,created_at FROM control_check_photos WHERE check_id=$1 AND question_key=$2",task["check_id"],task["question_key"])
+        after=await conn.fetch("SELECT id,uploaded_by,created_at FROM control_task_photos WHERE task_id=$1 ORDER BY id DESC LIMIT 100",tid)
+    return web.json_response({"before":journal_json(before) if before else None,"after":[journal_json(p) for p in after]},headers=NO_STORE)
+
+@routes.get("/api/control/task-photos/{id:\\d+}")
+async def get_task_photo(request):
+    user=await control_user(request)
+    if not user:
+        return web.Response(status=403,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    async with db.get_pool(request.app).acquire() as conn:
+        row=await conn.fetchrow("""SELECT p.content,p.content_type FROM control_task_photos p JOIN control_tasks t ON t.id=p.task_id
+            JOIN control_checks c ON c.id=t.check_id WHERE p.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))
+            AND ($3::boolean OR t.assignee_id=$4)""",int(request.match_info["id"]),scope,task_manager(user),user["user_id"])
     if not row:
         return web.Response(status=404,headers=NO_STORE)
     return web.Response(body=row["content"],content_type=row["content_type"],headers={**NO_STORE,"X-Content-Type-Options":"nosniff"})

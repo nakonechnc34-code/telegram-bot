@@ -525,6 +525,7 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
     """Validate scope and calculate minutes without changing payroll records."""
     from utils.attendance_minutes import shift_interval, worked_minutes
     groups = {}
+    statuses = {}
     errors = []
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -551,6 +552,9 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
         if key not in known or not _restaurant_in_scope(user, key, territory):
             errors.append("Неизвестный или недоступный ресторан")
             continue
+        if raw in ("В", "Б", "Н"):
+            statuses.setdefault((number, day, key), set()).add(raw)
+            continue
         try:
             shift_interval(raw)
         except ValueError:
@@ -560,6 +564,19 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
     records = [{"personnel_number": number, "date": day, "restaurant_key": key,
                 "minutes": worked_minutes(values), "shifts": values}
                for (number, day, key), values in sorted(groups.items())]
+    work_days = {(number, day) for number, day, key in groups}
+    status_days = {}
+    for (number, day, key), values in statuses.items():
+        status_days.setdefault((number, day), []).append((key, values))
+        if len(values) != 1 or (number, day) in work_days:
+            errors.append("Конфликт статуса отсутствия и смены")
+        else:
+            status = {"В": "vacation", "Б": "sick", "Н": "absent"}[next(iter(values))]
+            records.append({"personnel_number": number, "date": day, "restaurant_key": key,
+                            "minutes": 0, "shifts": [], "status": status})
+    for entries in status_days.values():
+        if len(entries) > 1:
+            errors.append("Статус отсутствия указан в нескольких ресторанах")
     by_employee = {}
     for (number, day, key), values in groups.items():
         offset = date.fromisoformat(day).toordinal() * 1440

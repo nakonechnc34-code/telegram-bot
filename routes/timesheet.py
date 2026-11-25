@@ -31,12 +31,15 @@ def _sync_timesheet_session(token):
             cur.execute("SELECT u.* FROM timesheet_sessions s JOIN users u ON u.user_id=s.user_id WHERE s.token_hash=%s AND s.expires_at>NOW()", (_session_hash(token),))
             return cur.fetchone()
 
+def _timesheet_role_allowed(user):
+    return not user.get('is_fired') and (_is_hr_or_super(user) or _is_tu(user))
+
 async def _timesheet_user(request):
     token = await _extract_token(request, allow_query=False)
     user = await _run(_sync_timesheet_session, token) if token else None
     if not user:
         return None, 401
-    if user.get("is_fired") or not _sync_user_has_perm(user, "timesheet_access"):
+    if not _timesheet_role_allowed(user) or not _sync_user_has_perm(user, "timesheet_access"):
         return None, 403
     return user, None
 
@@ -65,7 +68,7 @@ async def timesheet_login(request):
     user = await _run(_sync_get_user_by_login, data["login"])
     if not user or not verify_password(data["password"], user.get("password_hash") or ""):
         return web.json_response({"error":"Неверный логин или пароль"}, status=401)
-    if user.get("is_fired") or not _sync_user_has_perm(user,"timesheet_access"):
+    if not _timesheet_role_allowed(user) or not _sync_user_has_perm(user,"timesheet_access"):
         return web.json_response({"error":"Нет доступа к Табелю"}, status=403)
     _reset_rate_limit(ip)
     token = secrets.token_urlsafe(48)

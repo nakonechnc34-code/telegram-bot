@@ -95,7 +95,7 @@ async def me(request):
     user = await control_user(request)
     if not user:
         return web.json_response({"error": "Доступ запрещён"}, status=403, headers=NO_STORE)
-    return web.json_response({"full_name": user.get("full_name"), "position": user.get("position"), "template_editor":control_template_edit(user),"mystery_guest":is_mystery_guest(user)}, headers=NO_STORE)
+    return web.json_response({"full_name": "Тайный гость" if is_mystery_guest(user) else user.get("full_name"), "position": user.get("position"), "template_editor":control_template_edit(user),"mystery_guest":is_mystery_guest(user)}, headers=NO_STORE)
 
 @routes.post("/api/control/restaurants")
 async def restaurants(request):
@@ -318,7 +318,7 @@ async def assign_check(request):
         if definition.get("category")=="mystery_guest":
             guest=body.get("guest_id")
             if not _is_hr_or_super(user):
-                if not isinstance(guest, str) or len(guest) != 64:
+                if not isinstance(guest, str) or len(guest) != 64 or any(ch not in "0123456789abcdef" for ch in guest):
                     return web.json_response({"error":"Выберите тайного гостя"},status=400,headers=NO_STORE)
                 candidates = await conn.fetch("SELECT user_id FROM users WHERE lower(btrim(position)) = $1", "тайный гость")
                 guest = next((r["user_id"] for r in candidates if hmac.compare_digest(guest_alias(r["user_id"]), guest)), None)
@@ -751,6 +751,7 @@ async def academy_statistics(request):
             COUNT(r.course_id) AS attempts
             FROM users u LEFT JOIN academy_test_results r ON r.user_id=u.user_id
             WHERE NOT COALESCE(u.is_fired,FALSE)
+            AND lower(btrim(COALESCE(u.position, ''))) <> 'тайный гость'
             AND ($1::text[] IS NULL OR u.restaurant_key=ANY($1))
             GROUP BY u.user_id,u.full_name,u.restaurant_key
             ORDER BY u.restaurant_key,u.full_name,u.user_id LIMIT 1001""",scope)
@@ -927,8 +928,8 @@ async def list_check_photos(request):
         return web.json_response({"error":"invalid_id"},status=400,headers=NO_STORE)
     scope=await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
-        rows=await conn.fetch("""SELECT p.id,p.question_key,p.uploaded_by,p.created_at FROM control_check_photos p
-            JOIN control_checks c ON c.id=p.check_id WHERE c.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))""",cid,scope)
+        rows=await conn.fetch("""SELECT p.id,p.question_key,CASE WHEN $3::boolean OR (c.guest_id IS NULL AND NOT EXISTS (SELECT 1 FROM users u WHERE u.user_id=p.uploaded_by AND lower(btrim(COALESCE(u.position, ''))) = 'тайный гость')) THEN p.uploaded_by ELSE NULL END AS uploaded_by,p.created_at FROM control_check_photos p
+            JOIN control_checks c ON c.id=p.check_id WHERE c.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))""",cid,scope,_is_hr_or_super(user))
     return web.json_response({"photos":[journal_json(r) for r in rows]},headers=NO_STORE)
 
 @routes.get("/api/control/photos/{id:\\d+}")
@@ -962,8 +963,8 @@ async def task_photos(request):
             WHERE t.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2)) AND ($3::boolean OR t.assignee_id=$4)""",tid,scope,task_manager(user),user["user_id"])
         if not task:
             return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
-        before=await conn.fetchrow("SELECT id,uploaded_by,created_at FROM control_check_photos WHERE check_id=$1 AND question_key=$2",task["check_id"],task["question_key"])
-        after=await conn.fetch("SELECT id,uploaded_by,created_at FROM control_task_photos WHERE task_id=$1 ORDER BY id DESC LIMIT 100",tid)
+        before=await conn.fetchrow("SELECT p.id,CASE WHEN $3::boolean OR (c.guest_id IS NULL AND NOT EXISTS (SELECT 1 FROM users u WHERE u.user_id=p.uploaded_by AND lower(btrim(COALESCE(u.position, ''))) = 'тайный гость')) THEN p.uploaded_by ELSE NULL END AS uploaded_by,p.created_at FROM control_check_photos p JOIN control_checks c ON c.id=p.check_id WHERE p.check_id=$1 AND p.question_key=$2",task["check_id"],task["question_key"],_is_hr_or_super(user))
+        after=await conn.fetch("SELECT p.id,CASE WHEN $2::boolean OR NOT EXISTS (SELECT 1 FROM users u WHERE u.user_id=p.uploaded_by AND lower(btrim(COALESCE(u.position, ''))) = 'тайный гость') THEN p.uploaded_by ELSE NULL END AS uploaded_by,p.created_at FROM control_task_photos p WHERE p.task_id=$1 ORDER BY p.id DESC LIMIT 100",tid,_is_hr_or_super(user))
     return web.json_response({"before":journal_json(before) if before else None,"after":[journal_json(p) for p in after]},headers=NO_STORE)
 
 @routes.get("/api/control/task-photos/{id:\\d+}")
@@ -1033,7 +1034,7 @@ async def control_analytics(request):
               AND ($3::text[] IS NULL OR c.restaurant_key=ANY($3))
             GROUP BY c.restaurant_key
         )
-        SELECT r.key AS restaurant_key,r.name,r.territory_manager_id,u.full_name AS territory_manager,COALESCE(c.completed,0) AS completed,
+        SELECT r.key AS restaurant_key,r.name,CASE WHEN lower(btrim(COALESCE(u.position, ''))) = 'тайный гость' THEN NULL ELSE r.territory_manager_id END AS territory_manager_id,CASE WHEN lower(btrim(COALESCE(u.position, ''))) = 'тайный гость' THEN NULL ELSE u.full_name END AS territory_manager,COALESCE(c.completed,0) AS completed,
             COALESCE(c.scored,0) AS scored,c.score_sum,
             COALESCE(t.tasks_created,0) AS tasks_created,COALESCE(t.critical_tasks,0) AS critical_tasks,
             COALESCE(o.overdue_now,0) AS overdue_now

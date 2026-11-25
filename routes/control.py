@@ -186,3 +186,120 @@ async def save_template(request):
                 await conn.execute("UPDATE control_templates SET title=$1 WHERE id=$2", definition["title"], tid)
             await conn.execute("INSERT INTO control_template_versions(template_id,version,definition) VALUES($1,$2,$3::jsonb)", tid, version, json.dumps(definition, ensure_ascii=False))
     return web.json_response({"id": tid, "version": version}, headers=NO_STORE)
+
+
+async def restaurant_scope(user):
+    if user.get("is_super_admin"):
+        return None
+    if _is_tu(user):
+        return list(await db._run(_sync_get_tu_rests, user["user_id"]) or [])
+    return [user["restaurant_key"]] if user.get("restaurant_key") else []
+
+def score_check(definition, answers):
+    if not isinstance(answers, dict):
+        raise ValueError("invalid_answers")
+    questions = {f"{i}:{j}": q for i, section in enumerate(definition["sections"]) for j,q in enumerate(section["questions"])}
+    if set(answers) - set(questions):
+        raise ValueError("unknown_question")
+    earned = possible = 0
+    violations = []
+    for key,q in questions.items():
+        answer = answers.get(key)
+        if answer is None:
+            if q.get("required"):
+                raise ValueError("required_answer")
+            continue
+        # Only yes/no/NA checks are supported by this execution stage.
+        if q["type"] != "yes_no_na" or answer not in ("yes","no","na"):
+            raise ValueError("unsupported_answer")
+        if answer == "na":
+            if q.get("critical"):
+                raise ValueError("critical_na")
+            continue
+        if q.get("photo_required") or q.get("comment_required"):
+            raise ValueError("evidence_not_supported")
+        possible += q["weight"]
+        if answer == "yes":
+            earned += q["weight"]
+        else:
+            violations.append((key,q))
+    return (round(100*earned/possible,2) if possible else None), violations
+
+@routes.post("/api/control/checks/assign")
+async def assign_check(request):
+    user = await template_editor(request)
+    if not user:
+        return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
+    from datetime import datetime
+    try:
+        body = await request.json()
+        if not isinstance(body,dict):
+            raise ValueError()
+        key, tid, version = body["restaurant_key"],body["template_id"],body["version"]
+        due = datetime.fromisoformat(body["due_at"])
+        if not isinstance(key,str) or type(tid) is not int or type(version) is not int or due.tzinfo is None:
+            raise ValueError()
+    except (ValueError,TypeError,KeyError):
+        return web.json_response({"error":"invalid_assignment"},status=400,headers=NO_STORE)
+    async with db.get_pool(request.app).acquire() as conn:
+        row = await conn.fetchrow("SELECT id,definition FROM control_template_versions WHERE template_id=$1 AND version=$2",tid,version)
+        if not row or not await conn.fetchval("SELECT 1 FROM restaurants WHERE key=$1",key):
+            return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
+        definition = json.loads(row["definition"]) if isinstance(row["definition"],str) else row["definition"]
+        if any(q["type"]!="yes_no_na" or q.get("photo_required") or q.get("comment_required") for sec in definition["sections"] for q in sec["questions"]):
+            return web.json_response({"error":"Шаблон требует ещё не реализованных типов ответов или доказательств"},status=400,headers=NO_STORE)
+        cid = await conn.fetchval("""INSERT INTO control_checks(restaurant_key,version_id,assigned_by,due_at)
+            VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING id""",key,row["id"],user["user_id"],due)
+    return web.json_response({"id":cid},status=201 if cid else 409,headers=NO_STORE)
+
+@routes.post("/api/control/checks")
+async def list_checks(request):
+    user = await control_user(request)
+    if not user:
+        return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
+    scope = await restaurant_scope(user)
+    async with db.get_pool(request.app).acquire() as conn:
+        rows = await conn.fetch("""SELECT c.id,c.restaurant_key,c.due_at,c.completed_at,c.score,v.definition
+            FROM control_checks c JOIN control_template_versions v ON v.id=c.version_id
+            WHERE ($1::text[] IS NULL OR c.restaurant_key=ANY($1)) ORDER BY c.due_at DESC LIMIT 200""",scope)
+    items=[]
+    for row in rows:
+        item=dict(row)
+        for key in ("due_at","completed_at"):
+            item[key]=item[key].isoformat() if item[key] else None
+        item["score"]=float(item["score"]) if item["score"] is not None else None
+        if isinstance(item["definition"],str):
+            item["definition"]=json.loads(item["definition"])
+        items.append(item)
+    return web.json_response({"checks":items},headers=NO_STORE)
+
+@routes.post("/api/control/checks/complete")
+async def complete_check(request):
+    user = await control_user(request)
+    if not user:
+        return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
+    try:
+        body=await request.json()
+        if not isinstance(body,dict) or type(body.get("id")) is not int:
+            raise ValueError()
+    except (ValueError,TypeError):
+        return web.json_response({"error":"invalid_check"},status=400,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    async with db.get_pool(request.app).acquire() as conn:
+        async with conn.transaction():
+            row=await conn.fetchrow("""SELECT c.*,v.definition FROM control_checks c JOIN control_template_versions v ON v.id=c.version_id
+                WHERE c.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2)) FOR UPDATE OF c""",body["id"],scope)
+            if not row:
+                return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
+            if row["completed_at"]:
+                return web.json_response({"error":"already_completed"},status=409,headers=NO_STORE)
+            definition=json.loads(row["definition"]) if isinstance(row["definition"],str) else row["definition"]
+            try:
+                score,violations=score_check(definition,body.get("answers"))
+            except ValueError as exc:
+                return web.json_response({"error":str(exc)},status=400,headers=NO_STORE)
+            await conn.execute("UPDATE control_checks SET completed_at=NOW(),completed_by=$1,answers=$2::jsonb,score=$3 WHERE id=$4",user["user_id"],json.dumps(body["answers"]),score,row["id"])
+            for key,q in violations:
+                if q.get("create_task") or q.get("critical"):
+                    await conn.execute("INSERT INTO control_tasks(check_id,question_key,description,critical) VALUES($1,$2,$3,$4)",row["id"],key,q["text"],bool(q.get("critical")))
+    return web.json_response({"score":score,"violations":len(violations)},headers=NO_STORE)

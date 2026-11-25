@@ -77,6 +77,17 @@ def test_fixed_salary_report_postgres(monkeypatch):
         assert sum(r["total_salary"] for r in fixed) == 80000
         assert next(r for r in fixed if r["restaurant_name"] == "A")["total_salary"] == 80000
         assert sum(r["total_salary"] for r in rows if r["full_name"] == "Hourly") == 3500
+        monkeypatch.setattr(timesheet, "_is_hr_or_super", lambda u: False)
+        personal = timesheet._sync_reports(2, "2026-11-01", "2026-11-30", True)
+        assert {r["full_name"] for r in personal} == {"Hourly"}
+        cur = conn.cursor()
+        cur.execute("INSERT INTO users VALUES (10,'Manager','TU','a',0,'hourly',false,'manager'), (20,'Shift','Управляющий сменой','b',0,'hourly',false,'shift')")
+        cur.close()
+        monkeypatch.setattr(timesheet, "_is_tu", lambda u: u["user_id"] == 10)
+        territory = timesheet._sync_reports(10, "2026-11-01", "2026-11-30")
+        assert territory and {r["restaurant_name"] for r in territory} == {"A"}
+        shift = timesheet._sync_reports(20, "2026-11-01", "2026-11-30")
+        assert shift and {r["restaurant_name"] for r in shift} == {"B"}
     finally:
         conn.rollback()
         conn.close()

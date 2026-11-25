@@ -82,15 +82,16 @@ def _sync_bootstrap(user_id):
             if can_see_team:
                 cur.execute("""
                     SELECT u.user_id, u.full_name, u.position, u.phone, u.restaurant_key, r.name AS restaurant_name,
-                           COALESCE(u.is_certified, FALSE) AS is_certified, u.medbook, mgr.full_name AS manager_name,
+                           COALESCE(u.is_certified, FALSE) AS is_certified, u.medbook, CASE WHEN %s OR lower(btrim(COALESCE(mgr.position, ''))) <> 'тайный гость' THEN mgr.full_name ELSE NULL END AS manager_name,
                            c.name AS citizenship_name, u.hire_date
                     FROM users u
                     LEFT JOIN restaurants r ON u.restaurant_key = r.key
                     LEFT JOIN users mgr ON r.territory_manager_id = mgr.user_id
                     LEFT JOIN citizenships c ON u.citizenship_id = c.id
                     WHERE u.user_id != %s AND COALESCE(u.is_fired, FALSE) = FALSE AND COALESCE(u.is_admin, FALSE) = FALSE AND u.login IS NOT NULL
+                    AND (%s OR lower(btrim(COALESCE(u.position, ''))) <> 'тайный гость')
                     ORDER BY u.full_name
-                """, (user_id,))
+                """, (is_hr, user_id, is_hr))
                 all_staff = [dict(r) for r in cur.fetchall()]
 
                 if is_us:
@@ -537,7 +538,16 @@ async def handle_admin_audit(request):
     def _sync():
         with get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT * FROM admin_audit ORDER BY created_at DESC LIMIT 300")
+                cur.execute("""
+                    SELECT a.* FROM admin_audit a
+                    WHERE %s OR NOT EXISTS (
+                        SELECT 1 FROM users u
+                        WHERE lower(btrim(COALESCE(u.position, ''))) = 'тайный гость'
+                          AND (u.user_id = a.admin_id OR
+                               (a.target_type = 'user' AND u.user_id::text = a.target_id::text))
+                    )
+                    ORDER BY a.created_at DESC LIMIT 300
+                """, (_is_hr_or_super(admin),))
                 return [dict(r) for r in cur.fetchall()]
     return web.json_response({"audit": await _run(_sync)})
 

@@ -221,8 +221,13 @@ def _sync_timesheet_matrix(user_id, date_from, date_to, include_imports=False):
                 """SELECT user_id, work_date, hours, status, restaurant_key,
                           to_char(start_time, 'HH24:MI') as st, to_char(end_time, 'HH24:MI') as et
                    FROM timesheet_records
-                   WHERE user_id = ANY(%s) AND work_date >= %s::date AND work_date <= %s::date""",
-                (emp_ids, date_from, date_to)
+                   WHERE user_id = ANY(%s) AND work_date >= %s::date AND work_date <= %s::date
+                     AND (%s OR (%s AND COALESCE(restaurant_key, (SELECT u.restaurant_key FROM users u WHERE u.user_id = timesheet_records.user_id))
+                         IN (SELECT key FROM restaurants WHERE territory_manager_id = %s))
+                         OR (%s AND COALESCE(restaurant_key, (SELECT u.restaurant_key FROM users u WHERE u.user_id = timesheet_records.user_id)) = %s)
+                         OR (%s AND user_id = %s))""",
+                (emp_ids, date_from, date_to, is_hr_or_super, is_tu, user_id,
+                 is_us, u.get("restaurant_key"), not (is_hr_or_super or is_tu or is_us), user_id)
             )
             records = cur.fetchall()
 

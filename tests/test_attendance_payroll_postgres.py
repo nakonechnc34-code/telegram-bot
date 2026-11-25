@@ -41,3 +41,42 @@ def test_effective_attendance_postgres():
     finally:
         conn.rollback()
         conn.close()
+
+
+def test_fixed_salary_report_postgres(monkeypatch):
+    from contextlib import nullcontext
+    from routes import timesheet
+    dsn = os.getenv("ATTENDANCE_TEST_DSN")
+    if not dsn:
+        pytest.skip("ATTENDANCE_TEST_DSN not configured")
+    conn = psycopg2.connect(dsn)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""CREATE TEMP TABLE users
+                (user_id bigint, full_name text, position text, restaurant_key text,
+                 rate numeric, payment_type text, is_fired boolean, login text);
+                CREATE TEMP TABLE restaurants (key text, name text, territory_manager_id bigint);
+                CREATE TEMP TABLE position_rates (position_name text, rate numeric);
+                CREATE TEMP TABLE timesheet_records
+                (user_id bigint, work_date date, restaurant_key text, hours numeric);
+                CREATE TEMP TABLE attendance_import_days
+                (user_id bigint, work_date date, restaurant_key text,
+                 status text, worked_minutes integer);
+                INSERT INTO users VALUES (1,'Fixed','Cook','a',80000,'fixed',false,'fixed'),
+                    (2,'Hourly','Cook','a',350,'hourly',false,'hourly');
+                INSERT INTO restaurants VALUES ('a','A',10),('b','B',20);
+                INSERT INTO attendance_import_days VALUES
+                    (1,'2026-11-01','a','work',480),(1,'2026-11-01','b','work',120),
+                    (2,'2026-11-01','a','work',480),(2,'2026-11-01','b','work',120)""")
+        monkeypatch.setattr(timesheet, "get_conn", lambda: nullcontext(conn))
+        monkeypatch.setattr(timesheet, "_is_hr_or_super", lambda u: True)
+        monkeypatch.setattr(timesheet, "_is_tu", lambda u: False)
+        rows = timesheet._sync_reports(1, "2026-11-01", "2026-11-30")
+        fixed = [r for r in rows if r["full_name"] == "Fixed"]
+        assert len(fixed) == 2
+        assert sum(r["total_salary"] for r in fixed) == 80000
+        assert next(r for r in fixed if r["restaurant_name"] == "A")["total_salary"] == 80000
+        assert sum(r["total_salary"] for r in rows if r["full_name"] == "Hourly") == 3500
+    finally:
+        conn.rollback()
+        conn.close()

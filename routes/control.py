@@ -1,4 +1,5 @@
 """Independent CONTROL authentication and scoped restaurant directory."""
+import asyncio
 import hashlib
 import hmac
 import os
@@ -489,7 +490,7 @@ async def change_task(request):
                         if not isinstance(encoded,str) or len(encoded)>6990510:
                             raise ValueError()
                         data=base64.b64decode(encoded,validate=True)
-                        data,mime=sanitize_photo(data)
+                        data,mime=await asyncio.to_thread(sanitize_photo,data)
                     except (ValueError,TypeError):
                         return web.json_response({"error":"Требуется фото устранения JPG или PNG до 5 МБ"},status=400,headers=NO_STORE)
                     pid=await conn.fetchval("""INSERT INTO control_task_photos(task_id,uploaded_by,content_type,content)
@@ -901,6 +902,14 @@ def sanitize_photo(data):
     except (OSError, SyntaxError, Image.DecompressionBombError) as exc:
         raise ValueError("invalid_photo") from exc
 
+async def safe_photo_response(data):
+    try:
+        clean, mime = await asyncio.to_thread(sanitize_photo, bytes(data))
+    except (ValueError, TypeError):
+        return web.Response(status=404, headers=NO_STORE)
+    return web.Response(body=clean, content_type=mime,
+                        headers={**NO_STORE, "X-Content-Type-Options": "nosniff"})
+
 @routes.post("/api/control/checks/photo")
 async def upload_check_photo(request):
     import base64
@@ -913,7 +922,7 @@ async def upload_check_photo(request):
         if type(cid) is not int or not isinstance(key,str) or not isinstance(encoded,str) or len(encoded)>6990510:
             raise ValueError("invalid_photo")
         data=base64.b64decode(encoded,validate=True)
-        data,mime=sanitize_photo(data)
+        data,mime=await asyncio.to_thread(sanitize_photo,data)
     except (ValueError,TypeError,KeyError):
         return web.json_response({"error":"invalid_photo"},status=400,headers=NO_STORE)
     scope=await restaurant_scope(user)
@@ -965,7 +974,7 @@ async def get_check_photo(request):
             JOIN control_checks c ON c.id=p.check_id WHERE p.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))""",int(request.match_info["id"]),scope)
     if not row:
         return web.Response(status=404,headers=NO_STORE)
-    return web.Response(body=row["content"],content_type=row["content_type"],headers={**NO_STORE,"X-Content-Type-Options":"nosniff"})
+    return await safe_photo_response(row["content"])
 
 @routes.post("/api/control/tasks/photos")
 async def task_photos(request):
@@ -1001,7 +1010,7 @@ async def get_task_photo(request):
             AND ($3::boolean OR t.assignee_id=$4)""",int(request.match_info["id"]),scope,task_manager(user),user["user_id"])
     if not row:
         return web.Response(status=404,headers=NO_STORE)
-    return web.Response(body=row["content"],content_type=row["content_type"],headers={**NO_STORE,"X-Content-Type-Options":"nosniff"})
+    return await safe_photo_response(row["content"])
 
 def analytics_period(body):
     from datetime import date,timedelta

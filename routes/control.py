@@ -921,3 +921,76 @@ async def get_task_photo(request):
     if not row:
         return web.Response(status=404,headers=NO_STORE)
     return web.Response(body=row["content"],content_type=row["content_type"],headers={**NO_STORE,"X-Content-Type-Options":"nosniff"})
+
+def analytics_period(body):
+    from datetime import date,timedelta
+    if not isinstance(body,dict):
+        raise ValueError("invalid_period")
+    start=date.fromisoformat(body["start"])
+    end=date.fromisoformat(body["end"])
+    if end<start or (end-start).days>365:
+        raise ValueError("invalid_period")
+    return start,end+timedelta(days=1)
+
+@routes.post("/api/control/analytics")
+async def control_analytics(request):
+    user=await control_user(request)
+    if not user:
+        return web.json_response({"error":"forbidden"},status=403,headers=NO_STORE)
+    try:
+        body=await request.json()
+        start,end=analytics_period(body)
+        key=body.get("restaurant_key")
+        if key is not None and not isinstance(key,str):
+            raise ValueError()
+    except (ValueError,TypeError,KeyError,OverflowError):
+        return web.json_response({"error":"Укажите период до 366 дней"},status=400,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    if key is not None:
+        if scope is not None and key not in scope:
+            return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
+        scope=[key]
+    async with db.get_pool(request.app).acquire() as conn:
+        rows=await conn.fetch("""WITH bounds AS (
+            SELECT ($1::date::timestamp AT TIME ZONE 'Europe/Moscow') AS lo,
+                   ($2::date::timestamp AT TIME ZONE 'Europe/Moscow') AS hi
+        ), checks AS (
+            SELECT c.restaurant_key,COUNT(*) AS completed,COUNT(c.score) AS scored,
+                   SUM(c.score) AS score_sum
+            FROM control_checks c CROSS JOIN bounds b
+            WHERE c.completed_at>=b.lo AND c.completed_at<b.hi
+              AND ($3::text[] IS NULL OR c.restaurant_key=ANY($3))
+            GROUP BY c.restaurant_key
+        ), tasks AS (
+            SELECT c.restaurant_key,COUNT(*) AS tasks_created,
+                   COUNT(*) FILTER(WHERE t.critical) AS critical_tasks
+            FROM control_tasks t JOIN control_checks c ON c.id=t.check_id CROSS JOIN bounds b
+            WHERE t.created_at>=b.lo AND t.created_at<b.hi
+              AND ($3::text[] IS NULL OR c.restaurant_key=ANY($3))
+            GROUP BY c.restaurant_key
+        ), overdue AS (
+            SELECT c.restaurant_key,COUNT(*) AS overdue_now
+            FROM control_tasks t JOIN control_checks c ON c.id=t.check_id
+            WHERE t.due_at<NOW() AND t.status!='closed'
+              AND ($3::text[] IS NULL OR c.restaurant_key=ANY($3))
+            GROUP BY c.restaurant_key
+        )
+        SELECT r.key AS restaurant_key,r.name,COALESCE(c.completed,0) AS completed,
+            COALESCE(c.scored,0) AS scored,c.score_sum,
+            COALESCE(t.tasks_created,0) AS tasks_created,COALESCE(t.critical_tasks,0) AS critical_tasks,
+            COALESCE(o.overdue_now,0) AS overdue_now
+        FROM restaurants r LEFT JOIN checks c ON c.restaurant_key=r.key
+        LEFT JOIN tasks t ON t.restaurant_key=r.key LEFT JOIN overdue o ON o.restaurant_key=r.key
+        WHERE ($3::text[] IS NULL OR r.key=ANY($3)) ORDER BY r.name""",start,end,scope)
+    items=[]
+    for row in rows:
+        item=dict(row)
+        total=item.pop("score_sum")
+        item["average_score"]=round(float(total)/item["scored"],2) if item["scored"] else None
+        items.append(item)
+    scored=sum(r["scored"] for r in rows)
+    total=sum(float(r["score_sum"] or 0) for r in rows)
+    summary={k:sum(i[k] for i in items) for k in ("completed","scored","tasks_created","critical_tasks","overdue_now")}
+    summary["average_score"]=round(total/scored,2) if scored else None
+    items.sort(key=lambda i:(i["average_score"] is None,-(i["average_score"] or 0),i["name"]))
+    return web.json_response({"summary":summary,"restaurants":items},headers=NO_STORE)

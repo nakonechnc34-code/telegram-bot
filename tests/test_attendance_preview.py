@@ -56,3 +56,21 @@ def test_preview_night_shift():
     result = preview([("2026-11-16", "021", "22:00-06:00", "A")])
     assert result["ok"]
     assert result["total_minutes"] == 480
+
+
+def test_preview_overlap_next_day():
+    result = preview([
+        ("2026-11-16", "021", "22:00-06:00", "A"),
+        ("2026-11-17", "021", "05:00-09:00", "A"),
+    ])
+    assert not result["ok"]
+    assert result["total_minutes"] is None
+
+
+def test_preview_adjacent_night_shifts():
+    result = preview([
+        ("2026-11-16", "021", "22:00-06:00", "A"),
+        ("2026-11-17", "021", "06:00-09:00", "B"),
+    ])
+    assert result["ok"]
+    assert result["total_minutes"] == 660

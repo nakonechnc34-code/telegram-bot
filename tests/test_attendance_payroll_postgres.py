@@ -95,3 +95,43 @@ def test_fixed_salary_report_postgres(monkeypatch):
     finally:
         conn.rollback()
         conn.close()
+
+
+def test_attendance_migration_preserves_legacy_postgres():
+    from pathlib import Path
+    dsn = os.getenv("ATTENDANCE_TEST_DSN")
+    if not dsn:
+        pytest.skip("ATTENDANCE_TEST_DSN not configured")
+    sql = (Path(__file__).resolve().parents[1] / "database" /
+           "007_attendance_imports.sql").read_text(encoding="utf-8")
+    conn = psycopg2.connect(dsn)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("CREATE SCHEMA attendance_migration_test")
+            cur.execute("SET LOCAL search_path TO attendance_migration_test")
+            cur.execute("""CREATE TABLE users (user_id bigint PRIMARY KEY);
+                CREATE TABLE timesheet_records (user_id bigint, hours numeric);
+                INSERT INTO users VALUES (1);
+                INSERT INTO timesheet_records VALUES (1,8)""")
+            cur.execute(sql)
+            cur.execute(sql)
+            cur.execute("SELECT * FROM timesheet_records")
+            assert cur.fetchall() == [(1, Decimal("8"))]
+            cur.execute("""INSERT INTO attendance_imports (uploaded_by,date_from,date_to)
+                VALUES (1,'2026-11-01','2026-11-01') RETURNING id""")
+            import_id = cur.fetchone()[0]
+            cur.execute("""INSERT INTO attendance_import_days
+                (import_id,user_id,work_date,restaurant_key,status,worked_minutes)
+                VALUES (%s,1,'2026-11-01','a','work',480) RETURNING id""", (import_id,))
+            day_id = cur.fetchone()[0]
+            cur.execute("INSERT INTO attendance_import_intervals VALUES (%s,540,1020)", (day_id,))
+            cur.execute("DELETE FROM attendance_imports WHERE id=%s", (import_id,))
+            cur.execute("SELECT count(*) FROM attendance_import_days")
+            assert cur.fetchone()[0] == 0
+            cur.execute("SELECT count(*) FROM attendance_import_intervals")
+            assert cur.fetchone()[0] == 0
+            cur.execute("SELECT * FROM timesheet_records")
+            assert cur.fetchall() == [(1, Decimal("8"))]
+    finally:
+        conn.rollback()
+        conn.close()

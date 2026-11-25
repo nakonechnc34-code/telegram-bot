@@ -78,7 +78,7 @@ function renderMatrix(){
     for(const employee of employeesData){
         const home=employee.main_restaurant_key||'';
         const keys=new Set([home]);
-        for(const date of dates){const cell=employee.data_by_date?.[date];if(cell?.rk)keys.add(cell.rk);}
+        for(const date of dates){const cell=employee.data_by_date?.[date];if(cell?.rk)keys.add(cell.rk);for(const key of Object.keys(employee.imported_by_date?.[date]||{}))keys.add(key);}
         for(const key of keys){
             if(restaurantFilter.value&&key!==restaurantFilter.value)continue;
             if(key&&!restaurantNames.has(key))continue;
@@ -96,15 +96,17 @@ function renderMatrix(){
             const position=document.createElement('span');position.className='employee-position';position.textContent=employee.position||'';name.append(fullName,position);
             let hours=0;
             for(const date of dates){
-                const cell=employee.data_by_date?.[date]||{};
+                const legacy=employee.data_by_date?.[date]||{};
+                const imports=employee.imported_by_date?.[date]||{};
+                const cell=imports[key]||legacy;
                 const actual=cell.rk||employee.main_restaurant_key||'';
                 const td=row.insertCell();
                 if(actual!==key){td.textContent='—';continue;}
                 const button=document.createElement('button');button.type='button';button.className='cell-button';
-                button.textContent=({vacation:'В',sick:'Б',absent:'Н'})[cell.s]??(cell.h||'—');
+                button.textContent=({vacation:'В',sick:'Б',absent:'Н'})[cell.s]??(cell.imported?`${Math.floor(cell.minutes/60)}:${String(cell.minutes%60).padStart(2,'0')}`:(cell.h||'—'));
                 if(cell.s&&cell.s!=='work')button.classList.add('has-status');else if(Number(cell.h)>0)button.classList.add('has-hours');
                 button.setAttribute('aria-label',employee.full_name+' '+date+' '+button.textContent);
-                button.addEventListener('click',()=>openEditor(employee,cell,date));td.append(button);
+                if(cell.imported){button.disabled=true;button.title='Из отчёта iiko';}else button.addEventListener('click',()=>openEditor(employee,cell,date));td.append(button);
                 if(cell.s==='work')hours+=Number(cell.h)||0;
             }
             const totalCell=row.insertCell();totalCell.className='hours-total';totalCell.textContent=String(Math.round(hours*100)/100);total+=hours;
@@ -121,7 +123,7 @@ async function loadDay(){
     byId('period-title').textContent=formatDate(dates[0])+' — '+formatDate(dates[dates.length-1]);
     statusLine.textContent='Загрузка…';
     try{
-        const {employees}=await api('/api/timesheet/matrix',{body:JSON.stringify({date_from:dates[0],date_to:dates[dates.length-1]})});
+        const {employees}=await api('/api/timesheet/matrix',{body:JSON.stringify({date_from:dates[0],date_to:dates[dates.length-1],period:period.value})});
         if(version!==loadVersion)return;
         employeesData=employees;loadedRange=dates;renderMatrix();
         statusLine.textContent=employees.length?'':'Нет доступных сотрудников';

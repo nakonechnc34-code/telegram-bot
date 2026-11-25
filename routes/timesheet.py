@@ -1523,9 +1523,6 @@ async def handle_approval_transition(request):
             raise ValueError()
     except (ValueError, TypeError, KeyError, OverflowError):
         return web.json_response({"error":"invalid_approval"},status=400)
-    # Approval is disabled until immutable accrual snapshots and edit locks are implemented.
-    if action == "approve":
-        return web.json_response({"error":"approval_not_ready"},status=409)
     status, result = await _run(_sync_approval_transition,user,key,month,action,comment.strip(),revision)
     return web.json_response(result,status=status,headers={"Cache-Control":"no-store"})
 

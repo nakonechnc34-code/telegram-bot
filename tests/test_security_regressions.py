@@ -68,7 +68,11 @@ def test_territorial_manager_medbook_operations_scope_the_database_query(handler
     assert asyncio.run(handler(request({"user_id": 123}))).status == 404
     query, params = cursor.execute.call_args.args
     assert "territory_manager_id = %s" in query
-    assert params[-2:] == (123, 42)
+    assert "lower(btrim(COALESCE(" in query and "тайный гость" in query
+    if handler is medbooks.handle_admin_medbook_get:
+        assert params == (123, 42, False)
+    else:
+        assert params[1:] == (123, False, 42)
 
 
 def test_employee_list_omits_medbook_for_admin_without_access(monkeypatch):
@@ -229,3 +233,35 @@ def test_timesheet_valid_session(monkeypatch):
     monkeypatch.setattr(timesheet, "_extract_token", AsyncMock(return_value="timesheet-token"))
     monkeypatch.setattr(timesheet, "_run", AsyncMock(return_value=employee))
     assert asyncio.run(timesheet._timesheet_user(request({}))) == (employee, None)
+
+
+@pytest.mark.parametrize(("admin", "allowed"), [
+    ({"is_admin": True, "position": "HR"}, True),
+    ({"is_super_admin": True}, True),
+    ({"is_admin": True, "position": "Администратор"}, False),
+])
+def test_medbook_guest_visibility_query(admin, allowed, monkeypatch):
+    admin = {"user_id": 42, "permissions": {"medbook_edit": True}, **admin}
+    monkeypatch.setattr(medbooks, "get_admin_user", AsyncMock(return_value=(admin, None)))
+    cursor = mock_cursor(medbooks, monkeypatch)
+    cursor.fetchone.return_value = None
+    assert asyncio.run(medbooks.handle_admin_medbook_get(request({"user_id": 123}))).status == 404
+    query, params = cursor.execute.call_args.args
+    assert "тайный гость" in query
+    assert params == (123, allowed)
+
+
+def test_mystery_guest_cannot_reuse_timesheet_session(monkeypatch):
+    monkeypatch.setattr(timesheet, "_extract_token", AsyncMock(return_value="timesheet-token"))
+    monkeypatch.setattr(timesheet, "_run", AsyncMock(return_value={
+        "user_id": 123, "position": " Тайный гость ", "permissions": {"timesheet_access": True}
+    }))
+    assert asyncio.run(timesheet._timesheet_user(request({}))) == (None, 403)
+
+
+def test_mystery_guest_hidden_from_territorial_manager(monkeypatch):
+    monkeypatch.setattr(users, "_run", AsyncMock(return_value={
+        "user_id": 123, "position": "Тайный гость", "restaurant_key": "a"
+    }))
+    admin = {"user_id": 42, "position": "Территориальный управляющий"}
+    assert not asyncio.run(users._check_admin_can_manage_user(admin, 123))

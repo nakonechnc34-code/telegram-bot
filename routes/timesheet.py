@@ -169,10 +169,12 @@ async def handle_timesheet_restaurants(request):
     def _sync():
         with get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                if "управляющий сменой" in (user.get("position") or "").lower():
-                    cur.execute("SELECT key, name FROM restaurants WHERE key = %s", (user.get("restaurant_key"),))
-                else:
+                if _is_hr_or_super(user):
                     cur.execute("SELECT key, name FROM restaurants ORDER BY name")
+                elif _is_tu(user):
+                    cur.execute("SELECT key, name FROM restaurants WHERE territory_manager_id = %s ORDER BY name", (user["user_id"],))
+                else:
+                    cur.execute("SELECT key, name FROM restaurants WHERE key = %s", (user.get("restaurant_key"),))
                 return [dict(r) for r in cur.fetchall()]
 
     rests = await _run(_sync)

@@ -288,6 +288,11 @@ def _sync_save_cell(user_id, target_uid, work_date, hours, status, restaurant_ke
     hours = round(hours, 2)
     with get_conn() as conn:
         with conn.cursor() as cur:
+            cur.execute("SELECT pg_advisory_xact_lock(814726, 2)")
+            cur.execute("SELECT 1 FROM attendance_import_days WHERE user_id = %s AND work_date = %s LIMIT 1",
+                        (target_uid, work_date))
+            if cur.fetchone():
+                return False
             if hours <= 0 and status == 'work':
                 cur.execute("DELETE FROM timesheet_records WHERE user_id = %s AND work_date = %s", (target_uid, work_date))
             else:
@@ -300,6 +305,7 @@ def _sync_save_cell(user_id, target_uid, work_date, hours, status, restaurant_ke
                            start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time, updated_at = NOW()""",
                     (target_uid, work_date, hours, status, restaurant_key, start_time or None, end_time or None)
                 )
+    return True
 
 
 @routes.post('/api/timesheet/save_cell')
@@ -340,7 +346,9 @@ async def handle_timesheet_save_cell(request):
         if not _restaurant_in_scope(user, restaurant_key, territory_keys):
             return web.json_response({"error": "forbidden_restaurant"}, status=403)
 
-    await _run(_sync_save_cell, user["user_id"], target_uid, work_date, hours, status, restaurant_key, start_time, end_time)
+    saved = await _run(_sync_save_cell, user["user_id"], target_uid, work_date, hours, status, restaurant_key, start_time, end_time)
+    if saved is False:
+        return web.json_response({"error": "День закрыт импортированным отчётом"}, status=409)
     return web.json_response({"ok": True})
 
 
@@ -764,6 +772,11 @@ async def handle_import_attendance(request):
     if err:
         return denied(err)
     _require_timesheet_access(user)
+
+    if not (_is_hr_or_super(user) or _is_tu(user)):
+        return web.json_response({"error": "Нет права на загрузку"}, status=403)
+    if request.path == "/api/timesheet/import_attendance":
+        return web.json_response({"error": "Используйте предварительную проверку и сохранение отчёта"}, status=410)
 
     reader = await request.multipart()
     file_data = None

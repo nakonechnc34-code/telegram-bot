@@ -472,7 +472,7 @@ async def change_task(request):
                 except (ValueError,TypeError,KeyError):
                     return web.json_response({"error":"invalid_assignment"},status=400,headers=NO_STORE)
                 target=await conn.fetchrow("SELECT * FROM users WHERE user_id=$1 AND restaurant_key=$2",assignee,row["restaurant_key"])
-                if not target or not control_allowed(dict(target)):
+                if not target or is_mystery_guest(dict(target)) or not control_allowed(dict(target)):
                     return web.json_response({"error":"invalid_assignee"},status=400,headers=NO_STORE)
                 await conn.execute("UPDATE control_tasks SET assignee_id=$1,due_at=$2 WHERE id=$3",assignee,due,row["id"])
                 details.update({"assignee_id":assignee,"due_at":due.isoformat(),"previous_assignee_id":row["assignee_id"]})

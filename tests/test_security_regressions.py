@@ -122,7 +122,7 @@ def test_session_lookup_checks_database_after_revocation(monkeypatch):
 ])
 def test_save_cell_rejects_invalid_values_before_database(monkeypatch, bad_fields):
     employee = {"user_id": 123, "is_super_admin": True}
-    monkeypatch.setattr(timesheet, "get_auth_user", AsyncMock(return_value=(employee, None)))
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(employee, None)))
     run = AsyncMock()
     monkeypatch.setattr(timesheet, "_run", run)
     body = {"user_id": 123, "work_date": "2026-11-20", "hours": 8, **bad_fields}
@@ -132,7 +132,7 @@ def test_save_cell_rejects_invalid_values_before_database(monkeypatch, bad_field
 
 def test_save_cell_preserves_zero_hour_removal_and_overnight_shifts(monkeypatch):
     employee = {"user_id": 123, "is_super_admin": True}
-    monkeypatch.setattr(timesheet, "get_auth_user", AsyncMock(return_value=(employee, None)))
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(employee, None)))
     cursor = mock_cursor(timesheet, monkeypatch)
     body = {"user_id": "123", "work_date": "2026-11-20", "hours": 0}
     assert asyncio.run(timesheet.handle_timesheet_save_cell(request(body))).status == 200
@@ -208,3 +208,24 @@ def test_api_limiter_uses_same_ip_policy_as_login(monkeypatch):
     assert asyncio.run(rate_limit.api_rate_middleware(req, handler)).status == 429
     assert check.call_args.args[0] == req.remote
     handler.assert_not_called()
+
+
+def test_timesheet_rejects_foreign_session(monkeypatch):
+    monkeypatch.setattr(timesheet, "_extract_token", AsyncMock(return_value="foreign-token"))
+    lookup = AsyncMock(return_value=None)
+    monkeypatch.setattr(timesheet, "_run", lookup)
+    assert asyncio.run(timesheet._timesheet_user(request({}))) == (None, 401)
+    lookup.assert_awaited_once_with(timesheet._sync_timesheet_session, "foreign-token")
+
+
+def test_timesheet_revoked_permission(monkeypatch):
+    monkeypatch.setattr(timesheet, "_extract_token", AsyncMock(return_value="timesheet-token"))
+    monkeypatch.setattr(timesheet, "_run", AsyncMock(return_value={"user_id": 123, "permissions": {}}))
+    assert asyncio.run(timesheet._timesheet_user(request({}))) == (None, 403)
+
+
+def test_timesheet_valid_session(monkeypatch):
+    employee = {"user_id": 123, "permissions": {"timesheet_access": True}}
+    monkeypatch.setattr(timesheet, "_extract_token", AsyncMock(return_value="timesheet-token"))
+    monkeypatch.setattr(timesheet, "_run", AsyncMock(return_value=employee))
+    assert asyncio.run(timesheet._timesheet_user(request({}))) == (employee, None)

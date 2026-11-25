@@ -237,3 +237,49 @@ def test_matrix_restaurant_scope_postgres(monkeypatch):
     finally:
         conn.rollback()
         conn.close()
+
+
+@pytest.mark.parametrize("locked_status", ["pending", "approved"])
+def test_approval_edit_guard_postgres(locked_status):
+    from pathlib import Path
+    dsn = os.getenv("ATTENDANCE_TEST_DSN")
+    if not dsn:
+        pytest.skip("ATTENDANCE_TEST_DSN not configured")
+    conn = psycopg2.connect(dsn)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""CREATE SCHEMA approval_guard_test;
+                SET LOCAL search_path TO approval_guard_test;
+                CREATE TABLE users (user_id bigint PRIMARY KEY, restaurant_key text);
+                CREATE TABLE restaurants (key text PRIMARY KEY);
+                CREATE TABLE timesheet_records (user_id bigint, work_date date, restaurant_key text, hours numeric);
+                CREATE TABLE attendance_import_days (user_id bigint, work_date date, restaurant_key text, worked_minutes integer);
+                INSERT INTO users VALUES (1,'a');
+                INSERT INTO restaurants VALUES ('a'),('b');
+                INSERT INTO timesheet_records VALUES (1,'2026-11-01','a',8);
+                INSERT INTO attendance_import_days VALUES (1,'2026-11-02','a',240),(1,'2026-11-02','b',240);""")
+            root = Path(__file__).resolve().parents[1] / "database"
+            for filename in ("008_timesheet_approval.sql", "009_timesheet_approval_locks.sql"):
+                cur.execute((root / filename).read_text(encoding="utf-8"))
+            cur.execute("INSERT INTO timesheet_approvals(restaurant_key,month_start,status) VALUES ('a','2026-11-01',%s)", (locked_status,))
+            for sql in (
+                "UPDATE timesheet_records SET hours=9",
+                "DELETE FROM timesheet_records",
+                "INSERT INTO timesheet_records VALUES (1,'2026-11-03','a',8)",
+                "DELETE FROM attendance_import_days WHERE restaurant_key='a'",
+                "UPDATE attendance_import_days SET worked_minutes=250 WHERE restaurant_key='b'",
+                "INSERT INTO attendance_import_days VALUES (1,'2026-11-01','b',60)",
+            ):
+                cur.execute("SAVEPOINT attempt")
+                with pytest.raises(psycopg2.errors.CheckViolation, match="Timesheet is locked for approval"):
+                    cur.execute(sql)
+                cur.execute("ROLLBACK TO SAVEPOINT attempt")
+                cur.execute("RELEASE SAVEPOINT attempt")
+            cur.execute("INSERT INTO timesheet_records VALUES (1,'2026-12-01','a',8)")
+            cur.execute("UPDATE timesheet_approvals SET status='returned'")
+            cur.execute("UPDATE timesheet_records SET hours=9")
+            cur.execute("DELETE FROM attendance_import_days")
+            assert cur.rowcount == 2
+    finally:
+        conn.rollback()
+        conn.close()

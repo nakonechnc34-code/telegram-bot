@@ -1,0 +1,28 @@
+name: Attendance Compose smoke
+on:
+  pull_request:
+  push:
+    branches: [feat/attendance-minute-validation]
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ATTENDANCE_LOCAL_ADMIN_PASSWORD: LocalSmokeOnly-2026!
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose
+        run: docker compose -f compose.attendance-test.yml config --quiet
+      - name: Start isolated stack
+        run: docker compose -f compose.attendance-test.yml up --build --wait --wait-timeout 180
+      - name: Verify database migration
+        run: |
+          docker compose -f compose.attendance-test.yml exec -T db psql -v ON_ERROR_STOP=1 -U attendance_test -d attendance_test -c 'SELECT count(*) FROM attendance_imports; SELECT count(*) FROM attendance_import_days; SELECT count(*) FROM attendance_import_intervals; SELECT count(*) FROM timesheet_records;'
+      - name: Verify HTTP endpoints
+        run: |
+          docker compose -f compose.attendance-test.yml exec -T app python -c "import json, urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8080/api/health')); assert d['status']=='healthy' and d['database']=='ok'; assert urllib.request.urlopen('http://127.0.0.1:8080/timesheet').status==200"
+      - name: Cleanup isolated stack
+        if: always()
+        run: docker compose -f compose.attendance-test.yml down -v --remove-orphans

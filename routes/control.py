@@ -206,7 +206,7 @@ def score_check(definition, answers):
     for key,q in questions.items():
         answer = answers.get(key)
         if answer is None:
-            if q.get("required"):
+            if q.get("required") or q.get("critical"):
                 raise ValueError("required_answer")
             continue
         # Only yes/no/NA checks are supported by this execution stage.

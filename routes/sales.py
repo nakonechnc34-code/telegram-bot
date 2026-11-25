@@ -33,7 +33,7 @@ routes = web.RouteTableDef()
 
 def _sales_allowed(user):
     """Superadmins have implicit Sales access; other admins require an explicit grant."""
-    if not user or user.get("is_fired"):
+    if not user or user.get("is_fired") or (user.get("position") or "").strip().casefold()=="тайный гость":
         return False
     if user.get("is_super_admin"):
         return True

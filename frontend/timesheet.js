@@ -167,7 +167,7 @@ async function deleteAttendance(record, button) {
     const restaurant = restaurantNames.get(record.restaurant_key) || record.restaurant_key;
     if (!window.confirm('Удалить отчёт №' + record.id + '?\nРесторан: ' + restaurant +
         '\nПериод: ' + record.date_from + ' — ' + record.date_to +
-        '\nБудут удалены только записи этого отчёта для указанного ресторана. Недельный и месячный табели обновятся. Зарплата не изменится.')) return;
+        '\nБудут удалены только записи этого отчёта для указанного ресторана. Недельный и месячный табели обновятся. Расчёт начислений может измениться.')) return;
     deletingAttendance = true;
     button.disabled = true;
     const status = byId('attendance-history-status');
@@ -299,7 +299,7 @@ byId('confirm-attendance').addEventListener('click', async () => {
         const result = await api('/api/timesheet/import_attendance/stage?' + verified.params, {body: verified.data});
         if (verified.version !== previewVersion) return;
         byId('upload-status').textContent = result.ok
-            ? 'Отчёт №' + result.import_id + ' сохранён. Записей: ' + result.success_count + '. Зарплата не изменена.'
+            ? 'Отчёт №' + result.import_id + ' сохранён. Записей: ' + result.success_count + '. Данные будут учтены при расчёте начислений.'
             : (result.errors || ['Отчёт не сохранён']).join('\n');
         if (result.ok) { await loadAttendanceHistory(); await loadDay(); }
     } catch (error) {

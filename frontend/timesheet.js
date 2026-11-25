@@ -163,15 +163,16 @@ byId('import-form').addEventListener('submit', async event => {
     event.preventDefault();
     const button = event.submitter;
     button.disabled = true;
+    byId('upload-status').textContent = 'Загрузка…';
     try {
         const data = new FormData(event.currentTarget);
         const params = new URLSearchParams({ restaurant_key: data.get('restaurant_key') });
         data.delete('restaurant_key');
         const result = await api('/api/timesheet/import_attendance?' + params, { body: data });
         await loadDay();
-        statusLine.textContent = ['Импортировано записей: ' + result.success_count, ...result.errors].join('\n');
+        byId('upload-status').textContent = ['Импортировано записей: ' + result.success_count, ...result.errors].join('\n');
     } catch (error) {
-        statusLine.textContent = error.message;
+        byId('upload-status').textContent = error.message;
     } finally {
         button.disabled = false;
     }
@@ -206,12 +207,13 @@ api('/api/timesheet/restaurants').then(({ restaurants }) => {
     return loadDay();
 }).catch(error => { statusLine.textContent = error.message; });
 
-const pageNames = ['Главная','Табель','Начисления','Отчёты','Согласование','Настройки'];
+const pageNames = ['Главная','Табель','Начисления','Отчёты','Согласование','Настройки','Панель загрузки'];
 function showPage(index) {
     byId('page-title').textContent = pageNames[index];
     byId('home-panel').hidden = index !== 0;
     byId('timesheet-panel').hidden = index !== 1;
-    byId('future-panel').hidden = index < 2;
+    byId('future-panel').hidden = index < 2 || index === 6;
+    byId('upload-panel').hidden = index !== 6;
     document.querySelectorAll('nav [data-page]').forEach(button => {
         if (Number(button.dataset.page) === index) button.setAttribute('aria-current','page');
         else button.removeAttribute('aria-current');

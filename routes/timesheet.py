@@ -880,17 +880,33 @@ async def handle_import_attendance(request):
 # ИСПРАВЛЕНО: добавлен флаг only_me и LEFT JOIN для корректной работы сотрудников без часов
 # Imported employee-days supersede legacy records, including absence days.
 _EFFECTIVE_ATTENDANCE_SQL = """
-    SELECT t.user_id, t.work_date, t.restaurant_key, t.hours::numeric AS hours
+    WITH daily AS (
+        SELECT d.user_id, d.work_date, d.restaurant_key,
+               CASE WHEN d.status = 'work' THEN d.worked_minutes ELSE 0 END AS minutes
+        FROM attendance_import_days d
+    ), totals AS (
+        SELECT *, SUM(minutes) OVER (PARTITION BY user_id, work_date) AS total
+        FROM daily
+    ), allocation AS (
+        SELECT *, COALESCE(FLOOR(minutes::numeric * (ROUND(total::numeric / 5) * 5) / NULLIF(total, 0)), 0) AS base,
+               COALESCE(MOD(minutes::numeric * (ROUND(total::numeric / 5) * 5), NULLIF(total, 0)), 0) AS remainder
+        FROM totals
+    ), ranked AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY user_id, work_date ORDER BY remainder DESC, restaurant_key COLLATE "C") AS rank,
+               SUM(base) OVER (PARTITION BY user_id, work_date) AS allocated
+        FROM allocation
+    )
+    SELECT t.user_id, t.work_date, t.restaurant_key,
+           ROUND(ROUND(t.hours::numeric * 60) / 5) * 5 / 60 AS hours
     FROM timesheet_records t
     WHERE NOT EXISTS (
         SELECT 1 FROM attendance_import_days d
         WHERE d.user_id = t.user_id AND d.work_date = t.work_date
     )
     UNION ALL
-    SELECT d.user_id, d.work_date, d.restaurant_key,
-           CASE WHEN d.status = 'work' THEN d.worked_minutes::numeric / 60
-                ELSE 0::numeric END AS hours
-    FROM attendance_import_days d
+    SELECT user_id, work_date, restaurant_key,
+           (base + CASE WHEN rank <= ROUND(total::numeric / 5) * 5 - allocated THEN 1 ELSE 0 END) / 60 AS hours
+    FROM ranked
 """
 
 

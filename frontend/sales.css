@@ -625,3 +625,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-v
 .order-type-report thead th{text-align:center}.order-type-report .order-type-hall{background:#dcefe2;color:#175c35}.order-type-report .order-type-delivery{background:#dce9fa;color:#204d85}.order-type-report td:nth-child(4),.order-type-report td:nth-child(8){border-left:2px solid #aab7c7}.order-type-report th[scope=row]{min-width:130px}
 
 .growth-report .growth-positive{color:#15803d;font-weight:700}.growth-report .growth-negative{color:#b91c1c;font-weight:700}.growth-report .order-type-hall{background:#dcefe2;color:#175c35}.growth-report .order-type-delivery{background:#dce9fa;color:#204d85}.growth-report thead th{text-align:center}
+
+/* Keep wide reports inside their own scroll container on mobile. */
+.workspace, #sales-page-content, #sales-page-content .panel { min-width: 0; max-width: 100%; }
+.turnover-report-scroll, .hourly-report-scroll, .table-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+@media (max-width: 850px) { .hourly-report-filters input, .hourly-report-filters select { font-size: 16px; min-width: 0; max-width: 100%; } }

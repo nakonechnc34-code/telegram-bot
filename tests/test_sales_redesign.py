@@ -261,3 +261,12 @@ def test_same_weekday_hourly_comparison_is_scoped_and_cutoff_exclusive():
     assert "opening_hour')::int < $3" in backend
     assert 'compare_filter = "AND sr.restaurant_key = ANY($4)"' in backend
     assert '"same_weekday_comparison": day_comparison' in backend
+
+
+def test_mobile_report_state_survives_viewport_changes():
+    assert "window.addEventListener('resize'" not in JS
+    assert "function openReport(index)" in JS
+    assert "++state.dashboardRequest;" in JS.split("function openReport(index)", 1)[1].split("function renderReportCatalog", 1)[0]
+    assert "sessionStorage.setItem('wokker_sales_report'" in JS
+    assert "openReport(saved.index)" in JS
+    assert "DOM.content.addEventListener('change',saveReportState)" in JS

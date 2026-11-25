@@ -10,6 +10,7 @@
         uploadFile: null,
         detailPage: 1,
         view: 'overview',
+        reportIndex: null,
         dashboardRequest: 0,
         selectedRestaurants: null,
         productsRequest: 0,
@@ -47,6 +48,8 @@
     function getToken() { return sessionStorage.getItem('wokker_sales_token') || null; }
     function showSalesLogin(message='') {
         sessionStorage.removeItem('wokker_sales_token');
+        sessionStorage.removeItem('wokker_sales_report');
+        state.reportIndex = null;
         state.token = null;
         setSalesMenuOpen(false, false);
         document.getElementById('sales-app-shell').hidden = true;
@@ -129,6 +132,7 @@
     }
 
     async function loadDashboard() {
+        if(state.view==='reports' && state.reportIndex!==null)return;
         DOM.content.innerHTML = '<div class="loading">Загрузка аналитики…</div>';
         const requestId = ++state.dashboardRequest;
         const restaurantKey = DOM.restaurantSelect.value || null;
@@ -171,9 +175,32 @@
         {name:'SSSG и SSTG',description:'Динамика ТО и чеков: общий, зал, доставка; три режима сравнения.',open:renderSameStoreGrowth},
         {name:'Почасовая выручка',description:'Средняя выручка по часам за три последних одноимённых дня недели.',open:renderHourlyAverage}
     ];
+    function saveReportState(){
+        if(state.view!=='reports'||state.reportIndex===null)return;
+        const filters=Object.fromEntries(Array.from(DOM.content.querySelectorAll('.hourly-report-filters input, .hourly-report-filters select')).map(el=>[el.id,el.value]));
+        sessionStorage.setItem('wokker_sales_report',JSON.stringify({index:state.reportIndex,filters}));
+    }
+    function restoreReportFilters(){
+        let saved;
+        try{saved=JSON.parse(sessionStorage.getItem('wokker_sales_report'));}catch(_){return;}
+        if(!saved||saved.index!==state.reportIndex)return;
+        for(const el of DOM.content.querySelectorAll('.hourly-report-filters input, .hourly-report-filters select')){
+            const value=saved.filters?.[el.id];
+            if(typeof value==='string'&&(el.tagName!=='SELECT'||Array.from(el.options).some(o=>o.value===value)))el.value=value;
+        }
+    }
+    function openReport(index){
+        if(!Number.isInteger(index)||!salesReportCatalog[index])return;
+        ++state.dashboardRequest;
+        state.reportIndex=index;
+        salesReportCatalog[index].open();
+        saveReportState();
+    }
     function renderReportCatalog(){
+        state.reportIndex = null;
+        sessionStorage.removeItem('wokker_sales_report');
         DOM.content.innerHTML='<section class="panel sales-report-catalog"><h2>Список отчётов</h2><p class="section-note">Выберите отчёт для просмотра и анализа.</p><div class="sales-report-catalog-list"><div class="sales-report-catalog-header"><span>№</span><span>Наименование</span><span>Описание</span><span></span></div>'+salesReportCatalog.map((report,i)=>'<button type="button" class="sales-report-catalog-row" data-report-index="'+i+'"><span class="sales-report-number">'+(i+1)+'</span><strong>'+esc(report.name)+'</strong><span class="sales-report-description">'+esc(report.description)+'</span><span aria-hidden="true" class="sales-report-arrow">›</span></button>').join('')+'</div></section>';
-        DOM.content.querySelectorAll('[data-report-index]').forEach(button=>button.addEventListener('click',()=>salesReportCatalog[Number(button.dataset.reportIndex)].open()));
+        DOM.content.querySelectorAll('[data-report-index]').forEach(button=>button.addEventListener('click',()=>openReport(Number(button.dataset.reportIndex))));
     }
     function renderRestaurantTurnoverReport(){
         const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
@@ -197,7 +224,7 @@
                 result.innerHTML='<h3>Итог компании: '+(sum(rows)==null?'—':money(sum(rows).total))+'</h3><p class="section-note">'+esc(formatDate(date_from))+' — '+esc(formatDate(date_to))+' · Рестораны с данными: '+coverage(rows)+'</p><div class="turnover-report-scroll"><table class="turnover-report-table"><thead><tr><th>Ресторан</th><th>Зал</th><th>Доставка</th><th>Общий ТО</th></tr></thead><tbody>'+Array.from(groups.values()).map(g=>'<tr class="turnover-territory"><th colspan="4">'+esc(g.name)+' · '+coverage(g.items)+'</th></tr>'+g.items.map(r=>line(r.name,r.turnover)).join('')+line('Итого по территории',sum(g.items),'turnover-total')).join('')+line('Итого компания',sum(rows),'turnover-total')+'</tbody></table></div><p class="section-note">— нет данных. Итоги включают доступные отчёты; общий ТО включает нераспределённые каналы.</p>';
             }catch(e){if(id===request&&result.isConnected)result.textContent='Ошибка: '+e.message;}
         }
-        document.getElementById('turnover-load').addEventListener('click',load);load();
+        restoreReportFilters();document.getElementById('turnover-load').addEventListener('click',load);load();
     }
 
     function renderOrderTypeReport(){
@@ -233,12 +260,14 @@
                 result.innerHTML='<p class="section-note">'+esc(formatDate(date_from))+' — '+esc(formatDate(date_to))+' · Рестораны с данными: '+coverage(rows)+'</p><div class="turnover-report-scroll"><table class="turnover-report-table order-type-report"><thead><tr><th rowspan="2">Ресторан</th><th colspan="2">Общие</th><th colspan="4" class="order-type-hall">Зал</th><th colspan="4" class="order-type-delivery">Доставка</th></tr><tr><th>Общий ТО</th><th>Общие чеки</th>'+('<th>ТО</th><th>% ТО</th><th>Чеки</th><th>% чеков</th>').repeat(2)+'</tr></thead><tbody>'+Array.from(groups.values()).map(g=>'<tr class="turnover-territory"><th colspan="11">'+esc(g.name)+' · '+coverage(g.items)+'</th></tr>'+g.items.map(r=>line(r.name,r.metrics)).join('')+line('Итого по территории',sum(g.items),'turnover-total')).join('')+line('Итого компания (доступные рестораны)',sum(rows),'turnover-total')+'</tbody></table></div><p class="section-note">— нет данных, неполные данные по чекам или нулевой знаменатель. Итоги по доступным отчётам. Общие показатели включают нераспределённые каналы, поэтому доли могут не составлять 100%.</p>';
             }catch(e){if(id===request&&result.isConnected)result.textContent='Ошибка: '+e.message;}
         }
-        document.getElementById('order-type-load').addEventListener('click',load);load();
+        restoreReportFilters();document.getElementById('order-type-load').addEventListener('click',load);load();
     }
 
     function renderHourlyAverage(){
         DOM.content.innerHTML='<section class="panel"><button type="button" class="btn sales-report-back" id="avg-back">← К списку отчётов</button><h2>Почасовая выручка</h2><div class="hourly-report-filters"><label>Ресторан <select class="form-input" id="avg-rest" disabled></select></label><button class="btn btn-primary" id="avg-load">Обновить</button></div><div id="avg-result" aria-live="polite"></div></section>';
         const select=document.getElementById('avg-rest'),result=document.getElementById('avg-result');
+        select.replaceChildren(...state.restaurants.map(r=>new Option(r.name,r.key)));
+        restoreReportFilters();
         let seq=0;
         async function load(){
             const id=++seq;
@@ -247,7 +276,7 @@
                 const res=await apiFetch('/api/sales/hourly-average',{method:'POST',body:JSON.stringify({restaurant_key:select.value||null})});
                 if(id!==seq||!result.isConnected)return;
                 select.replaceChildren(...(res.restaurants||[]).map(r=>new Option(r.name,r.key)));
-                select.value=res.restaurant_key||'';select.disabled=!res.restaurants.length;
+                select.value=res.restaurant_key||'';select.disabled=!res.restaurants.length;saveReportState();
                 if(!res.restaurant_key){result.textContent='Нет доступных ресторанов';return;}
                 const names=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'],days=res.days;
                 const cell=v=>'<td>'+esc(v==null?'—':money(v))+'</td>';
@@ -368,7 +397,7 @@
                 direction.addEventListener('change',renderGroups);sort.addEventListener('change',renderGroups);renderGroups();
             }catch(e){if(id===request&&result.isConnected)result.textContent='Ошибка: '+e.message;}
         }
-        document.getElementById('hourly-refresh').addEventListener('click',load);
+        restoreReportFilters();document.getElementById('hourly-refresh').addEventListener('click',load);
         load();
     }
 
@@ -762,7 +791,10 @@
     function bindEvents() {
         const navLinks = document.querySelectorAll('.side-nav [data-view]:not([hidden])');
         navLinks.forEach(button => button.addEventListener('click', () => {
+            ++state.dashboardRequest;
             state.view = button.dataset.view;
+            state.reportIndex = null;
+            sessionStorage.removeItem('wokker_sales_report');
             ++state.recordsRequest;
             ++state.productsRequest;
             navLinks.forEach(link => {
@@ -777,6 +809,7 @@
             else if(state.dashboardData) renderDashboard(state.dashboardData); else loadDashboard();
         }));
 
+        DOM.content.addEventListener('change',saveReportState);
         DOM.menuToggle.addEventListener('click', () => setSalesMenuOpen(true));
         DOM.sidebarClose.addEventListener('click', () => setSalesMenuOpen(false));
         DOM.sidebarBackdrop.addEventListener('click', () => setSalesMenuOpen(false));
@@ -864,13 +897,22 @@
         } catch (_) { showSalesLogin('Войдите по логину и паролю'); return; }
         showSalesApp();
         await loadRestaurants();
-        loadDashboard();
+        let saved;
+        try{saved=JSON.parse(sessionStorage.getItem('wokker_sales_report'));}catch(_){}
+        if(saved&&Number.isInteger(saved.index)&&salesReportCatalog[saved.index]){
+            state.view='reports';
+            document.querySelectorAll('.side-nav [data-view]').forEach(button=>{
+                const active=button.dataset.view==='reports';
+                button.classList.toggle('active',active);
+                if(active){button.setAttribute('aria-current','page');document.getElementById('view-title').textContent=button.textContent.trim();}
+                else button.removeAttribute('aria-current');
+            });
+            openReport(saved.index);
+        }else loadDashboard();
         if (!state.eventsBound) {
             bindEvents();
             state.eventsBound = true;
-            window.addEventListener('resize', () => {
-                if (state.dashboardData) renderDashboard(state.dashboardData);
-            });
+            // Viewport height changes on mobile must never rebuild report DOM.
         }
     }
 

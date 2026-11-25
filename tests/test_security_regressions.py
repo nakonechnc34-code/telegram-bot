@@ -367,3 +367,39 @@ def test_timesheet_restaurant_directory_requires_permission(monkeypatch):
     with pytest.raises(web.HTTPForbidden):
         asyncio.run(timesheet.handle_timesheet_restaurants(request()))
     run.assert_not_awaited()
+
+
+def test_accruals_uses_authenticated_scope(monkeypatch):
+    from decimal import Decimal
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=({"user_id": 42}, None)))
+    monkeypatch.setattr(timesheet, "_sync_user_has_perm", Mock(return_value=True))
+    run = AsyncMock(return_value=[{"full_name": "Test", "total_hours": Decimal("8.25"),
+                                   "rate": Decimal("360"), "total_salary": Decimal("2970")}])
+    monkeypatch.setattr(timesheet, "_run", run)
+    response = asyncio.run(timesheet.handle_timesheet_accruals(request({
+        "date_from": "2026-11-01", "date_to": "2026-11-30", "user_id": 999})))
+    assert response.status == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert json.loads(response.body)["report"][0]["total_salary"] == 2970
+    run.assert_awaited_once_with(timesheet._sync_reports, 42, "2026-11-01", "2026-11-30", False)
+
+
+def test_accruals_denies_without_permission(monkeypatch):
+    from aiohttp import web
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=({"user_id": 42}, None)))
+    monkeypatch.setattr(timesheet, "_sync_user_has_perm", Mock(return_value=False))
+    run = AsyncMock()
+    monkeypatch.setattr(timesheet, "_run", run)
+    with pytest.raises(web.HTTPForbidden):
+        asyncio.run(timesheet.handle_timesheet_accruals(request({})))
+    run.assert_not_awaited()
+
+
+def test_accruals_invalid_dates(monkeypatch):
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=({"user_id": 42}, None)))
+    monkeypatch.setattr(timesheet, "_sync_user_has_perm", Mock(return_value=True))
+    run = AsyncMock()
+    monkeypatch.setattr(timesheet, "_run", run)
+    response = asyncio.run(timesheet.handle_timesheet_accruals(request({"date_from": "invalid"})))
+    assert response.status == 400
+    run.assert_not_awaited()

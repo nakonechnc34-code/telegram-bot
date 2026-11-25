@@ -348,3 +348,63 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
     finally:
         conn.rollback()
         conn.close()
+
+
+def test_fixed_salary_snapshot_no_duplicate_postgres(monkeypatch):
+    from contextlib import nullcontext
+    from datetime import date
+    from pathlib import Path
+    from routes import timesheet
+    dsn = os.getenv("ATTENDANCE_TEST_DSN")
+    if not dsn:
+        pytest.skip("ATTENDANCE_TEST_DSN not configured")
+    conn = psycopg2.connect(dsn)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""CREATE SCHEMA fixed_snapshot_test;
+                SET LOCAL search_path TO fixed_snapshot_test;
+                CREATE TABLE users (user_id bigint PRIMARY KEY, full_name text, position text,
+                    restaurant_key text, rate numeric, payment_type text, is_fired boolean,
+                    login text, is_admin boolean, is_super_admin boolean);
+                CREATE TABLE restaurants (key text PRIMARY KEY, name text, territory_manager_id bigint);
+                CREATE TABLE position_rates (position_name text, rate numeric);
+                CREATE TABLE timesheet_records (user_id bigint, work_date date, restaurant_key text, hours numeric);
+                CREATE TABLE attendance_import_days (user_id bigint, work_date date, restaurant_key text,
+                    status text, worked_minutes integer);
+                INSERT INTO restaurants VALUES ('a','A',10),('b','B',20);
+                INSERT INTO users VALUES (1,'Fixed','Cook','a',80000,'fixed',false,'fixed',false,false),
+                    (30,'Admin','Admin',NULL,0,'hourly',false,NULL,true,true);
+                INSERT INTO attendance_import_days VALUES
+                    (1,'2026-11-01','a','work',480),(1,'2026-11-02','b','work',480);""")
+            root = Path(__file__).resolve().parents[1] / "database"
+            for filename in ("008_timesheet_approval.sql", "009_timesheet_approval_locks.sql",
+                             "010_timesheet_accrual_snapshots.sql"):
+                cur.execute((root / filename).read_text(encoding="utf-8"))
+        monkeypatch.setattr(timesheet, "get_conn", lambda: nullcontext(conn))
+        admin = {"user_id":30,"is_super_admin":True}
+        month = date(2026,11,1)
+        def transition(key, action, revision, comment=""):
+            assert timesheet._sync_approval_transition(admin,key,month,action,comment,revision)[0] == 200
+        def total():
+            return sum(row["total_salary"] for row in
+                       timesheet._sync_approved_reports(30,"2026-11-01","2026-11-30"))
+        transition("a","submit",0)
+        transition("a","approve",1)
+        assert total() == Decimal("80000.00")
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET restaurant_key='b' WHERE user_id=1")
+        transition("b","submit",0)
+        transition("b","approve",1)
+        assert total() == Decimal("80000.00")
+        transition("a","reopen",2,"Transfer")
+        assert total() == Decimal("0.00")
+        transition("b","reopen",2,"Recalculate transferred salary")
+        transition("b","submit",3)
+        transition("b","approve",4)
+        assert total() == Decimal("80000.00")
+        transition("a","submit",3)
+        transition("a","approve",4)
+        assert total() == Decimal("80000.00")
+    finally:
+        conn.rollback()
+        conn.close()

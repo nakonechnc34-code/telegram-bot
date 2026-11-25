@@ -16,3 +16,9 @@ def test_na():
 def test_missing():
     with pytest.raises(ValueError):
         score_check(definition(),{"0:0":"yes"})
+
+@pytest.mark.parametrize("answers,error", [({}, "required_answer"), ({"0:0":"na"}, "critical_na")])
+def test_critical_cannot_be_skipped(answers,error):
+    d={"sections":[{"questions":[{"type":"yes_no_na","weight":1,"required":False,"critical":True}]}]}
+    with pytest.raises(ValueError,match=error):
+        score_check(d,answers)

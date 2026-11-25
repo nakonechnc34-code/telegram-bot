@@ -217,7 +217,7 @@ async def restaurant_scope(user):
     return [user["restaurant_key"]] if user.get("restaurant_key") else []
 
 
-def score_check(definition, answers):
+def score_check(definition, answers, photo_keys=()):
     if not isinstance(answers, dict):
         raise ValueError("invalid_answers")
     questions = {f"{i}:{j}": q for i, section in enumerate(definition["sections"]) for j,q in enumerate(section["questions"])}
@@ -238,7 +238,9 @@ def score_check(definition, answers):
             if q.get("critical"):
                 raise ValueError("critical_na")
             continue
-        if q.get("photo_required") or q.get("comment_required"):
+        if q.get("photo_required") and key not in photo_keys:
+            raise ValueError("photo_required")
+        if q.get("comment_required"):
             raise ValueError("evidence_not_supported")
         possible += q["weight"]
         if answer == "yes":
@@ -271,7 +273,7 @@ async def assign_check(request):
         if not row or not await conn.fetchval("SELECT 1 FROM restaurants WHERE key=$1",key):
             return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
         definition = json.loads(row["definition"]) if isinstance(row["definition"],str) else row["definition"]
-        if any(q["type"]!="yes_no_na" or q.get("photo_required") or q.get("comment_required") for sec in definition["sections"] for q in sec["questions"]):
+        if any(q["type"]!="yes_no_na" or q.get("comment_required") for sec in definition["sections"] for q in sec["questions"]):
             return web.json_response({"error":"Шаблон требует ещё не реализованных типов ответов или доказательств"},status=400,headers=NO_STORE)
         cid = await conn.fetchval("""INSERT INTO control_checks(restaurant_key,version_id,assigned_by,due_at)
             VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING id""",key,row["id"],user["user_id"],due)
@@ -320,7 +322,8 @@ async def complete_check(request):
                 return web.json_response({"error":"already_completed"},status=409,headers=NO_STORE)
             definition=json.loads(row["definition"]) if isinstance(row["definition"],str) else row["definition"]
             try:
-                score,violations=score_check(definition,body.get("answers"))
+                photos=await conn.fetch("SELECT question_key FROM control_check_photos WHERE check_id=$1",row["id"])
+                score,violations=score_check(definition,body.get("answers"),{p["question_key"] for p in photos})
             except ValueError as exc:
                 return web.json_response({"error":str(exc)},status=400,headers=NO_STORE)
             await conn.execute("UPDATE control_checks SET completed_at=NOW(),completed_by=$1,answers=$2::jsonb,score=$3 WHERE id=$4",user["user_id"],json.dumps(body["answers"]),score,row["id"])
@@ -628,7 +631,7 @@ async def save_schedule(request):
         if not row or not await conn.fetchval("SELECT 1 FROM restaurants WHERE key=$1",key):
             return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
         definition=json.loads(row["definition"]) if isinstance(row["definition"],str) else row["definition"]
-        if any(q["type"]!="yes_no_na" or q.get("photo_required") or q.get("comment_required") for sec in definition["sections"] for q in sec["questions"]):
+        if any(q["type"]!="yes_no_na" or q.get("comment_required") for sec in definition["sections"] for q in sec["questions"]):
             return web.json_response({"error":"unsupported_template"},status=400,headers=NO_STORE)
         sid=await conn.fetchval("""INSERT INTO control_schedules(restaurant_key,version_id,created_by,frequency,next_due,anchor_day)
             VALUES($1,$2,$3,$4,$5,$6) RETURNING id""",key,row["id"],user["user_id"],freq,due,due.astimezone(ZoneInfo("Europe/Moscow")).day)
@@ -794,3 +797,78 @@ async def acknowledge_document(request):
                 return web.json_response({"error":"version_changed"},status=409,headers=NO_STORE)
             await conn.execute("INSERT INTO control_acknowledgements(version_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING",vid,user["user_id"])
     return web.json_response({"ok":True},headers=NO_STORE)
+
+def photo_content_type(data):
+    if not 0 < len(data) <= 5*1024*1024:
+        raise ValueError("invalid_photo_size")
+    if data.startswith(b"\xff\xd8\xff") and data.endswith(b"\xff\xd9"):
+        return "image/jpeg"
+    if data.startswith(b"\x89PNG\r\n\x1a\n") and data.endswith(b"IEND\xaeB\x60\x82"):
+        return "image/png"
+    raise ValueError("invalid_photo_type")
+
+@routes.post("/api/control/checks/photo")
+async def upload_check_photo(request):
+    import base64
+    user=await control_user(request)
+    if not user:
+        return web.json_response({"error":"forbidden"},status=403,headers=NO_STORE)
+    try:
+        body=await request.json()
+        cid,key,encoded=body["id"],body["question_key"],body["photo"]
+        if type(cid) is not int or not isinstance(key,str) or not isinstance(encoded,str) or len(encoded)>6990510:
+            raise ValueError("invalid_photo")
+        data=base64.b64decode(encoded,validate=True)
+        mime=photo_content_type(data)
+    except (ValueError,TypeError,KeyError):
+        return web.json_response({"error":"invalid_photo"},status=400,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    async with db.get_pool(request.app).acquire() as conn:
+        async with conn.transaction():
+            row=await conn.fetchrow("""SELECT c.completed_at,v.definition FROM control_checks c
+                JOIN control_template_versions v ON v.id=c.version_id WHERE c.id=$1
+                AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2)) FOR UPDATE OF c""",cid,scope)
+            if not row:
+                return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
+            if row["completed_at"]:
+                return web.json_response({"error":"already_completed"},status=409,headers=NO_STORE)
+            definition=json.loads(row["definition"]) if isinstance(row["definition"],str) else row["definition"]
+            keys={f"{i}:{j}" for i,sec in enumerate(definition["sections"]) for j,q in enumerate(sec["questions"])}
+            if key not in keys:
+                return web.json_response({"error":"unknown_question"},status=400,headers=NO_STORE)
+            pid=await conn.fetchval("""INSERT INTO control_check_photos(check_id,question_key,uploaded_by,content_type,content)
+                VALUES($1,$2,$3,$4,$5) ON CONFLICT(check_id,question_key) DO UPDATE SET
+                uploaded_by=EXCLUDED.uploaded_by,content_type=EXCLUDED.content_type,content=EXCLUDED.content,created_at=NOW()
+                RETURNING id""",cid,key,user["user_id"],mime,data)
+    return web.json_response({"id":pid},headers=NO_STORE)
+
+@routes.post("/api/control/checks/photos")
+async def list_check_photos(request):
+    user=await control_user(request)
+    if not user:
+        return web.json_response({"error":"forbidden"},status=403,headers=NO_STORE)
+    try:
+        body=await request.json()
+        cid=body["id"]
+        if type(cid) is not int:
+            raise ValueError()
+    except (ValueError,TypeError,KeyError):
+        return web.json_response({"error":"invalid_id"},status=400,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    async with db.get_pool(request.app).acquire() as conn:
+        rows=await conn.fetch("""SELECT p.id,p.question_key,p.uploaded_by,p.created_at FROM control_check_photos p
+            JOIN control_checks c ON c.id=p.check_id WHERE c.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))""",cid,scope)
+    return web.json_response({"photos":[journal_json(r) for r in rows]},headers=NO_STORE)
+
+@routes.get("/api/control/photos/{id:\\d+}")
+async def get_check_photo(request):
+    user=await control_user(request)
+    if not user:
+        return web.Response(status=403,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    async with db.get_pool(request.app).acquire() as conn:
+        row=await conn.fetchrow("""SELECT p.content,p.content_type FROM control_check_photos p
+            JOIN control_checks c ON c.id=p.check_id WHERE p.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))""",int(request.match_info["id"]),scope)
+    if not row:
+        return web.Response(status=404,headers=NO_STORE)
+    return web.Response(body=row["content"],content_type=row["content_type"],headers={**NO_STORE,"X-Content-Type-Options":"nosniff"})

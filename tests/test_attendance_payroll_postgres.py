@@ -283,3 +283,68 @@ def test_approval_edit_guard_postgres(locked_status):
     finally:
         conn.rollback()
         conn.close()
+
+
+def test_approval_snapshot_cycle_postgres(monkeypatch):
+    from contextlib import nullcontext
+    from datetime import date
+    from pathlib import Path
+    from routes import timesheet
+    dsn = os.getenv("ATTENDANCE_TEST_DSN")
+    if not dsn:
+        pytest.skip("ATTENDANCE_TEST_DSN not configured")
+    conn = psycopg2.connect(dsn)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""CREATE SCHEMA approval_cycle_test;
+                SET LOCAL search_path TO approval_cycle_test;
+                CREATE TABLE users (user_id bigint PRIMARY KEY, full_name text, position text,
+                    restaurant_key text, rate numeric, payment_type text, is_fired boolean,
+                    login text, is_admin boolean, is_super_admin boolean);
+                CREATE TABLE restaurants (key text PRIMARY KEY, name text, territory_manager_id bigint);
+                CREATE TABLE position_rates (position_name text, rate numeric);
+                CREATE TABLE timesheet_records (user_id bigint, work_date date, restaurant_key text, hours numeric);
+                CREATE TABLE attendance_import_days (user_id bigint, work_date date, restaurant_key text,
+                    status text, worked_minutes integer);
+                INSERT INTO restaurants VALUES ('a','A',10),('b','B',20);
+                INSERT INTO users VALUES (1,'Cook','Cook','a',360,'hourly',false,'cook',false,false),
+                    (10,'TU','Территориальный управляющий','a',0,'hourly',false,NULL,true,false),
+                    (20,'Other TU','Территориальный управляющий','b',0,'hourly',false,NULL,true,false),
+                    (30,'Admin','Admin',NULL,0,'hourly',false,NULL,true,true);
+                INSERT INTO attendance_import_days VALUES (1,'2026-11-01','a','work',493);""")
+            root = Path(__file__).resolve().parents[1] / "database"
+            for filename in ("008_timesheet_approval.sql", "009_timesheet_approval_locks.sql",
+                             "010_timesheet_accrual_snapshots.sql"):
+                cur.execute((root / filename).read_text(encoding="utf-8"))
+        monkeypatch.setattr(timesheet, "get_conn", lambda: nullcontext(conn))
+        tu = {"user_id":10,"position":"Территориальный управляющий","is_admin":True}
+        admin = {"user_id":30,"is_super_admin":True}
+        month = date(2026,11,1)
+        def transition(actor, action, revision, comment=""):
+            return timesheet._sync_approval_transition(actor,"a",month,action,comment,revision)[0]
+        def report(actor=30, only_me=False):
+            return timesheet._sync_approved_reports(actor,"2026-11-01","2026-11-30",only_me)
+        assert report() == []
+        assert transition(tu,"submit",0) == 200
+        assert report() == []
+        assert transition(tu,"approve",1) == 403
+        assert transition(admin,"approve",0) == 409
+        assert transition(admin,"approve",1) == 200
+        assert report()[0]["total_salary"] == Decimal("2970.00")
+        assert report(10)[0]["total_salary"] == Decimal("2970.00")
+        assert report(20) == []
+        assert report(1,True)[0]["total_salary"] == Decimal("2970.00")
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET rate=600 WHERE user_id=1")
+        assert report()[0]["rate"] == Decimal(360)
+        assert transition(admin,"reopen",2,"Correction") == 200
+        assert report() == []
+        assert transition(tu,"submit",3) == 200
+        assert transition(admin,"approve",4) == 200
+        assert report()[0]["total_salary"] == Decimal("4950.00")
+        with conn.cursor() as cur:
+            cur.execute("SELECT revision,total_salary FROM timesheet_accrual_snapshots ORDER BY revision")
+            assert cur.fetchall() == [(2,Decimal("2970.00")),(5,Decimal("4950.00"))]
+    finally:
+        conn.rollback()
+        conn.close()

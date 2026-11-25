@@ -925,6 +925,37 @@ _EFFECTIVE_ATTENDANCE_SQL = """
 """
 
 
+def _sync_approved_reports(user_id, date_from, date_to, only_me=False):
+    """Return only current approved monthly snapshots, never draft calculations."""
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id=%s", (user_id,))
+            user = cur.fetchone()
+            if not user or user.get("is_fired"):
+                return []
+            sql = """SELECT s.full_name,s.position,s.restaurant_name,
+                       SUM(s.worked_minutes)::numeric/60 AS total_hours,
+                       s.rate,s.payment_type,SUM(s.total_salary) AS total_salary
+                FROM timesheet_accrual_snapshots s
+                JOIN timesheet_approvals a ON a.restaurant_key=s.restaurant_key
+                    AND a.month_start=s.month_start AND a.revision=s.revision
+                WHERE a.status='approved' AND s.month_start >= %s::date
+                    AND s.month_start + INTERVAL '1 month' - INTERVAL '1 day' <= %s::date"""
+            params = [date_from,date_to]
+            if only_me:
+                sql += " AND s.user_id=%s"
+                params.append(user_id)
+            elif _is_tu(user):
+                sql += " AND s.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id=%s)"
+                params.append(user_id)
+            elif not _is_hr_or_super(user):
+                return []
+            sql += """ GROUP BY s.user_id,s.restaurant_key,s.full_name,s.position,s.restaurant_name,s.rate,s.payment_type
+                       ORDER BY s.restaurant_name,s.full_name"""
+            cur.execute(sql,params)
+            return [dict(row) for row in cur.fetchall()]
+
+
 def _sync_reports(user_id, date_from, date_to, only_me=False):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1000,7 +1031,7 @@ async def handle_timesheet_reports(request):
         return web.json_response({"error": "invalid_dates"}, status=400)
 
     # ИСПРАВЛЕНО: Передаем True в only_me, чтобы каждый видел только свою зарплату в личном кабинете
-    report = await _run(_sync_reports, user["user_id"], date_from, date_to, True)
+    report = await _run(_sync_approved_reports, user["user_id"], date_from, date_to, True)
     return web.json_response({"report": report})
 
 
@@ -1017,7 +1048,7 @@ async def handle_timesheet_accruals(request):
         date_from, date_to = _date_range(body)
     except (ValueError, TypeError, OverflowError):
         return web.json_response({"error": "invalid_dates"}, status=400)
-    report = await _run(_sync_reports, user["user_id"], date_from, date_to, False)
+    report = await _run(_sync_approved_reports, user["user_id"], date_from, date_to, False)
     return web.json_response({"report": [
         {**row, "total_hours": float(row["total_hours"]),
          "rate": float(row["rate"]), "total_salary": float(row["total_salary"])}
@@ -1046,7 +1077,7 @@ async def handle_timesheet_export_excel(request):
 
     # Если сотрудник качает из профиля, он передает only_me=true. Иначе (из табеля админа) качаем всех доступных.
     only_me = request.query.get("only_me") == "true"
-    report = await _run(_sync_reports, user["user_id"], date_from, date_to, only_me)
+    report = await _run(_sync_approved_reports, user["user_id"], date_from, date_to, only_me)
 
     wb = Workbook()
     ws = wb.active

@@ -179,7 +179,7 @@ async def handle_timesheet_restaurants(request):
     return web.json_response({"restaurants": rests})
 
 
-def _sync_timesheet_matrix(user_id, date_from, date_to):
+def _sync_timesheet_matrix(user_id, date_from, date_to, include_imports=False):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
@@ -238,7 +238,24 @@ def _sync_timesheet_matrix(user_id, date_from, date_to):
                 }
                 data_map[r["user_id"]][str(r["work_date"].day)] = cell
                 full_date_map[r["user_id"]][r["work_date"].isoformat()] = cell
+            imported = {eid: {} for eid in emp_ids}
+            if include_imports:
+                cur.execute("""SELECT d.user_id, d.work_date, d.restaurant_key, d.status,
+                    d.worked_minutes FROM attendance_import_days d
+                    JOIN restaurants r ON r.key = d.restaurant_key
+                    WHERE d.user_id = ANY(%s) AND d.work_date BETWEEN %s::date AND %s::date
+                    AND (%s OR (%s AND r.territory_manager_id = %s)
+                         OR (%s AND r.key = %s) OR (%s AND d.user_id = %s))
+                    ORDER BY d.work_date, d.restaurant_key""",
+                    (emp_ids, date_from, date_to, is_hr_or_super, is_tu, user_id,
+                     is_us, u.get("restaurant_key"), not (is_hr_or_super or is_tu or is_us), user_id))
+                for r in cur.fetchall():
+                    day = r["work_date"].isoformat()
+                    imported[r["user_id"]].setdefault(day, {})[r["restaurant_key"]] = {
+                        "h": r["worked_minutes"] / 60, "minutes": r["worked_minutes"],
+                        "s": r["status"], "rk": r["restaurant_key"], "imported": True}
             for e in employees:
+                e["imported_by_date"] = imported[e["user_id"]]
                 e["data"] = data_map[e["user_id"]]
                 e["data_by_date"] = full_date_map[e["user_id"]]
             return employees
@@ -263,7 +280,7 @@ async def handle_timesheet_matrix(request):
     except (ValueError, TypeError, OverflowError):
         return web.json_response({"error": "invalid_dates"}, status=400)
 
-    employees = await _run(_sync_timesheet_matrix, user["user_id"], date_from, date_to)
+    employees = await _run(_sync_timesheet_matrix, user["user_id"], date_from, date_to, body.get("period") == "week")
     return web.json_response({"employees": employees})
 
 

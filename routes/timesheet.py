@@ -664,7 +664,7 @@ async def handle_delete_attendance(request):
         return web.json_response({"error": "Нет доступа к ресторану"}, status=403)
     if not deleted:
         return web.json_response({"error": "Отчёт не найден"}, status=404)
-    return web.json_response({"ok": True, "deleted_count": deleted}, headers={"Cache-Control": "no-store"})
+    logging.getLogger(__name__).info("attendance_import_deleted actor=%s import_id=%s restaurant=%r deleted_count=%s",\n                                    user["user_id"], import_id, restaurant_key, deleted)\n    return web.json_response({"ok": True, "deleted_count": deleted}, headers={"Cache-Control": "no-store"})
 
 
 def _sync_stage_attendance(user, rows, default_rest_key=None):

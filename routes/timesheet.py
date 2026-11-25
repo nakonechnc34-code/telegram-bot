@@ -945,6 +945,27 @@ async def handle_timesheet_reports(request):
     return web.json_response({"report": report})
 
 
+@routes.post('/api/timesheet/accruals')
+async def handle_timesheet_accruals(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    _require_timesheet_access(user)
+    try:
+        body = await request.json()
+        if not isinstance(body, dict):
+            raise ValueError("invalid body")
+        date_from, date_to = _date_range(body)
+    except (ValueError, TypeError, OverflowError):
+        return web.json_response({"error": "invalid_dates"}, status=400)
+    report = await _run(_sync_reports, user["user_id"], date_from, date_to, False)
+    return web.json_response({"report": [
+        {**row, "total_hours": float(row["total_hours"]),
+         "rate": float(row["rate"]), "total_salary": float(row["total_salary"])}
+        for row in report
+    ]}, headers={"Cache-Control": "no-store"})
+
+
 @routes.get('/api/timesheet/export_excel')
 async def handle_timesheet_export_excel(request):
     user, err = await _timesheet_user(request)

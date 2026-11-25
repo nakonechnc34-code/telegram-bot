@@ -1107,12 +1107,24 @@ async def analytics_rating(request):
             FROM control_tasks t JOIN control_checks c ON c.id=t.check_id CROSS JOIN bounds
             WHERE t.due_at>=lo AND t.due_at<hi AND t.due_at<=NOW() GROUP BY c.restaurant_key
         )
-        SELECT r.key,r.name,c.checklist_score AS checklists,c.audit_score AS audits,c.mystery_score AS mystery_guest,h.score AS haccp,t.score AS tasks
+        SELECT r.key,r.name,c.checklist_score AS checklists,c.audit_score AS audits,c.mystery_score AS mystery_guest,h.score AS haccp,t.score AS tasks,
+            l.score AS learning
         FROM restaurants r LEFT JOIN checks c ON c.restaurant_key=r.key
         LEFT JOIN haccp h ON h.restaurant_key=r.key LEFT JOIN tasks t ON t.restaurant_key=r.key
+        LEFT JOIN (
+            SELECT u.restaurant_key,100.0*COUNT(*) FILTER(WHERE a.passed)/NULLIF(COUNT(*),0) AS score
+            FROM users u JOIN (
+                SELECT tr.user_id,tr.course_id,BOOL_OR(tr.passed) AS passed
+                FROM academy_test_results tr JOIN academy_courses ac ON ac.id=tr.course_id
+                WHERE COALESCE(ac.is_published,TRUE)
+                GROUP BY tr.user_id,tr.course_id
+            ) a ON a.user_id=u.user_id
+            WHERE NOT COALESCE(u.is_fired,FALSE)
+            GROUP BY u.restaurant_key
+        ) l ON l.restaurant_key=r.key
         WHERE ($3::text[] IS NULL OR r.key=ANY($3)) ORDER BY r.name""",start,end,scope)
     items=[]
     for r in rows:
-        values={k:round(float(r[k]),2) if r[k] is not None else None for k in ("checklists","audits","mystery_guest","haccp","tasks")}
+        values={k:round(float(r[k]),2) if r[k] is not None else None for k in ("checklists","audits","mystery_guest","haccp","tasks","learning")}
         items.append({"restaurant_key":r["key"],"name":r["name"],**calculate_control_rating(values)})
-    return web.json_response({"weights":RATING_WEIGHTS,"restaurants":items},headers=NO_STORE)
+    return web.json_response({"weights":RATING_WEIGHTS,"restaurants":items,"learning_basis":"lifetime_attempted_published_courses"},headers=NO_STORE)

@@ -43,10 +43,10 @@
   <script src="/timesheet.js" defer></script>
 </head>
 <body>
-<aside><strong>WOKKER ТАБЕЛЬ</strong><nav aria-label="Разделы"><button type="button" data-page="0" aria-current="page">Главная</button><button type="button" data-page="1">Табель</button><button type="button" data-page="2">Начисления</button><button type="button" data-page="3">Отчёты</button><button type="button" data-page="4">Согласование</button><button type="button" data-page="5">Настройки</button></nav></aside>
+<aside><strong>WOKKER ТАБЕЛЬ</strong><nav aria-label="Разделы"><button type="button" data-page="0" aria-current="page">Главная</button><button type="button" data-page="1">Табель</button><button type="button" data-page="2">Начисления</button><button type="button" data-page="3">Отчёты</button><button type="button" data-page="4">Согласование</button><button type="button" data-page="6">Панель загрузки</button><button type="button" data-page="5">Настройки</button></nav></aside>
 <main>
   <header><h1 id="page-title">Главная</h1><a href="/" id="back">На главную</a></header>
-  <div id="home-panel"><section><h2>Управление рабочим временем</h2><p>Выберите раздел для работы с табелем.</p><div class="home-grid"><button type="button" data-page="1">Табель</button><button type="button" data-page="2">Начисления</button><button type="button" data-page="3">Отчёты</button><button type="button" data-page="4">Согласование</button><button type="button" data-page="5">Настройки</button></div></section></div>
+  <div id="home-panel"><section><h2>Управление рабочим временем</h2><p>Выберите раздел для работы с табелем.</p><div class="home-grid"><button type="button" data-page="1">Табель</button><button type="button" data-page="2">Начисления</button><button type="button" data-page="3">Отчёты</button><button type="button" data-page="4">Согласование</button><button type="button" data-page="6">Панель загрузки</button><button type="button" data-page="5">Настройки</button></div></section></div>
   <div id="future-panel" hidden><section><p>Раздел готовится к подключению. Данные и настройки пока не изменяются.</p></section></div>
   <div id="timesheet-panel" hidden>
   <section class="toolbar" aria-label="Дата и экспорт">
@@ -60,14 +60,15 @@
       <tbody id="employees"></tbody>
     </table>
   </section>
-  <section>
+
+  </div>
+  <div id="upload-panel" hidden><section><h2>Загрузка журнала явки iiko</h2><p>Выберите ресторан и файл Excel (.xlsx).</p></section>  <section>
     <form id="import-form">
       <label>Табель Excel <input type="file" name="file" accept=".xlsx" required></label>
       <label>Ресторан <select name="restaurant_key" id="import-restaurant"></select></label>
       <button type="submit">Импортировать</button>
     </form>
-  </section>
-  </div>
+  </section><p id="upload-status" role="status"></p></div>
   <dialog id="editor">
     <h2 id="employee-name"></h2>
     <form id="edit-form">

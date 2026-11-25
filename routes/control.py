@@ -140,7 +140,8 @@ async def template_editor(request):
 
 @routes.post("/api/control/templates")
 async def templates(request):
-    if not await template_editor(request):
+    user=await control_user(request)
+    if not user or not task_manager(user):
         return web.json_response({"error": "Доступ запрещён"}, status=403, headers=NO_STORE)
     async with db.get_pool(request.app).acquire() as conn:
         rows = await conn.fetch("""SELECT t.id,t.title,v.version,v.definition
@@ -227,8 +228,8 @@ def score_check(definition, answers):
 
 @routes.post("/api/control/checks/assign")
 async def assign_check(request):
-    user = await template_editor(request)
-    if not user:
+    user=await control_user(request)
+    if not user or not task_manager(user):
         return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
     from datetime import datetime
     try:
@@ -241,6 +242,9 @@ async def assign_check(request):
             raise ValueError()
     except (ValueError,TypeError,KeyError):
         return web.json_response({"error":"invalid_assignment"},status=400,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    if scope is not None and key not in scope:
+        return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
     async with db.get_pool(request.app).acquire() as conn:
         row = await conn.fetchrow("SELECT id,definition FROM control_template_versions WHERE template_id=$1 AND version=$2",tid,version)
         if not row or not await conn.fetchval("SELECT 1 FROM restaurants WHERE key=$1",key):
@@ -306,7 +310,17 @@ async def complete_check(request):
 
 
 def task_manager(user):
-    return bool(user.get("is_super_admin") or _is_tu(user))
+    if not control_allowed(user):
+        return False
+    if user.get("is_super_admin") or _is_tu(user):
+        return True
+    perms=user.get("permissions")
+    if isinstance(perms,str):
+        try:
+            perms=json.loads(perms)
+        except (ValueError,TypeError):
+            return False
+    return isinstance(perms,dict) and perms.get("control_manage") is True
 
 def task_transition(status, action, manager, assigned, comment):
     if action == "start" and status == "new" and assigned:
@@ -574,8 +588,8 @@ async def list_schedules(request):
 async def save_schedule(request):
     from datetime import datetime,timezone
     from zoneinfo import ZoneInfo
-    user=await template_editor(request)
-    if not user:
+    user=await control_user(request)
+    if not user or not task_manager(user):
         return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
     try:
         b=await request.json()
@@ -585,6 +599,9 @@ async def save_schedule(request):
             raise ValueError()
     except (ValueError,TypeError,KeyError):
         return web.json_response({"error":"invalid_schedule"},status=400,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    if scope is not None and key not in scope:
+        return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
     async with db.get_pool(request.app).acquire() as conn:
         row=await conn.fetchrow("SELECT id,definition FROM control_template_versions WHERE template_id=$1 AND version=$2",tid,version)
         if not row or not await conn.fetchval("SELECT 1 FROM restaurants WHERE key=$1",key):
@@ -598,8 +615,8 @@ async def save_schedule(request):
 
 @routes.post("/api/control/schedules/pause")
 async def pause_schedule(request):
-    user=await template_editor(request)
-    if not user:
+    user=await control_user(request)
+    if not user or not task_manager(user):
         return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
     try:
         b=await request.json()
@@ -607,8 +624,9 @@ async def pause_schedule(request):
             raise ValueError()
     except (ValueError,TypeError,AttributeError):
         return web.json_response({"error":"invalid_id"},status=400,headers=NO_STORE)
+    scope=await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
-        sid=await conn.fetchval("UPDATE control_schedules SET active=FALSE WHERE id=$1 RETURNING id",b["id"])
+        sid=await conn.fetchval("UPDATE control_schedules SET active=FALSE WHERE id=$1 AND ($2::text[] IS NULL OR restaurant_key=ANY($2)) RETURNING id",b["id"],scope)
     return web.json_response({"ok":bool(sid)},status=200 if sid else 404,headers=NO_STORE)
 
 

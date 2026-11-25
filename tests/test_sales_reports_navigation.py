@@ -44,7 +44,8 @@ def test_hourly_report_uses_assigned_territories_and_scoped_restaurants():
 def test_catalog_opens_hourly_report_and_returns_to_list():
     assert "const salesReportCatalog=[" in JS
     assert "open:renderHourlyComparison" in JS
-    assert "salesReportCatalog[Number(button.dataset.reportIndex)].open()" in JS
+    assert "openReport(Number(button.dataset.reportIndex))" in JS
+    assert "salesReportCatalog[index].open()" in JS
     assert 'id="sales-report-back"' in JS
     assert "getElementById('sales-report-back').addEventListener('click',renderReportCatalog)" in JS
     assert "'/api/sales/hourly-comparison'" in JS

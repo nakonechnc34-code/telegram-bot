@@ -849,7 +849,7 @@ def _sync_reports(user_id, date_from, date_to, only_me=False):
                        COALESCE(tr.name, r.name) AS restaurant_name,
                        COALESCE(SUM(t.hours), 0) as total_hours,
                        COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, u.payment_type,
-                       CASE WHEN u.payment_type = 'fixed' THEN COALESCE(NULLIF(u.rate, 0), pr.rate, 0)
+                       CASE WHEN u.payment_type = 'fixed' THEN CASE WHEN ROW_NUMBER() OVER (PARTITION BY u.user_id ORDER BY (COALESCE(t.restaurant_key, u.restaurant_key) IS NOT DISTINCT FROM u.restaurant_key) DESC, COALESCE(t.restaurant_key, u.restaurant_key) NULLS LAST) = 1 THEN COALESCE(NULLIF(u.rate, 0), pr.rate, 0) ELSE 0 END
                             ELSE (COALESCE(SUM(t.hours), 0) * COALESCE(NULLIF(u.rate, 0), pr.rate, 0)) END as total_salary
                 FROM users u 
                 LEFT JOIN effective_attendance t ON u.user_id = t.user_id AND t.work_date >= %s::date AND t.work_date <= %s::date
@@ -873,7 +873,7 @@ def _sync_reports(user_id, date_from, date_to, only_me=False):
                 base += " AND u.user_id = %s"
                 params.append(user_id)
                 
-            base += " GROUP BY u.user_id, u.full_name, u.position, COALESCE(tr.name, r.name), u.rate, pr.rate, u.payment_type ORDER BY COALESCE(tr.name, r.name), u.full_name"
+            base += " GROUP BY u.user_id, u.full_name, u.position, COALESCE(tr.name, r.name), COALESCE(t.restaurant_key, u.restaurant_key), u.restaurant_key, u.rate, pr.rate, u.payment_type ORDER BY COALESCE(tr.name, r.name), u.full_name"
 
             cur.execute(base, params)
             return [dict(r) for r in cur.fetchall()]

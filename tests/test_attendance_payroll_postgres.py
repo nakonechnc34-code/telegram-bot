@@ -88,6 +88,10 @@ def test_fixed_salary_report_postgres(monkeypatch):
         assert territory and {r["restaurant_name"] for r in territory} == {"A"}
         shift = timesheet._sync_reports(20, "2026-11-01", "2026-11-30")
         assert shift and {r["restaurant_name"] for r in shift} == {"B"}
+        assert next(r for r in territory if r["full_name"] == "Fixed")["total_salary"] == 80000
+        assert next(r for r in shift if r["full_name"] == "Fixed")["total_salary"] == 0
+        assert sum(r["total_salary"] for r in territory + shift if r["full_name"] == "Fixed") == 80000
+        assert sum(r["total_salary"] for r in territory + shift if r["full_name"] == "Hourly") == 3500
     finally:
         conn.rollback()
         conn.close()

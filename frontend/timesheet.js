@@ -7,17 +7,11 @@ const editor = byId('editor');
 const editForm = byId('edit-form');
 const statusLine = byId('status');
 const labels = { work: 'Работа', vacation: 'Отпуск', sick: 'Больничный', absent: 'Неявка' };
-const staffToken = localStorage.getItem('wokker_staff_token');
-const adminToken = localStorage.getItem('wokker_admin_token');
-const fromAdmin = new URLSearchParams(location.search).get('from') === 'admin';
-const token = fromAdmin ? adminToken || staffToken : staffToken || adminToken;
+let token = sessionStorage.getItem('wokker_timesheet_token');
 let selected;
 let loadVersion = 0;
 
-if (fromAdmin) {
-    byId('back').href = '/admin';
-    byId('back').textContent = 'В админку';
-}
+
 
 async function api(path, { body, method = 'POST', binary = false } = {}) {
     if (!token) throw new Error('Войдите в аккаунт, чтобы открыть табель');
@@ -27,7 +21,7 @@ async function api(path, { body, method = 'POST', binary = false } = {}) {
     if (!response.ok) {
         const error = await response.json().catch(() => ({}));
         if (response.status === 403) throw new Error('Нет доступа к этой операции');
-        if (response.status === 401) throw new Error('Сессия завершилась. Войдите снова');
+        if (response.status === 401) { clearSession(); throw new Error('Сессия завершилась. Войдите снова'); }
         throw new Error(error.error || 'Запрос не выполнен');
     }
     return binary ? response.blob() : response.json();
@@ -203,13 +197,47 @@ const today = new Date();
 dateInput.value = [today.getFullYear(), String(today.getMonth() + 1).padStart(2, '0'),
     String(today.getDate()).padStart(2, '0')].join('-');
 for (const [key, label] of Object.entries(labels)) editForm.elements.status.add(new Option(label, key));
-api('/api/timesheet/restaurants').then(({ restaurants }) => {
-    restaurantNames=new Map(restaurants.map(r=>[r.key,r.name]));
-    for(const r of restaurants)restaurantFilter.add(new Option(r.name,r.key));
-    fillRestaurants(byId('edit-restaurant'), restaurants);
-    fillRestaurants(byId('import-restaurant'), restaurants);
-    return loadDay();
-}).catch(error => { statusLine.textContent = error.message; });
+function clearSession(){
+    sessionStorage.removeItem('wokker_timesheet_token');
+    token=null;loadVersion++;employeesData=[];loadedRange=null;table.replaceChildren();
+    if(editor.open)editor.close();
+    document.querySelector('aside').hidden=true;
+    document.querySelector('main').hidden=true;
+    byId('login-panel').hidden=false;
+}
+async function startTimesheet(){
+    if(!token){clearSession();return;}
+    try {
+        const {restaurants}=await api('/api/timesheet/restaurants');
+        restaurantFilter.replaceChildren(new Option('Все рестораны',''));
+        byId('edit-restaurant').replaceChildren();
+        byId('import-restaurant').replaceChildren();
+        restaurantNames=new Map(restaurants.map(r=>[r.key,r.name]));
+        for(const r of restaurants)restaurantFilter.add(new Option(r.name,r.key));
+        fillRestaurants(byId('edit-restaurant'),restaurants);
+        fillRestaurants(byId('import-restaurant'),restaurants);
+        byId('login-panel').hidden=true;
+        document.querySelector('aside').hidden=false;
+        document.querySelector('main').hidden=false;
+        await loadDay();
+    }catch(error){clearSession();byId('login-error').textContent=error.message;}
+}
+byId('login-form').addEventListener('submit',async event=>{
+    event.preventDefault();
+    const button=event.submitter;button.disabled=true;
+    try{
+        const response=await fetch('/api/timesheet/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(event.currentTarget)))});
+        const result=await response.json();
+        if(!response.ok)throw new Error(result.error||'Ошибка входа');
+        token=result.token;sessionStorage.setItem('wokker_timesheet_token',token);
+        byId('login-form').reset();byId('login-error').textContent='';
+        await startTimesheet();
+    }catch(error){byId('login-error').textContent=error.message;}finally{button.disabled=false;}
+});
+byId('logout').addEventListener('click',async()=>{
+    try{await api('/api/timesheet/logout');}finally{clearSession();location.reload();}
+});
+
 
 const pageNames = ['Главная','Табель','Начисления','Отчёты','Согласование','Настройки','Панель загрузки'];
 function showPage(index) {
@@ -227,3 +255,4 @@ document.querySelectorAll('[data-page]').forEach(button => {
     button.addEventListener('click', () => showPage(Number(button.dataset.page)));
 });
 showPage(0);
+startTimesheet();

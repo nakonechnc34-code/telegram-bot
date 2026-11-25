@@ -86,7 +86,7 @@ function renderMatrix(){
             groups.get(key).push(employee);
         }
     }
-    const totalRow=(name,hours)=>{const row=table.insertRow();row.className=hours===''?'group-row restaurant-row':'group-row total-row';const label=row.insertCell();label.className='employee-col';label.textContent=name;const blank=row.insertCell();blank.colSpan=dates.length;row.insertCell().textContent=hours===''?'':period.value==='week'?`${Math.floor(hours/60)}:${String(hours%60).padStart(2,'0')}`:String(Math.round(hours/60*100)/100);};
+    const totalRow=(name,hours)=>{const row=table.insertRow();row.className=hours===''?'group-row restaurant-row':'group-row total-row';const label=row.insertCell();label.className='employee-col';label.textContent=name;const blank=row.insertCell();blank.colSpan=dates.length;row.insertCell().textContent=hours===''?'':`${Math.floor(hours/60)}:${String(hours%60).padStart(2,'0')}`;};
     for(const [key,employees] of groups){
         totalRow(restaurantNames.get(key)||'Без ресторана','');
         let total=0;
@@ -110,7 +110,7 @@ function renderMatrix(){
                 if(cell.imported){button.disabled=true;button.title='Из отчёта iiko';}else button.addEventListener('click',()=>openEditor(employee,cell,date));td.append(button);
                 if(cell.s==='work')hours+=cell.imported?cell.minutes:Math.round((Number(cell.h)||0)*60);
             }
-            const totalCell=row.insertCell();totalCell.className='hours-total';totalCell.textContent=period.value==='week'?`${Math.floor(hours/60)}:${String(hours%60).padStart(2,'0')}`:String(Math.round(hours/60*100)/100);total+=hours;
+            const totalCell=row.insertCell();totalCell.className='hours-total';totalCell.textContent=`${Math.floor(hours/60)}:${String(hours%60).padStart(2,'0')}`;total+=hours;
         }
         totalRow('Итого по ресторану',total);
     }
@@ -167,7 +167,7 @@ async function deleteAttendance(record, button) {
     const restaurant = restaurantNames.get(record.restaurant_key) || record.restaurant_key;
     if (!window.confirm('Удалить отчёт №' + record.id + '?\nРесторан: ' + restaurant +
         '\nПериод: ' + record.date_from + ' — ' + record.date_to +
-        '\nБудут удалены только записи этого отчёта для указанного ресторана. Недельный табель обновится. Зарплата не изменится.')) return;
+        '\nБудут удалены только записи этого отчёта для указанного ресторана. Недельный и месячный табели обновятся. Зарплата не изменится.')) return;
     deletingAttendance = true;
     button.disabled = true;
     const status = byId('attendance-history-status');

@@ -432,12 +432,37 @@ function openAccruals(){
     loadAccruals();
 }
 
+async function exportAccrualPeriod(from,to,status) {
+    status.textContent='';
+    if(!from || !to || from>to){status.textContent='Укажите корректный период';return;}
+    try {
+        const file=await api('/api/timesheet/export_excel?'+new URLSearchParams({date_from:from,date_to:to}),{method:'GET',binary:true});
+        const url=URL.createObjectURL(file), link=document.createElement('a');
+        link.href=url;link.download='accruals-'+from+'-'+to+'.xlsx';link.click();
+        setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }catch(error){status.textContent=error.message;}
+}
+byId('accruals-export').addEventListener('click',()=>exportAccrualPeriod(byId('accruals-from').value,byId('accruals-to').value,byId('accruals-status')));
+byId('reports-form').addEventListener('submit',e=>{
+    e.preventDefault();const data=new FormData(e.currentTarget);
+    exportAccrualPeriod(data.get('date_from'),data.get('date_to'),byId('reports-status'));
+});
+function openReports(){
+    const form=byId('reports-form');
+    if(!form.elements.date_from.value){
+        const d=dateInput.value;
+        form.elements.date_from.value=d.slice(0,7)+'-01';form.elements.date_to.value=d;
+    }
+}
+
 const pageNames = ['Главная','Табель','Начисления','Отчёты','Согласование','Настройки','Панель загрузки'];
 function showPage(index) {
     byId('page-title').textContent = pageNames[index];
     byId('home-panel').hidden = index !== 0;
     byId('timesheet-panel').hidden = index !== 1;
-    byId('future-panel').hidden = index < 3 || index === 6;
+    byId('future-panel').hidden = index !== 4 && index !== 5;
+    byId('reports-panel').hidden = index !== 3;
+    if(index === 3) openReports();
     byId('accruals-panel').hidden = index !== 2;
     if(index === 2 && token) openAccruals();
     byId('upload-panel').hidden = index !== 6;

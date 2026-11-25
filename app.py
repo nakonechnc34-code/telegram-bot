@@ -64,7 +64,7 @@ from routes.content import routes as content_routes
 from routes.core import routes as core_routes
 from routes.academy import routes as academy_routes
 from routes.sales import routes as sales_routes
-from routes.control import routes as control_routes
+from routes.control import routes as control_routes, schedule_worker
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -155,6 +155,7 @@ def run_migrations():
                 cur.execute((migrations / "009_control_checks.sql").read_text(encoding="utf-8"))
                 cur.execute((migrations / "010_control_task_history.sql").read_text(encoding="utf-8"))
                 cur.execute((migrations / "011_control_haccp.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "012_control_schedules.sql").read_text(encoding="utf-8"))
                 cur.execute("SELECT 1 FROM users LIMIT 1")
                 if cur.fetchone() is None:
                     if not config.LOGIN_RE.fullmatch(config.ADMIN_LOGIN):
@@ -584,10 +585,13 @@ async def main():
     logging.info(f"✅ Server on port {port}")
     logging.info(f"👤 Admin: {config.ADMIN_LOGIN}")
 
+    control_worker = asyncio.create_task(schedule_worker(app))
     try:
         await asyncio.Event().wait()
     finally:
         logging.info("🛑 Завершение работы сервера...")
+        control_worker.cancel()
+        await asyncio.gather(control_worker, return_exceptions=True)
         await runner.cleanup()
         await close_async_pool()
         await asyncio.to_thread(close_pool)

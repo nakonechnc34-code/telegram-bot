@@ -1,0 +1,35 @@
+name: Attendance PostgreSQL
+on:
+  pull_request:
+  push:
+    branches: [feat/attendance-minute-validation]
+permissions:
+  contents: read
+jobs:
+  attendance:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: attendance
+          POSTGRES_PASSWORD: ci-only
+          POSTGRES_DB: attendance_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U attendance -d attendance_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://attendance:ci-only@127.0.0.1:5432/attendance_test
+      ATTENDANCE_TEST_DSN: postgresql://attendance:ci-only@127.0.0.1:5432/attendance_test
+      ADMIN_PASSWORD: ci-only-placeholder-not-used-for-login
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python -m pytest tests/test_attendance_payroll_postgres.py -q

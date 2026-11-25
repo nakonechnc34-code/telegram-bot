@@ -2,7 +2,12 @@ from types import SimpleNamespace
 from routes.control import control_allowed, token_hash
 
 def test_explicit_permission():
-    assert control_allowed({"permissions": {"control_access": True}})
+    assert not control_allowed({"permissions": {"control_access": True}})
+    assert control_allowed({"is_admin": True, "permissions": {"control_access": True}})
+    assert control_allowed({"position": "УС", "permissions": {"control_access": True}})
+    assert control_allowed({"position": "Территориальный управляющий", "permissions": {"control_access": True}})
+    assert control_allowed({"permissions": {"control_access": True, "control_view_all": True}})
+    assert not control_allowed({"permissions": {"control_view_all": True}})
     assert not control_allowed({"permissions": {"sales_access": True}})
     assert not control_allowed({"permissions": {"control_access": "true"}})
     assert not control_allowed({"is_admin": True})

@@ -134,6 +134,7 @@ def test_save_cell_preserves_zero_hour_removal_and_overnight_shifts(monkeypatch)
     employee = {"user_id": 123, "is_super_admin": True}
     monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(employee, None)))
     cursor = mock_cursor(timesheet, monkeypatch)
+    cursor.fetchone.return_value = None
     body = {"user_id": "123", "work_date": "2026-11-20", "hours": 0}
     assert asyncio.run(timesheet.handle_timesheet_save_cell(request(body))).status == 200
     assert cursor.execute.call_args.args[0].startswith("DELETE")
@@ -229,3 +230,21 @@ def test_timesheet_valid_session(monkeypatch):
     monkeypatch.setattr(timesheet, "_extract_token", AsyncMock(return_value="timesheet-token"))
     monkeypatch.setattr(timesheet, "_run", AsyncMock(return_value=employee))
     assert asyncio.run(timesheet._timesheet_user(request({}))) == (employee, None)
+
+
+def test_imported_day_blocks_manual_write(monkeypatch):
+    employee = {"user_id": 123, "is_super_admin": True}
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(employee, None)))
+    cursor = mock_cursor(timesheet, monkeypatch)
+    cursor.fetchone.return_value = (1,)
+    body = {"user_id": 123, "work_date": "2026-11-20", "hours": 8}
+    assert asyncio.run(timesheet.handle_timesheet_save_cell(request(body))).status == 409
+    assert all(call.args[0].startswith("SELECT") for call in cursor.execute.call_args_list)
+
+
+def test_legacy_import_endpoint_disabled(monkeypatch):
+    employee = {"user_id": 123, "is_super_admin": True}
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(employee, None)))
+    req = request()
+    req.path = "/api/timesheet/import_attendance"
+    assert asyncio.run(timesheet.handle_import_attendance(req)).status == 410

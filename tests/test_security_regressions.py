@@ -332,3 +332,38 @@ def test_save_cell_returns_403_on_transaction_scope_denial(monkeypatch):
     response = asyncio.run(timesheet.handle_timesheet_save_cell(request({"user_id": 123, "work_date": "2026-11-20", "hours": 0})))
     assert response.status == 403
     assert json.loads(response.body)["error"] == "forbidden_restaurant"
+
+
+@pytest.mark.parametrize("position,admin,super_admin,expected_sql,params", [
+    ("HR", True, False, "ORDER BY name", ()),
+    ("", True, True, "ORDER BY name", ()),
+    ("Территориальный управляющий", False, False, "WHERE territory_manager_id = %s", (42,)),
+    ("Управляющий сменой", False, False, "WHERE key = %s", ("a",)),
+    ("Повар", False, False, "WHERE key = %s", ("a",)),
+])
+def test_timesheet_restaurant_directory_scope(monkeypatch, position, admin, super_admin, expected_sql, params):
+    user = {"user_id": 42, "position": position, "is_admin": admin,
+            "is_super_admin": super_admin, "restaurant_key": "a"}
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(user, None)))
+    monkeypatch.setattr(timesheet, "_sync_user_has_perm", Mock(return_value=True))
+    cursor = mock_cursor(timesheet, monkeypatch)
+    cursor.fetchall.return_value = [{"key": "a", "name": "A"}]
+    response = asyncio.run(timesheet.handle_timesheet_restaurants(request()))
+    assert response.status == 200
+    args = cursor.execute.call_args.args
+    assert expected_sql in args[0]
+    assert (args[1] if len(args) > 1 else ()) == params
+    if not params:
+        assert "WHERE" not in args[0]
+    assert json.loads(response.body)["restaurants"] == [{"key": "a", "name": "A"}]
+
+
+def test_timesheet_restaurant_directory_requires_permission(monkeypatch):
+    from aiohttp import web
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=({"user_id": 42}, None)))
+    monkeypatch.setattr(timesheet, "_sync_user_has_perm", Mock(return_value=False))
+    run = AsyncMock()
+    monkeypatch.setattr(timesheet, "_run", run)
+    with pytest.raises(web.HTTPForbidden):
+        asyncio.run(timesheet.handle_timesheet_restaurants(request()))
+    run.assert_not_awaited()

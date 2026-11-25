@@ -1402,6 +1402,41 @@ async def handle_employee_payment_summary(request):
     return web.json_response(summary)
 
 
+def _snapshot_approved_accruals(cur, key, month, revision):
+    """Capture the monthly payroll using the approval transaction's cursor."""
+    cur.execute("WITH effective AS (" + _EFFECTIVE_ATTENDANCE_SQL + """),
+        monthly AS (
+            SELECT e.user_id, COALESCE(e.restaurant_key,u.restaurant_key) AS restaurant_key,
+                   ROUND(SUM(e.hours)*60)::integer AS minutes
+            FROM effective e JOIN users u ON u.user_id=e.user_id
+            WHERE e.work_date >= %s::date AND e.work_date < %s::date + INTERVAL '1 month'
+            GROUP BY e.user_id, COALESCE(e.restaurant_key,u.restaurant_key)
+        ), salary_owner AS (
+            SELECT DISTINCT ON (m.user_id) m.user_id,m.restaurant_key
+            FROM monthly m JOIN users u ON u.user_id=m.user_id
+            ORDER BY m.user_id,(m.restaurant_key IS NOT DISTINCT FROM u.restaurant_key) DESC,
+                     m.restaurant_key NULLS LAST
+        ), candidates AS (
+            SELECT u.user_id,u.full_name,u.position,u.payment_type,
+                   COALESCE(NULLIF(u.rate,0),pr.rate,0) AS rate,
+                   COALESCE(m.restaurant_key,u.restaurant_key) AS restaurant_key,
+                   COALESCE(m.minutes,0) AS minutes,
+                   COALESCE(s.restaurant_key,u.restaurant_key) AS salary_key
+            FROM users u LEFT JOIN monthly m ON m.user_id=u.user_id
+            LEFT JOIN salary_owner s ON s.user_id=u.user_id
+            LEFT JOIN position_rates pr ON pr.position_name=u.position
+            WHERE u.login IS NOT NULL AND COALESCE(u.is_fired,FALSE)=FALSE
+        )
+        INSERT INTO timesheet_accrual_snapshots
+            (restaurant_key,month_start,revision,user_id,full_name,position,restaurant_name,payment_type,rate,worked_minutes,total_salary)
+        SELECT c.restaurant_key,%s,%s,c.user_id,c.full_name,c.position,r.name,c.payment_type,c.rate,c.minutes,
+               ROUND(CASE WHEN c.payment_type='fixed' THEN
+                   CASE WHEN c.restaurant_key=c.salary_key THEN c.rate ELSE 0 END
+                   ELSE c.minutes::numeric*c.rate/60 END,2)
+        FROM candidates c JOIN restaurants r ON r.key=c.restaurant_key
+        WHERE c.restaurant_key=%s""", (month,month,month,revision,key))
+
+
 def _sync_approval_transition(user, key, month, action, comment, revision):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1427,6 +1462,8 @@ def _sync_approval_transition(user, key, month, action, comment, revision):
                         (target,next_revision,user["user_id"],key,month))
             cur.execute("INSERT INTO timesheet_approval_history(restaurant_key,month_start,revision,previous_status,new_status,actor_id,comment) VALUES (%s,%s,%s,%s,%s,%s,%s)",
                         (key,month,next_revision,row["status"],target,user["user_id"],comment))
+            if target == "approved":
+                _snapshot_approved_accruals(cur,key,month,next_revision)
             return 200, {"status":target,"revision":next_revision}
 
 

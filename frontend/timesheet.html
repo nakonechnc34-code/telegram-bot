@@ -111,9 +111,9 @@
     <form id="import-form">
       <label>Табель Excel <input type="file" name="file" accept=".xlsx" required></label>
       <label>Ресторан <select name="restaurant_key" id="import-restaurant"></select></label>
-      <button type="submit">Импортировать</button>
+      <button type="submit">Предварительный просмотр</button>
     </form>
-  </section><p id="upload-status" role="status"></p></div>
+  </section><p id="upload-status" role="status" style="white-space:pre-wrap"></p><section id="attendance-preview" hidden><h2>Результат проверки</h2><p id="preview-summary"></p><p>Предпросмотр не сохраняет данные в табель.</p><div class="table"><table><thead><tr><th>Табельный номер</th><th>Дата</th><th>Ресторан</th><th>Смены / статус</th><th>Часы и минуты</th></tr></thead><tbody id="preview-rows"></tbody></table></div></section></div>
   <dialog id="editor">
     <h2 id="employee-name"></h2>
     <form id="edit-form">

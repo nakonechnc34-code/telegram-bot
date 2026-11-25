@@ -910,7 +910,8 @@ async def handle_timesheet_export_excel(request):
         user, err = await get_auth_user(request)
     if err:
         return denied(err)
-    # ИСПРАВЛЕНО: убрали _require_timesheet_access(user)
+    if request.query.get("only_me") != "true":
+        _require_timesheet_access(user)
 
     date_from = request.query.get("date_from")
     date_to = request.query.get("date_to")
@@ -958,6 +959,8 @@ async def handle_timesheet_export_excel(request):
         for col_num in range(1, 7):
             cell = ws.cell(row=current_row, column=col_num)
             cell.border = border
+            if col_num <= 3:
+                cell.data_type = "s"
             if col_num >= 4:
                 cell.alignment = Alignment(horizontal="right", vertical="center")
 

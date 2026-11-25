@@ -226,11 +226,20 @@ def test_timesheet_revoked_permission(monkeypatch):
     assert asyncio.run(timesheet._timesheet_user(request({}))) == (None, 403)
 
 
-def test_timesheet_valid_session(monkeypatch):
-    employee = {"user_id": 123, "permissions": {"timesheet_access": True}}
+@pytest.mark.parametrize("role,allowed", [
+    ({"position": "Территориальный управляющий"}, True),
+    ({"is_admin": True, "position": "HR"}, True),
+    ({"is_super_admin": True}, True),
+    ({"position": "Управляющий сменой"}, False),
+    ({"position": "Повар"}, False),
+    ({}, False),
+    ({"is_super_admin": True, "is_fired": True}, False),
+])
+def test_timesheet_valid_session(monkeypatch, role, allowed):
+    employee = {"user_id": 123, "permissions": {"timesheet_access": True}, **role}
     monkeypatch.setattr(timesheet, "_extract_token", AsyncMock(return_value="timesheet-token"))
     monkeypatch.setattr(timesheet, "_run", AsyncMock(return_value=employee))
-    assert asyncio.run(timesheet._timesheet_user(request({}))) == (employee, None)
+    assert asyncio.run(timesheet._timesheet_user(request({}))) == ((employee, None) if allowed else (None, 403))
 
 
 def test_imported_day_blocks_manual_write(monkeypatch):

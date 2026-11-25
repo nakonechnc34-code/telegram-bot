@@ -628,6 +628,45 @@ async def handle_attendance_history(request):
     return web.json_response({"records": records}, headers={"Cache-Control": "no-store"})
 
 
+def _sync_delete_attendance(user, import_id, restaurant_key):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT pg_advisory_xact_lock(814726, 2)")
+            cur.execute("SELECT key, territory_manager_id FROM restaurants WHERE key = %s FOR SHARE", (restaurant_key,))
+            restaurant = cur.fetchone()
+            territory = {restaurant_key} if restaurant and restaurant["territory_manager_id"] == user["user_id"] else set()
+            if not restaurant or not _restaurant_in_scope(user, restaurant_key, territory):
+                return None
+            cur.execute("DELETE FROM attendance_import_days WHERE import_id = %s AND restaurant_key = %s", (import_id, restaurant_key))
+            deleted = cur.rowcount
+            cur.execute("DELETE FROM attendance_imports i WHERE id = %s AND NOT EXISTS (SELECT 1 FROM attendance_import_days d WHERE d.import_id = i.id)", (import_id,))
+            return deleted
+
+
+@routes.post('/api/timesheet/import_attendance/delete')
+async def handle_delete_attendance(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    _require_timesheet_access(user)
+    if not (_is_hr_or_super(user) or _is_tu(user)):
+        return web.json_response({"error": "Нет права на удаление"}, status=403)
+    try:
+        body = await request.json()
+        import_id = body["import_id"]
+        restaurant_key = body["restaurant_key"]
+        if type(import_id) is not int or not 0 < import_id < 2**63 or not isinstance(restaurant_key, str) or not restaurant_key or len(restaurant_key) > 256:
+            raise ValueError()
+    except (ValueError, TypeError, KeyError):
+        return web.json_response({"error": "Некорректные параметры отчёта"}, status=400)
+    deleted = await _run(_sync_delete_attendance, user, import_id, restaurant_key)
+    if deleted is None:
+        return web.json_response({"error": "Нет доступа к ресторану"}, status=403)
+    if not deleted:
+        return web.json_response({"error": "Отчёт не найден"}, status=404)
+    return web.json_response({"ok": True, "deleted_count": deleted}, headers={"Cache-Control": "no-store"})
+
+
 def _sync_stage_attendance(user, rows, default_rest_key=None):
     """Store a validated batch for review, without affecting legacy payroll."""
     from utils.attendance_minutes import shift_interval

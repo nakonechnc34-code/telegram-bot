@@ -265,3 +265,25 @@ def test_mystery_guest_hidden_from_territorial_manager(monkeypatch):
     }))
     admin = {"user_id": 42, "position": "Территориальный управляющий"}
     assert not asyncio.run(users._check_admin_can_manage_user(admin, 123))
+
+
+@pytest.mark.parametrize("handler_name", [
+    "handle_academy_courses", "handle_academy_course_detail", "handle_academy_submit_test",
+    "handle_admin_academy_courses", "handle_admin_academy_course_save",
+    "handle_admin_academy_course_delete", "handle_admin_academy_lesson_save",
+    "handle_admin_academy_lesson_delete", "handle_admin_academy_question_save",
+    "handle_admin_academy_question_delete",
+])
+def test_mystery_guest_denied_all_academy_routes(handler_name, monkeypatch):
+    from routes import academy
+
+    monkeypatch.setattr(auth_helpers, "_extract_token", AsyncMock(return_value="old-session"))
+    monkeypatch.setattr(auth_helpers, "_run", AsyncMock(side_effect=[123, {
+        "user_id": 123, "position": " Тайный гость ", "is_admin": True,
+        "permissions": {"academy_edit": True},
+    }]))
+    run = AsyncMock()
+    monkeypatch.setattr(academy, "_run", run)
+    response = asyncio.run(getattr(academy, handler_name)(request({})))
+    assert response.status == 403
+    run.assert_not_called()

@@ -520,6 +520,61 @@ def _parse_excel_rows(file_data):
     return parsed_data
 
 
+
+def _sync_preview_attendance(user, rows, default_rest_key=None):
+    """Validate scope and calculate minutes without changing payroll records."""
+    from utils.attendance_minutes import shift_interval, worked_minutes
+    groups = {}
+    errors = []
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT user_id, personnel_number, restaurant_key FROM users WHERE personnel_number IS NOT NULL AND COALESCE(is_fired, FALSE) = FALSE")
+            users = {}
+            for employee in cur.fetchall():
+                users.setdefault(str(employee["personnel_number"]).strip(), []).append(employee)
+            cur.execute("SELECT key, name, territory_manager_id FROM restaurants")
+            restaurants = cur.fetchall()
+    territory = {r["key"] for r in restaurants if r["territory_manager_id"] == user["user_id"]}
+    known = {r["key"] for r in restaurants}
+    for day, number, raw, name in rows:
+        candidates = users.get(number, [])
+        if len(candidates) != 1:
+            errors.append("Неизвестный или неоднозначный табельный номер")
+            continue
+        employee = candidates[0]
+        if not _is_hr_or_super(user) and employee["user_id"] != user["user_id"]:
+            if not (_is_tu(user) or "управляющий сменой" in (user.get("position") or "").lower()) or not _restaurant_in_scope(user, employee["restaurant_key"], territory):
+                errors.append("Нет доступа к сотруднику")
+                continue
+        matches = [r["key"] for r in restaurants if r["name"].strip().casefold() == name.strip().casefold()] if name else []
+        key = matches[0] if len(matches) == 1 else (default_rest_key or employee["restaurant_key"]) if not name else None
+        if key not in known or not _restaurant_in_scope(user, key, territory):
+            errors.append("Неизвестный или недоступный ресторан")
+            continue
+        try:
+            shift_interval(raw)
+        except ValueError:
+            errors.append("Строка не содержит корректный интервал смены")
+            continue
+        groups.setdefault((number, day, key), []).append(raw)
+    records = [{"personnel_number": number, "date": day, "restaurant_key": key,
+                "minutes": worked_minutes(values), "shifts": values}
+               for (number, day, key), values in sorted(groups.items())]
+    by_day = {}
+    for (number, day, key), values in groups.items():
+        by_day.setdefault((number, day), []).extend((key, *shift_interval(v)) for v in values)
+    for intervals in by_day.values():
+        intervals.sort(key=lambda item: item[1])
+        for i, (key, start, end) in enumerate(intervals):
+            if any(other != key and left < end and start < right for other, left, right in intervals[i+1:]):
+                errors.append("Пересечение смен в разных ресторанах")
+                break
+    return {"ok": not errors, "preview": True, "records": records,
+            "total_minutes": sum(r["minutes"] for r in records) if not errors else None,
+            "error_count": len(errors), "errors": errors[:50]}
+
+
+@routes.post('/api/timesheet/import_attendance/preview')
 @routes.post('/api/timesheet/import_attendance')
 async def handle_import_attendance(request):
     user, err = await _timesheet_user(request)
@@ -550,6 +605,10 @@ async def handle_import_attendance(request):
         rows = await _run(_parse_excel_rows, file_data)
     except Exception:
         return web.json_response({"error": "Не удалось прочитать Excel"}, status=400)
+
+    if request.path.endswith("/preview"):
+        result = await _run(_sync_preview_attendance, user, rows, default_rest)
+        return web.json_response(result, headers={"Cache-Control": "no-store"})
 
     success, errors = await _run(_sync_import_attendance, user, rows, default_rest)
     return web.json_response({"ok": True, "success_count": success, "errors": errors})

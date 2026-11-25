@@ -1125,6 +1125,6 @@ async def analytics_rating(request):
         WHERE ($3::text[] IS NULL OR r.key=ANY($3)) ORDER BY r.name""",start,end,scope)
     items=[]
     for r in rows:
-        values={k:round(float(r[k]),2) if r[k] is not None else None for k in ("checklists","audits","mystery_guest","haccp","tasks","learning")}
+        values={k:round(float(r[k]),2) if r[k] is not None else None for k in ("checklists","audits","mystery_guest","haccp","tasks")}
         items.append({"restaurant_key":r["key"],"name":r["name"],**calculate_control_rating(values)})
-    return web.json_response({"weights":RATING_WEIGHTS,"restaurants":items,"learning_basis":"lifetime_attempted_published_courses"},headers=NO_STORE)
+    return web.json_response({"weights":RATING_WEIGHTS,"restaurants":items,"learning_basis":"in_development"},headers=NO_STORE)

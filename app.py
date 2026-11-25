@@ -553,6 +553,10 @@ async def handle_control_js(request):
     return await _send_static_file("control.js", "application/javascript")
 
 app.router.add_get("/control.css", handle_control_css)
+async def handle_control_mobile_js(request):
+    return await _send_static_file("control-mobile.js", "application/javascript")
+
+app.router.add_get("/control-mobile.js", handle_control_mobile_js)
 app.router.add_get("/control.js", handle_control_js)
 app.router.add_get("/control", handle_control_page)
 app.router.add_get("/control/", handle_control_page)

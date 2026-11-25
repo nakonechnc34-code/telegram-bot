@@ -1,5 +1,6 @@
 from aiohttp import web
 from psycopg2.extras import RealDictCursor
+from psycopg2.errors import CheckViolation
 from db import get_conn, _run
 from utils.auth_helpers import get_auth_user, denied, _is_hr_or_super, _is_tu, _sync_user_has_perm, _sync_get_tu_rests
 from utils.attendance_rounding import allocate_daily_minutes, round_daily_minutes
@@ -402,7 +403,12 @@ async def handle_timesheet_save_cell(request):
         if not _restaurant_in_scope(user, restaurant_key, territory_keys):
             return web.json_response({"error": "forbidden_restaurant"}, status=403)
 
-    saved = await _run(_sync_save_cell, user["user_id"], target_uid, work_date, hours, status, restaurant_key, start_time, end_time)
+    try:
+        saved = await _run(_sync_save_cell, user["user_id"], target_uid, work_date, hours, status, restaurant_key, start_time, end_time)
+    except CheckViolation as exc:
+        if exc.diag.message_primary != "Timesheet is locked for approval":
+            raise
+        return web.json_response({"error": "Табель закрыт на согласование или утверждён"}, status=409)
     if saved == "forbidden":
         return web.json_response({"error": "forbidden_restaurant"}, status=403)
     if saved is False:
@@ -742,7 +748,12 @@ async def handle_delete_attendance(request):
             raise ValueError()
     except (ValueError, TypeError, KeyError):
         return web.json_response({"error": "Некорректные параметры отчёта"}, status=400)
-    deleted = await _run(_sync_delete_attendance, user, import_id, restaurant_key)
+    try:
+        deleted = await _run(_sync_delete_attendance, user, import_id, restaurant_key)
+    except CheckViolation as exc:
+        if exc.diag.message_primary != "Timesheet is locked for approval":
+            raise
+        return web.json_response({"error": "Табель закрыт на согласование или утверждён"}, status=409)
     if deleted is None:
         return web.json_response({"error": "Нет доступа к ресторану"}, status=403)
     if not deleted:
@@ -869,6 +880,10 @@ async def handle_import_attendance(request):
             return web.json_response({"error": "Нет права на загрузку"}, status=403)
         try:
             result = await _run(_sync_stage_attendance, user, rows, default_rest)
+        except CheckViolation as exc:
+            if exc.diag.message_primary != "Timesheet is locked for approval":
+                raise
+            return web.json_response({"error": "Табель закрыт на согласование или утверждён"}, status=409)
         except ValueError:
             return web.json_response({"error": "Данные сотрудников изменились. Повторите проверку."}, status=409)
         return web.json_response(result, headers={"Cache-Control": "no-store"})

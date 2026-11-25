@@ -17,3 +17,14 @@ def test_invalid_weight(weight):
 def test_empty_sections():
     with pytest.raises(ValueError):
         validate_template({"title":"Кухня","sections":[]})
+
+@pytest.mark.parametrize("category",["checklist","audit","mystery_guest"])
+def test_category(category):
+    assert validate_template(dict(template(),category=category))["category"]==category
+
+def test_legacy_category():
+    assert validate_template(template())["category"]=="checklist"
+
+def test_invalid_category():
+    with pytest.raises(ValueError):
+        validate_template(dict(template(),category="unknown"))

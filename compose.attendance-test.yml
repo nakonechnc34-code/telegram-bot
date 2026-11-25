@@ -26,6 +26,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json, urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=3)); assert d['status']=='healthy' and d['database']=='ok'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
     ports:
       - '127.0.0.1:18080:8080'
     networks: [isolated]

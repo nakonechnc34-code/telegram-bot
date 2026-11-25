@@ -33,6 +33,7 @@ def test_reading_scope_and_deviation(monkeypatch, value, comment, exists, status
     monkeypatch.setattr(control, "control_user", AsyncMock(return_value=user))
     pool = MagicMock()
     conn = pool.acquire.return_value.__aenter__.return_value
+    conn.transaction = MagicMock()
     conn.fetchrow = AsyncMock(return_value={"lower_limit": reading_number("2"),
                                            "upper_limit": reading_number("6")} if exists else None)
     conn.fetchval = AsyncMock(return_value=99)

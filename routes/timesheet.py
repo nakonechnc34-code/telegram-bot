@@ -1360,23 +1360,22 @@ def _sync_employee_payment_summary(user_id, date_from, date_to):
     """Read-only summary scoped to the authenticated employee."""
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("WITH effective_attendance AS (" + _EFFECTIVE_ATTENDANCE_SQL + """)
+            cur.execute("""
                 SELECT
                     COALESCE(t.total_hours, 0) AS total_hours,
-                    CASE WHEN u.payment_type = 'fixed'
-                         THEN COALESCE(NULLIF(u.rate, 0), pr.rate, 0)
-                         ELSE COALESCE(t.total_hours, 0) *
-                              COALESCE(NULLIF(u.rate, 0), pr.rate, 0)
-                    END AS timesheet_accrued,
+                    COALESCE(t.timesheet_accrued, 0) AS timesheet_accrued,
                     COALESCE(p.extra_accrued, 0) AS extra_accrued,
                     COALESCE(p.paid, 0) AS paid
                 FROM users u
-                LEFT JOIN position_rates pr ON pr.position_name = u.position
                 LEFT JOIN LATERAL (
-                    SELECT SUM(hours) AS total_hours
-                    FROM effective_attendance
-                    WHERE user_id = u.user_id
-                      AND work_date BETWEEN %s::date AND %s::date
+                    SELECT SUM(s.worked_minutes)::numeric/60 AS total_hours,
+                           SUM(s.total_salary) AS timesheet_accrued
+                    FROM timesheet_accrual_snapshots s
+                    JOIN timesheet_approvals a ON a.restaurant_key=s.restaurant_key
+                        AND a.month_start=s.month_start AND a.revision=s.revision
+                    WHERE s.user_id=u.user_id AND a.status='approved'
+                      AND s.month_start >= %s::date
+                      AND s.month_start + INTERVAL '1 month' - INTERVAL '1 day' <= %s::date
                 ) t ON TRUE
                 LEFT JOIN LATERAL (
                     SELECT

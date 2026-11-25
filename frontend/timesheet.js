@@ -158,8 +158,12 @@ editForm.addEventListener('submit', async event => {
 });
 
 let previewVersion = 0;
+let verifiedAttendance = null;
+let stagingAttendance = false;
 function clearAttendancePreview() {
     previewVersion++;
+    verifiedAttendance = null;
+    byId('confirm-attendance').disabled = true;
     byId('attendance-preview').hidden = true;
     byId('preview-rows').replaceChildren();
     byId('preview-summary').textContent = '';
@@ -168,6 +172,7 @@ function clearAttendancePreview() {
 byId('import-form').addEventListener('change', clearAttendancePreview);
 byId('import-form').addEventListener('submit', async event => {
     event.preventDefault();
+    if (stagingAttendance) return;
     clearAttendancePreview();
     const version = previewVersion;
     const button = event.submitter;
@@ -180,6 +185,10 @@ byId('import-form').addEventListener('submit', async event => {
         const result = await api('/api/timesheet/import_attendance/preview?' + params, {body: data});
         if (version !== previewVersion) return;
         const records = result.records;
+        if (result.ok && records.length) {
+            verifiedAttendance = {data, params, version};
+            byId('confirm-attendance').disabled = false;
+        }
         const duration = n => Math.floor(n / 60) + ' ч ' + (n % 60) + ' мин';
         byId('preview-summary').textContent = [
             'Сотрудников: ' + new Set(records.map(r => r.personnel_number)).size,
@@ -205,6 +214,31 @@ byId('import-form').addEventListener('submit', async event => {
         if (version === previewVersion) byId('upload-status').textContent = error.message;
     } finally {
         button.disabled = false;
+    }
+});
+
+byId('confirm-attendance').addEventListener('click', async () => {
+    const verified = verifiedAttendance;
+    if (!verified || stagingAttendance || verified.version !== previewVersion) return;
+    stagingAttendance = true;
+    verifiedAttendance = null;
+    const form = byId('import-form');
+    const controls = [...form.querySelectorAll('input, select, button')];
+    const previous = controls.map(control => control.disabled);
+    controls.forEach(control => control.disabled = true);
+    byId('confirm-attendance').disabled = true;
+    byId('upload-status').textContent = 'Сохранение отчёта…';
+    try {
+        const result = await api('/api/timesheet/import_attendance/stage?' + verified.params, {body: verified.data});
+        if (verified.version !== previewVersion) return;
+        byId('upload-status').textContent = result.ok
+            ? 'Отчёт №' + result.import_id + ' сохранён. Записей: ' + result.success_count + '. Зарплата не изменена.'
+            : (result.errors || ['Отчёт не сохранён']).join('\n');
+    } catch (error) {
+        if (verified.version === previewVersion) byId('upload-status').textContent = error.message + ' Проверьте историю загрузок перед повторной отправкой.';
+    } finally {
+        stagingAttendance = false;
+        controls.forEach((control, i) => control.disabled = previous[i]);
     }
 });
 

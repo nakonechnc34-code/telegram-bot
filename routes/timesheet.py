@@ -597,6 +597,37 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
             "error_count": len(errors), "errors": errors[:50]}
 
 
+def _sync_attendance_history(user):
+    """Return only restaurant-level summaries within the current user's scope."""
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT key, territory_manager_id FROM restaurants")
+            restaurants = cur.fetchall()
+            territory = {r["key"] for r in restaurants if r["territory_manager_id"] == user["user_id"]}
+            allowed = [r["key"] for r in restaurants if _restaurant_in_scope(user, r["key"], territory)]
+            cur.execute("""SELECT i.id, i.created_at::text AS created_at,
+                d.restaurant_key, MIN(d.work_date)::text AS date_from,
+                MAX(d.work_date)::text AS date_to, COUNT(*) AS record_count,
+                SUM(d.worked_minutes) AS total_minutes
+                FROM attendance_imports i JOIN attendance_import_days d ON d.import_id = i.id
+                WHERE d.restaurant_key = ANY(%s)
+                GROUP BY i.id, i.created_at, d.restaurant_key
+                ORDER BY i.id DESC, d.restaurant_key LIMIT 200""", (allowed,))
+            return [dict(row) for row in cur.fetchall()]
+
+
+@routes.get('/api/timesheet/import_attendance/history')
+async def handle_attendance_history(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    _require_timesheet_access(user)
+    if not (_is_hr_or_super(user) or _is_tu(user)):
+        return web.json_response({"error": "Нет права на просмотр истории"}, status=403)
+    records = await _run(_sync_attendance_history, user)
+    return web.json_response({"records": records}, headers={"Cache-Control": "no-store"})
+
+
 def _sync_stage_attendance(user, rows, default_rest_key=None):
     """Store a validated batch for review, without affecting legacy payroll."""
     from utils.attendance_minutes import shift_interval

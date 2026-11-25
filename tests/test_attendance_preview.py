@@ -126,3 +126,22 @@ def test_delete_attendance_scoped_and_repeat():
         assert "NOT EXISTS" in sql
         assert params == (42,)
     assert all("timesheet_records" not in sql for sql, _ in deletes)
+
+
+def test_saved_attendance_conflicts():
+    from routes.timesheet import _attendance_saved_conflict
+    cursor = MagicMock()
+    record = {"personnel_number": "021", "date": "2026-11-17",
+              "restaurant_key": "a", "shifts": ["05:00-09:00"]}
+    saved = {"restaurant_key": "b", "work_date": "2026-11-16",
+             "status": "work", "start_minute": 1320, "end_minute": 1800}
+    cursor.fetchall.return_value = [saved]
+    assert _attendance_saved_conflict(cursor, [record], {"021": 1})
+    cursor.fetchall.return_value = [dict(saved, end_minute=1740)]
+    assert not _attendance_saved_conflict(cursor, [record], {"021": 1})
+    cursor.fetchall.return_value = [dict(saved, restaurant_key="a",
+        work_date="2026-11-17", start_minute=300, end_minute=540)]
+    assert not _attendance_saved_conflict(cursor, [record], {"021": 1})
+    cursor.fetchall.return_value = [dict(saved, work_date="2026-11-17",
+        status="sick", start_minute=None, end_minute=None)]
+    assert _attendance_saved_conflict(cursor, [record], {"021": 1})

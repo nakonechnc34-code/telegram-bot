@@ -523,3 +523,90 @@ async def haccp_readings(request):
             AND r.recorded_at < ($4::date::timestamp AT TIME ZONE 'Europe/Moscow')
             ORDER BY r.id DESC LIMIT 1001""",eid,scope,start,exclusive)
     return web.json_response({"readings":[journal_json(r) for r in rows[:1000]],"truncated":len(rows)>1000},headers=NO_STORE)
+
+
+def next_schedule_due(due, frequency, anchor_day):
+    from datetime import timedelta
+    from calendar import monthrange
+    from zoneinfo import ZoneInfo
+    local=due.astimezone(ZoneInfo("Europe/Moscow"))
+    if frequency in ("daily","weekly"):
+        return local+timedelta(days=1 if frequency=="daily" else 7)
+    if frequency!="monthly":
+        raise ValueError("invalid_frequency")
+    year,month=local.year+(local.month==12),local.month%12+1
+    return local.replace(year=year,month=month,day=min(anchor_day,monthrange(year,month)[1]))
+
+async def generate_scheduled_checks(app):
+    async with db.get_pool(app).acquire() as conn:
+        async with conn.transaction():
+            rows=await conn.fetch("""SELECT * FROM control_schedules WHERE active AND next_due<=NOW()+INTERVAL '24 hours'
+                ORDER BY next_due LIMIT 100 FOR UPDATE SKIP LOCKED""")
+            for row in rows:
+                due=row["next_due"]
+                await conn.execute("""INSERT INTO control_checks(restaurant_key,version_id,assigned_by,due_at)
+                    VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING""",row["restaurant_key"],row["version_id"],row["created_by"],due)
+                await conn.execute("UPDATE control_schedules SET next_due=$1 WHERE id=$2",
+                    next_schedule_due(due,row["frequency"],row["anchor_day"]),row["id"])
+
+async def schedule_worker(app):
+    import asyncio,logging
+    while True:
+        try:
+            await generate_scheduled_checks(app)
+        except Exception:
+            logging.exception("CONTROL schedule generation failed")
+        await asyncio.sleep(60)
+
+@routes.post("/api/control/schedules")
+async def list_schedules(request):
+    user=await control_user(request)
+    if not user or not task_manager(user):
+        return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    async with db.get_pool(request.app).acquire() as conn:
+        rows=await conn.fetch("""SELECT s.*,t.title FROM control_schedules s
+            JOIN control_template_versions v ON v.id=s.version_id JOIN control_templates t ON t.id=v.template_id
+            WHERE ($1::text[] IS NULL OR s.restaurant_key=ANY($1)) ORDER BY s.next_due LIMIT 500""",scope)
+    return web.json_response({"schedules":[journal_json(r) for r in rows]},headers=NO_STORE)
+
+@routes.post("/api/control/schedules/save")
+async def save_schedule(request):
+    from datetime import datetime,timezone
+    from zoneinfo import ZoneInfo
+    user=await template_editor(request)
+    if not user:
+        return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
+    try:
+        b=await request.json()
+        key,tid,version,freq=b["restaurant_key"],b["template_id"],b["version"],b["frequency"]
+        due=datetime.fromisoformat(b["next_due"])
+        if not isinstance(key,str) or type(tid) is not int or type(version) is not int or freq not in ("daily","weekly","monthly") or due.tzinfo is None or due<=datetime.now(timezone.utc):
+            raise ValueError()
+    except (ValueError,TypeError,KeyError):
+        return web.json_response({"error":"invalid_schedule"},status=400,headers=NO_STORE)
+    async with db.get_pool(request.app).acquire() as conn:
+        row=await conn.fetchrow("SELECT id,definition FROM control_template_versions WHERE template_id=$1 AND version=$2",tid,version)
+        if not row or not await conn.fetchval("SELECT 1 FROM restaurants WHERE key=$1",key):
+            return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
+        definition=json.loads(row["definition"]) if isinstance(row["definition"],str) else row["definition"]
+        if any(q["type"]!="yes_no_na" or q.get("photo_required") or q.get("comment_required") for sec in definition["sections"] for q in sec["questions"]):
+            return web.json_response({"error":"unsupported_template"},status=400,headers=NO_STORE)
+        sid=await conn.fetchval("""INSERT INTO control_schedules(restaurant_key,version_id,created_by,frequency,next_due,anchor_day)
+            VALUES($1,$2,$3,$4,$5,$6) RETURNING id""",key,row["id"],user["user_id"],freq,due,due.astimezone(ZoneInfo("Europe/Moscow")).day)
+    return web.json_response({"id":sid},status=201,headers=NO_STORE)
+
+@routes.post("/api/control/schedules/pause")
+async def pause_schedule(request):
+    user=await template_editor(request)
+    if not user:
+        return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
+    try:
+        b=await request.json()
+        if type(b.get("id")) is not int:
+            raise ValueError()
+    except (ValueError,TypeError,AttributeError):
+        return web.json_response({"error":"invalid_id"},status=400,headers=NO_STORE)
+    async with db.get_pool(request.app).acquire() as conn:
+        sid=await conn.fetchval("UPDATE control_schedules SET active=FALSE WHERE id=$1 RETURNING id",b["id"])
+    return web.json_response({"ok":bool(sid)},status=200 if sid else 404,headers=NO_STORE)

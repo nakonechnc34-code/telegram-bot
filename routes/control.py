@@ -192,18 +192,20 @@ def control_permission(user,key):
             return False
     return isinstance(perms,dict) and perms.get(key) is True
 
+def control_is_us(user):
+    return (user.get("position") or "").strip().lower() in ("ус","управляющий смены","управляющий сменой","управляющий сменой ресторана")
+
 def control_network_view(user):
     if not control_allowed(user):
         return False
     if user.get("is_super_admin"):
         return True
-    position=(user.get("position") or "").strip().lower()
-    if position in ("ус","управляющий смены","управляющий сменой","управляющий сменой ресторана"):
+    if control_is_us(user):
         return False
     return bool(_is_tu(user) or control_permission(user,"control_view_all"))
 
 def control_template_edit(user):
-    return bool(control_allowed(user) and (user.get("is_super_admin") or user.get("is_admin")))
+    return bool(control_allowed(user) and (user.get("is_super_admin") or (user.get("is_admin") and not control_is_us(user))))
 
 async def restaurant_scope(user):
     if not control_allowed(user):
@@ -329,7 +331,7 @@ async def complete_check(request):
 def task_manager(user):
     if not control_allowed(user):
         return False
-    if user.get("is_super_admin") or _is_tu(user) or control_network_view(user):
+    if user.get("is_super_admin") or _is_tu(user):
         return True
     perms=user.get("permissions")
     if isinstance(perms,str):

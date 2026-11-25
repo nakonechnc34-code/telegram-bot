@@ -45,7 +45,11 @@ def validate_user_create_data(body):
     }, None
 
 
-def _sync_list_users(search="", fired=False, tu_rests=None):
+def _private_guest_position(position):
+    return (position or "").strip().casefold() == "тайный гость"
+
+
+def _sync_list_users(search="", fired=False, tu_rests=None, include_guests=False):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             base = """SELECT u.user_id, u.login, u.full_name, u.personnel_number, u.phone, u.birth_date, u.position, u.restaurant_key, r.name AS restaurant_name,
@@ -57,6 +61,8 @@ def _sync_list_users(search="", fired=False, tu_rests=None):
                 LEFT JOIN citizenships c ON u.citizenship_id = c.id
                 WHERE COALESCE(u.is_fired, FALSE) = %s AND u.login IS NOT NULL"""
             params = [bool(fired)]
+            if not include_guests:
+                base += " AND lower(btrim(COALESCE(u.position, ''))) <> 'тайный гость'"
             if tu_rests is not None:
                 if not tu_rests:
                     return []
@@ -92,7 +98,7 @@ async def _check_admin_can_manage_user(admin, target_uid):
     if _is_hr_or_super(admin):
         return True
     target = await _run(_sync_get_user_by_id, target_uid)
-    if not target:
+    if not target or _private_guest_position(target.get("position")):
         return False
     if _is_tu(admin):
         allowed_rests = await _run(_sync_get_tu_rests, admin["user_id"])
@@ -115,7 +121,7 @@ async def handle_admin_users(request):
     if _is_tu(user):
         tu_rests = await _run(_sync_get_tu_rests, user["user_id"])
 
-    users = await _run(_sync_list_users, search, fired, tu_rests)
+    users = await _run(_sync_list_users, search, fired, tu_rests, _is_hr_or_super(user))
 
     can_read_medbooks = _can_read_medbooks(user)
     if can_read_medbooks:
@@ -187,6 +193,8 @@ async def handle_admin_user_create(request):
     data, err = validate_user_create_data(body)
     if err:
         return web.json_response({"error": err}, status=400)
+    if _private_guest_position(data.get("position")) and not _is_hr_or_super(admin):
+        return denied(403)
     if _is_hr_position(data.get("position")) and not admin.get("is_super_admin"):
         return denied(403)
     if _is_tu(admin):
@@ -271,6 +279,8 @@ async def handle_admin_user_update(request):
         return web.json_response({"error": "forbidden"}, status=403)
 
     updates = body.get("updates") or {}
+    if _private_guest_position(updates.get("position")) and not _is_hr_or_super(admin):
+        return denied(403)
     target = await _run(_sync_get_user_by_id, uid)
     if not target:
         return web.json_response({"error": "not_found"}, status=404)
@@ -464,7 +474,7 @@ async def handle_admin_dashboard_summary(request):
 
                 cur.execute("SELECT COUNT(*) as cnt FROM questions WHERE replied = FALSE")
                 stats["questions_open"] = cur.fetchone()["cnt"] or 0
-                cur.execute("SELECT q.id, q.text, u.full_name FROM questions q LEFT JOIN users u ON q.user_id = u.user_id WHERE q.replied = FALSE ORDER BY q.created_at DESC LIMIT 4")
+                cur.execute("SELECT q.id, q.text, u.full_name FROM questions q LEFT JOIN users u ON q.user_id = u.user_id WHERE q.replied = FALSE AND (%s OR lower(btrim(COALESCE(u.position, ''))) <> 'тайный гость') ORDER BY q.created_at DESC LIMIT 4", (_is_hr_or_super(user),))
                 open_qs = [dict(r) for r in cur.fetchall()]
 
                 cur.execute("SELECT COUNT(*) as cnt FROM news WHERE status = 'pending'")
@@ -475,7 +485,8 @@ async def handle_admin_dashboard_summary(request):
                 cur.execute("SELECT COUNT(*) as cnt FROM standards WHERE status = 'pending'")
                 stats["standards_pending"] = cur.fetchone()["cnt"] or 0
 
-                cur.execute("SELECT user_id, full_name, position FROM users WHERE login IS NOT NULL AND COALESCE(is_fired, FALSE) = FALSE AND COALESCE(is_admin, FALSE) = FALSE ORDER BY created_at DESC LIMIT 4")
+                guest_filter = "" if _is_hr_or_super(user) else " AND lower(btrim(COALESCE(position, ''))) <> 'тайный гость'"
+                cur.execute("SELECT user_id, full_name, position FROM users WHERE login IS NOT NULL AND COALESCE(is_fired, FALSE) = FALSE AND COALESCE(is_admin, FALSE) = FALSE" + guest_filter + " ORDER BY created_at DESC LIMIT 4")
                 new_users = [dict(r) for r in cur.fetchall()]
 
                 total_mb_alerts = 0
@@ -485,6 +496,7 @@ async def handle_admin_dashboard_summary(request):
                     query = ("SELECT full_name, medbook FROM users WHERE login IS NOT NULL "
                              "AND COALESCE(is_fired, FALSE) = FALSE AND COALESCE(is_admin, FALSE) = FALSE "
                              "AND medbook IS NOT NULL")
+                    query += guest_filter
                     params = ()
                     if _is_tu(user):
                         query += (" AND restaurant_key IN "
@@ -614,9 +626,10 @@ async def handle_admin_questions(request):
                            u.full_name
                     FROM questions q
                     LEFT JOIN users u ON q.user_id = u.user_id
+                    WHERE (%s OR lower(btrim(COALESCE(u.position, ''))) <> 'тайный гость')
                     ORDER BY q.replied ASC, q.created_at DESC
                     LIMIT 200
-                """)
+                """, (_is_hr_or_super(admin),))
                 return [dict(r) for r in cur.fetchall()]
 
     items = await _run(_sync)

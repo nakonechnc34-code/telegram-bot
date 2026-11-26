@@ -968,10 +968,13 @@ async def get_check_photo(request):
     user=await control_user(request)
     if not user:
         return web.Response(status=403,headers=NO_STORE)
+    raw_id=request.match_info["id"]
+    if not raw_id.isascii() or not raw_id.isdecimal() or len(raw_id)>19 or not 0<int(raw_id)<2**63:
+        return web.Response(status=404,headers=NO_STORE)
     scope=await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
         row=await conn.fetchrow("""SELECT p.content,p.content_type FROM control_check_photos p
-            JOIN control_checks c ON c.id=p.check_id WHERE p.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))""",int(request.match_info["id"]),scope)
+            JOIN control_checks c ON c.id=p.check_id WHERE p.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))""",int(raw_id),scope)
     if not row:
         return web.Response(status=404,headers=NO_STORE)
     return await safe_photo_response(row["content"])
@@ -1003,11 +1006,14 @@ async def get_task_photo(request):
     user=await control_user(request)
     if not user:
         return web.Response(status=403,headers=NO_STORE)
+    raw_id=request.match_info["id"]
+    if not raw_id.isascii() or not raw_id.isdecimal() or len(raw_id)>19 or not 0<int(raw_id)<2**63:
+        return web.Response(status=404,headers=NO_STORE)
     scope=await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
         row=await conn.fetchrow("""SELECT p.content,p.content_type FROM control_task_photos p JOIN control_tasks t ON t.id=p.task_id
             JOIN control_checks c ON c.id=t.check_id WHERE p.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))
-            AND ($3::boolean OR t.assignee_id=$4)""",int(request.match_info["id"]),scope,task_manager(user),user["user_id"])
+            AND ($3::boolean OR t.assignee_id=$4)""",int(raw_id),scope,task_manager(user),user["user_id"])
     if not row:
         return web.Response(status=404,headers=NO_STORE)
     return await safe_photo_response(row["content"])

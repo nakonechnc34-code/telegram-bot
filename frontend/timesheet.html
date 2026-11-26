@@ -83,6 +83,35 @@
     dialog::backdrop{background:#17233466}
     @media(max-width:900px){body{display:block}aside{position:static;height:auto;padding:14px}nav{grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:4px}nav button{padding:9px}main{padding:16px}#matrix-scroll .employee-col{width:170px;min-width:170px;max-width:170px}#export{margin-left:0}}
   #login-panel{grid-column:1/-1;width:min(420px,92vw);margin:10vh auto;padding:32px}#login-panel form{display:grid;gap:16px}#login-panel label{display:grid}#login-panel button{background:#b91c1c;color:white}body:has(#login-panel:not([hidden])){display:block}
+
+    #rates-panel section{min-width:0}
+    #rates-panel .table{max-width:100%;overscroll-behavior-x:contain}
+    #rates-panel td{overflow-wrap:anywhere}
+    #rates-panel td:last-child button{margin:3px;min-height:40px}
+    #rates-panel .toolbar{padding:0 0 16px}
+    #rates-panel .toolbar label{flex:1 1 180px;min-width:0}
+    dialog[data-rate-dialog]{width:min(480px,calc(100% - 24px));max-width:none;max-height:calc(100dvh - 24px);overflow:auto}
+    dialog[data-rate-dialog] form{display:grid;gap:16px}
+    dialog[data-rate-dialog] h2{margin:0;overflow-wrap:anywhere;font-size:20px}
+    dialog[data-rate-dialog] label{display:grid;gap:6px;min-width:0}
+    dialog[data-rate-dialog] input,dialog[data-rate-dialog] textarea{width:100%;font:inherit;border:1px solid #d5deea;border-radius:8px;padding:12px;min-height:44px}
+    dialog[data-rate-dialog] textarea{min-height:100px;resize:vertical}
+    dialog[data-rate-dialog] .toolbar{padding:0;justify-content:flex-end}
+    dialog[data-rate-dialog] button[type=submit]{background:var(--accent);color:white;border-color:var(--accent)}
+    @media(max-width:600px){
+      #rates-panel section{padding:12px}
+      #rates-panel .toolbar{display:grid;grid-template-columns:minmax(0,1fr)}
+      #rates-panel .toolbar input,#rates-panel .toolbar select,#rates-panel .toolbar button{width:100%;min-height:44px;font-size:16px}
+      #rates-panel table,#rates-panel tbody,#rates-panel tr,#rates-panel td{display:block;width:100%}
+      #rates-panel thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+      #rates-panel tbody tr{border:1px solid var(--line);border-radius:10px;margin:8px 0;padding:10px}
+      #rates-panel td{display:grid;grid-template-columns:minmax(95px,36%) minmax(0,1fr);gap:8px;padding:6px 0;border:0}
+      #rates-panel td::before{content:attr(data-label);color:var(--muted);font-size:12px;font-weight:600}
+      #rates-panel td:last-child button{min-height:44px;grid-column:2;margin:0}
+      dialog[data-rate-dialog]{padding:16px}
+      dialog[data-rate-dialog] input,dialog[data-rate-dialog] textarea{font-size:16px}
+      dialog[data-rate-dialog] .toolbar button{flex:1;min-height:44px}
+    }
   </style>
   <script src="/timesheet.js" defer></script>
 </head>

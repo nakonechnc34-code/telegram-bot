@@ -15,6 +15,11 @@ for(const width of [320,375,390,430]){
  await page.goto('http://control.test/');
  await expect(page.locator('.mobile-nav')).toBeVisible();
  await expect(page.locator('.overview-rating')).toBeVisible();
+ await page.getByRole('button',{name:'Требуют внимания',exact:true}).click();
+ await expect(page.getByRole('dialog',{name:'Требуют внимания'})).toBeVisible();
+ await expect(page.getByRole('dialog').getByRole('button',{name:/Просроченные проверки/})).toBeVisible();
+ await page.getByRole('dialog').getByRole('button',{name:'Закрыть'}).click();
+ await expect(page.getByRole('dialog')).toBeHidden();
  await expect(page.locator('aside')).toBeHidden();
  await page.locator('#mobileMore').click();
  await expect(page.locator('aside')).toBeVisible();

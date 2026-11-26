@@ -395,7 +395,7 @@ function renderAccruals() {
     for (const r of rows) {
         const tr = document.createElement('tr');
         for (const value of [r.full_name,r.position,r.restaurant_name,accrualHours(r.total_hours),
-            (r.payment_type==='fixed'?'Оклад':rub.format(r.rate)),rub.format(r.total_salary)]) {
+            (rub.format(r.rate)+(r.payment_type==='fixed'?' · Оклад':'')),rub.format(r.total_salary)]) {
             const td=document.createElement('td');td.textContent=value??'—';tr.append(td);
         }
         tbody.append(tr);

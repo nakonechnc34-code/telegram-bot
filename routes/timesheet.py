@@ -1587,6 +1587,19 @@ def _sync_approval_transition(user, key, month, action, comment, revision):
             target = transitions.get((row["status"],action))
             if not target or revision != row["revision"]:
                 return 409, {"error":"approval_conflict"}
+            if target == "approved":
+                cur.execute("WITH effective AS (" + _EFFECTIVE_ATTENDANCE_SQL + """)
+                    SELECT DISTINCT u.user_id,u.full_name
+                    FROM effective e JOIN users u ON u.user_id=e.user_id
+                    LEFT JOIN timesheet_individual_rates ir ON ir.user_id=u.user_id
+                    WHERE COALESCE(e.restaurant_key,u.restaurant_key)=%s
+                      AND e.work_date >= %s::date
+                      AND e.work_date < %s::date + INTERVAL '1 month'
+                      AND e.hours > 0 AND ir.user_id IS NULL
+                    ORDER BY u.full_name,u.user_id""", (key,month,month))
+                missing = [dict(item) for item in cur.fetchall()]
+                if missing:
+                    return 409, {"error":"missing_hourly_rates","employees":missing}
             next_revision = revision + 1
             cur.execute("UPDATE timesheet_approvals SET status=%s,revision=%s,updated_by=%s,updated_at=NOW() WHERE restaurant_key=%s AND month_start=%s",
                         (target,next_revision,user["user_id"],key,month))

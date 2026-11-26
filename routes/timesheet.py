@@ -243,9 +243,10 @@ def _sync_timesheet_matrix(user_id, date_from, date_to, include_imports=False):
             is_us = "управляющий сменой" in (u.get("position") or "").lower()
 
             query = """SELECT u.user_id, u.full_name, u.position, u.restaurant_key AS main_restaurant_key,
-                       (CASE WHEN u.payment_type = 'fixed' THEN 0 ELSE COALESCE(NULLIF(u.rate, 0), pr.rate, 0) END) AS rate, u.payment_type, r.name AS restaurant_name
+                       COALESCE(ir.hourly_rate, CASE WHEN u.payment_type = 'fixed' THEN 0 ELSE COALESCE(NULLIF(u.rate, 0), pr.rate, 0) END) AS rate, u.payment_type, r.name AS restaurant_name
                 FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key
                 LEFT JOIN position_rates pr ON u.position = pr.position_name
+                LEFT JOIN timesheet_individual_rates ir ON ir.user_id=u.user_id
                 WHERE COALESCE(u.is_fired, FALSE) = FALSE
                   AND COALESCE(u.is_admin, FALSE) = FALSE
                   AND u.login IS NOT NULL
@@ -1027,14 +1028,15 @@ def _sync_reports(user_id, date_from, date_to, only_me=False):
                 SELECT u.full_name, u.position,
                        COALESCE(tr.name, r.name) AS restaurant_name,
                        COALESCE(SUM(t.hours), 0) as total_hours,
-                       (CASE WHEN u.payment_type = 'fixed' THEN 0 ELSE COALESCE(NULLIF(u.rate, 0), pr.rate, 0) END) AS rate, u.payment_type,
-                       (COALESCE(SUM(t.hours), 0) * (CASE WHEN u.payment_type = 'fixed' THEN 0 ELSE COALESCE(NULLIF(u.rate, 0), pr.rate, 0) END)) as total_salary
+                       COALESCE(ir.hourly_rate, CASE WHEN u.payment_type = 'fixed' THEN 0 ELSE COALESCE(NULLIF(u.rate, 0), pr.rate, 0) END) AS rate, u.payment_type,
+                       (COALESCE(SUM(t.hours), 0) * COALESCE(ir.hourly_rate, CASE WHEN u.payment_type = 'fixed' THEN 0 ELSE COALESCE(NULLIF(u.rate, 0), pr.rate, 0) END)) as total_salary
                 FROM users u 
                 LEFT JOIN period_attendance t ON u.user_id = t.user_id
                 LEFT JOIN salary_restaurant sr ON sr.user_id = u.user_id
                 LEFT JOIN restaurants r ON u.restaurant_key = r.key
                 LEFT JOIN restaurants tr ON t.restaurant_key = tr.key
                 LEFT JOIN position_rates pr ON u.position = pr.position_name
+                LEFT JOIN timesheet_individual_rates ir ON ir.user_id=u.user_id
                 WHERE COALESCE(u.is_fired, FALSE) = FALSE AND u.login IS NOT NULL"""
             
             params = [date_from, date_to]
@@ -1052,7 +1054,7 @@ def _sync_reports(user_id, date_from, date_to, only_me=False):
                 base += " AND u.user_id = %s"
                 params.append(user_id)
                 
-            base += " GROUP BY u.user_id, u.full_name, u.position, COALESCE(tr.name, r.name), COALESCE(t.restaurant_key, u.restaurant_key), u.restaurant_key, sr.user_id, sr.restaurant_key, u.rate, pr.rate, u.payment_type ORDER BY COALESCE(tr.name, r.name), u.full_name"
+            base += " GROUP BY u.user_id, u.full_name, u.position, COALESCE(tr.name, r.name), COALESCE(t.restaurant_key, u.restaurant_key), u.restaurant_key, sr.user_id, sr.restaurant_key, u.rate, pr.rate, ir.hourly_rate, u.payment_type ORDER BY COALESCE(tr.name, r.name), u.full_name"
 
             cur.execute(base, params)
             return [dict(r) for r in cur.fetchall()]
@@ -1495,13 +1497,14 @@ def _snapshot_approved_accruals(cur, key, month, revision):
                      m.restaurant_key NULLS LAST
         ), candidates AS (
             SELECT u.user_id,u.full_name,u.position,u.payment_type,
-                   (CASE WHEN u.payment_type = 'fixed' THEN 0 ELSE COALESCE(NULLIF(u.rate, 0), pr.rate, 0) END) AS rate,
+                   COALESCE(ir.hourly_rate, CASE WHEN u.payment_type = 'fixed' THEN 0 ELSE COALESCE(NULLIF(u.rate, 0), pr.rate, 0) END) AS rate,
                    COALESCE(m.restaurant_key,u.restaurant_key) AS restaurant_key,
                    COALESCE(m.minutes,0) AS minutes,
                    COALESCE(s.restaurant_key,u.restaurant_key) AS salary_key
             FROM users u LEFT JOIN monthly m ON m.user_id=u.user_id
             LEFT JOIN salary_owner s ON s.user_id=u.user_id
             LEFT JOIN position_rates pr ON pr.position_name=u.position
+                LEFT JOIN timesheet_individual_rates ir ON ir.user_id=u.user_id
             WHERE u.login IS NOT NULL AND COALESCE(u.is_fired,FALSE)=FALSE
         )
         INSERT INTO timesheet_accrual_snapshots

@@ -243,7 +243,7 @@ def _sync_timesheet_matrix(user_id, date_from, date_to, include_imports=False):
             is_us = "управляющий сменой" in (u.get("position") or "").lower()
 
             query = """SELECT u.user_id, u.full_name, u.position, u.restaurant_key AS main_restaurant_key,
-                       COALESCE(ir.hourly_rate, CASE WHEN u.payment_type = 'fixed' THEN 0 ELSE COALESCE(NULLIF(u.rate, 0), pr.rate, 0) END) AS rate, u.payment_type, r.name AS restaurant_name
+                       COALESCE(ir.hourly_rate, 0) AS rate, u.payment_type, r.name AS restaurant_name
                 FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key
                 LEFT JOIN position_rates pr ON u.position = pr.position_name
                 LEFT JOIN timesheet_individual_rates ir ON ir.user_id=u.user_id
@@ -1073,8 +1073,8 @@ def _sync_reports(user_id, date_from, date_to, only_me=False):
                 SELECT u.full_name, u.position,
                        COALESCE(tr.name, r.name) AS restaurant_name,
                        COALESCE(SUM(t.hours), 0) as total_hours,
-                       COALESCE(ir.hourly_rate, CASE WHEN u.payment_type = 'fixed' THEN 0 ELSE COALESCE(NULLIF(u.rate, 0), pr.rate, 0) END) AS rate, u.payment_type,
-                       (COALESCE(SUM(t.hours), 0) * COALESCE(ir.hourly_rate, CASE WHEN u.payment_type = 'fixed' THEN 0 ELSE COALESCE(NULLIF(u.rate, 0), pr.rate, 0) END)) as total_salary
+                       COALESCE(ir.hourly_rate, 0) AS rate, u.payment_type,
+                       (COALESCE(SUM(t.hours), 0) * COALESCE(ir.hourly_rate, 0)) as total_salary
                 FROM users u 
                 LEFT JOIN period_attendance t ON u.user_id = t.user_id
                 LEFT JOIN salary_restaurant sr ON sr.user_id = u.user_id
@@ -1276,36 +1276,7 @@ async def handle_timesheet_settings_save(request):
         return denied(err)
     if not _is_hr_or_super(user):
         return web.json_response({"error": "forbidden"}, status=403)
-    try:
-        body = await request.json()
-    except Exception:
-        return web.json_response({"error": "invalid_json"}, status=400)
-    if not isinstance(body, dict):
-        return web.json_response({"error": "invalid_json"}, status=400)
-
-    position_name = body.get("position_name")
-    if not isinstance(position_name, str) or not position_name.strip():
-        return web.json_response({"error": "invalid_position"}, status=400)
-
-    position_name = position_name.strip()
-    try:
-        rate = _finite_number(body.get("rate", 0))
-        if rate < 0:
-            raise ValueError("invalid rate")
-    except ValueError:
-        return web.json_response({"error": "invalid_rate"}, status=400)
-
-    def _sync():
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """INSERT INTO position_rates (position_name, rate) VALUES (%s, %s)
-                       ON CONFLICT (position_name) DO UPDATE SET rate = EXCLUDED.rate""",
-                    (position_name, rate)
-                )
-
-    await _run(_sync)
-    return web.json_response({"ok": True})
+    return web.json_response({"error": "position_rates_retired"}, status=410)
 
 
 # ===================== ВЫПЛАТЫ =====================
@@ -1555,7 +1526,7 @@ def _snapshot_approved_accruals(cur, key, month, revision):
                      m.restaurant_key NULLS LAST
         ), candidates AS (
             SELECT u.user_id,u.full_name,u.position,u.payment_type,
-                   COALESCE(ir.hourly_rate, CASE WHEN u.payment_type = 'fixed' THEN 0 ELSE COALESCE(NULLIF(u.rate, 0), pr.rate, 0) END) AS rate,
+                   COALESCE(ir.hourly_rate, 0) AS rate,
                    COALESCE(m.restaurant_key,u.restaurant_key) AS restaurant_key,
                    COALESCE(m.minutes,0) AS minutes,
                    COALESCE(s.restaurant_key,u.restaurant_key) AS salary_key
@@ -1905,8 +1876,7 @@ def _sync_rate_employees(actor):
             sql = """SELECT u.user_id,u.full_name,u.position,u.restaurant_key,
                 r.name AS restaurant_name,u.payment_type,
                 ir.hourly_rate::text AS individual_rate,
-                COALESCE(ir.hourly_rate,CASE WHEN u.payment_type='fixed' THEN 0
-                    ELSE COALESCE(NULLIF(u.rate,0),pr.rate,0) END)::text AS rate
+                COALESCE(ir.hourly_rate, 0)::text AS rate
                 FROM users u LEFT JOIN restaurants r ON r.key=u.restaurant_key
                 LEFT JOIN position_rates pr ON pr.position_name=u.position
                 LEFT JOIN timesheet_individual_rates ir ON ir.user_id=u.user_id

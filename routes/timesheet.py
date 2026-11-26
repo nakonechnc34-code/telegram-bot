@@ -1654,3 +1654,46 @@ async def handle_individual_rate(request):
         return web.json_response({"error":"Некорректная ставка"}, status=400)
     status = await _run(_sync_set_individual_rate, user["user_id"], target, rate)
     return web.json_response({"ok":status == 200}, status=status, headers={"Cache-Control":"no-store"})
+
+
+def _sync_create_rate_request(actor, target, rate, reason):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id=%s FOR UPDATE", (actor,))
+            user = cur.fetchone()
+            if not user or user.get("is_fired") or not (_is_tu(user) or user.get("is_super_admin")):
+                return 403
+            cur.execute("""SELECT u.user_id,r.territory_manager_id FROM users u
+                LEFT JOIN restaurants r ON r.key=u.restaurant_key
+                WHERE u.user_id=%s AND NOT COALESCE(u.is_fired,FALSE) FOR UPDATE OF u""", (target,))
+            employee = cur.fetchone()
+            if not employee or (not user.get("is_super_admin") and employee["territory_manager_id"] != actor):
+                return 404
+            cur.execute("""INSERT INTO timesheet_rate_requests(user_id,requested_by,proposed_rate,reason)
+                VALUES (%s,%s,%s,%s) ON CONFLICT (user_id) WHERE status='pending'
+                DO NOTHING RETURNING id""", (target,actor,rate,reason))
+            return 201 if cur.fetchone() else 409
+
+
+@routes.post('/api/timesheet/rate-requests')
+async def handle_create_rate_request(request):
+    from decimal import Decimal, InvalidOperation
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    if not (_is_tu(user) or user.get("is_super_admin")):
+        return denied(403)
+    try:
+        data = await request.json()
+        target, raw, reason = data["user_id"], data["proposed_rate"], data["reason"]
+        if type(target) is not int or not 0 < target < 2**63 or type(raw) not in (str,int,float):
+            raise ValueError()
+        if not isinstance(reason,str) or not 1 <= len(reason.strip()) <= 2000:
+            raise ValueError()
+        rate = Decimal(str(raw))
+        if not rate.is_finite() or not 0 <= rate <= Decimal("9999999999.99") or rate != rate.quantize(Decimal("0.01")):
+            raise ValueError()
+    except (ValueError, TypeError, KeyError, InvalidOperation):
+        return web.json_response({"error":"Некорректный запрос"}, status=400)
+    status = await _run(_sync_create_rate_request,user["user_id"],target,rate,reason.strip())
+    return web.json_response({"ok":status == 201},status=status,headers={"Cache-Control":"no-store"})

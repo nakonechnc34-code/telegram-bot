@@ -73,6 +73,7 @@ def test_fixed_salary_report_postgres(monkeypatch):
                  status text, worked_minutes integer);
                 INSERT INTO users VALUES (1,'Fixed','Cook','a',80000,'fixed',false,'fixed'),
                     (2,'Hourly','Cook','a',350,'hourly',false,'hourly');
+                INSERT INTO timesheet_individual_rates VALUES (2,350);
                 INSERT INTO restaurants VALUES ('a','A',10),('b','B',20);
                 INSERT INTO attendance_import_days VALUES
                     (1,'2026-11-01','a','work',480),(1,'2026-11-01','b','work',120),
@@ -173,6 +174,7 @@ def test_excel_import_replace_delete_payroll_postgres(monkeypatch):
                 CREATE TABLE timesheet_records (user_id bigint, work_date date, restaurant_key text, hours numeric);
                 INSERT INTO users VALUES (1,'021','Test Cook','Cook','a',360,'hourly',false,'cook',false),
                     (2,NULL,'Admin','Admin','a',0,'hourly',false,'admin',true);
+                INSERT INTO timesheet_individual_rates VALUES (1,360);
                 INSERT INTO restaurants VALUES ('a','A',2);
                 INSERT INTO timesheet_records VALUES (1,'2026-11-16','a',8)""")
             cur.execute((Path(__file__).resolve().parents[1] / "database" / "007_attendance_imports.sql").read_text(encoding="utf-8"))

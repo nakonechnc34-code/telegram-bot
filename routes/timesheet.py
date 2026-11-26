@@ -1807,3 +1807,40 @@ async def handle_rate_records(request):
     if rows is None:
         return denied(403)
     return web.json_response({kind:rows},headers={"Cache-Control":"no-store"})
+
+
+def _sync_rate_employees(actor):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id=%s", (actor,))
+            user = cur.fetchone()
+            manage = _can_set_individual_rate(user)
+            if not user or user.get("is_fired") or not (manage or _is_tu(user)):
+                return None
+            sql = """SELECT u.user_id,u.full_name,u.position,u.restaurant_key,
+                r.name AS restaurant_name,u.payment_type,
+                ir.hourly_rate::text AS individual_rate,
+                COALESCE(ir.hourly_rate,CASE WHEN u.payment_type='fixed' THEN 0
+                    ELSE COALESCE(NULLIF(u.rate,0),pr.rate,0) END)::text AS rate
+                FROM users u LEFT JOIN restaurants r ON r.key=u.restaurant_key
+                LEFT JOIN position_rates pr ON pr.position_name=u.position
+                LEFT JOIN timesheet_individual_rates ir ON ir.user_id=u.user_id
+                WHERE NOT COALESCE(u.is_fired,FALSE) AND u.login IS NOT NULL"""
+            params = []
+            if not manage:
+                sql += " AND r.territory_manager_id=%s"
+                params.append(actor)
+            cur.execute(sql+" ORDER BY r.name,u.full_name,u.user_id",params)
+            return {"employees":[dict(row) for row in cur.fetchall()],
+                    "can_manage":manage,"can_request":bool(_is_tu(user) or user.get("is_super_admin"))}
+
+
+@routes.get('/api/timesheet/rate-employees')
+async def handle_rate_employees(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    result = await _run(_sync_rate_employees,user["user_id"])
+    if result is None:
+        return denied(403)
+    return web.json_response(result,headers={"Cache-Control":"no-store"})

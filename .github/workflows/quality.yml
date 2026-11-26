@@ -190,3 +190,34 @@ jobs:
           # Original fixture execution is superseded by the assertions above.
           # 
           PY
+
+      - name: Verify mystery guest audit privacy on PostgreSQL
+        run: |
+          python - <<'PY'
+          import ast
+          import subprocess
+          from pathlib import Path
+          tree = ast.parse(Path('routes/core.py').read_text())
+          fn = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == 'handle_admin_audit')
+          sql = next(n.value for n in ast.walk(fn) if isinstance(n, ast.Constant) and isinstance(n.value, str) and 'SELECT a.* FROM admin_audit' in n.value)
+          sql = sql.replace('%s', '$1')
+          fixture = """
+          BEGIN;
+          INSERT INTO users(user_id,full_name,login,position) VALUES
+          (900011,'Private Guest','secret-guest','Тайный гость'),
+          (900012,'Normal User','normal-ci','УС');
+          INSERT INTO admin_audit(admin_id,action,target_type,target_id,details) VALUES
+          (900012,'ci_safe','user','900012','ordinary'),
+          (900012,'ci_name','user','900012','PRIVATE GUEST'),
+          (900012,'ci_login','user','900012','secret-guest'),
+          (900012,'ci_target','user','900011','ordinary'),
+          (900011,'ci_actor','user','900012','ordinary');
+          """
+          script = fixture+'PREPARE audit_visibility(boolean) AS '+sql+'; EXECUTE audit_visibility(FALSE); EXECUTE audit_visibility(TRUE); ROLLBACK;'
+          result = subprocess.run(['psql','-X','-qAt','-h','localhost','-U','ci','-d','control_ci','-v','ON_ERROR_STOP=1'],input=script,text=True,check=True,capture_output=True)
+          rows = result.stdout.splitlines()
+          assert len(rows)==6 and '|ci_safe|' in rows[0], rows
+          for action in ('ci_name','ci_login','ci_target','ci_actor'):
+              assert sum('|'+action+'|' in row for row in rows)==1, rows
+          print('Mystery guest audit privacy verified')
+          PY

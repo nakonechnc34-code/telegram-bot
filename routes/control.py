@@ -1239,3 +1239,38 @@ async def notifications(request):
             AND read_at IS NULL AND ($2::text[] IS NULL OR restaurant_key=ANY($2))""",user["user_id"],scope)
     items=[dict(row,id=str(row["id"]),source_id=str(row["source_id"]),created_at=row["created_at"].isoformat(),read_at=row["read_at"].isoformat() if row["read_at"] else None) for row in rows]
     return web.json_response({"notifications":items,"unread":unread},headers=NO_STORE)
+
+
+@routes.post("/api/control/notifications/read")
+async def read_notifications(request):
+    user=await control_user(request)
+    if not user or is_mystery_guest(user):
+        return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
+    try:
+        body=await request.json()
+        if not isinstance(body,dict):
+            raise ValueError()
+        all_items=body.get("all") is True
+        raw=body.get("id")
+        if all_items:
+            if set(body)!={"all"}:
+                raise ValueError()
+            nid=None
+        else:
+            if set(body)!={"id"} or not isinstance(raw,str) or not raw.isascii() or not raw.isdecimal() or len(raw)>19:
+                raise ValueError()
+            nid=int(raw)
+            if not 0<nid<2**63:
+                raise ValueError()
+    except (ValueError,TypeError):
+        return web.json_response({"error":"invalid_notification"},status=400,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    async with db.get_pool(request.app).acquire() as conn:
+        changed=await conn.fetchval("""WITH updated AS (UPDATE control_notifications SET read_at=NOW()
+            WHERE recipient_id=$1 AND read_at IS NULL
+            AND ($2::text[] IS NULL OR restaurant_key=ANY($2))
+            AND ($3::bigint IS NULL OR id=$3) RETURNING id)
+            SELECT count(*) FROM updated""",user["user_id"],scope,nid)
+        unread=await conn.fetchval("""SELECT count(*) FROM control_notifications WHERE recipient_id=$1
+            AND read_at IS NULL AND ($2::text[] IS NULL OR restaurant_key=ANY($2))""",user["user_id"],scope)
+    return web.json_response({"updated":changed,"unread":unread},headers=NO_STORE)

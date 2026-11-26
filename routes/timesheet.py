@@ -670,6 +670,67 @@ def _attendance_restaurant_name(value):
     return " ".join(str(value).casefold().replace("ё", "е").split())
 
 
+def _sync_matching_registry(user, change=None):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            if change is not None:
+                kind, source, target = change
+                cur.execute("SELECT pg_advisory_xact_lock(814726, 3)")
+                if target is not None:
+                    if kind == "employees":
+                        cur.execute("SELECT personnel_number FROM users WHERE personnel_number IS NOT NULL AND COALESCE(is_fired,FALSE)=FALSE")
+                        matches = [r for r in cur.fetchall() if _normalize_attendance_number(r["personnel_number"]) == _normalize_attendance_number(target)]
+                    else:
+                        cur.execute("SELECT name FROM restaurants")
+                        matches = [r for r in cur.fetchall() if r["name"].strip().casefold() == target.strip().casefold()]
+                    if len(matches) != 1:
+                        raise ValueError("Unknown or ambiguous target")
+                cur.execute("SELECT target FROM attendance_matching WHERE kind=%s AND source=%s FOR UPDATE", (kind, source))
+                row = cur.fetchone()
+                previous = row["target"] if row else None
+                if previous != target:
+                    if target is None:
+                        cur.execute("DELETE FROM attendance_matching WHERE kind=%s AND source=%s", (kind, source))
+                    else:
+                        cur.execute("INSERT INTO attendance_matching(kind,source,target,actor_id) VALUES (%s,%s,%s,%s) ON CONFLICT(kind,source) DO UPDATE SET target=EXCLUDED.target,actor_id=EXCLUDED.actor_id,updated_at=now()", (kind,source,target,user["user_id"]))
+                    cur.execute("INSERT INTO attendance_matching_history(kind,source,previous_target,new_target,actor_id) VALUES (%s,%s,%s,%s,%s)", (kind,source,previous,target,user["user_id"]))
+            cur.execute("SELECT kind,source,target,actor_id,updated_at::text FROM attendance_matching ORDER BY kind,source")
+            entries = [dict(r) for r in cur.fetchall()]
+            cur.execute("SELECT id,kind,source,previous_target,new_target,actor_id,created_at::text FROM attendance_matching_history ORDER BY id DESC LIMIT 100")
+            return {"entries": entries, "history": [dict(r) for r in cur.fetchall()]}
+
+
+@routes.get('/api/timesheet/matching')
+@routes.post('/api/timesheet/matching')
+@routes.delete('/api/timesheet/matching')
+async def handle_attendance_matching(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    if not _is_hr_or_super(user):
+        return denied(403)
+    change = None
+    if request.method != "GET":
+        try:
+            data = await request.json()
+            if not isinstance(data, dict):
+                raise ValueError()
+            kind, source = data.get("kind"), data.get("source")
+            target = data.get("target") if request.method == "POST" else None
+            if kind not in ("employees", "restaurants") or not isinstance(source,str) or not 1 <= len(source.strip()) <= 200:
+                raise ValueError()
+            if request.method == "POST" and (not isinstance(target,str) or not 1 <= len(target.strip()) <= 200):
+                raise ValueError()
+            change = (kind,source.strip(),target.strip() if target is not None else None)
+        except (ValueError, TypeError):
+            return web.json_response({"error":"Некорректное соответствие"},status=400)
+    try:
+        result = await _run(_sync_matching_registry,user,change)
+    except ValueError:
+        return web.json_response({"error":"Назначение не найдено или неоднозначно"},status=400)
+    return web.json_response(result,headers={"Cache-Control":"no-store"})
+
+
 def _apply_attendance_mapping(user, rows, mapping):
     if mapping is None:
         return rows

@@ -331,6 +331,12 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
                     (10,'TU','Территориальный управляющий','a',0,'hourly',false,NULL,true,false),
                     (20,'Other TU','Территориальный управляющий','b',0,'hourly',false,NULL,true,false),
                     (30,'Admin','Admin',NULL,0,'hourly',false,NULL,true,true);
+                INSERT INTO users VALUES
+                    (91,'Missing','Unknown','a',0,'hourly',false,NULL,false,false),
+                    (92,'Legacy fixed','Cook','a',80000,'fixed',false,NULL,false,false),
+                    (93,'Legacy fallback','Helper','a',0,'hourly',false,NULL,false,false),
+                    (94,'Legacy zero','Zero','a',0,'hourly',false,NULL,false,false);
+                INSERT INTO position_rates VALUES ('Helper',250),('Zero',0);
                 INSERT INTO attendance_import_days VALUES (1,'2026-11-01','a','work',493);""")
             root = Path(__file__).resolve().parents[1] / "database"
             for filename in ("008_timesheet_approval.sql", "009_timesheet_approval_locks.sql",
@@ -339,6 +345,9 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
         with conn.cursor() as cur:
             cur.execute("SELECT hourly_rate FROM timesheet_individual_rates WHERE user_id=1")
             assert cur.fetchone()[0] == Decimal("360")
+            cur.execute("SELECT user_id,hourly_rate FROM timesheet_individual_rates WHERE user_id BETWEEN 91 AND 94 ORDER BY user_id")
+            assert cur.fetchall() == [(93,Decimal("250.00"))]
+            cur.execute("INSERT INTO timesheet_individual_rates(user_id,hourly_rate) VALUES (94,0)")
             cur.execute("UPDATE users SET position='New position',rate=999,payment_type='fixed' WHERE user_id=1")
             cur.execute("INSERT INTO users VALUES (99,'New','Cook','a',500,'hourly',false,NULL,false,false)")
             cur.execute((root / "014_timesheet_rate_backfill.sql").read_text(encoding="utf-8"))
@@ -346,6 +355,8 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
             assert cur.fetchone()[0] == Decimal("360")
             cur.execute("SELECT hourly_rate FROM timesheet_individual_rates WHERE user_id=99")
             assert cur.fetchone() is None
+            cur.execute("SELECT hourly_rate FROM timesheet_individual_rates WHERE user_id=94")
+            assert cur.fetchone()[0] == Decimal("0")
         monkeypatch.setattr(timesheet, "get_conn", lambda: nullcontext(conn))
         tu = {"user_id":10,"position":"Территориальный управляющий","is_admin":True}
         admin = {"user_id":30,"is_super_admin":True}

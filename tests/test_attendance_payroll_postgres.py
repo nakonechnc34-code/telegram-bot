@@ -332,7 +332,7 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
                 INSERT INTO attendance_import_days VALUES (1,'2026-11-01','a','work',493);""")
             root = Path(__file__).resolve().parents[1] / "database"
             for filename in ("008_timesheet_approval.sql", "009_timesheet_approval_locks.sql",
-                             "010_timesheet_accrual_snapshots.sql", "012_timesheet_individual_rates.sql"):
+                             "010_timesheet_accrual_snapshots.sql", "012_timesheet_individual_rates.sql", "013_timesheet_daily_snapshots.sql"):
                 cur.execute((root / filename).read_text(encoding="utf-8"))
         monkeypatch.setattr(timesheet, "get_conn", lambda: nullcontext(conn))
         tu = {"user_id":10,"position":"Территориальный управляющий","is_admin":True}
@@ -349,6 +349,11 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
         assert transition(admin,"approve",0) == 409
         assert transition(admin,"approve",1) == 200
         assert report()[0]["total_salary"] == Decimal("2970.00")
+        partial = timesheet._sync_approved_reports(30,"2026-11-01","2026-11-15")
+        assert partial[0]["total_salary"] == Decimal("2970.00")
+        assert partial[0]["total_hours"] == Decimal("8.25")
+        assert timesheet._sync_approved_reports(30,"2026-11-02","2026-11-15") == []
+        assert timesheet._sync_approved_reports(20,"2026-11-01","2026-11-15") == []
         assert report(10)[0]["total_salary"] == Decimal("2970.00")
         assert report(20) == []
         assert report(1,True)[0]["total_salary"] == Decimal("2970.00")
@@ -414,7 +419,7 @@ def test_fixed_salary_snapshot_is_informational_postgres(monkeypatch):
                     (1,'2026-11-01','a','work',480),(1,'2026-11-02','b','work',480);""")
             root = Path(__file__).resolve().parents[1] / "database"
             for filename in ("008_timesheet_approval.sql", "009_timesheet_approval_locks.sql",
-                             "010_timesheet_accrual_snapshots.sql"):
+                             "010_timesheet_accrual_snapshots.sql", "013_timesheet_daily_snapshots.sql"):
                 cur.execute((root / filename).read_text(encoding="utf-8"))
         monkeypatch.setattr(timesheet, "get_conn", lambda: nullcontext(conn))
         admin = {"user_id":30,"is_super_admin":True}

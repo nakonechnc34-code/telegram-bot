@@ -83,16 +83,59 @@
     dialog::backdrop{background:#17233466}
     @media(max-width:900px){body{display:block}aside{position:static;height:auto;padding:14px}nav{grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:4px}nav button{padding:9px}main{padding:16px}#matrix-scroll .employee-col{width:170px;min-width:170px;max-width:170px}#export{margin-left:0}}
   #login-panel{grid-column:1/-1;width:min(420px,92vw);margin:10vh auto;padding:32px}#login-panel form{display:grid;gap:16px}#login-panel label{display:grid}#login-panel button{background:#b91c1c;color:white}body:has(#login-panel:not([hidden])){display:block}
+
+    #rates-panel section{min-width:0}
+    #rates-panel .table{max-width:100%;overscroll-behavior-x:contain}
+    #rates-panel td{overflow-wrap:anywhere}
+    #rates-panel td:last-child button{margin:3px;min-height:40px}
+    #rates-panel .toolbar{padding:0 0 16px}
+    #rates-panel .toolbar label{flex:1 1 180px;min-width:0}
+    dialog[data-rate-dialog]{width:min(480px,calc(100% - 24px));max-width:none;max-height:calc(100dvh - 24px);overflow:auto}
+    dialog[data-rate-dialog] form{display:grid;gap:16px}
+    dialog[data-rate-dialog] h2{margin:0;overflow-wrap:anywhere;font-size:20px}
+    dialog[data-rate-dialog] label{display:grid;gap:6px;min-width:0}
+    dialog[data-rate-dialog] input,dialog[data-rate-dialog] textarea{width:100%;font:inherit;border:1px solid #d5deea;border-radius:8px;padding:12px;min-height:44px}
+    dialog[data-rate-dialog] textarea{min-height:100px;resize:vertical}
+    dialog[data-rate-dialog] .toolbar{padding:0;justify-content:flex-end}
+    dialog[data-rate-dialog] button[type=submit]{background:var(--accent);color:white;border-color:var(--accent)}
+    @media(max-width:600px){
+      #rates-panel section{padding:12px}
+      #rates-panel .toolbar{display:grid;grid-template-columns:minmax(0,1fr)}
+      #rates-panel .toolbar input,#rates-panel .toolbar select,#rates-panel .toolbar button{width:100%;min-height:44px;font-size:16px}
+      #rates-panel table,#rates-panel tbody,#rates-panel tr,#rates-panel td{display:block;width:100%}
+      #rates-panel thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+      #rates-panel tbody tr{border:1px solid var(--line);border-radius:10px;margin:8px 0;padding:10px}
+      #rates-panel td{display:grid;grid-template-columns:minmax(95px,36%) minmax(0,1fr);gap:8px;padding:6px 0;border:0}
+      #rates-panel td::before{content:attr(data-label);color:var(--muted);font-size:12px;font-weight:600}
+      #rates-panel td:last-child button{min-height:44px;grid-column:2;margin:0}
+      dialog[data-rate-dialog]{padding:16px}
+      dialog[data-rate-dialog] input,dialog[data-rate-dialog] textarea{font-size:16px}
+      dialog[data-rate-dialog] .toolbar button{flex:1;min-height:44px}
+    }
   </style>
   <script src="/timesheet.js" defer></script>
 </head>
 <body>
 <section id="login-panel"><h1>WOKKER ТАБЕЛЬ</h1><p>Войдите в систему</p><form id="login-form"><label>Логин<input name="login" autocomplete="username" required></label><label>Пароль<input name="password" type="password" autocomplete="current-password" required></label><button type="submit">Войти</button><p id="login-error" role="status"></p></form></section>
-<aside hidden><strong>WOKKER ТАБЕЛЬ</strong><nav aria-label="Разделы"><button type="button" data-page="0" aria-current="page">Главная</button><button type="button" data-page="1">Табель</button><button type="button" data-page="2">Начисления</button><button type="button" data-page="3">Отчёты</button><button type="button" data-page="4">Согласование</button><button type="button" data-page="6">Панель загрузки</button><button type="button" data-page="5">Настройки</button></nav></aside>
+<aside hidden><strong>WOKKER ТАБЕЛЬ</strong><nav aria-label="Разделы"><button type="button" data-page="0" aria-current="page">Главная</button><button type="button" data-page="1">Табель</button><button type="button" data-page="2">Начисления</button><button type="button" data-page="3">Отчёты</button><button type="button" data-page="4">Согласование</button><button type="button" data-page="6">Панель загрузки</button><button type="button" data-page="7">Ставки сотрудников</button><button type="button" data-page="5">Настройки</button></nav></aside>
 <main hidden>
   <header><h1 id="page-title">Главная</h1><button id="logout" type="button">Выйти</button></header>
-  <div id="home-panel"><section><h2>Управление рабочим временем</h2><p>Выберите раздел для работы с табелем.</p><div class="home-grid"><button type="button" data-page="1">Табель</button><button type="button" data-page="2">Начисления</button><button type="button" data-page="3">Отчёты</button><button type="button" data-page="4">Согласование</button><button type="button" data-page="6">Панель загрузки</button><button type="button" data-page="5">Настройки</button></div></section></div>
-  <div id="future-panel" hidden><section><p>Раздел готовится к подключению. Данные и настройки пока не изменяются.</p></section></div>
+  <div id="home-panel"><section><h2>Управление рабочим временем</h2><p>Выберите раздел для работы с табелем.</p><div class="home-grid"><button type="button" data-page="1">Табель</button><button type="button" data-page="2">Начисления</button><button type="button" data-page="3">Отчёты</button><button type="button" data-page="4">Согласование</button><button type="button" data-page="6">Панель загрузки</button><button type="button" data-page="7">Ставки сотрудников</button><button type="button" data-page="5">Настройки</button></div></section></div>
+  <div id="accruals-panel" hidden>
+    <section><h2>Начисления за период</h2><p>Расчёт по данным табеля. Начисления не являются подтверждением выплаты.</p>
+    <form id="accruals-form" class="toolbar"><label>С <input id="accruals-from" type="date" required></label><label>По <input id="accruals-to" type="date" required></label><button type="submit">Рассчитать</button><button type="button" id="accruals-export">Excel за весь период</button></form>
+    <label>Ресторан <select id="accruals-restaurant"><option value="">Все рестораны</option></select></label>
+    <label>Поиск сотрудника <input id="accruals-search" type="search"></label>
+    <p id="accruals-status" role="status"></p><strong id="accruals-total"></strong></section>
+    <section class="table" style="overflow-x:auto"><table><thead><tr><th>Сотрудник</th><th>Должность</th><th>Ресторан</th><th>Часы</th><th>Ставка / оклад</th><th>Начислено</th></tr></thead><tbody id="accruals-rows"></tbody></table></section>
+  </div>
+  <div id="reports-panel" hidden><section><h2>Отчёты за период</h2><form id="reports-form" class="toolbar"><label>С <input name="date_from" type="date" required></label><label>По <input name="date_to" type="date" required></label><button type="submit">Скачать Excel</button></form><p id="reports-status" role="status"></p></section></div>
+  <div id="approval-panel" hidden><section><h2>Согласование табелей</h2>
+  <form id="approval-form" class="toolbar"><label>Ресторан <select id="approval-restaurant" required></select></label><label>Месяц <input id="approval-month" type="month" required></label><button type="submit">Показать</button></form>
+  <p id="approval-status" role="status"></p><div id="approval-actions"></div>
+  <label>Комментарий / причина возврата <textarea id="approval-comment" maxlength="2000"></textarea></label>
+  <h3>История действий</h3><div id="approval-history"></div></section></div>
+  <div id="rates-panel" hidden><section><h2>Ставки сотрудников</h2><p id="rates-status" role="status"></p><div class="toolbar"><label>Поиск <input id="rates-search" type="search" placeholder="ФИО сотрудника"></label><label>Ресторан <select id="rates-restaurant"><option value="">Все рестораны</option></select></label><button id="rates-refresh" type="button">Обновить</button></div><div class="table"><table><thead><tr><th>Сотрудник</th><th>Ресторан</th><th>Ставка, ₽/ч</th><th>Действие</th></tr></thead><tbody id="rates-rows"></tbody></table></div><h3>Запросы на изменение ставки</h3><div class="table"><table><thead><tr><th>Сотрудник</th><th>Новая ставка</th><th>Причина</th><th>Статус</th><th>Решение</th></tr></thead><tbody id="rate-request-rows"></tbody></table></div><h3>История изменений</h3><div class="table"><table><thead><tr><th>Сотрудник</th><th>Было</th><th>Стало</th><th>Дата</th><th>Автор</th></tr></thead><tbody id="rate-history-rows"></tbody></table></div></section></div><div id="future-panel" hidden><section><h2>Округление рабочего времени</h2><p>Настройка применяется к расчётам рабочего времени. Утверждённые начисления сохраняются.</p><p id="rounding-status" role="status"></p><form id="rounding-form" hidden class="toolbar"><label>Интервал <select id="rounding-step"><option value="1">1 мин.</option><option value="5">5 мин.</option><option value="10">10 мин.</option><option value="15">15 мин.</option><option value="30">30 мин.</option><option value="60">60 мин.</option></select></label><button type="submit" disabled>Сохранить</button></form><div id="rounding-history" hidden><h3>История изменений</h3><div class="table"><table><thead><tr><th>Дата</th><th>Автор (ID)</th><th>Было</th><th>Стало</th></tr></thead><tbody id="rounding-rows"></tbody></table></div></div></section></div>
   <div id="timesheet-panel" hidden>
   <section class="toolbar" aria-label="Дата и экспорт">
     <label>Период <select id="period"><option value="week">Неделя</option><option value="month">Месяц</option></select></label><button id="prev" type="button" aria-label="Предыдущий период">←</button><label>Дата <input type="date" id="date" required></label><button id="next" type="button" aria-label="Следующий период">→</button><strong id="period-title"></strong><label>Ресторан <select id="restaurant-filter"><option value="">Все рестораны</option></select></label>
@@ -111,9 +154,9 @@
     <form id="import-form">
       <label>Табель Excel <input type="file" name="file" accept=".xlsx" required></label>
       <label>Ресторан <select name="restaurant_key" id="import-restaurant"></select></label>
-      <button type="submit">Импортировать</button>
+      <button type="submit">Предварительный просмотр</button>
     </form>
-  </section><p id="upload-status" role="status"></p></div>
+  </section><p id="upload-status" role="status" style="white-space:pre-wrap"></p><section id="attendance-preview" hidden><h2>Результат проверки</h2><p id="preview-summary"></p><p>Предпросмотр не сохраняет данные в табель.</p><button id="confirm-attendance" type="button" disabled>Сохранить проверенный отчёт</button><p>Отчёт сохраняется отдельно, без начисления зарплаты.</p><div class="table"><table><thead><tr><th>Табельный номер</th><th>Дата</th><th>Ресторан</th><th>Смены / статус</th><th>Часы и минуты</th></tr></thead><tbody id="preview-rows"></tbody></table></div></section><section><h2>История загрузок</h2><button id="refresh-attendance-history" type="button">Обновить</button><p id="attendance-history-status" role="status"></p><div class="table"><table><thead><tr><th>Отчёт</th><th>Загружен</th><th>Ресторан</th><th>Период</th><th>Записей</th><th>Отработано</th><th>Действия</th></tr></thead><tbody id="attendance-history-rows"></tbody></table></div></section></div>
   <dialog id="editor">
     <h2 id="employee-name"></h2>
     <form id="edit-form">

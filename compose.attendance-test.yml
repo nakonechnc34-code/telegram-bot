@@ -1,0 +1,42 @@
+name: wokker-attendance-test
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: attendance_test
+      POSTGRES_USER: attendance_test
+      POSTGRES_PASSWORD: local_test_only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U attendance_test -d attendance_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [isolated]
+    volumes:
+      - test_db:/var/lib/postgresql/data
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://attendance_test:local_test_only@db:5432/attendance_test
+      ADMIN_LOGIN: adm01
+      ADMIN_PASSWORD: ${ATTENDANCE_LOCAL_ADMIN_PASSWORD:?Set a unique local test password}
+      ENV: development
+      RUN_MIGRATIONS: 'true'
+      PORT: '8080'
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json, urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=3)); assert d['status']=='healthy' and d['database']=='ok'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+    ports:
+      - '127.0.0.1:18080:8080'
+    networks: [isolated]
+networks:
+  isolated:
+    internal: true
+volumes:
+  test_db:

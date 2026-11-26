@@ -1,7 +1,9 @@
 from aiohttp import web
 from psycopg2.extras import RealDictCursor
+from psycopg2.errors import CheckViolation
 from db import get_conn, _run
 from utils.auth_helpers import get_auth_user, denied, _is_hr_or_super, _is_tu, _sync_user_has_perm, _sync_get_tu_rests
+from utils.attendance_rounding import allocate_daily_minutes, round_daily_minutes
 import calendar
 from datetime import datetime, date, time
 import io
@@ -31,12 +33,15 @@ def _sync_timesheet_session(token):
             cur.execute("SELECT u.* FROM timesheet_sessions s JOIN users u ON u.user_id=s.user_id WHERE s.token_hash=%s AND s.expires_at>NOW()", (_session_hash(token),))
             return cur.fetchone()
 
+def _timesheet_role_allowed(user):
+    return not user.get('is_fired') and (_is_hr_or_super(user) or _is_tu(user))
+
 async def _timesheet_user(request):
     token = await _extract_token(request, allow_query=False)
     user = await _run(_sync_timesheet_session, token) if token else None
     if not user:
         return None, 401
-    if user.get("is_fired") or not _sync_user_has_perm(user, "timesheet_access"):
+    if not _timesheet_role_allowed(user) or not _sync_user_has_perm(user, "timesheet_access"):
         return None, 403
     return user, None
 
@@ -65,7 +70,7 @@ async def timesheet_login(request):
     user = await _run(_sync_get_user_by_login, data["login"])
     if not user or not verify_password(data["password"], user.get("password_hash") or ""):
         return web.json_response({"error":"Неверный логин или пароль"}, status=401)
-    if user.get("is_fired") or not _sync_user_has_perm(user,"timesheet_access"):
+    if not _timesheet_role_allowed(user) or not _sync_user_has_perm(user,"timesheet_access"):
         return web.json_response({"error":"Нет доступа к Табелю"}, status=403)
     _reset_rate_limit(ip)
     token = secrets.token_urlsafe(48)
@@ -159,6 +164,52 @@ def _check_can_edit_user(editor_user, target_uid):
     return False
 
 
+def _sync_rounding_settings(user, change=None):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            if change is not None:
+                cur.execute("SELECT pg_advisory_xact_lock(814726, 2)")
+            cur.execute("SELECT step_minutes, revision FROM timesheet_rounding_settings WHERE singleton = TRUE" + (" FOR UPDATE" if change is not None else ""))
+            current = dict(cur.fetchone())
+            if change is not None:
+                if current["revision"] != change["revision"]:
+                    return None
+                if current["step_minutes"] != change["step_minutes"]:
+                    revision = current["revision"] + 1
+                    cur.execute("UPDATE timesheet_rounding_settings SET step_minutes=%s, revision=%s WHERE singleton=TRUE", (change["step_minutes"], revision))
+                    cur.execute("INSERT INTO timesheet_rounding_history(revision, previous_step, new_step, actor_id) VALUES (%s,%s,%s,%s)", (revision, current["step_minutes"], change["step_minutes"], user["user_id"]))
+                    current = {"step_minutes": change["step_minutes"], "revision": revision}
+            cur.execute("SELECT revision, previous_step, new_step, actor_id, created_at::text AS created_at FROM timesheet_rounding_history ORDER BY revision DESC LIMIT 100")
+            current["history"] = [dict(row) for row in cur.fetchall()]
+            return current
+
+
+@routes.get('/api/timesheet/rounding')
+@routes.post('/api/timesheet/rounding')
+async def handle_timesheet_rounding(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    if not _is_hr_or_super(user):
+        return denied(403)
+    change = None
+    if request.method == "POST":
+        try:
+            change = await request.json()
+        except (ValueError, TypeError):
+            return web.json_response({"error": "Некорректный запрос"}, status=400)
+        if (not isinstance(change, dict)
+                or type(change.get("step_minutes")) is not int
+                or change["step_minutes"] not in (1, 5, 10, 15, 30, 60)
+                or type(change.get("revision")) is not int
+                or not 0 <= change["revision"] < 2147483647):
+            return web.json_response({"error": "Некорректные настройки"}, status=400)
+    result = await _run(_sync_rounding_settings, user, change)
+    if result is None:
+        return web.json_response({"error": "Настройки уже изменены"}, status=409)
+    return web.json_response(result, headers={"Cache-Control": "no-store"})
+
+
 @routes.post('/api/timesheet/restaurants')
 async def handle_timesheet_restaurants(request):
     user, err = await _timesheet_user(request)
@@ -169,17 +220,19 @@ async def handle_timesheet_restaurants(request):
     def _sync():
         with get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                if "управляющий сменой" in (user.get("position") or "").lower():
-                    cur.execute("SELECT key, name FROM restaurants WHERE key = %s", (user.get("restaurant_key"),))
-                else:
+                if _is_hr_or_super(user):
                     cur.execute("SELECT key, name FROM restaurants ORDER BY name")
+                elif _is_tu(user):
+                    cur.execute("SELECT key, name FROM restaurants WHERE territory_manager_id = %s ORDER BY name", (user["user_id"],))
+                else:
+                    cur.execute("SELECT key, name FROM restaurants WHERE key = %s", (user.get("restaurant_key"),))
                 return [dict(r) for r in cur.fetchall()]
 
     rests = await _run(_sync)
     return web.json_response({"restaurants": rests})
 
 
-def _sync_timesheet_matrix(user_id, date_from, date_to):
+def _sync_timesheet_matrix(user_id, date_from, date_to, include_imports=False):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
@@ -192,13 +245,13 @@ def _sync_timesheet_matrix(user_id, date_from, date_to):
             is_us = "управляющий сменой" in (u.get("position") or "").lower()
 
             query = """SELECT u.user_id, u.full_name, u.position, u.restaurant_key AS main_restaurant_key,
-                       COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, u.payment_type, r.name AS restaurant_name
+                       COALESCE(ir.hourly_rate, 0) AS rate, u.payment_type, r.name AS restaurant_name
                 FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key
-                LEFT JOIN position_rates pr ON u.position = pr.position_name
+                LEFT JOIN timesheet_individual_rates ir ON ir.user_id=u.user_id
                 WHERE COALESCE(u.is_fired, FALSE) = FALSE
                   AND COALESCE(u.is_admin, FALSE) = FALSE
                   AND u.login IS NOT NULL
-                  AND COALESCE(u.payment_type, '') != 'fixed' """
+                  """
             params = []
             if is_us:
                 query += " AND u.restaurant_key = %s"
@@ -221,8 +274,13 @@ def _sync_timesheet_matrix(user_id, date_from, date_to):
                 """SELECT user_id, work_date, hours, status, restaurant_key,
                           to_char(start_time, 'HH24:MI') as st, to_char(end_time, 'HH24:MI') as et
                    FROM timesheet_records
-                   WHERE user_id = ANY(%s) AND work_date >= %s::date AND work_date <= %s::date""",
-                (emp_ids, date_from, date_to)
+                   WHERE user_id = ANY(%s) AND work_date >= %s::date AND work_date <= %s::date
+                     AND (%s OR (%s AND COALESCE(restaurant_key, (SELECT u.restaurant_key FROM users u WHERE u.user_id = timesheet_records.user_id))
+                         IN (SELECT key FROM restaurants WHERE territory_manager_id = %s))
+                         OR (%s AND COALESCE(restaurant_key, (SELECT u.restaurant_key FROM users u WHERE u.user_id = timesheet_records.user_id)) = %s)
+                         OR (%s AND user_id = %s))""",
+                (emp_ids, date_from, date_to, is_hr_or_super, is_tu, user_id,
+                 is_us, u.get("restaurant_key"), not (is_hr_or_super or is_tu or is_us), user_id)
             )
             records = cur.fetchall()
 
@@ -238,7 +296,50 @@ def _sync_timesheet_matrix(user_id, date_from, date_to):
                 }
                 data_map[r["user_id"]][str(r["work_date"].day)] = cell
                 full_date_map[r["user_id"]][r["work_date"].isoformat()] = cell
+            imported = {eid: {} for eid in emp_ids}
+            if include_imports:
+                cur.execute("""SELECT d.user_id, d.work_date, d.restaurant_key, d.status,
+                    d.worked_minutes FROM attendance_import_days d
+                    JOIN restaurants r ON r.key = d.restaurant_key
+                    WHERE d.user_id = ANY(%s) AND d.work_date BETWEEN %s::date AND %s::date
+                    AND (%s OR (%s AND r.territory_manager_id = %s)
+                         OR (%s AND r.key = %s) OR (%s AND d.user_id = %s))
+                    ORDER BY d.work_date, d.restaurant_key""",
+                    (emp_ids, date_from, date_to, is_hr_or_super, is_tu, user_id,
+                     is_us, u.get("restaurant_key"), not (is_hr_or_super or is_tu or is_us), user_id))
+                for r in cur.fetchall():
+                    day = r["work_date"].isoformat()
+                    imported[r["user_id"]].setdefault(day, {})[r["restaurant_key"]] = {
+                        "h": r["worked_minutes"] / 60, "minutes": r["worked_minutes"],
+                        "s": r["status"], "rk": r["restaurant_key"], "imported": True}
+            if include_imports:
+                cur.execute("SELECT step_minutes FROM timesheet_rounding_settings WHERE singleton = TRUE")
+                step_minutes = cur.fetchone()["step_minutes"]
+                cur.execute("""SELECT user_id, work_date, restaurant_key, worked_minutes
+                    FROM attendance_import_days
+                    WHERE user_id = ANY(%s) AND work_date BETWEEN %s::date AND %s::date
+                    ORDER BY work_date, restaurant_key""", (emp_ids, date_from, date_to))
+                all_daily = {}
+                for row in cur.fetchall():
+                    key = (row["user_id"], row["work_date"].isoformat())
+                    all_daily.setdefault(key, {})[row["restaurant_key"]] = row["worked_minutes"]
+                for eid in emp_ids:
+                    for day, cells in imported[eid].items():
+                        raw = {key: cell["minutes"] for key, cell in cells.items()}
+                        rounded = allocate_daily_minutes(all_daily[(eid, day)], step_minutes)
+                        for key, cell in cells.items():
+                            cell["raw_minutes"] = raw[key]
+                            cell["minutes"] = rounded[key]
+                            cell["h"] = rounded[key] / 60
+                    for day, cell in full_date_map[eid].items():
+                        if (eid, day) not in all_daily:
+                            raw = int(round(cell["h"] * 60))
+                            if 0 <= raw <= 1440:
+                                cell["raw_minutes"] = raw
+                                cell["minutes"] = round_daily_minutes(raw, step_minutes)
+                                cell["h"] = cell["minutes"] / 60
             for e in employees:
+                e["imported_by_date"] = imported[e["user_id"]]
                 e["data"] = data_map[e["user_id"]]
                 e["data_by_date"] = full_date_map[e["user_id"]]
             return employees
@@ -263,7 +364,7 @@ async def handle_timesheet_matrix(request):
     except (ValueError, TypeError, OverflowError):
         return web.json_response({"error": "invalid_dates"}, status=400)
 
-    employees = await _run(_sync_timesheet_matrix, user["user_id"], date_from, date_to)
+    employees = await _run(_sync_timesheet_matrix, user["user_id"], date_from, date_to, body.get("period") in ("week", "month"))
     return web.json_response({"employees": employees})
 
 
@@ -271,6 +372,32 @@ def _sync_save_cell(user_id, target_uid, work_date, hours, status, restaurant_ke
     hours = round(hours, 2)
     with get_conn() as conn:
         with conn.cursor() as cur:
+            cur.execute("SELECT pg_advisory_xact_lock(814726, 2)")
+            cur.execute("SELECT 1 FROM attendance_import_days WHERE user_id = %s AND work_date = %s LIMIT 1",
+                        (target_uid, work_date))
+            if cur.fetchone():
+                return False
+            cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+            actor_row = cur.fetchone()
+            if not actor_row:
+                return "forbidden"
+            actor = dict(zip([d[0] for d in cur.description], actor_row))
+            if not _is_hr_or_super(actor):
+                cur.execute("SELECT restaurant_key FROM users WHERE user_id = %s", (target_uid,))
+                target = cur.fetchone()
+                if not target:
+                    return "forbidden"
+                home = target[0]
+                territory = ()
+                if _is_tu(actor):
+                    cur.execute("SELECT key FROM restaurants WHERE territory_manager_id = %s", (user_id,))
+                    territory = tuple(row[0] for row in cur.fetchall())
+                cur.execute("SELECT restaurant_key FROM timesheet_records WHERE user_id = %s AND work_date = %s FOR UPDATE", (target_uid, work_date))
+                existing = cur.fetchone()
+                if not _restaurant_in_scope(actor, home, territory) or not _restaurant_in_scope(actor, restaurant_key or home, territory):
+                    return "forbidden"
+                if existing and not _restaurant_in_scope(actor, existing[0] or home, territory):
+                    return "forbidden"
             if hours <= 0 and status == 'work':
                 cur.execute("DELETE FROM timesheet_records WHERE user_id = %s AND work_date = %s", (target_uid, work_date))
             else:
@@ -283,6 +410,7 @@ def _sync_save_cell(user_id, target_uid, work_date, hours, status, restaurant_ke
                            start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time, updated_at = NOW()""",
                     (target_uid, work_date, hours, status, restaurant_key, start_time or None, end_time or None)
                 )
+    return True
 
 
 @routes.post('/api/timesheet/save_cell')
@@ -323,7 +451,16 @@ async def handle_timesheet_save_cell(request):
         if not _restaurant_in_scope(user, restaurant_key, territory_keys):
             return web.json_response({"error": "forbidden_restaurant"}, status=403)
 
-    await _run(_sync_save_cell, user["user_id"], target_uid, work_date, hours, status, restaurant_key, start_time, end_time)
+    try:
+        saved = await _run(_sync_save_cell, user["user_id"], target_uid, work_date, hours, status, restaurant_key, start_time, end_time)
+    except CheckViolation as exc:
+        if exc.diag.message_primary != "Timesheet is locked for approval":
+            raise
+        return web.json_response({"error": "Табель закрыт на согласование или утверждён"}, status=409)
+    if saved == "forbidden":
+        return web.json_response({"error": "forbidden_restaurant"}, status=403)
+    if saved is False:
+        return web.json_response({"error": "День закрыт импортированным отчётом"}, status=409)
     return web.json_response({"ok": True})
 
 
@@ -520,12 +657,243 @@ def _parse_excel_rows(file_data):
     return parsed_data
 
 
+
+def _sync_preview_attendance(user, rows, default_rest_key=None):
+    """Validate scope and calculate minutes without changing payroll records."""
+    from utils.attendance_minutes import shift_interval, worked_minutes
+    groups = {}
+    statuses = {}
+    errors = []
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT user_id, personnel_number, restaurant_key FROM users WHERE personnel_number IS NOT NULL AND COALESCE(is_fired, FALSE) = FALSE")
+            users = {}
+            for employee in cur.fetchall():
+                users.setdefault(str(employee["personnel_number"]).strip(), []).append(employee)
+            cur.execute("SELECT key, name, territory_manager_id FROM restaurants")
+            restaurants = cur.fetchall()
+    territory = {r["key"] for r in restaurants if r["territory_manager_id"] == user["user_id"]}
+    known = {r["key"] for r in restaurants}
+    for day, number, raw, name in rows:
+        candidates = users.get(number, [])
+        if len(candidates) != 1:
+            errors.append("Неизвестный или неоднозначный табельный номер")
+            continue
+        employee = candidates[0]
+        if not _is_hr_or_super(user) and employee["user_id"] != user["user_id"]:
+            if not (_is_tu(user) or "управляющий сменой" in (user.get("position") or "").lower()) or not _restaurant_in_scope(user, employee["restaurant_key"], territory):
+                errors.append("Нет доступа к сотруднику")
+                continue
+        matches = [r["key"] for r in restaurants if r["name"].strip().casefold() == name.strip().casefold()] if name else []
+        key = matches[0] if len(matches) == 1 else (default_rest_key or employee["restaurant_key"]) if not name else None
+        if key not in known or not _restaurant_in_scope(user, key, territory):
+            errors.append("Неизвестный или недоступный ресторан")
+            continue
+        if raw in ("В", "Б", "Н"):
+            statuses.setdefault((number, day, key), set()).add(raw)
+            continue
+        try:
+            shift_interval(raw)
+        except ValueError:
+            errors.append("Строка не содержит корректный интервал смены")
+            continue
+        groups.setdefault((number, day, key), []).append(raw)
+    records = [{"personnel_number": number, "date": day, "restaurant_key": key,
+                "minutes": worked_minutes(values), "shifts": values}
+               for (number, day, key), values in sorted(groups.items())]
+    work_days = {(number, day) for number, day, key in groups}
+    status_days = {}
+    for (number, day, key), values in statuses.items():
+        status_days.setdefault((number, day), []).append((key, values))
+        if len(values) != 1 or (number, day) in work_days:
+            errors.append("Конфликт статуса отсутствия и смены")
+        else:
+            status = {"В": "vacation", "Б": "sick", "Н": "absent"}[next(iter(values))]
+            records.append({"personnel_number": number, "date": day, "restaurant_key": key,
+                            "minutes": 0, "shifts": [], "status": status})
+    for entries in status_days.values():
+        if len(entries) > 1:
+            errors.append("Статус отсутствия указан в нескольких ресторанах")
+    by_employee = {}
+    for (number, day, key), values in groups.items():
+        offset = date.fromisoformat(day).toordinal() * 1440
+        for value in values:
+            start, end = shift_interval(value)
+            by_employee.setdefault(number, []).append((offset + start, offset + end, day, key))
+    for intervals in by_employee.values():
+        intervals.sort()
+        for i, (start, end, day, key) in enumerate(intervals):
+            for left, right, other_day, other_key in intervals[i+1:]:
+                if left >= end:
+                    break
+                if start < right and (other_key != key or other_day != day):
+                    errors.append("Пересечение смен в разных ресторанах или рабочих датах")
+                    break
+    return {"ok": not errors, "preview": True, "records": records,
+            "total_minutes": sum(r["minutes"] for r in records) if not errors else None,
+            "error_count": len(errors), "errors": errors[:50]}
+
+
+def _sync_attendance_history(user):
+    """Return only restaurant-level summaries within the current user's scope."""
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT key, territory_manager_id FROM restaurants")
+            restaurants = cur.fetchall()
+            territory = {r["key"] for r in restaurants if r["territory_manager_id"] == user["user_id"]}
+            allowed = [r["key"] for r in restaurants if _restaurant_in_scope(user, r["key"], territory)]
+            cur.execute("""SELECT i.id, i.created_at::text AS created_at,
+                d.restaurant_key, MIN(d.work_date)::text AS date_from,
+                MAX(d.work_date)::text AS date_to, COUNT(*) AS record_count,
+                SUM(d.worked_minutes) AS total_minutes
+                FROM attendance_imports i JOIN attendance_import_days d ON d.import_id = i.id
+                WHERE d.restaurant_key = ANY(%s)
+                GROUP BY i.id, i.created_at, d.restaurant_key
+                ORDER BY i.id DESC, d.restaurant_key LIMIT 200""", (allowed,))
+            return [dict(row) for row in cur.fetchall()]
+
+
+@routes.get('/api/timesheet/import_attendance/history')
+async def handle_attendance_history(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    _require_timesheet_access(user)
+    if not (_is_hr_or_super(user) or _is_tu(user)):
+        return web.json_response({"error": "Нет права на просмотр истории"}, status=403)
+    records = await _run(_sync_attendance_history, user)
+    return web.json_response({"records": records}, headers={"Cache-Control": "no-store"})
+
+
+def _sync_delete_attendance(user, import_id, restaurant_key):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT pg_advisory_xact_lock(814726, 2)")
+            cur.execute("SELECT key, territory_manager_id FROM restaurants WHERE key = %s FOR SHARE", (restaurant_key,))
+            restaurant = cur.fetchone()
+            territory = {restaurant_key} if restaurant and restaurant["territory_manager_id"] == user["user_id"] else set()
+            if not restaurant or not _restaurant_in_scope(user, restaurant_key, territory):
+                return None
+            cur.execute("DELETE FROM attendance_import_days WHERE import_id = %s AND restaurant_key = %s", (import_id, restaurant_key))
+            deleted = cur.rowcount
+            cur.execute("DELETE FROM attendance_imports i WHERE id = %s AND NOT EXISTS (SELECT 1 FROM attendance_import_days d WHERE d.import_id = i.id)", (import_id,))
+            return deleted
+
+
+@routes.post('/api/timesheet/import_attendance/delete')
+async def handle_delete_attendance(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    _require_timesheet_access(user)
+    if not (_is_hr_or_super(user) or _is_tu(user)):
+        return web.json_response({"error": "Нет права на удаление"}, status=403)
+    try:
+        body = await request.json()
+        import_id = body["import_id"]
+        restaurant_key = body["restaurant_key"]
+        if type(import_id) is not int or not 0 < import_id < 2**63 or not isinstance(restaurant_key, str) or not restaurant_key or len(restaurant_key) > 256:
+            raise ValueError()
+    except (ValueError, TypeError, KeyError):
+        return web.json_response({"error": "Некорректные параметры отчёта"}, status=400)
+    try:
+        deleted = await _run(_sync_delete_attendance, user, import_id, restaurant_key)
+    except CheckViolation as exc:
+        if exc.diag.message_primary != "Timesheet is locked for approval":
+            raise
+        return web.json_response({"error": "Табель закрыт на согласование или утверждён"}, status=409)
+    if deleted is None:
+        return web.json_response({"error": "Нет доступа к ресторану"}, status=403)
+    if not deleted:
+        return web.json_response({"error": "Отчёт не найден"}, status=404)
+    logging.getLogger(__name__).info("attendance_import_deleted actor=%s import_id=%s restaurant=%r deleted_count=%s",
+                                    user["user_id"], import_id, restaurant_key, deleted)
+    return web.json_response({"ok": True, "deleted_count": deleted}, headers={"Cache-Control": "no-store"})
+
+
+def _attendance_saved_conflict(cur, records, employee_ids):
+    """Check surviving staged records before replacing restaurant/date pairs."""
+    from utils.attendance_minutes import shift_interval
+    replacements = {(r["restaurant_key"], r["date"]) for r in records}
+    for record in records:
+        day = date.fromisoformat(record["date"])
+        cur.execute("""SELECT d.restaurant_key, d.work_date::text AS work_date,
+            d.status, i.start_minute, i.end_minute
+            FROM attendance_import_days d
+            LEFT JOIN attendance_import_intervals i ON i.day_id = d.id
+            WHERE d.user_id = %s AND d.work_date BETWEEN %s::date - 1 AND %s::date + 1""",
+                    (employee_ids[record["personnel_number"]], day, day))
+        offset = day.toordinal() * 1440
+        incoming = [(offset + a, offset + b) for a, b in
+                    (shift_interval(v) for v in record["shifts"])]
+        for saved in cur.fetchall():
+            if (saved["restaurant_key"], saved["work_date"]) in replacements:
+                continue
+            if saved["work_date"] == record["date"] and (
+                saved["status"] != "work" or record.get("status", "work") != "work"
+            ):
+                return True
+            if saved["start_minute"] is None:
+                continue
+            base = date.fromisoformat(saved["work_date"]).toordinal() * 1440
+            left, right = base + saved["start_minute"], base + saved["end_minute"]
+            if any(start < right and left < end for start, end in incoming):
+                return True
+    return False
+
+
+def _sync_stage_attendance(user, rows, default_rest_key=None):
+    """Store a validated batch for review, without affecting legacy payroll."""
+    from utils.attendance_minutes import shift_interval
+    result = _sync_preview_attendance(user, rows, default_rest_key)
+    if not result["ok"] or not result["records"]:
+        return {"ok": False, "errors": result["errors"] or ["Нет записей для загрузки"]}
+    records = result["records"]
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Serialize staged replacements; delete only exact restaurant/date pairs.
+            cur.execute("SELECT pg_advisory_xact_lock(814726, 2)")
+            employee_ids = {}
+            for number in sorted({r["personnel_number"] for r in records}):
+                cur.execute("SELECT user_id FROM users WHERE personnel_number IS NOT NULL AND BTRIM(personnel_number::text) = %s AND COALESCE(is_fired, FALSE) = FALSE FOR SHARE", (number,))
+                employees = cur.fetchall()
+                if len(employees) != 1:
+                    raise ValueError("Employee changed during import")
+                employee_ids[number] = employees[0]["user_id"]
+            if _attendance_saved_conflict(cur, records, employee_ids):
+                return {"ok": False, "errors": ["Конфликт с ранее загруженным отчётом: пересечение смен или статусов отсутствия. Проверьте данные."]}
+            for key, day in sorted({(r["restaurant_key"], r["date"]) for r in records}):
+                cur.execute("DELETE FROM attendance_import_days WHERE restaurant_key = %s AND work_date = %s", (key, day))
+            cur.execute("DELETE FROM attendance_imports i WHERE NOT EXISTS (SELECT 1 FROM attendance_import_days d WHERE d.import_id = i.id)")
+            cur.execute("INSERT INTO attendance_imports (uploaded_by, date_from, date_to) VALUES (%s, %s, %s) RETURNING id",
+                        (user["user_id"], min(r["date"] for r in records), max(r["date"] for r in records)))
+            import_id = cur.fetchone()["id"]
+            for record in records:
+                cur.execute("""INSERT INTO attendance_import_days
+                    (import_id, user_id, work_date, restaurant_key, status, worked_minutes)
+                    VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
+                    (import_id, employee_ids[record["personnel_number"]], record["date"], record["restaurant_key"],
+                     record.get("status", "work"), record["minutes"]))
+                day_id = cur.fetchone()["id"]
+                for start, end in sorted({shift_interval(v) for v in record["shifts"]}):
+                    cur.execute("INSERT INTO attendance_import_intervals (day_id, start_minute, end_minute) VALUES (%s, %s, %s)",
+                                (day_id, start, end))
+    return {"ok": True, "import_id": import_id, "success_count": len(records), "staged": True}
+
+
+@routes.post('/api/timesheet/import_attendance/stage')
+@routes.post('/api/timesheet/import_attendance/preview')
 @routes.post('/api/timesheet/import_attendance')
 async def handle_import_attendance(request):
     user, err = await _timesheet_user(request)
     if err:
         return denied(err)
     _require_timesheet_access(user)
+
+    if not (_is_hr_or_super(user) or _is_tu(user)):
+        return web.json_response({"error": "Нет права на загрузку"}, status=403)
+    if request.path == "/api/timesheet/import_attendance":
+        return web.json_response({"error": "Используйте предварительную проверку и сохранение отчёта"}, status=410)
 
     reader = await request.multipart()
     file_data = None
@@ -551,11 +919,138 @@ async def handle_import_attendance(request):
     except Exception:
         return web.json_response({"error": "Не удалось прочитать Excel"}, status=400)
 
+    if request.path.endswith("/preview"):
+        result = await _run(_sync_preview_attendance, user, rows, default_rest)
+        return web.json_response(result, headers={"Cache-Control": "no-store"})
+
+    if request.path.endswith("/stage"):
+        if not (_is_hr_or_super(user) or _is_tu(user)):
+            return web.json_response({"error": "Нет права на загрузку"}, status=403)
+        try:
+            result = await _run(_sync_stage_attendance, user, rows, default_rest)
+        except CheckViolation as exc:
+            if exc.diag.message_primary != "Timesheet is locked for approval":
+                raise
+            return web.json_response({"error": "Табель закрыт на согласование или утверждён"}, status=409)
+        except ValueError:
+            return web.json_response({"error": "Данные сотрудников изменились. Повторите проверку."}, status=409)
+        return web.json_response(result, headers={"Cache-Control": "no-store"})
+
     success, errors = await _run(_sync_import_attendance, user, rows, default_rest)
     return web.json_response({"ok": True, "success_count": success, "errors": errors})
 
 
 # ИСПРАВЛЕНО: добавлен флаг only_me и LEFT JOIN для корректной работы сотрудников без часов
+# Imported employee-days supersede legacy records, including absence days.
+_EFFECTIVE_ATTENDANCE_SQL = """
+    WITH rounding AS (
+        SELECT step_minutes AS step FROM timesheet_rounding_settings WHERE singleton = TRUE
+    ), daily AS (
+        SELECT d.user_id, d.work_date, d.restaurant_key,
+               CASE WHEN d.status = 'work' THEN d.worked_minutes ELSE 0 END AS minutes
+        FROM attendance_import_days d
+    ), totals AS (
+        SELECT *, SUM(minutes) OVER (PARTITION BY user_id, work_date) AS total
+        FROM daily
+    ), allocation AS (
+        SELECT *, COALESCE(FLOOR(minutes::numeric * (ROUND(total::numeric / (SELECT step FROM rounding)) * (SELECT step FROM rounding)) / NULLIF(total, 0)), 0) AS base,
+               COALESCE(MOD(minutes::numeric * (ROUND(total::numeric / (SELECT step FROM rounding)) * (SELECT step FROM rounding)), NULLIF(total, 0)), 0) AS remainder
+        FROM totals
+    ), ranked AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY user_id, work_date ORDER BY remainder DESC, restaurant_key COLLATE "C") AS rank,
+               SUM(base) OVER (PARTITION BY user_id, work_date) AS allocated
+        FROM allocation
+    )
+    SELECT t.user_id, t.work_date, t.restaurant_key,
+           ROUND(ROUND(t.hours::numeric * 60) / (SELECT step FROM rounding)) * (SELECT step FROM rounding) / 60 AS hours
+    FROM timesheet_records t
+    WHERE NOT EXISTS (
+        SELECT 1 FROM attendance_import_days d
+        WHERE d.user_id = t.user_id AND d.work_date = t.work_date
+    )
+    UNION ALL
+    SELECT user_id, work_date, restaurant_key,
+           (base + CASE WHEN rank <= ROUND(total::numeric / (SELECT step FROM rounding)) * (SELECT step FROM rounding) - allocated THEN 1 ELSE 0 END) / 60 AS hours
+    FROM ranked
+"""
+
+
+def _sync_approved_reports(user_id, date_from, date_to, only_me=False):
+    """Return approved monthly totals or immutable daily detail, never draft calculations."""
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id=%s", (user_id,))
+            user = cur.fetchone()
+            if not user or user.get("is_fired"):
+                return []
+            sql = """SELECT s.full_name,s.position,s.restaurant_name,
+                       SUM(CASE WHEN period.full_month THEN s.worked_minutes ELSE detail.minutes END)::numeric/60 AS total_hours,
+                       s.rate,s.payment_type,SUM(CASE WHEN period.full_month THEN s.total_salary ELSE detail.salary END) AS total_salary
+                FROM timesheet_accrual_snapshots s
+                JOIN timesheet_approvals a ON a.restaurant_key=s.restaurant_key
+                    AND a.month_start=s.month_start AND a.revision=s.revision
+                CROSS JOIN (SELECT %s::date AS start_date,%s::date AS end_date) bounds
+                CROSS JOIN LATERAL (SELECT s.month_start>=bounds.start_date
+                    AND s.month_start+INTERVAL '1 month'-INTERVAL '1 day'<=bounds.end_date AS full_month) period
+                LEFT JOIN LATERAL (
+                    SELECT SUM(d.worked_minutes) AS minutes,SUM(d.total_salary) AS salary
+                    FROM timesheet_accrual_snapshot_days d
+                    WHERE d.restaurant_key=s.restaurant_key AND d.month_start=s.month_start
+                        AND d.revision=s.revision AND d.user_id=s.user_id
+                        AND d.work_date BETWEEN bounds.start_date AND bounds.end_date
+                ) detail ON NOT period.full_month
+                WHERE a.status='approved' AND s.month_start<=bounds.end_date
+                    AND s.month_start+INTERVAL '1 month'>bounds.start_date
+                    AND (period.full_month OR detail.minutes IS NOT NULL)"""
+            params = [date_from,date_to]
+            if only_me:
+                sql += " AND s.user_id=%s"
+                params.append(user_id)
+            elif _is_tu(user):
+                sql += " AND s.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id=%s)"
+                params.append(user_id)
+            elif not _is_hr_or_super(user):
+                return []
+            sql += """ GROUP BY s.user_id,s.restaurant_key,s.full_name,s.position,s.restaurant_name,s.rate,s.payment_type
+                       ORDER BY s.restaurant_name,s.full_name"""
+            cur.execute(sql,params)
+            return [dict(row) for row in cur.fetchall()]
+
+
+def _sync_legacy_partial_months(user_id, date_from, date_to, only_me=False):
+    """Identify visible approved months whose historical daily detail is unavailable."""
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id=%s", (user_id,))
+            user = cur.fetchone()
+            if not user or user.get("is_fired"):
+                return []
+            sql = """SELECT DISTINCT s.month_start::text AS month_start
+                FROM timesheet_accrual_snapshots s
+                JOIN timesheet_approvals a ON a.restaurant_key=s.restaurant_key
+                    AND a.month_start=s.month_start AND a.revision=s.revision
+                CROSS JOIN (SELECT %s::date AS start_date,%s::date AS end_date) b
+                WHERE a.status='approved' AND s.month_start<=b.end_date
+                    AND s.month_start+INTERVAL '1 month'>b.start_date
+                    AND NOT (s.month_start>=b.start_date AND
+                        s.month_start+INTERVAL '1 month'-INTERVAL '1 day'<=b.end_date)
+                    AND (s.worked_minutes>0 OR s.total_salary>0)
+                    AND NOT EXISTS (SELECT 1 FROM timesheet_accrual_snapshot_days d
+                        WHERE d.restaurant_key=s.restaurant_key AND d.month_start=s.month_start
+                        AND d.revision=s.revision AND d.user_id=s.user_id)"""
+            params = [date_from,date_to]
+            if only_me:
+                sql += " AND s.user_id=%s"
+                params.append(user_id)
+            elif _is_tu(user):
+                sql += " AND s.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id=%s)"
+                params.append(user_id)
+            elif not _is_hr_or_super(user):
+                return []
+            cur.execute(sql+" ORDER BY month_start",params)
+            return [row["month_start"] for row in cur.fetchall()]
+
+
 def _sync_reports(user_id, date_from, date_to, only_me=False):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -565,17 +1060,20 @@ def _sync_reports(user_id, date_from, date_to, only_me=False):
             is_tu = _is_tu(u)
             is_us = "управляющий сменой" in (u.get("position") or "").lower()
 
-            base = """SELECT u.full_name, u.position,
+            base = "WITH effective_attendance AS (" + _EFFECTIVE_ATTENDANCE_SQL + """),
+                period_attendance AS (
+                    SELECT * FROM effective_attendance WHERE work_date BETWEEN %s::date AND %s::date
+                )
+                SELECT u.full_name, u.position,
                        COALESCE(tr.name, r.name) AS restaurant_name,
                        COALESCE(SUM(t.hours), 0) as total_hours,
-                       COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, u.payment_type,
-                       CASE WHEN u.payment_type = 'fixed' THEN COALESCE(NULLIF(u.rate, 0), pr.rate, 0)
-                            ELSE (COALESCE(SUM(t.hours), 0) * COALESCE(NULLIF(u.rate, 0), pr.rate, 0)) END as total_salary
+                       COALESCE(ir.hourly_rate, 0) AS rate, u.payment_type,
+                       ROUND(ROUND(COALESCE(SUM(t.hours), 0)*60)::numeric * COALESCE(ir.hourly_rate, 0)/60,2) as total_salary
                 FROM users u 
-                LEFT JOIN timesheet_records t ON u.user_id = t.user_id AND t.work_date >= %s::date AND t.work_date <= %s::date
+                LEFT JOIN period_attendance t ON u.user_id = t.user_id
                 LEFT JOIN restaurants r ON u.restaurant_key = r.key
                 LEFT JOIN restaurants tr ON t.restaurant_key = tr.key
-                LEFT JOIN position_rates pr ON u.position = pr.position_name
+                LEFT JOIN timesheet_individual_rates ir ON ir.user_id=u.user_id
                 WHERE COALESCE(u.is_fired, FALSE) = FALSE AND u.login IS NOT NULL"""
             
             params = [date_from, date_to]
@@ -593,7 +1091,7 @@ def _sync_reports(user_id, date_from, date_to, only_me=False):
                 base += " AND u.user_id = %s"
                 params.append(user_id)
                 
-            base += " GROUP BY u.user_id, u.full_name, u.position, COALESCE(tr.name, r.name), u.rate, pr.rate, u.payment_type ORDER BY COALESCE(tr.name, r.name), u.full_name"
+            base += " GROUP BY u.user_id, u.full_name, u.position, COALESCE(tr.name, r.name), COALESCE(t.restaurant_key, u.restaurant_key), u.restaurant_key, ir.hourly_rate, u.payment_type ORDER BY COALESCE(tr.name, r.name), u.full_name"
 
             cur.execute(base, params)
             return [dict(r) for r in cur.fetchall()]
@@ -619,8 +1117,33 @@ async def handle_timesheet_reports(request):
         return web.json_response({"error": "invalid_dates"}, status=400)
 
     # ИСПРАВЛЕНО: Передаем True в only_me, чтобы каждый видел только свою зарплату в личном кабинете
-    report = await _run(_sync_reports, user["user_id"], date_from, date_to, True)
-    return web.json_response({"report": report})
+    report = await _run(_sync_approved_reports, user["user_id"], date_from, date_to, True)
+    legacy = await _run(_sync_legacy_partial_months, user["user_id"], date_from, date_to, True)
+    return web.json_response({"report": [{**row, "total_hours": float(row["total_hours"]),
+        "rate": float(row["rate"]), "total_salary": float(row["total_salary"])} for row in report],
+        "legacy_partial_months": legacy}, headers={"Cache-Control":"no-store"})
+
+
+@routes.post('/api/timesheet/accruals')
+async def handle_timesheet_accruals(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    _require_timesheet_access(user)
+    try:
+        body = await request.json()
+        if not isinstance(body, dict):
+            raise ValueError("invalid body")
+        date_from, date_to = _date_range(body)
+    except (ValueError, TypeError, OverflowError):
+        return web.json_response({"error": "invalid_dates"}, status=400)
+    report = await _run(_sync_approved_reports, user["user_id"], date_from, date_to, False)
+    legacy = await _run(_sync_legacy_partial_months, user["user_id"], date_from, date_to, False)
+    return web.json_response({"legacy_partial_months": legacy, "report": [
+        {**row, "total_hours": float(row["total_hours"]),
+         "rate": float(row["rate"]), "total_salary": float(row["total_salary"])}
+        for row in report
+    ]}, headers={"Cache-Control": "no-store"})
 
 
 @routes.get('/api/timesheet/export_excel')
@@ -630,7 +1153,8 @@ async def handle_timesheet_export_excel(request):
         user, err = await get_auth_user(request)
     if err:
         return denied(err)
-    # ИСПРАВЛЕНО: убрали _require_timesheet_access(user)
+    if request.query.get("only_me") != "true":
+        _require_timesheet_access(user)
 
     date_from = request.query.get("date_from")
     date_to = request.query.get("date_to")
@@ -643,18 +1167,26 @@ async def handle_timesheet_export_excel(request):
 
     # Если сотрудник качает из профиля, он передает only_me=true. Иначе (из табеля админа) качаем всех доступных.
     only_me = request.query.get("only_me") == "true"
-    report = await _run(_sync_reports, user["user_id"], date_from, date_to, only_me)
+    report = await _run(_sync_approved_reports, user["user_id"], date_from, date_to, only_me)
 
+    legacy = await _run(_sync_legacy_partial_months, user["user_id"], date_from, date_to, only_me)
     wb = Workbook()
     ws = wb.active
     ws.title = "Табель"
+    if legacy:
+        notice = wb.create_sheet("Предупреждение")
+        notice.append(["Отчёт неполный: отсутствует ежедневная детализация исторических табелей."])
+        notice.append(["Выберите полный календарный месяц для просмотра исторических начислений."])
+        for month in legacy:
+            notice.append([month])
+        notice.column_dimensions["A"].width = 100
 
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color="1C1C1E", end_color="1C1C1E", fill_type="solid")
     border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     center_align = Alignment(horizontal="center", vertical="center")
 
-    headers = ["Сотрудник", "Должность", "Ресторан", "Часов", "Ставка (₽)", "К оплате (₽)"]
+    headers = ["Сотрудник", "Должность", "Ресторан", "Часов", "Ставка (₽/ч)", "К оплате (₽)", "Пометка"]
     ws.append(headers)
 
     for col_num, header in enumerate(headers, 1):
@@ -670,15 +1202,18 @@ async def handle_timesheet_export_excel(request):
             r.get("position", ""),
             r.get("restaurant_name", ""),
             float(r.get("total_hours", 0)),
-            "Оклад" if r.get("payment_type") == 'fixed' else float(r.get("rate", 0)),
+            float(r.get("rate", 0)),
             float(r.get("total_salary", 0)),
+            "Оклад" if r.get("payment_type") == "fixed" else "",
         ]
         ws.append(row_data)
         current_row = ws.max_row
-        for col_num in range(1, 7):
+        for col_num in range(1, 8):
             cell = ws.cell(row=current_row, column=col_num)
             cell.border = border
-            if col_num >= 4:
+            if col_num <= 3 or col_num == 7:
+                cell.data_type = "s"
+            if 4 <= col_num <= 6:
                 cell.alignment = Alignment(horizontal="right", vertical="center")
 
     for col in ws.columns:
@@ -733,36 +1268,7 @@ async def handle_timesheet_settings_save(request):
         return denied(err)
     if not _is_hr_or_super(user):
         return web.json_response({"error": "forbidden"}, status=403)
-    try:
-        body = await request.json()
-    except Exception:
-        return web.json_response({"error": "invalid_json"}, status=400)
-    if not isinstance(body, dict):
-        return web.json_response({"error": "invalid_json"}, status=400)
-
-    position_name = body.get("position_name")
-    if not isinstance(position_name, str) or not position_name.strip():
-        return web.json_response({"error": "invalid_position"}, status=400)
-
-    position_name = position_name.strip()
-    try:
-        rate = _finite_number(body.get("rate", 0))
-        if rate < 0:
-            raise ValueError("invalid rate")
-    except ValueError:
-        return web.json_response({"error": "invalid_rate"}, status=400)
-
-    def _sync():
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """INSERT INTO position_rates (position_name, rate) VALUES (%s, %s)
-                       ON CONFLICT (position_name) DO UPDATE SET rate = EXCLUDED.rate""",
-                    (position_name, rate)
-                )
-
-    await _run(_sync)
-    return web.json_response({"ok": True})
+    return web.json_response({"error": "position_rates_retired"}, status=410)
 
 
 # ===================== ВЫПЛАТЫ =====================
@@ -927,20 +1433,19 @@ def _sync_employee_payment_summary(user_id, date_from, date_to):
             cur.execute("""
                 SELECT
                     COALESCE(t.total_hours, 0) AS total_hours,
-                    CASE WHEN u.payment_type = 'fixed'
-                         THEN COALESCE(NULLIF(u.rate, 0), pr.rate, 0)
-                         ELSE COALESCE(t.total_hours, 0) *
-                              COALESCE(NULLIF(u.rate, 0), pr.rate, 0)
-                    END AS timesheet_accrued,
+                    COALESCE(t.timesheet_accrued, 0) AS timesheet_accrued,
                     COALESCE(p.extra_accrued, 0) AS extra_accrued,
                     COALESCE(p.paid, 0) AS paid
                 FROM users u
-                LEFT JOIN position_rates pr ON pr.position_name = u.position
                 LEFT JOIN LATERAL (
-                    SELECT SUM(hours) AS total_hours
-                    FROM timesheet_records
-                    WHERE user_id = u.user_id
-                      AND work_date BETWEEN %s::date AND %s::date
+                    SELECT SUM(s.worked_minutes)::numeric/60 AS total_hours,
+                           SUM(s.total_salary) AS timesheet_accrued
+                    FROM timesheet_accrual_snapshots s
+                    JOIN timesheet_approvals a ON a.restaurant_key=s.restaurant_key
+                        AND a.month_start=s.month_start AND a.revision=s.revision
+                    WHERE s.user_id=u.user_id AND a.status='approved'
+                      AND s.month_start >= %s::date
+                      AND s.month_start + INTERVAL '1 month' - INTERVAL '1 day' <= %s::date
                 ) t ON TRUE
                 LEFT JOIN LATERAL (
                     SELECT
@@ -995,3 +1500,401 @@ async def handle_employee_payment_summary(request):
     if summary is None:
         return web.json_response({"error": "user_not_found"}, status=404)
     return web.json_response(summary)
+
+
+def _snapshot_approved_accruals(cur, key, month, revision):
+    """Capture the monthly payroll using the approval transaction's cursor."""
+    cur.execute("WITH effective AS (" + _EFFECTIVE_ATTENDANCE_SQL + """),
+        monthly AS (
+            SELECT e.user_id, COALESCE(e.restaurant_key,u.restaurant_key) AS restaurant_key,
+                   ROUND(SUM(e.hours)*60)::integer AS minutes
+            FROM effective e JOIN users u ON u.user_id=e.user_id
+            WHERE e.work_date >= %s::date AND e.work_date < %s::date + INTERVAL '1 month'
+            GROUP BY e.user_id, COALESCE(e.restaurant_key,u.restaurant_key)
+        ), candidates AS (
+            SELECT u.user_id,u.full_name,u.position,u.payment_type,
+                   COALESCE(ir.hourly_rate, 0) AS rate,
+                   COALESCE(m.restaurant_key,u.restaurant_key) AS restaurant_key,
+                   COALESCE(m.minutes,0) AS minutes
+            FROM users u LEFT JOIN monthly m ON m.user_id=u.user_id
+                LEFT JOIN timesheet_individual_rates ir ON ir.user_id=u.user_id
+            WHERE u.login IS NOT NULL AND COALESCE(u.is_fired,FALSE)=FALSE
+        )
+        , captured AS (
+        INSERT INTO timesheet_accrual_snapshots
+            (restaurant_key,month_start,revision,user_id,full_name,position,restaurant_name,payment_type,rate,worked_minutes,total_salary)
+        SELECT c.restaurant_key,%s,%s,c.user_id,c.full_name,c.position,r.name,c.payment_type,c.rate,c.minutes,
+               ROUND(c.minutes::numeric*c.rate/60,2)
+        FROM candidates c JOIN restaurants r ON r.key=c.restaurant_key
+        WHERE c.restaurant_key=%s
+        RETURNING restaurant_key,month_start,revision,user_id,rate
+        ),
+        daily AS (
+            SELECT s.restaurant_key,s.month_start,s.revision,s.user_id,e.work_date,
+                   ROUND(SUM(e.hours)*60)::integer AS minutes,s.rate
+            FROM captured s
+            JOIN users u ON u.user_id=s.user_id
+            JOIN effective e ON e.user_id=s.user_id
+                AND COALESCE(e.restaurant_key,u.restaurant_key)=s.restaurant_key
+            WHERE e.work_date>=s.month_start AND e.work_date<s.month_start+INTERVAL '1 month'
+            GROUP BY s.restaurant_key,s.month_start,s.revision,s.user_id,e.work_date,s.rate
+        ), cumulative AS (
+            SELECT *, SUM(minutes) OVER (PARTITION BY restaurant_key,month_start,revision,user_id
+                ORDER BY work_date ROWS UNBOUNDED PRECEDING) AS running_minutes
+            FROM daily
+        )
+        INSERT INTO timesheet_accrual_snapshot_days
+            (restaurant_key,month_start,revision,user_id,work_date,worked_minutes,total_salary)
+        SELECT restaurant_key,month_start,revision,user_id,work_date,minutes,
+               ROUND(running_minutes*rate/60,2)-ROUND((running_minutes-minutes)*rate/60,2)
+        FROM cumulative""", (month,month,month,revision,key))
+
+
+
+def _sync_approval_transition(user, key, month, action, comment, revision):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT pg_advisory_xact_lock(814726, 2)")
+            cur.execute("SELECT territory_manager_id FROM restaurants WHERE key=%s", (key,))
+            restaurant = cur.fetchone()
+            if not restaurant or not _timesheet_role_allowed(user):
+                return 403, {"error": "forbidden"}
+            privileged = _is_hr_or_super(user)
+            if not privileged and (restaurant["territory_manager_id"] != user["user_id"] or action != "submit"):
+                return 403, {"error": "forbidden"}
+            cur.execute("INSERT INTO timesheet_approvals(restaurant_key,month_start) VALUES (%s,%s) ON CONFLICT DO NOTHING", (key,month))
+            cur.execute("SELECT status,revision FROM timesheet_approvals WHERE restaurant_key=%s AND month_start=%s FOR UPDATE", (key,month))
+            row = cur.fetchone()
+            transitions = {("draft","submit"):"pending", ("returned","submit"):"pending",
+                           ("pending","approve"):"approved", ("pending","return"):"returned",
+                           ("approved","reopen"):"returned"}
+            target = transitions.get((row["status"],action))
+            if not target or revision != row["revision"]:
+                return 409, {"error":"approval_conflict"}
+            if target == "approved":
+                cur.execute("WITH effective AS (" + _EFFECTIVE_ATTENDANCE_SQL + """)
+                    SELECT DISTINCT u.user_id,u.full_name
+                    FROM effective e JOIN users u ON u.user_id=e.user_id
+                    LEFT JOIN timesheet_individual_rates ir ON ir.user_id=u.user_id
+                    WHERE COALESCE(e.restaurant_key,u.restaurant_key)=%s
+                      AND e.work_date >= %s::date
+                      AND e.work_date < %s::date + INTERVAL '1 month'
+                      AND e.hours > 0 AND ir.user_id IS NULL
+                    ORDER BY u.full_name,u.user_id""", (key,month,month))
+                missing = [dict(item) for item in cur.fetchall()]
+                if missing:
+                    return 409, {"error":"missing_hourly_rates","employees":missing}
+            next_revision = revision + 1
+            cur.execute("UPDATE timesheet_approvals SET status=%s,revision=%s,updated_by=%s,updated_at=NOW() WHERE restaurant_key=%s AND month_start=%s",
+                        (target,next_revision,user["user_id"],key,month))
+            cur.execute("INSERT INTO timesheet_approval_history(restaurant_key,month_start,revision,previous_status,new_status,actor_id,comment) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                        (key,month,next_revision,row["status"],target,user["user_id"],comment))
+            if target == "approved":
+                _snapshot_approved_accruals(cur,key,month,next_revision)
+            return 200, {"status":target,"revision":next_revision}
+
+
+@routes.post('/api/timesheet/approval/transition')
+async def handle_approval_transition(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    try:
+        body = await request.json()
+        key, action = body["restaurant_key"], body["action"]
+        month = date.fromisoformat(body["month_start"])
+        revision = body["revision"]
+        comment = body.get("comment", "")
+        if not isinstance(key,str) or not key or len(key)>255 or month.day != 1:
+            raise ValueError()
+        if action not in ("submit","approve","return","reopen") or type(revision) is not int or not 0 <= revision < 2147483647:
+            raise ValueError()
+        if not isinstance(comment,str) or len(comment)>2000 or (action in ("return","reopen") and not comment.strip()):
+            raise ValueError()
+    except (ValueError, TypeError, KeyError, OverflowError):
+        return web.json_response({"error":"invalid_approval"},status=400)
+    status, result = await _run(_sync_approval_transition,user,key,month,action,comment.strip(),revision)
+    return web.json_response(result,status=status,headers={"Cache-Control":"no-store"})
+
+
+
+def _sync_approval_status(user, key, month):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT territory_manager_id FROM restaurants WHERE key=%s", (key,))
+            restaurant = cur.fetchone()
+            if not restaurant or not _timesheet_role_allowed(user):
+                return None
+            privileged = _is_hr_or_super(user)
+            if not privileged and restaurant["territory_manager_id"] != user["user_id"]:
+                return None
+            cur.execute("SELECT status,revision FROM timesheet_approvals WHERE restaurant_key=%s AND month_start=%s", (key,month))
+            row = cur.fetchone() or {"status":"draft","revision":0}
+            cur.execute("""SELECT h.revision,h.previous_status,h.new_status,h.comment,
+                           h.created_at::text AS created_at,u.full_name AS actor_name
+                           FROM timesheet_approval_history h LEFT JOIN users u ON u.user_id=h.actor_id
+                           WHERE h.restaurant_key=%s AND h.month_start=%s AND h.revision<=%s
+                           ORDER BY h.revision DESC""", (key,month,row["revision"]))
+            return {**row,"can_review":privileged,"history":[dict(h) for h in cur.fetchall()]}
+
+
+@routes.post('/api/timesheet/approval/status')
+async def handle_approval_status(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    try:
+        body = await request.json()
+        key = body["restaurant_key"]
+        month = date.fromisoformat(body["month_start"])
+        if not isinstance(key,str) or not key or len(key)>255 or month.day != 1:
+            raise ValueError()
+    except (ValueError,TypeError,KeyError,OverflowError):
+        return web.json_response({"error":"invalid_approval"},status=400)
+    result = await _run(_sync_approval_status,user,key,month)
+    if result is None:
+        return denied(403)
+    return web.json_response(result,headers={"Cache-Control":"no-store"})
+
+
+# Individual hourly rates: HR and super administrators may write.
+def _can_set_individual_rate(user):
+    return bool(user and not user.get("is_fired") and _is_hr_or_super(user))
+
+
+def _sync_set_individual_rate(actor, target, rate):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT pg_advisory_xact_lock(814726, 2)")
+            cur.execute("SELECT * FROM users WHERE user_id=%s FOR UPDATE", (actor,))
+            if not _can_set_individual_rate(cur.fetchone()):
+                return 403
+            cur.execute("SELECT user_id FROM users WHERE user_id=%s AND NOT COALESCE(is_fired,FALSE) FOR UPDATE", (target,))
+            if not cur.fetchone():
+                return 404
+            cur.execute("SELECT hourly_rate FROM timesheet_individual_rates WHERE user_id=%s FOR UPDATE", (target,))
+            old = cur.fetchone()
+            previous = old["hourly_rate"] if old else None
+            if previous == rate:
+                return 200
+            cur.execute("""INSERT INTO timesheet_individual_rates(user_id,hourly_rate,updated_by)
+                VALUES (%s,%s,%s) ON CONFLICT(user_id) DO UPDATE SET
+                hourly_rate=EXCLUDED.hourly_rate, updated_by=EXCLUDED.updated_by,
+                revision=timesheet_individual_rates.revision+1, updated_at=NOW()""", (target,rate,actor))
+            cur.execute("""INSERT INTO timesheet_rate_history(user_id,previous_rate,new_rate,actor_id)
+                VALUES (%s,%s,%s,%s)""", (target,previous,rate,actor))
+            cur.execute("""UPDATE timesheet_rate_requests SET status='rejected',
+                decided_by=%s,decided_at=NOW(),
+                decision_comment='Ставка изменена напрямую. Создайте новый запрос.'
+                WHERE user_id=%s AND status='pending'""",(actor,target))
+            return 200
+
+
+@routes.post('/api/timesheet/individual-rate')
+async def handle_individual_rate(request):
+    from decimal import Decimal, InvalidOperation
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    if not _can_set_individual_rate(user):
+        return denied(403)
+    try:
+        data = await request.json()
+        target = data["user_id"]
+        raw = data["hourly_rate"]
+        if type(target) is not int or not 0 < target < 2**63 or type(raw) not in (str,int,float):
+            raise ValueError()
+        rate = Decimal(str(raw))
+        if not rate.is_finite() or not 0 <= rate <= Decimal("9999999999.99") or rate != rate.quantize(Decimal("0.01")):
+            raise ValueError()
+    except (ValueError, TypeError, KeyError, InvalidOperation):
+        return web.json_response({"error":"Некорректная ставка"}, status=400)
+    status = await _run(_sync_set_individual_rate, user["user_id"], target, rate)
+    return web.json_response({"ok":status == 200}, status=status, headers={"Cache-Control":"no-store"})
+
+
+def _sync_create_rate_request(actor, target, rate, reason):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT pg_advisory_xact_lock(814726, 2)")
+            cur.execute("SELECT * FROM users WHERE user_id=%s FOR UPDATE", (actor,))
+            user = cur.fetchone()
+            if not user or user.get("is_fired") or not (_is_tu(user) or user.get("is_super_admin")):
+                return 403
+            cur.execute("""SELECT u.user_id,r.territory_manager_id FROM users u
+                LEFT JOIN restaurants r ON r.key=u.restaurant_key
+                WHERE u.user_id=%s AND NOT COALESCE(u.is_fired,FALSE) FOR UPDATE OF u""", (target,))
+            employee = cur.fetchone()
+            if not employee or (not user.get("is_super_admin") and employee["territory_manager_id"] != actor):
+                return 404
+            cur.execute("""INSERT INTO timesheet_rate_requests(user_id,requested_by,proposed_rate,reason)
+                VALUES (%s,%s,%s,%s) ON CONFLICT (user_id) WHERE status='pending'
+                DO NOTHING RETURNING id""", (target,actor,rate,reason))
+            return 201 if cur.fetchone() else 409
+
+
+@routes.post('/api/timesheet/rate-requests')
+async def handle_create_rate_request(request):
+    from decimal import Decimal, InvalidOperation
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    if not (_is_tu(user) or user.get("is_super_admin")):
+        return denied(403)
+    try:
+        data = await request.json()
+        target, raw, reason = data["user_id"], data["proposed_rate"], data["reason"]
+        if type(target) is not int or not 0 < target < 2**63 or type(raw) not in (str,int,float):
+            raise ValueError()
+        if not isinstance(reason,str) or not 1 <= len(reason.strip()) <= 2000:
+            raise ValueError()
+        rate = Decimal(str(raw))
+        if not rate.is_finite() or not 0 <= rate <= Decimal("9999999999.99") or rate != rate.quantize(Decimal("0.01")):
+            raise ValueError()
+    except (ValueError, TypeError, KeyError, InvalidOperation):
+        return web.json_response({"error":"Некорректный запрос"}, status=400)
+    status = await _run(_sync_create_rate_request,user["user_id"],target,rate,reason.strip())
+    return web.json_response({"ok":status == 201},status=status,headers={"Cache-Control":"no-store"})
+
+
+def _sync_decide_rate_request(actor, request_id, decision, comment):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT pg_advisory_xact_lock(814726, 2)")
+            cur.execute("SELECT * FROM users WHERE user_id=%s FOR UPDATE", (actor,))
+            if not _can_set_individual_rate(cur.fetchone()):
+                return 403
+            cur.execute("SELECT user_id FROM timesheet_rate_requests WHERE id=%s", (request_id,))
+            target = cur.fetchone()
+            if not target:
+                return 404
+            cur.execute("SELECT user_id,is_fired FROM users WHERE user_id=%s FOR UPDATE", (target["user_id"],))
+            employee = cur.fetchone()
+            cur.execute("SELECT * FROM timesheet_rate_requests WHERE id=%s FOR UPDATE", (request_id,))
+            pending = cur.fetchone()
+            if not pending:
+                return 404
+            if pending["status"] != "pending":
+                return 409
+            if decision == "approved":
+                if not employee or employee["is_fired"]:
+                    return 409
+                cur.execute("SELECT hourly_rate FROM timesheet_individual_rates WHERE user_id=%s FOR UPDATE", (pending["user_id"],))
+                old = cur.fetchone()
+                previous = old["hourly_rate"] if old else None
+                rate = pending["proposed_rate"]
+                if previous != rate:
+                    cur.execute("""INSERT INTO timesheet_individual_rates(user_id,hourly_rate,updated_by)
+                        VALUES (%s,%s,%s) ON CONFLICT(user_id) DO UPDATE SET
+                        hourly_rate=EXCLUDED.hourly_rate,updated_by=EXCLUDED.updated_by,
+                        revision=timesheet_individual_rates.revision+1,updated_at=NOW()""",
+                        (pending["user_id"],rate,actor))
+                    cur.execute("""INSERT INTO timesheet_rate_history(user_id,previous_rate,new_rate,actor_id,request_id)
+                        VALUES (%s,%s,%s,%s,%s)""",(pending["user_id"],previous,rate,actor,request_id))
+            cur.execute("""UPDATE timesheet_rate_requests SET status=%s,decided_by=%s,
+                decided_at=NOW(),decision_comment=%s WHERE id=%s""",(decision,actor,comment,request_id))
+            return 200
+
+
+@routes.post('/api/timesheet/rate-requests/{request_id}/decision')
+async def handle_decide_rate_request(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    if not _can_set_individual_rate(user):
+        return denied(403)
+    try:
+        request_id = int(request.match_info["request_id"])
+        data = await request.json()
+        decision = data["decision"]
+        comment = data.get("comment","")
+        if not 0 < request_id < 2**63 or decision not in ("approved","rejected"):
+            raise ValueError()
+        if not isinstance(comment,str) or len(comment.strip()) > 2000:
+            raise ValueError()
+        if decision == "rejected" and not comment.strip():
+            raise ValueError()
+    except (ValueError,TypeError,KeyError,AttributeError):
+        return web.json_response({"error":"Некорректное решение"},status=400)
+    status = await _run(_sync_decide_rate_request,user["user_id"],request_id,decision,comment.strip())
+    return web.json_response({"ok":status == 200},status=status,headers={"Cache-Control":"no-store"})
+
+
+def _sync_rate_records(actor, kind):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id=%s", (actor,))
+            user = cur.fetchone()
+            if not user or user.get("is_fired") or not (_can_set_individual_rate(user) or _is_tu(user)):
+                return None
+            if kind == "requests":
+                sql = """SELECT q.id,q.user_id,u.full_name,u.restaurant_key,
+                    q.proposed_rate::text AS proposed_rate,q.reason,q.status,
+                    q.requested_by,q.created_at::text AS created_at,q.decided_by,
+                    q.decided_at::text AS decided_at,q.decision_comment,
+                    ir.hourly_rate::text AS current_rate
+                    FROM timesheet_rate_requests q JOIN users u ON u.user_id=q.user_id
+                    LEFT JOIN timesheet_individual_rates ir ON ir.user_id=u.user_id
+                    LEFT JOIN restaurants r ON r.key=u.restaurant_key"""
+                order = " ORDER BY (q.status='pending') DESC,q.id DESC"
+            else:
+                sql = """SELECT h.id,h.user_id,u.full_name,u.restaurant_key,
+                    h.previous_rate::text AS previous_rate,h.new_rate::text AS new_rate,
+                    h.actor_id,h.request_id,h.created_at::text AS created_at
+                    FROM timesheet_rate_history h JOIN users u ON u.user_id=h.user_id
+                    LEFT JOIN restaurants r ON r.key=u.restaurant_key"""
+                order = " ORDER BY h.id DESC"
+            params = []
+            if not _can_set_individual_rate(user):
+                sql += " WHERE r.territory_manager_id=%s"
+                params.append(actor)
+            cur.execute(sql + order + " LIMIT 500", params)
+            return [dict(row) for row in cur.fetchall()]
+
+
+@routes.get('/api/timesheet/rate-requests')
+@routes.get('/api/timesheet/rate-history')
+async def handle_rate_records(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    kind = "requests" if request.path.endswith("/rate-requests") else "history"
+    rows = await _run(_sync_rate_records,user["user_id"],kind)
+    if rows is None:
+        return denied(403)
+    return web.json_response({kind:rows},headers={"Cache-Control":"no-store"})
+
+
+def _sync_rate_employees(actor):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id=%s", (actor,))
+            user = cur.fetchone()
+            manage = _can_set_individual_rate(user)
+            if not user or user.get("is_fired") or not (manage or _is_tu(user)):
+                return None
+            sql = """SELECT u.user_id,u.full_name,u.position,u.restaurant_key,
+                r.name AS restaurant_name,u.payment_type,
+                ir.hourly_rate::text AS individual_rate,
+                COALESCE(ir.hourly_rate, 0)::text AS rate
+                FROM users u LEFT JOIN restaurants r ON r.key=u.restaurant_key
+                LEFT JOIN timesheet_individual_rates ir ON ir.user_id=u.user_id
+                WHERE NOT COALESCE(u.is_fired,FALSE) AND u.login IS NOT NULL"""
+            params = []
+            if not manage:
+                sql += " AND r.territory_manager_id=%s"
+                params.append(actor)
+            cur.execute(sql+" ORDER BY r.name,u.full_name,u.user_id",params)
+            return {"employees":[dict(row) for row in cur.fetchall()],
+                    "can_manage":manage,"can_request":bool(_is_tu(user) or user.get("is_super_admin"))}
+
+
+@routes.get('/api/timesheet/rate-employees')
+async def handle_rate_employees(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    result = await _run(_sync_rate_employees,user["user_id"])
+    if result is None:
+        return denied(403)
+    return web.json_response(result,headers={"Cache-Control":"no-store"})

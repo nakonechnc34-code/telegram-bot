@@ -149,6 +149,14 @@ def run_migrations():
                 cur.execute((migrations / "004_sales_order_type_settings.sql").read_text(encoding="utf-8"))
                 cur.execute((migrations / "005_sales_sessions.sql").read_text(encoding="utf-8"))
                 cur.execute((migrations / "006_timesheet_sessions.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "007_attendance_imports.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "008_timesheet_approval.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "009_timesheet_approval_locks.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "010_timesheet_accrual_snapshots.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "011_timesheet_rounding_settings.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "012_timesheet_individual_rates.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "013_timesheet_daily_snapshots.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "014_timesheet_rate_backfill.sql").read_text(encoding="utf-8"))
                 cur.execute("SELECT 1 FROM users LIMIT 1")
                 if cur.fetchone() is None:
                     if not config.LOGIN_RE.fullmatch(config.ADMIN_LOGIN):

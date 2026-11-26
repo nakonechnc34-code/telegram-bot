@@ -1,0 +1,50 @@
+name: Attendance PostgreSQL
+on:
+  pull_request:
+  push:
+    branches: [feat/attendance-minute-validation]
+permissions:
+  contents: read
+jobs:
+  attendance:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: attendance
+          POSTGRES_PASSWORD: ci-only
+          POSTGRES_DB: attendance_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U attendance -d attendance_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://attendance:ci-only@127.0.0.1:5432/attendance_test
+      ATTENDANCE_TEST_DSN: postgresql://attendance:ci-only@127.0.0.1:5432/attendance_test
+      ADMIN_PASSWORD: ci-only-placeholder-not-used-for-login
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python -m pytest tests/test_attendance_payroll_postgres.py -q
+        env:
+          ATTENDANCE_BACKUP_FIXTURE: '1'
+      - name: Backup and restore payroll data
+        run: |
+          set -euo pipefail
+          docker exec ${{ job.services.postgres.id }} pg_dump -U attendance -Fc attendance_test > /tmp/attendance-test.dump
+          docker exec ${{ job.services.postgres.id }} createdb -U attendance attendance_restore
+          docker exec -i ${{ job.services.postgres.id }} pg_restore --exit-on-error -U attendance -d attendance_restore < /tmp/attendance-test.dump
+          for table in timesheet_individual_rates timesheet_rate_requests timesheet_rate_history timesheet_approvals timesheet_accrual_snapshots timesheet_accrual_snapshot_days; do
+            for db in attendance_test attendance_restore; do
+              docker exec ${{ job.services.postgres.id }} psql -v ON_ERROR_STOP=1 -X -At -U attendance -d "$db" -c "SELECT row_to_json(t)::text FROM approval_cycle_test.$table t ORDER BY 1" > "/tmp/$db.rows"
+            done
+            test -s /tmp/attendance_test.rows
+            diff -u /tmp/attendance_test.rows /tmp/attendance_restore.rows
+          done

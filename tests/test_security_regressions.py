@@ -134,6 +134,8 @@ def test_save_cell_preserves_zero_hour_removal_and_overnight_shifts(monkeypatch)
     employee = {"user_id": 123, "is_super_admin": True}
     monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(employee, None)))
     cursor = mock_cursor(timesheet, monkeypatch)
+    cursor.description = [("user_id",), ("is_super_admin",)]
+    cursor.fetchone.side_effect = [None, (123, True), None, (123, True)]
     body = {"user_id": "123", "work_date": "2026-11-20", "hours": 0}
     assert asyncio.run(timesheet.handle_timesheet_save_cell(request(body))).status == 200
     assert cursor.execute.call_args.args[0].startswith("DELETE")
@@ -224,8 +226,289 @@ def test_timesheet_revoked_permission(monkeypatch):
     assert asyncio.run(timesheet._timesheet_user(request({}))) == (None, 403)
 
 
-def test_timesheet_valid_session(monkeypatch):
-    employee = {"user_id": 123, "permissions": {"timesheet_access": True}}
+@pytest.mark.parametrize("role,allowed", [
+    ({"position": "Территориальный управляющий"}, True),
+    ({"is_admin": True, "position": "HR"}, True),
+    ({"is_super_admin": True}, True),
+    ({"position": "Управляющий сменой"}, False),
+    ({"position": "Повар"}, False),
+    ({}, False),
+    ({"is_super_admin": True, "is_fired": True}, False),
+])
+def test_timesheet_valid_session(monkeypatch, role, allowed):
+    employee = {"user_id": 123, "permissions": {"timesheet_access": True}, **role}
     monkeypatch.setattr(timesheet, "_extract_token", AsyncMock(return_value="timesheet-token"))
     monkeypatch.setattr(timesheet, "_run", AsyncMock(return_value=employee))
-    assert asyncio.run(timesheet._timesheet_user(request({}))) == (employee, None)
+    assert asyncio.run(timesheet._timesheet_user(request({}))) == ((employee, None) if allowed else (None, 403))
+
+
+def test_imported_day_blocks_manual_write(monkeypatch):
+    employee = {"user_id": 123, "is_super_admin": True}
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(employee, None)))
+    cursor = mock_cursor(timesheet, monkeypatch)
+    cursor.fetchone.return_value = (1,)
+    body = {"user_id": 123, "work_date": "2026-11-20", "hours": 8}
+    assert asyncio.run(timesheet.handle_timesheet_save_cell(request(body))).status == 409
+    assert all(call.args[0].startswith("SELECT") for call in cursor.execute.call_args_list)
+
+
+def test_legacy_import_endpoint_disabled(monkeypatch):
+    employee = {"user_id": 123, "is_super_admin": True}
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(employee, None)))
+    req = request()
+    req.path = "/api/timesheet/import_attendance"
+    assert asyncio.run(timesheet.handle_import_attendance(req)).status == 410
+
+
+def test_shared_timesheet_export_requires_permission(monkeypatch):
+    employee = {"user_id": 123}
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(employee, None)))
+    monkeypatch.setattr(timesheet, "_sync_user_has_perm", Mock(return_value=False))
+    from aiohttp import web
+    with pytest.raises(web.HTTPForbidden):
+        asyncio.run(timesheet.handle_timesheet_export_excel(request()))
+
+
+def test_personal_export_escapes_formula(monkeypatch):
+    import io
+    from openpyxl import load_workbook
+    employee = {"user_id": 123}
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(employee, None)))
+    run = AsyncMock(side_effect=[[{"full_name": "=1+1", "position": "Cook",
+        "restaurant_name": "A", "total_hours": 8.5, "rate": 350, "total_salary": 2975, "payment_type":"fixed"}], ["2026-11-01"]])
+    monkeypatch.setattr(timesheet, "_run", run)
+    req = request()
+    req.query = {"only_me": "true", "date_from": "2026-11-01", "date_to": "2026-11-15"}
+    response = asyncio.run(timesheet.handle_timesheet_export_excel(req))
+    assert response.status == 200
+    assert run.await_count == 2
+    run.assert_any_await(timesheet._sync_approved_reports, 123, "2026-11-01", "2026-11-15", True)
+    run.assert_any_await(timesheet._sync_legacy_partial_months, 123, "2026-11-01", "2026-11-15", True)
+    book = load_workbook(io.BytesIO(response.body))
+    assert book["Предупреждение"]["A3"].value == "2026-11-01"
+    sheet = book.active
+    assert sheet["E2"].value == 350 and sheet["G2"].value == "Оклад"
+    assert sheet["A2"].value == "=1+1" and sheet["A2"].data_type == "s"
+    assert sheet["D2"].value == 8.5
+    assert sheet["F2"].value == 2975
+    assert sheet["E2"].data_type == "n" and sheet["F2"].data_type == "n"
+
+
+@pytest.mark.parametrize("hours,destination", [(0, None), (8, None), (8, "a")])
+def test_save_cell_rejects_existing_foreign_restaurant(monkeypatch, hours, destination):
+    cursor = mock_cursor(timesheet, monkeypatch)
+    cursor.description = [("user_id",), ("position",), ("restaurant_key",)]
+    cursor.fetchone.side_effect = [None, (42, "Управляющий сменой", "a"), ("a",), ("b",)]
+    assert timesheet._sync_save_cell(42, 123, "2026-11-20", hours, "work", destination) == "forbidden"
+    assert not any(call.args[0].lstrip().startswith(("DELETE", "INSERT", "UPDATE")) for call in cursor.execute.call_args_list)
+
+
+def test_save_cell_allows_existing_local_restaurant(monkeypatch):
+    cursor = mock_cursor(timesheet, monkeypatch)
+    cursor.description = [("user_id",), ("position",), ("restaurant_key",)]
+    cursor.fetchone.side_effect = [None, (42, "Управляющий сменой", "a"), ("a",), ("a",)]
+    assert timesheet._sync_save_cell(42, 123, "2026-11-20", 8, "work", "a") is True
+    assert cursor.execute.call_args.args[0].startswith("INSERT")
+
+
+@pytest.mark.parametrize("position,admin,super_admin,territory,existing,expected", [
+    ("HR", True, False, [], "b", True),
+    ("", True, True, [], "b", True),
+    ("Территориальный управляющий", False, False, [("a",), ("b",)], "b", True),
+    ("Территориальный управляющий", False, False, [("a",)], "b", "forbidden"),
+])
+def test_save_cell_role_scope(monkeypatch, position, admin, super_admin, territory, existing, expected):
+    cursor = mock_cursor(timesheet, monkeypatch)
+    cursor.description = [(k,) for k in ("user_id", "position", "restaurant_key", "is_admin", "is_super_admin")]
+    cursor.fetchone.side_effect = [None, (42, position, "a", admin, super_admin), ("a",), (existing,)]
+    cursor.fetchall.return_value = territory
+    assert timesheet._sync_save_cell(42, 123, "2026-11-20", 8, "work", "a") == expected
+    writes = [call for call in cursor.execute.call_args_list if call.args[0].lstrip().startswith(("INSERT", "DELETE", "UPDATE"))]
+    assert bool(writes) == (expected is True)
+
+
+def test_ordinary_employee_cannot_write_timesheet_without_permission(monkeypatch):
+    from aiohttp import web
+    employee = {"user_id": 123, "position": "Повар", "restaurant_key": "a"}
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(employee, None)))
+    monkeypatch.setattr(timesheet, "_sync_user_has_perm", Mock(return_value=False))
+    run = AsyncMock()
+    monkeypatch.setattr(timesheet, "_run", run)
+    with pytest.raises(web.HTTPForbidden):
+        asyncio.run(timesheet.handle_timesheet_save_cell(request({"user_id": 123, "work_date": "2026-11-20", "hours": 8})))
+    run.assert_not_awaited()
+
+
+def test_save_cell_returns_403_on_transaction_scope_denial(monkeypatch):
+    employee = {"user_id": 42, "position": "Управляющий сменой", "restaurant_key": "a"}
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(employee, None)))
+    monkeypatch.setattr(timesheet, "_sync_user_has_perm", Mock(return_value=True))
+    run = AsyncMock(side_effect=[True, "forbidden"])
+    monkeypatch.setattr(timesheet, "_run", run)
+    response = asyncio.run(timesheet.handle_timesheet_save_cell(request({"user_id": 123, "work_date": "2026-11-20", "hours": 0})))
+    assert response.status == 403
+    assert json.loads(response.body)["error"] == "forbidden_restaurant"
+
+
+@pytest.mark.parametrize("position,admin,super_admin,expected_sql,params", [
+    ("HR", True, False, "ORDER BY name", ()),
+    ("", True, True, "ORDER BY name", ()),
+    ("Территориальный управляющий", False, False, "WHERE territory_manager_id = %s", (42,)),
+    ("Управляющий сменой", False, False, "WHERE key = %s", ("a",)),
+    ("Повар", False, False, "WHERE key = %s", ("a",)),
+])
+def test_timesheet_restaurant_directory_scope(monkeypatch, position, admin, super_admin, expected_sql, params):
+    user = {"user_id": 42, "position": position, "is_admin": admin,
+            "is_super_admin": super_admin, "restaurant_key": "a"}
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(user, None)))
+    monkeypatch.setattr(timesheet, "_sync_user_has_perm", Mock(return_value=True))
+    cursor = mock_cursor(timesheet, monkeypatch)
+    cursor.fetchall.return_value = [{"key": "a", "name": "A"}]
+    response = asyncio.run(timesheet.handle_timesheet_restaurants(request()))
+    assert response.status == 200
+    args = cursor.execute.call_args.args
+    assert expected_sql in args[0]
+    assert (args[1] if len(args) > 1 else ()) == params
+    if not params:
+        assert "WHERE" not in args[0]
+    assert json.loads(response.body)["restaurants"] == [{"key": "a", "name": "A"}]
+
+
+def test_timesheet_restaurant_directory_requires_permission(monkeypatch):
+    from aiohttp import web
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=({"user_id": 42}, None)))
+    monkeypatch.setattr(timesheet, "_sync_user_has_perm", Mock(return_value=False))
+    run = AsyncMock()
+    monkeypatch.setattr(timesheet, "_run", run)
+    with pytest.raises(web.HTTPForbidden):
+        asyncio.run(timesheet.handle_timesheet_restaurants(request()))
+    run.assert_not_awaited()
+
+
+def test_accruals_uses_authenticated_scope(monkeypatch):
+    from decimal import Decimal
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=({"user_id": 42}, None)))
+    monkeypatch.setattr(timesheet, "_sync_user_has_perm", Mock(return_value=True))
+    run = AsyncMock(side_effect=[[{"full_name": "Test", "total_hours": Decimal("8.25"),
+                                   "rate": Decimal("360"), "total_salary": Decimal("2970")}], ["2026-11-01"]])
+    monkeypatch.setattr(timesheet, "_run", run)
+    response = asyncio.run(timesheet.handle_timesheet_accruals(request({
+        "date_from": "2026-11-01", "date_to": "2026-11-15", "user_id": 999})))
+    assert response.status == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert json.loads(response.body)["report"][0]["total_salary"] == 2970
+    assert json.loads(response.body)["legacy_partial_months"] == ["2026-11-01"]
+    assert run.await_count == 2
+    run.assert_any_await(timesheet._sync_approved_reports, 42, "2026-11-01", "2026-11-15", False)
+    run.assert_any_await(timesheet._sync_legacy_partial_months, 42, "2026-11-01", "2026-11-15", False)
+
+
+def test_accruals_denies_without_permission(monkeypatch):
+    from aiohttp import web
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=({"user_id": 42}, None)))
+    monkeypatch.setattr(timesheet, "_sync_user_has_perm", Mock(return_value=False))
+    run = AsyncMock()
+    monkeypatch.setattr(timesheet, "_run", run)
+    with pytest.raises(web.HTTPForbidden):
+        asyncio.run(timesheet.handle_timesheet_accruals(request({})))
+    run.assert_not_awaited()
+
+
+def test_accruals_invalid_dates(monkeypatch):
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=({"user_id": 42}, None)))
+    monkeypatch.setattr(timesheet, "_sync_user_has_perm", Mock(return_value=True))
+    run = AsyncMock()
+    monkeypatch.setattr(timesheet, "_run", run)
+    response = asyncio.run(timesheet.handle_timesheet_accruals(request({"date_from": "invalid"})))
+    assert response.status == 400
+    run.assert_not_awaited()
+
+
+@pytest.mark.parametrize("method", ["GET", "POST"])
+@pytest.mark.parametrize("role", [
+    {"position": "HR", "is_admin": False},
+    {"position": "Территориальный управляющий", "is_admin": True},
+    {"position": "Повар"},
+])
+def test_rounding_settings_denies_non_hr(monkeypatch, method, role):
+    user = {"user_id": 42, **role}
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(user, None)))
+    run = AsyncMock()
+    monkeypatch.setattr(timesheet, "_run", run)
+    req = request({"step_minutes": 15, "revision": 0})
+    req.method = method
+    assert asyncio.run(timesheet.handle_timesheet_rounding(req)).status == 403
+    run.assert_not_awaited()
+
+
+@pytest.mark.parametrize("body", [
+    None, [], {}, {"step_minutes": True, "revision": 0},
+    {"step_minutes": 7, "revision": 0}, {"step_minutes": 5.0, "revision": 0},
+    {"step_minutes": 5, "revision": True}, {"step_minutes": 5, "revision": -1},
+    {"step_minutes": 5, "revision": 2147483647},
+])
+def test_rounding_settings_rejects_invalid_payload(monkeypatch, body):
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(
+        {"user_id": 42, "is_super_admin": True}, None)))
+    run = AsyncMock()
+    monkeypatch.setattr(timesheet, "_run", run)
+    assert asyncio.run(timesheet.handle_timesheet_rounding(request(body))).status == 400
+    run.assert_not_awaited()
+
+
+@pytest.mark.parametrize("role", [{"is_super_admin": True}, {"is_admin": True, "position": "HR"}])
+def test_rounding_settings_read_write_and_conflict(monkeypatch, role):
+    user = {"user_id": 42, **role}
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(user, None)))
+    current = {"step_minutes": 5, "revision": 0, "history": []}
+    changed = {"step_minutes": 15, "revision": 1, "history": [
+        {"revision": 1, "previous_step": 5, "new_step": 15, "actor_id": 42}]}
+    run = AsyncMock(side_effect=[current, changed, None])
+    monkeypatch.setattr(timesheet, "_run", run)
+    req = request()
+    req.method = "GET"
+    response = asyncio.run(timesheet.handle_timesheet_rounding(req))
+    assert response.status == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert json.loads(response.body) == current
+    run.assert_awaited_with(timesheet._sync_rounding_settings, user, None)
+    body = {"step_minutes": 15, "revision": 0}
+    response = asyncio.run(timesheet.handle_timesheet_rounding(request(body)))
+    assert response.status == 200
+    assert json.loads(response.body) == changed
+    run.assert_awaited_with(timesheet._sync_rounding_settings, user, body)
+    assert asyncio.run(timesheet.handle_timesheet_rounding(request(body))).status == 409
+
+
+@pytest.mark.parametrize("role", [
+    {"position":"HR","is_admin":False},
+    {"position":"Территориальный управляющий","is_admin":True},
+    {"position":"Повар"},
+    {"is_super_admin":True,"is_fired":True},
+])
+def test_individual_rate_denies_unauthorized(monkeypatch, role):
+    monkeypatch.setattr(timesheet,"_timesheet_user",AsyncMock(return_value=({"user_id":42,**role},None)))
+    run=AsyncMock()
+    monkeypatch.setattr(timesheet,"_run",run)
+    assert asyncio.run(timesheet.handle_individual_rate(request({"user_id":99,"hourly_rate":"400"}))).status==403
+    run.assert_not_awaited()
+
+
+@pytest.mark.parametrize("raw", [True, -1, "NaN", "Infinity", "400.001", "10000000000", None, []])
+def test_individual_rate_invalid_values(monkeypatch, raw):
+    monkeypatch.setattr(timesheet,"_timesheet_user",AsyncMock(return_value=({"user_id":42,"is_super_admin":True},None)))
+    run=AsyncMock()
+    monkeypatch.setattr(timesheet,"_run",run)
+    assert asyncio.run(timesheet.handle_individual_rate(request({"user_id":99,"hourly_rate":raw}))).status==400
+    run.assert_not_awaited()
+
+
+@pytest.mark.parametrize("role", [{"is_super_admin":True},{"is_admin":True,"position":"HR"}])
+def test_individual_rate_authorized(monkeypatch, role):
+    from decimal import Decimal
+    monkeypatch.setattr(timesheet,"_timesheet_user",AsyncMock(return_value=({"user_id":42,**role},None)))
+    run=AsyncMock(return_value=200)
+    monkeypatch.setattr(timesheet,"_run",run)
+    response=asyncio.run(timesheet.handle_individual_rate(request({"user_id":99,"hourly_rate":"400.25","actor_id":999})))
+    assert response.status==200
+    run.assert_awaited_once_with(timesheet._sync_set_individual_rate,42,99,Decimal("400.25"))

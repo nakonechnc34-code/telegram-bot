@@ -682,7 +682,7 @@ def _sync_matching_registry(user, change=None):
                         matches = [r for r in cur.fetchall() if _normalize_attendance_number(r["personnel_number"]) == _normalize_attendance_number(target)]
                     else:
                         cur.execute("SELECT name FROM restaurants")
-                        matches = [r for r in cur.fetchall() if r["name"].strip().casefold() == target.strip().casefold()]
+                        matches = [r for r in cur.fetchall() if _attendance_restaurant_name(r["name"]) == _attendance_restaurant_name(target)]
                     if len(matches) != 1:
                         raise ValueError("Unknown or ambiguous target")
                 cur.execute("SELECT target FROM attendance_matching WHERE kind=%s AND source=%s FOR UPDATE", (kind, source))
@@ -729,6 +729,27 @@ async def handle_attendance_matching(request):
     except ValueError:
         return web.json_response({"error":"Назначение не найдено или неоднозначно"},status=400)
     return web.json_response(result,headers={"Cache-Control":"no-store"})
+
+
+def _merge_saved_attendance_mapping(rows, saved, manual):
+    numbers = {str(number) for _, number, _, _ in rows}
+    names = {name for _, _, _, name in rows}
+    merged = {"employees": {}, "restaurants": {}}
+    for entry in saved:
+        kind, source = entry["kind"], entry["source"]
+        if source in (numbers if kind == "employees" else names):
+            merged[kind][source] = entry["target"]
+    for kind in merged:
+        merged[kind].update((manual or {}).get(kind, {}))
+    return [(day, merged["employees"].get(str(number), number), raw,
+             merged["restaurants"].get(name, name)) for day, number, raw, name in rows]
+
+
+def _load_saved_attendance_mapping():
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT kind,source,target FROM attendance_matching")
+            return cur.fetchall()
 
 
 def _apply_attendance_mapping(user, rows, mapping):
@@ -1049,7 +1070,9 @@ async def handle_import_attendance(request):
         return web.json_response({"error": "Не удалось прочитать Excel"}, status=400)
 
     try:
-        rows = _apply_attendance_mapping(user, rows, mapping)
+        _apply_attendance_mapping(user, rows, mapping)
+        saved = await _run(_load_saved_attendance_mapping)
+        rows = _merge_saved_attendance_mapping(rows, saved, mapping)
     except PermissionError:
         return denied(403)
     except ValueError:

@@ -33,15 +33,18 @@ jobs:
           python-version: '3.11'
       - run: pip install -r requirements.txt
       - run: python -m pytest tests/test_attendance_payroll_postgres.py -q
+        env:
+          ATTENDANCE_BACKUP_FIXTURE: '1'
       - name: Backup and restore payroll data
         run: |
           set -euo pipefail
-          docker exec ${{ job.services.postgres.id }} psql -v ON_ERROR_STOP=1 -U attendance -d attendance_test -c "CREATE TABLE backup_probe (user_id bigint PRIMARY KEY, hourly_rate numeric(12,2), worked_minutes integer, total_salary numeric(18,2)); INSERT INTO backup_probe VALUES (1,100,3,5.00),(2,0,480,0);"
           docker exec ${{ job.services.postgres.id }} pg_dump -U attendance -Fc attendance_test > /tmp/attendance-test.dump
           docker exec ${{ job.services.postgres.id }} createdb -U attendance attendance_restore
           docker exec -i ${{ job.services.postgres.id }} pg_restore --exit-on-error -U attendance -d attendance_restore < /tmp/attendance-test.dump
-          for db in attendance_test attendance_restore; do
-            docker exec ${{ job.services.postgres.id }} psql -X -At -U attendance -d "$db" -c 'SELECT * FROM backup_probe ORDER BY user_id' > "/tmp/$db.rows"
+          for table in timesheet_individual_rates timesheet_rate_requests timesheet_rate_history timesheet_approvals timesheet_accrual_snapshots timesheet_accrual_snapshot_days; do
+            for db in attendance_test attendance_restore; do
+              docker exec ${{ job.services.postgres.id }} psql -v ON_ERROR_STOP=1 -X -At -U attendance -d "$db" -c "SELECT row_to_json(t)::text FROM approval_cycle_test.$table t ORDER BY 1" > "/tmp/$db.rows"
+            done
+            test -s /tmp/attendance_test.rows
+            diff -u /tmp/attendance_test.rows /tmp/attendance_restore.rows
           done
-          diff -u /tmp/attendance_test.rows /tmp/attendance_restore.rows
-          test "$(wc -l < /tmp/attendance_restore.rows)" -eq 2

@@ -274,15 +274,20 @@ def test_personal_export_escapes_formula(monkeypatch):
     from openpyxl import load_workbook
     employee = {"user_id": 123}
     monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(employee, None)))
-    run = AsyncMock(return_value=[{"full_name": "=1+1", "position": "Cook",
-        "restaurant_name": "A", "total_hours": 8.5, "rate": 350, "total_salary": 2975}])
+    run = AsyncMock(side_effect=[[{"full_name": "=1+1", "position": "Cook",
+        "restaurant_name": "A", "total_hours": 8.5, "rate": 350, "total_salary": 2975, "payment_type":"fixed"}], ["2026-11-01"]])
     monkeypatch.setattr(timesheet, "_run", run)
     req = request()
     req.query = {"only_me": "true", "date_from": "2026-11-01", "date_to": "2026-11-30"}
     response = asyncio.run(timesheet.handle_timesheet_export_excel(req))
     assert response.status == 200
-    run.assert_awaited_once_with(timesheet._sync_approved_reports, 123, "2026-11-01", "2026-11-30", True)
-    sheet = load_workbook(io.BytesIO(response.body)).active
+    assert run.await_count == 2
+    run.assert_any_await(timesheet._sync_approved_reports, 123, "2026-11-01", "2026-11-30", True)
+    run.assert_any_await(timesheet._sync_legacy_partial_months, 123, "2026-11-01", "2026-11-30", True)
+    book = load_workbook(io.BytesIO(response.body))
+    assert book["Предупреждение"]["A3"].value == "2026-11-01"
+    sheet = book.active
+    assert sheet["E2"].value == 350 and sheet["G2"].value == "Оклад"
     assert sheet["A2"].value == "=1+1" and sheet["A2"].data_type == "s"
     assert sheet["F2"].value == 2975
 
@@ -382,15 +387,18 @@ def test_accruals_uses_authenticated_scope(monkeypatch):
     from decimal import Decimal
     monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=({"user_id": 42}, None)))
     monkeypatch.setattr(timesheet, "_sync_user_has_perm", Mock(return_value=True))
-    run = AsyncMock(return_value=[{"full_name": "Test", "total_hours": Decimal("8.25"),
-                                   "rate": Decimal("360"), "total_salary": Decimal("2970")}])
+    run = AsyncMock(side_effect=[[{"full_name": "Test", "total_hours": Decimal("8.25"),
+                                   "rate": Decimal("360"), "total_salary": Decimal("2970")}], ["2026-11-01"]])
     monkeypatch.setattr(timesheet, "_run", run)
     response = asyncio.run(timesheet.handle_timesheet_accruals(request({
         "date_from": "2026-11-01", "date_to": "2026-11-30", "user_id": 999})))
     assert response.status == 200
     assert response.headers["Cache-Control"] == "no-store"
     assert json.loads(response.body)["report"][0]["total_salary"] == 2970
-    run.assert_awaited_once_with(timesheet._sync_approved_reports, 42, "2026-11-01", "2026-11-30", False)
+    assert json.loads(response.body)["legacy_partial_months"] == ["2026-11-01"]
+    assert run.await_count == 2
+    run.assert_any_await(timesheet._sync_approved_reports, 42, "2026-11-01", "2026-11-30", False)
+    run.assert_any_await(timesheet._sync_legacy_partial_months, 42, "2026-11-01", "2026-11-30", False)
 
 
 def test_accruals_denies_without_permission(monkeypatch):

@@ -33,3 +33,35 @@ for(const role of ['HR','TU','super']){
   await expect(dialog).toHaveCount(0);
  });
 }
+
+for(const decision of ['approved','rejected']){
+ test('HR decides rate request '+decision,async({page})=>{
+  const writes=[];
+  await page.addInitScript(()=>sessionStorage.setItem('wokker_timesheet_token','test-token'));
+  await page.route('**/api/timesheet/**',async route=>{
+   const req=route.request(),path=new URL(req.url()).pathname;
+   const endpoint=path.split('/').pop();
+   if(endpoint==='decision')writes.push({path,body:req.postDataJSON()});
+   const data={
+    restaurants:{restaurants:[{key:'a',name:'Ресторан А'}]},
+    matrix:{employees:[]},
+    'rate-employees':{can_manage:true,can_request:false,employees:[]},
+    'rate-requests':{requests:[{id:17,full_name:'Тест Сотрудник',proposed_rate:450,reason:'Повышение',status:writes.length?decision:'pending'}]},
+    'rate-history':{history:[]}
+   };
+   await route.fulfill({json:data[endpoint]||{}});
+  });
+  await page.goto('/timesheet.html');
+  await page.locator('nav [data-page="7"]').click();
+  const row=page.locator('#rate-request-rows tr');
+  await expect(row).toContainText('На рассмотрении');
+  await row.getByRole('button',{name:decision==='approved'?'Согласовать':'Отклонить',exact:true}).click();
+  const dialog=page.locator('dialog[open]');
+  await dialog.locator('textarea').fill('Решение HR');
+  await dialog.getByRole('button',{name:'Подтвердить'}).click();
+  await expect.poll(()=>writes.length).toBe(1);
+  expect(writes[0]).toEqual({path:'/api/timesheet/rate-requests/17/decision',body:{decision,comment:'Решение HR'}});
+  await expect(row).toContainText(decision==='approved'?'Согласовано':'Отклонено');
+  await expect(row.getByRole('button')).toHaveCount(0);
+ });
+}

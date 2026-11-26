@@ -36,3 +36,24 @@ def test_allocation_rejects_impossible_day():
 
 def test_no_rounding():
     assert allocate_daily_minutes({"a": 242, "b": 243}, 1) == {"a": 242, "b": 243}
+
+
+@pytest.mark.parametrize("step", [1, 5, 10, 15, 30, 60])
+def test_rounding_all_daily_values(step):
+    for minutes in range(1441):
+        expected = ((2 * minutes + step) // (2 * step)) * step
+        assert round_daily_minutes(minutes, step) == expected
+
+
+@pytest.mark.parametrize("step", [1, 5, 10, 15, 30, 60])
+@pytest.mark.parametrize("raw", [
+    {"a": 242, "b": 242}, {"a": 0, "b": 1},
+    {"a": 720, "b": 720}, {"a": 0, "b": 0},
+    {"a": 17, "b": 31, "c": 12},
+])
+def test_allocation_preserves_rounded_total(step, raw):
+    allocated = allocate_daily_minutes(raw, step)
+    assert sum(allocated.values()) == round_daily_minutes(sum(raw.values()), step)
+    assert allocated == allocate_daily_minutes(dict(reversed(list(raw.items()))), step)
+    assert all(value >= 0 for value in allocated.values())
+    assert all(allocated[key] == 0 for key in raw if raw[key] == 0)

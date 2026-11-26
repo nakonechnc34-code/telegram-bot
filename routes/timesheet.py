@@ -7,6 +7,7 @@ from utils.attendance_rounding import allocate_daily_minutes, round_daily_minute
 import calendar
 from datetime import datetime, date, time
 import io
+import json
 import math
 import re
 import traceback
@@ -669,6 +670,29 @@ def _attendance_restaurant_name(value):
     return " ".join(str(value).casefold().replace("ё", "е").split())
 
 
+def _apply_attendance_mapping(user, rows, mapping):
+    if not mapping:
+        return rows
+    if not _is_hr_or_super(user):
+        raise PermissionError("Manual matching requires HR or super administrator")
+    if not isinstance(mapping, dict) or set(mapping) - {"employees", "restaurants"}:
+        raise ValueError("Invalid mapping")
+    employees = mapping.get("employees", {})
+    restaurants = mapping.get("restaurants", {})
+    for entries in (employees, restaurants):
+        if not isinstance(entries, dict) or len(entries) > 500 or any(
+            not isinstance(k, str) or not isinstance(v, str) or not k.strip() or not v.strip()
+            or len(k) > 200 or len(v) > 200 for k, v in entries.items()
+        ):
+            raise ValueError("Invalid mapping entries")
+    source_numbers = {str(number) for _, number, _, _ in rows}
+    source_names = {name for _, _, _, name in rows}
+    if set(employees) - source_numbers or set(restaurants) - source_names:
+        raise ValueError("Mapping source not present in report")
+    return [(day, employees.get(str(number), number), raw, restaurants.get(name, name))
+            for day, number, raw, name in rows]
+
+
 def _sync_preview_attendance(user, rows, default_rest_key=None):
     """Validate scope and calculate minutes without changing payroll records."""
     from utils.attendance_minutes import shift_interval, worked_minutes
@@ -914,6 +938,7 @@ async def handle_import_attendance(request):
     reader = await request.multipart()
     file_data = None
     default_rest = request.query.get("restaurant_key")
+    mapping = None
 
     while True:
         part = await reader.next()
@@ -925,7 +950,16 @@ async def handle_import_attendance(request):
                 file_data.extend(chunk)
                 if request.client_max_size and len(file_data) > request.client_max_size:
                     return web.json_response({"error": "Файл слишком большой"}, status=413)
-            break
+        elif part.name == "mapping":
+            if not _is_hr_or_super(user):
+                return denied(403)
+            try:
+                raw_mapping = await part.read(decode=False)
+                if len(raw_mapping) > 100000:
+                    return web.json_response({"error": "Слишком много соответствий"}, status=400)
+                mapping = json.loads(raw_mapping)
+            except (ValueError, UnicodeError):
+                return web.json_response({"error": "Некорректные соответствия"}, status=400)
 
     if not file_data:
         return web.json_response({"error": "Файл не загружен"}, status=400)
@@ -934,6 +968,13 @@ async def handle_import_attendance(request):
         rows = await _run(_parse_excel_rows, file_data)
     except Exception:
         return web.json_response({"error": "Не удалось прочитать Excel"}, status=400)
+
+    try:
+        rows = _apply_attendance_mapping(user, rows, mapping)
+    except PermissionError:
+        return denied(403)
+    except ValueError:
+        return web.json_response({"error": "Некорректные соответствия"}, status=400)
 
     if request.path.endswith("/preview"):
         result = await _run(_sync_preview_attendance, user, rows, default_rest)

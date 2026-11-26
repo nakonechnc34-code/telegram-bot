@@ -1204,3 +1204,38 @@ async def analytics_rating(request):
         values={k:round(float(r[k]),2) if r[k] is not None else None for k in ("checklists","audits","mystery_guest","haccp","tasks")}
         items.append({"restaurant_key":r["key"],"name":r["name"],**calculate_control_rating(values)})
     return web.json_response({"weights":RATING_WEIGHTS,"restaurants":items,"learning_basis":"in_development"},headers=NO_STORE)
+
+
+async def refresh_control_notifications(conn, user):
+    """Materialize current attention events only for the authenticated recipient."""
+    if not control_allowed(user) or is_mystery_guest(user):
+        return
+    scope = await restaurant_scope(user)
+    await conn.execute("""INSERT INTO control_notifications(recipient_id,restaurant_key,event_kind,source_id)
+        SELECT $1,c.restaurant_key,'check_overdue',c.id FROM control_checks c
+        WHERE c.completed_at IS NULL AND c.due_at<NOW()
+          AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))
+        UNION ALL
+        SELECT $1,c.restaurant_key,e.kind,t.id FROM control_tasks t
+        JOIN control_checks c ON c.id=t.check_id
+        CROSS JOIN LATERAL (VALUES ('task_overdue',t.due_at<NOW()),('task_critical',t.critical)) e(kind,active)
+        WHERE t.status!='closed' AND e.active
+          AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))
+        ON CONFLICT (recipient_id,event_kind,source_id) DO NOTHING""",user["user_id"],scope)
+
+@routes.post("/api/control/notifications")
+async def notifications(request):
+    user=await control_user(request)
+    if not user or is_mystery_guest(user):
+        return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    async with db.get_pool(request.app).acquire() as conn:
+        await refresh_control_notifications(conn,user)
+        rows=await conn.fetch("""SELECT id,restaurant_key,event_kind,source_id,created_at,read_at
+            FROM control_notifications WHERE recipient_id=$1
+            AND ($2::text[] IS NULL OR restaurant_key=ANY($2))
+            ORDER BY created_at DESC,id DESC LIMIT 100""",user["user_id"],scope)
+        unread=await conn.fetchval("""SELECT count(*) FROM control_notifications WHERE recipient_id=$1
+            AND read_at IS NULL AND ($2::text[] IS NULL OR restaurant_key=ANY($2))""",user["user_id"],scope)
+    items=[dict(row,id=str(row["id"]),source_id=str(row["source_id"]),created_at=row["created_at"].isoformat(),read_at=row["read_at"].isoformat() if row["read_at"] else None) for row in rows]
+    return web.json_response({"notifications":items,"unread":unread},headers=NO_STORE)

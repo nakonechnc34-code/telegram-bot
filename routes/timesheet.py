@@ -1634,6 +1634,10 @@ def _sync_set_individual_rate(actor, target, rate):
                 revision=timesheet_individual_rates.revision+1, updated_at=NOW()""", (target,rate,actor))
             cur.execute("""INSERT INTO timesheet_rate_history(user_id,previous_rate,new_rate,actor_id)
                 VALUES (%s,%s,%s,%s)""", (target,previous,rate,actor))
+            cur.execute("""UPDATE timesheet_rate_requests SET status='rejected',
+                decided_by=%s,decided_at=NOW(),
+                decision_comment='Ставка изменена напрямую. Создайте новый запрос.'
+                WHERE user_id=%s AND status='pending'""",(actor,target))
             return 200
 
 

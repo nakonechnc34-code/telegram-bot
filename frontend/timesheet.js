@@ -226,6 +226,35 @@ async function loadAttendanceHistory() {
     }
 }
 byId('refresh-attendance-history').addEventListener('click', loadAttendanceHistory);
+let attendanceMapping = {employees: Object.create(null), restaurants: Object.create(null)};
+function renderAttendanceMatching(matching) {
+    const fields = byId('matching-fields');
+    fields.replaceChildren();
+    byId('attendance-matching').hidden = !matching || !(matching.employees.length || matching.restaurants.length);
+    if (!matching) return;
+    for (const [kind, sources] of Object.entries(matching)) {
+        for (const source of sources) {
+            const label = document.createElement('label');
+            label.textContent = (kind === 'employees' ? 'Табельный номер ' : 'Ресторан ') + source + ' → ';
+            const control = document.createElement(kind === 'employees' ? 'input' : 'select');
+            if (kind === 'employees') {
+                control.placeholder = 'Номер из админ-панели';
+                control.maxLength = 50;
+            } else {
+                control.add(new Option('Выберите ресторан', ''));
+                for (const [key, name] of restaurantNames) if (key) control.add(new Option(name, name));
+            }
+            control.value = attendanceMapping[kind][source] || '';
+            control.addEventListener('change', () => {
+                if (control.value.trim()) attendanceMapping[kind][source] = control.value.trim();
+                else delete attendanceMapping[kind][source];
+                clearAttendancePreview();
+            });
+            label.append(control);
+            fields.append(label, document.createElement('br'));
+        }
+    }
+}
 let previewVersion = 0;
 let verifiedAttendance = null;
 let stagingAttendance = false;
@@ -238,7 +267,11 @@ function clearAttendancePreview() {
     byId('preview-summary').textContent = '';
     byId('upload-status').textContent = '';
 }
-byId('import-form').addEventListener('change', clearAttendancePreview);
+byId('import-form').addEventListener('change', () => {
+    attendanceMapping = {employees: Object.create(null), restaurants: Object.create(null)};
+    renderAttendanceMatching(null);
+    clearAttendancePreview();
+});
 byId('import-form').addEventListener('submit', async event => {
     event.preventDefault();
     if (stagingAttendance) return;
@@ -251,8 +284,10 @@ byId('import-form').addEventListener('submit', async event => {
         const data = new FormData(event.currentTarget);
         const params = new URLSearchParams({restaurant_key: data.get('restaurant_key')});
         data.delete('restaurant_key');
+        if (Object.values(attendanceMapping).some(entries => Object.keys(entries).length)) data.append('mapping', JSON.stringify(attendanceMapping));
         const result = await api('/api/timesheet/import_attendance/preview?' + params, {body: data});
         if (version !== previewVersion) return;
+        renderAttendanceMatching(result.matching);
         const records = result.records;
         if (result.ok && records.length) {
             verifiedAttendance = {data, params, version};

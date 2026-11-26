@@ -1514,6 +1514,29 @@ def _snapshot_approved_accruals(cur, key, month, revision):
                ROUND(c.minutes::numeric*c.rate/60,2)
         FROM candidates c JOIN restaurants r ON r.key=c.restaurant_key
         WHERE c.restaurant_key=%s""", (month,month,month,revision,key))
+    # Allocate cents by cumulative rounding so daily totals equal the monthly snapshot.
+    cur.execute("WITH effective AS (" + _EFFECTIVE_ATTENDANCE_SQL + """),
+        daily AS (
+            SELECT s.restaurant_key,s.month_start,s.revision,s.user_id,e.work_date,
+                   ROUND(SUM(e.hours)*60)::integer AS minutes,s.rate
+            FROM timesheet_accrual_snapshots s
+            JOIN users u ON u.user_id=s.user_id
+            JOIN effective e ON e.user_id=s.user_id
+                AND COALESCE(e.restaurant_key,u.restaurant_key)=s.restaurant_key
+            WHERE s.restaurant_key=%s AND s.month_start=%s AND s.revision=%s
+                AND e.work_date>=s.month_start AND e.work_date<s.month_start+INTERVAL '1 month'
+            GROUP BY s.restaurant_key,s.month_start,s.revision,s.user_id,e.work_date,s.rate
+        ), cumulative AS (
+            SELECT *, SUM(minutes) OVER (PARTITION BY restaurant_key,month_start,revision,user_id
+                ORDER BY work_date ROWS UNBOUNDED PRECEDING) AS running_minutes
+            FROM daily
+        )
+        INSERT INTO timesheet_accrual_snapshot_days
+            (restaurant_key,month_start,revision,user_id,work_date,worked_minutes,total_salary)
+        SELECT restaurant_key,month_start,revision,user_id,work_date,minutes,
+               ROUND(running_minutes*rate/60,2)-ROUND((running_minutes-minutes)*rate/60,2)
+        FROM cumulative""", (key,month,revision))
+
 
 
 def _sync_approval_transition(user, key, month, action, comment, revision):

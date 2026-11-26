@@ -1510,40 +1510,32 @@ def _snapshot_approved_accruals(cur, key, month, revision):
             FROM effective e JOIN users u ON u.user_id=e.user_id
             WHERE e.work_date >= %s::date AND e.work_date < %s::date + INTERVAL '1 month'
             GROUP BY e.user_id, COALESCE(e.restaurant_key,u.restaurant_key)
-        ), salary_owner AS (
-            SELECT DISTINCT ON (m.user_id) m.user_id,m.restaurant_key
-            FROM monthly m JOIN users u ON u.user_id=m.user_id
-            ORDER BY m.user_id,(m.restaurant_key IS NOT DISTINCT FROM u.restaurant_key) DESC,
-                     m.restaurant_key NULLS LAST
         ), candidates AS (
             SELECT u.user_id,u.full_name,u.position,u.payment_type,
                    COALESCE(ir.hourly_rate, 0) AS rate,
                    COALESCE(m.restaurant_key,u.restaurant_key) AS restaurant_key,
-                   COALESCE(m.minutes,0) AS minutes,
-                   COALESCE(s.restaurant_key,u.restaurant_key) AS salary_key
+                   COALESCE(m.minutes,0) AS minutes
             FROM users u LEFT JOIN monthly m ON m.user_id=u.user_id
-            LEFT JOIN salary_owner s ON s.user_id=u.user_id
-            LEFT JOIN position_rates pr ON pr.position_name=u.position
                 LEFT JOIN timesheet_individual_rates ir ON ir.user_id=u.user_id
             WHERE u.login IS NOT NULL AND COALESCE(u.is_fired,FALSE)=FALSE
         )
+        , captured AS (
         INSERT INTO timesheet_accrual_snapshots
             (restaurant_key,month_start,revision,user_id,full_name,position,restaurant_name,payment_type,rate,worked_minutes,total_salary)
         SELECT c.restaurant_key,%s,%s,c.user_id,c.full_name,c.position,r.name,c.payment_type,c.rate,c.minutes,
                ROUND(c.minutes::numeric*c.rate/60,2)
         FROM candidates c JOIN restaurants r ON r.key=c.restaurant_key
-        WHERE c.restaurant_key=%s""", (month,month,month,revision,key))
-    # Allocate cents by cumulative rounding so daily totals equal the monthly snapshot.
-    cur.execute("WITH effective AS (" + _EFFECTIVE_ATTENDANCE_SQL + """),
+        WHERE c.restaurant_key=%s
+        RETURNING restaurant_key,month_start,revision,user_id,rate
+        ),
         daily AS (
             SELECT s.restaurant_key,s.month_start,s.revision,s.user_id,e.work_date,
                    ROUND(SUM(e.hours)*60)::integer AS minutes,s.rate
-            FROM timesheet_accrual_snapshots s
+            FROM captured s
             JOIN users u ON u.user_id=s.user_id
             JOIN effective e ON e.user_id=s.user_id
                 AND COALESCE(e.restaurant_key,u.restaurant_key)=s.restaurant_key
-            WHERE s.restaurant_key=%s AND s.month_start=%s AND s.revision=%s
-                AND e.work_date>=s.month_start AND e.work_date<s.month_start+INTERVAL '1 month'
+            WHERE e.work_date>=s.month_start AND e.work_date<s.month_start+INTERVAL '1 month'
             GROUP BY s.restaurant_key,s.month_start,s.revision,s.user_id,e.work_date,s.rate
         ), cumulative AS (
             SELECT *, SUM(minutes) OVER (PARTITION BY restaurant_key,month_start,revision,user_id
@@ -1554,7 +1546,7 @@ def _snapshot_approved_accruals(cur, key, month, revision):
             (restaurant_key,month_start,revision,user_id,work_date,worked_minutes,total_salary)
         SELECT restaurant_key,month_start,revision,user_id,work_date,minutes,
                ROUND(running_minutes*rate/60,2)-ROUND((running_minutes-minutes)*rate/60,2)
-        FROM cumulative""", (key,month,revision))
+        FROM cumulative""", (month,month,month,revision,key))
 
 
 

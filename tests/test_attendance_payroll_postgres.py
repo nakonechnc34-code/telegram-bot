@@ -349,15 +349,17 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
         assert report(1,True)[0]["total_salary"] == Decimal("2970.00")
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET rate=600 WHERE user_id=1")
+            cur.execute("UPDATE timesheet_rounding_settings SET step_minutes=60")
         assert report()[0]["rate"] == Decimal(360)
+        assert report()[0]["total_salary"] == Decimal("2970.00")
         assert transition(admin,"reopen",2,"Correction") == 200
         assert report() == []
         assert transition(tu,"submit",3) == 200
         assert transition(admin,"approve",4) == 200
-        assert report()[0]["total_salary"] == Decimal("4950.00")
+        assert report()[0]["total_salary"] == Decimal("4800.00")
         with conn.cursor() as cur:
             cur.execute("SELECT revision,total_salary FROM timesheet_accrual_snapshots ORDER BY revision")
-            assert cur.fetchall() == [(2,Decimal("2970.00")),(5,Decimal("4950.00"))]
+            assert cur.fetchall() == [(2,Decimal("2970.00")),(5,Decimal("4800.00"))]
     finally:
         conn.rollback()
         conn.close()

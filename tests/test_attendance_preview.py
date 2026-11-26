@@ -131,7 +131,7 @@ def test_delete_attendance_scoped_and_repeat():
 def test_saved_attendance_conflicts():
     from routes.timesheet import _attendance_saved_conflict
     cursor = MagicMock()
-    record = {"personnel_number": "021", "date": "2026-11-17",
+    record = {"user_id": 1, "personnel_number": "021", "date": "2026-11-17",
               "restaurant_key": "a", "shifts": ["05:00-09:00"]}
     saved = {"restaurant_key": "b", "work_date": "2026-11-16",
              "status": "work", "start_minute": 1320, "end_minute": 1800}

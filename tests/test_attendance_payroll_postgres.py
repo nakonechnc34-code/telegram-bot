@@ -15,6 +15,7 @@ def test_effective_attendance_postgres():
     conn = psycopg2.connect(dsn)
     try:
         with conn.cursor() as cur:
+            cur.execute("CREATE TEMP TABLE timesheet_rounding_settings (singleton boolean PRIMARY KEY, step_minutes integer NOT NULL); INSERT INTO timesheet_rounding_settings VALUES (TRUE, 5)")
             cur.execute("""CREATE TEMP TABLE timesheet_records
                 (user_id bigint, work_date date, restaurant_key text, hours numeric);
                 CREATE TEMP TABLE attendance_import_days
@@ -34,6 +35,12 @@ def test_effective_attendance_postgres():
                 return cur.fetchall()
             assert totals() == [(1, Decimal(840), Decimal("4900.00")),
                                 (2, Decimal(420), Decimal("2450.00"))]
+            cur.execute("UPDATE timesheet_rounding_settings SET step_minutes=60")
+            cur.execute("UPDATE attendance_import_days SET worked_minutes=517 WHERE restaurant_key='a' AND status='work'")
+            assert totals()[0] == (1, Decimal(840), Decimal("4900.00"))
+            cur.execute("UPDATE timesheet_rounding_settings SET step_minutes=1")
+            assert totals()[0][1] == Decimal(842)
+            cur.execute("UPDATE timesheet_rounding_settings SET step_minutes=5")
             cur.execute("UPDATE attendance_import_days SET worked_minutes=575 WHERE restaurant_key='a' AND status='work'")
             assert totals()[0] == (1, Decimal(900), Decimal("5250.00"))
             cur.execute("DELETE FROM attendance_import_days WHERE work_date='2026-11-01'")
@@ -52,6 +59,7 @@ def test_fixed_salary_report_postgres(monkeypatch):
     conn = psycopg2.connect(dsn)
     try:
         with conn.cursor() as cur:
+            cur.execute("CREATE TEMP TABLE timesheet_rounding_settings (singleton boolean PRIMARY KEY, step_minutes integer NOT NULL); INSERT INTO timesheet_rounding_settings VALUES (TRUE, 5)")
             cur.execute("""CREATE TEMP TABLE users
                 (user_id bigint, full_name text, position text, restaurant_key text,
                  rate numeric, payment_type text, is_fired boolean, login text);
@@ -107,6 +115,7 @@ def test_attendance_migration_preserves_legacy_postgres():
     conn = psycopg2.connect(dsn)
     try:
         with conn.cursor() as cur:
+            cur.execute("CREATE TEMP TABLE timesheet_rounding_settings (singleton boolean PRIMARY KEY, step_minutes integer NOT NULL); INSERT INTO timesheet_rounding_settings VALUES (TRUE, 5)")
             cur.execute("CREATE SCHEMA attendance_migration_test")
             cur.execute("SET LOCAL search_path TO attendance_migration_test")
             cur.execute("""CREATE TABLE users (user_id bigint PRIMARY KEY);
@@ -149,6 +158,7 @@ def test_excel_import_replace_delete_payroll_postgres(monkeypatch):
     conn = psycopg2.connect(dsn)
     try:
         with conn.cursor() as cur:
+            cur.execute("CREATE TEMP TABLE timesheet_rounding_settings (singleton boolean PRIMARY KEY, step_minutes integer NOT NULL); INSERT INTO timesheet_rounding_settings VALUES (TRUE, 5)")
             cur.execute("CREATE SCHEMA attendance_cycle_test")
             cur.execute("SET LOCAL search_path TO attendance_cycle_test")
             cur.execute("""CREATE TABLE users (user_id bigint PRIMARY KEY, personnel_number text,
@@ -196,6 +206,7 @@ def test_matrix_restaurant_scope_postgres(monkeypatch):
     conn = psycopg2.connect(dsn)
     try:
         with conn.cursor() as cur:
+            cur.execute("CREATE TEMP TABLE timesheet_rounding_settings (singleton boolean PRIMARY KEY, step_minutes integer NOT NULL); INSERT INTO timesheet_rounding_settings VALUES (TRUE, 5)")
             cur.execute("""CREATE TEMP TABLE users
                 (user_id bigint, full_name text, position text, restaurant_key text,
                  rate numeric, payment_type text, is_fired boolean, login text, is_admin boolean);
@@ -248,6 +259,7 @@ def test_approval_edit_guard_postgres(locked_status):
     conn = psycopg2.connect(dsn)
     try:
         with conn.cursor() as cur:
+            cur.execute("CREATE TEMP TABLE timesheet_rounding_settings (singleton boolean PRIMARY KEY, step_minutes integer NOT NULL); INSERT INTO timesheet_rounding_settings VALUES (TRUE, 5)")
             cur.execute("""CREATE SCHEMA approval_guard_test;
                 SET LOCAL search_path TO approval_guard_test;
                 CREATE TABLE users (user_id bigint PRIMARY KEY, restaurant_key text);
@@ -296,6 +308,7 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
     conn = psycopg2.connect(dsn)
     try:
         with conn.cursor() as cur:
+            cur.execute("CREATE TEMP TABLE timesheet_rounding_settings (singleton boolean PRIMARY KEY, step_minutes integer NOT NULL); INSERT INTO timesheet_rounding_settings VALUES (TRUE, 5)")
             cur.execute("""CREATE SCHEMA approval_cycle_test;
                 SET LOCAL search_path TO approval_cycle_test;
                 CREATE TABLE users (user_id bigint PRIMARY KEY, full_name text, position text,
@@ -361,6 +374,7 @@ def test_fixed_salary_snapshot_no_duplicate_postgres(monkeypatch):
     conn = psycopg2.connect(dsn)
     try:
         with conn.cursor() as cur:
+            cur.execute("CREATE TEMP TABLE timesheet_rounding_settings (singleton boolean PRIMARY KEY, step_minutes integer NOT NULL); INSERT INTO timesheet_rounding_settings VALUES (TRUE, 5)")
             cur.execute("""CREATE SCHEMA fixed_snapshot_test;
                 SET LOCAL search_path TO fixed_snapshot_test;
                 CREATE TABLE users (user_id bigint PRIMARY KEY, full_name text, position text,

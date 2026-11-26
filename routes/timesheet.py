@@ -167,6 +167,8 @@ def _check_can_edit_user(editor_user, target_uid):
 def _sync_rounding_settings(user, change=None):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            if change is not None:
+                cur.execute("SELECT pg_advisory_xact_lock(814726, 2)")
             cur.execute("SELECT step_minutes, revision FROM timesheet_rounding_settings WHERE singleton = TRUE" + (" FOR UPDATE" if change is not None else ""))
             current = dict(cur.fetchone())
             if change is not None:

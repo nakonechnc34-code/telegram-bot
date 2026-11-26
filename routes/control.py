@@ -1237,10 +1237,10 @@ async def notifications(request):
     scope=await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
         await refresh_control_notifications(conn,user)
-        rows=await conn.fetch("""SELECT id,restaurant_key,event_kind,source_id,created_at,read_at
-            FROM control_notifications WHERE recipient_id=$1
-            AND ($2::text[] IS NULL OR restaurant_key=ANY($2))
-            ORDER BY created_at DESC,id DESC LIMIT 100""",user["user_id"],scope)
+        rows=await conn.fetch("""SELECT n.id,n.restaurant_key,n.event_kind,n.source_id,n.created_at,n.read_at,r.name AS restaurant_name
+            FROM control_notifications n JOIN restaurants r ON r.key=n.restaurant_key WHERE n.recipient_id=$1
+            AND ($2::text[] IS NULL OR n.restaurant_key=ANY($2))
+            ORDER BY n.created_at DESC,n.id DESC LIMIT 100""",user["user_id"],scope)
         unread=await conn.fetchval("""SELECT count(*) FROM control_notifications WHERE recipient_id=$1
             AND read_at IS NULL AND ($2::text[] IS NULL OR restaurant_key=ANY($2))""",user["user_id"],scope)
     items=[dict(row,id=str(row["id"]),source_id=str(row["source_id"]),created_at=row["created_at"].isoformat(),read_at=row["read_at"].isoformat() if row["read_at"] else None) for row in rows]

@@ -428,6 +428,29 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
         assert report()[0]["total_salary"] == Decimal("5.00")
         parts = [timesheet._sync_approved_reports(30,f"2026-11-0{day}",f"2026-11-0{day}")[0]["total_salary"] for day in (1,2,3)]
         assert parts == [Decimal("1.67"),Decimal("1.66"),Decimal("1.67")]
+        import asyncio
+        import io
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        from openpyxl import load_workbook
+        monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=({"user_id":1},None)))
+        async def inline_run(fn, *args):
+            return fn(*args)
+        monkeypatch.setattr(timesheet, "_run", inline_run)
+        for start,end,expected in (("2026-11-01","2026-11-30",Decimal("5.00")),
+                                   ("2026-11-02","2026-11-02",Decimal("1.66"))):
+            req = SimpleNamespace(query={"only_me":"true","date_from":start,"date_to":end})
+            response = asyncio.run(timesheet.handle_timesheet_export_excel(req))
+            assert response.status == 200
+            book = load_workbook(io.BytesIO(response.body))
+            sheet = book["Табель"]
+            assert sheet.max_row == 2
+            assert Decimal(str(sheet["F2"].value)) == expected
+            assert sheet["E2"].value == 100
+            assert sheet["G2"].value == "Оклад"
+            assert "Предупреждение" not in book.sheetnames
+            book.close()
+
         with conn.cursor() as cur:
             cur.execute("""SELECT s.revision FROM timesheet_accrual_snapshots s
                 LEFT JOIN timesheet_accrual_snapshot_days d USING (restaurant_key,month_start,revision,user_id)

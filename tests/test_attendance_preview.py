@@ -199,3 +199,28 @@ def test_matching_errors_are_grouped_by_employee_and_restaurant():
 def test_restaurant_name_normalization():
     from routes.timesheet import _attendance_restaurant_name
     assert _attendance_restaurant_name("  Белая   дача ") == _attendance_restaurant_name("БЕЛАЯ ДАЧА")
+
+
+def test_manual_mapping_permissions_and_validation():
+    import pytest
+    from routes.timesheet import _apply_attendance_mapping
+    rows = [("2026-11-16", "9181", "09:00-12:00", "Белая дача")]
+    mapping = {"employees": {"9181": "021"}, "restaurants": {"Белая дача": "A"}}
+    with patch("routes.timesheet._is_hr_or_super", return_value=False):
+        with pytest.raises(PermissionError):
+            _apply_attendance_mapping({"user_id": 1}, rows, mapping)
+    with patch("routes.timesheet._is_hr_or_super", return_value=True):
+        mapped = _apply_attendance_mapping({"user_id": 1}, rows, mapping)
+        assert mapped == [("2026-11-16", "021", "09:00-12:00", "A")]
+        assert preview(mapped)["total_minutes"] == 180
+        for invalid in [{"employees": {"missing": "021"}}, {"restaurants": {"Белая дача": 1}}, {"extra": {}}, {"employees": []}]:
+            with pytest.raises(ValueError):
+                _apply_attendance_mapping({"user_id": 1}, rows, invalid)
+
+
+def test_manual_mapping_unknown_target_still_blocks_save():
+    from routes.timesheet import _apply_attendance_mapping
+    rows = [("2026-11-16", "9181", "09:00-12:00", "A")]
+    with patch("routes.timesheet._is_hr_or_super", return_value=True):
+        mapped = _apply_attendance_mapping({"user_id": 1}, rows, {"employees": {"9181": "999"}})
+    assert not preview(mapped)["ok"]

@@ -988,6 +988,8 @@ async def handle_employee_payment_summary(request):
     user, err = await get_auth_user(request)
     if err:
         return denied(err)
+    if _private_guest(user):
+        return web.json_response({"error": "forbidden"}, status=403)
     try:
         body = await request.json()
     except (ValueError, TypeError):

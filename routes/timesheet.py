@@ -1137,7 +1137,7 @@ async def handle_timesheet_export_excel(request):
     border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     center_align = Alignment(horizontal="center", vertical="center")
 
-    headers = ["Сотрудник", "Должность", "Ресторан", "Часов", "Ставка (₽)", "К оплате (₽)"]
+    headers = ["Сотрудник", "Должность", "Ресторан", "Часов", "Ставка (₽/ч)", "К оплате (₽)", "Пометка"]
     ws.append(headers)
 
     for col_num, header in enumerate(headers, 1):
@@ -1153,17 +1153,18 @@ async def handle_timesheet_export_excel(request):
             r.get("position", ""),
             r.get("restaurant_name", ""),
             float(r.get("total_hours", 0)),
-            "Оклад" if r.get("payment_type") == 'fixed' else float(r.get("rate", 0)),
+            float(r.get("rate", 0)),
             float(r.get("total_salary", 0)),
+            "Оклад" if r.get("payment_type") == "fixed" else "",
         ]
         ws.append(row_data)
         current_row = ws.max_row
-        for col_num in range(1, 7):
+        for col_num in range(1, 8):
             cell = ws.cell(row=current_row, column=col_num)
             cell.border = border
-            if col_num <= 3:
+            if col_num <= 3 or col_num == 7:
                 cell.data_type = "s"
-            if col_num >= 4:
+            if 4 <= col_num <= 6:
                 cell.alignment = Alignment(horizontal="right", vertical="center")
 
     for col in ws.columns:

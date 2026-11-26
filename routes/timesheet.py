@@ -665,12 +665,17 @@ def _normalize_attendance_number(value):
     return number
 
 
+def _attendance_restaurant_name(value):
+    return " ".join(str(value).casefold().replace("ё", "е").split())
+
+
 def _sync_preview_attendance(user, rows, default_rest_key=None):
     """Validate scope and calculate minutes without changing payroll records."""
     from utils.attendance_minutes import shift_interval, worked_minutes
     groups = {}
     statuses = {}
     errors = []
+    matching_errors = set()
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT user_id, personnel_number, restaurant_key FROM users WHERE personnel_number IS NOT NULL AND COALESCE(is_fired, FALSE) = FALSE")
@@ -686,17 +691,18 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
         number = _normalize_attendance_number(number)
         candidates = users.get(number, [])
         if len(candidates) != 1:
-            errors.append(f"Табельный номер {original_number}: не найден или неоднозначен ({name or '-'}, {day})")
+            reason = "не найден" if not candidates else "неоднозначен"
+            matching_errors.add(f"Табельный номер {original_number}: {reason} ({name or '-'})")
             continue
         employee = candidates[0]
         if not _is_hr_or_super(user) and employee["user_id"] != user["user_id"]:
             if not (_is_tu(user) or "управляющий сменой" in (user.get("position") or "").lower()) or not _restaurant_in_scope(user, employee["restaurant_key"], territory):
                 errors.append("Нет доступа к сотруднику")
                 continue
-        matches = [r["key"] for r in restaurants if r["name"].strip().casefold() == name.strip().casefold()] if name else []
+        matches = [r["key"] for r in restaurants if _attendance_restaurant_name(r["name"]) == _attendance_restaurant_name(name)] if name else []
         key = matches[0] if len(matches) == 1 else (default_rest_key or employee["restaurant_key"]) if not name else None
         if key not in known or not _restaurant_in_scope(user, key, territory):
-            errors.append("Неизвестный или недоступный ресторан")
+            matching_errors.add(f"Неизвестный или недоступный ресторан: {name or '-'}")
             continue
         if raw in ("В", "Б", "Н"):
             statuses.setdefault((number, day, key), set()).add(raw)
@@ -738,6 +744,7 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
                 if start < right and (other_key != key or other_day != day):
                     errors.append("Пересечение смен в разных ресторанах или рабочих датах")
                     break
+    errors.extend(sorted(matching_errors))
     return {"ok": not errors, "preview": True, "records": records,
             "total_minutes": sum(r["minutes"] for r in records) if not errors else None,
             "error_count": len(errors), "errors": errors[:50]}

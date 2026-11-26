@@ -224,3 +224,44 @@ def test_manual_mapping_unknown_target_still_blocks_save():
     with patch("routes.timesheet._is_hr_or_super", return_value=True):
         mapped = _apply_attendance_mapping({"user_id": 1}, rows, {"employees": {"9181": "999"}})
     assert not preview(mapped)["ok"]
+
+
+def test_http_manual_mapping():
+    import asyncio
+    import json
+    from aiohttp import web, FormData
+    from aiohttp.test_utils import TestClient, TestServer
+    from unittest.mock import AsyncMock
+    from routes.timesheet import handle_import_attendance
+
+    async def scenario():
+        app = web.Application()
+        for endpoint in ("preview", "stage"):
+            app.router.add_post("/api/timesheet/import_attendance/" + endpoint, handle_import_attendance)
+        rows = [("2026-11-16", "9181", "09:00-12:00", "A")]
+        async def run(fn, *args):
+            if fn.__name__ == "_parse_excel_rows":
+                return rows
+            assert args[1][0][1] == "021"
+            return {"ok": True}
+        async with TestClient(TestServer(app)) as client:
+            for endpoint in ("preview", "stage"):
+                for allowed, payload, expected in [
+                    (False, {"employees": {"9181": "021"}}, 403),
+                    (True, [], 400),
+                    (True, None, 400),
+                    (True, {"employees": {"absent": "021"}}, 400),
+                    (True, {"employees": {"9181": "021"}}, 200),
+                ]:
+                    data = FormData()
+                    data.add_field("file", b"fixture", filename="test.xlsx")
+                    data.add_field("mapping", json.dumps(payload))
+                    with patch("routes.timesheet._timesheet_user", new=AsyncMock(return_value=({"user_id": 1}, None))), \
+                         patch("routes.timesheet._require_timesheet_access"), \
+                         patch("routes.timesheet._is_hr_or_super", return_value=allowed), \
+                         patch("routes.timesheet._is_tu", return_value=not allowed), \
+                         patch("routes.timesheet._run", side_effect=run):
+                        response = await client.post("/api/timesheet/import_attendance/" + endpoint, data=data)
+                        assert response.status == expected
+                        await response.read()
+    asyncio.run(scenario())

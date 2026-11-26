@@ -164,6 +164,50 @@ def _check_can_edit_user(editor_user, target_uid):
     return False
 
 
+def _sync_rounding_settings(user, change=None):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT step_minutes, revision FROM timesheet_rounding_settings WHERE singleton = TRUE" + (" FOR UPDATE" if change is not None else ""))
+            current = dict(cur.fetchone())
+            if change is not None:
+                if current["revision"] != change["revision"]:
+                    return None
+                if current["step_minutes"] != change["step_minutes"]:
+                    revision = current["revision"] + 1
+                    cur.execute("UPDATE timesheet_rounding_settings SET step_minutes=%s, revision=%s WHERE singleton=TRUE", (change["step_minutes"], revision))
+                    cur.execute("INSERT INTO timesheet_rounding_history(revision, previous_step, new_step, actor_id) VALUES (%s,%s,%s,%s)", (revision, current["step_minutes"], change["step_minutes"], user["user_id"]))
+                    current = {"step_minutes": change["step_minutes"], "revision": revision}
+            cur.execute("SELECT revision, previous_step, new_step, actor_id, created_at::text AS created_at FROM timesheet_rounding_history ORDER BY revision DESC LIMIT 100")
+            current["history"] = [dict(row) for row in cur.fetchall()]
+            return current
+
+
+@routes.get('/api/timesheet/rounding')
+@routes.post('/api/timesheet/rounding')
+async def handle_timesheet_rounding(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    if not _is_hr_or_super(user):
+        return denied(403)
+    change = None
+    if request.method == "POST":
+        try:
+            change = await request.json()
+        except (ValueError, TypeError):
+            return web.json_response({"error": "Некорректный запрос"}, status=400)
+        if (not isinstance(change, dict)
+                or type(change.get("step_minutes")) is not int
+                or change["step_minutes"] not in (1, 5, 10, 15, 30, 60)
+                or type(change.get("revision")) is not int
+                or not 0 <= change["revision"] < 2147483647):
+            return web.json_response({"error": "Некорректные настройки"}, status=400)
+    result = await _run(_sync_rounding_settings, user, change)
+    if result is None:
+        return web.json_response({"error": "Настройки уже изменены"}, status=409)
+    return web.json_response(result, headers={"Cache-Control": "no-store"})
+
+
 @routes.post('/api/timesheet/restaurants')
 async def handle_timesheet_restaurants(request):
     user, err = await _timesheet_user(request)

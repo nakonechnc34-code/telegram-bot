@@ -65,6 +65,7 @@ def test_fixed_salary_report_postgres(monkeypatch):
                  rate numeric, payment_type text, is_fired boolean, login text);
                 CREATE TEMP TABLE restaurants (key text, name text, territory_manager_id bigint);
                 CREATE TEMP TABLE position_rates (position_name text, rate numeric);
+                 CREATE TEMP TABLE timesheet_individual_rates (user_id bigint PRIMARY KEY, hourly_rate numeric);
                 CREATE TEMP TABLE timesheet_records
                 (user_id bigint, work_date date, restaurant_key text, hours numeric);
                 CREATE TEMP TABLE attendance_import_days
@@ -168,6 +169,7 @@ def test_excel_import_replace_delete_payroll_postgres(monkeypatch):
                 payment_type text, is_fired boolean, login text, is_super_admin boolean);
                 CREATE TABLE restaurants (key text PRIMARY KEY, name text, territory_manager_id bigint);
                 CREATE TABLE position_rates (position_name text, rate numeric);
+                 CREATE TABLE timesheet_individual_rates (user_id bigint PRIMARY KEY, hourly_rate numeric);
                 CREATE TABLE timesheet_records (user_id bigint, work_date date, restaurant_key text, hours numeric);
                 INSERT INTO users VALUES (1,'021','Test Cook','Cook','a',360,'hourly',false,'cook',false),
                     (2,NULL,'Admin','Admin','a',0,'hourly',false,'admin',true);
@@ -214,6 +216,7 @@ def test_matrix_restaurant_scope_postgres(monkeypatch):
                  rate numeric, payment_type text, is_fired boolean, login text, is_admin boolean);
                 CREATE TEMP TABLE restaurants (key text, name text, territory_manager_id bigint);
                 CREATE TEMP TABLE position_rates (position_name text, rate numeric);
+                 CREATE TEMP TABLE timesheet_individual_rates (user_id bigint PRIMARY KEY, hourly_rate numeric);
                 CREATE TEMP TABLE timesheet_records
                 (user_id bigint, work_date date, restaurant_key text, hours numeric,
                  status text, start_time time, end_time time);
@@ -318,6 +321,7 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
                     login text, is_admin boolean, is_super_admin boolean);
                 CREATE TABLE restaurants (key text PRIMARY KEY, name text, territory_manager_id bigint);
                 CREATE TABLE position_rates (position_name text, rate numeric);
+                 CREATE TABLE timesheet_individual_rates (user_id bigint PRIMARY KEY, hourly_rate numeric);
                 CREATE TABLE timesheet_records (user_id bigint, work_date date, restaurant_key text, hours numeric);
                 CREATE TABLE attendance_import_days (user_id bigint, work_date date, restaurant_key text,
                     status text, worked_minutes integer);
@@ -386,6 +390,7 @@ def test_fixed_salary_snapshot_is_informational_postgres(monkeypatch):
                     login text, is_admin boolean, is_super_admin boolean);
                 CREATE TABLE restaurants (key text PRIMARY KEY, name text, territory_manager_id bigint);
                 CREATE TABLE position_rates (position_name text, rate numeric);
+                 CREATE TABLE timesheet_individual_rates (user_id bigint PRIMARY KEY, hourly_rate numeric);
                 CREATE TABLE timesheet_records (user_id bigint, work_date date, restaurant_key text, hours numeric);
                 CREATE TABLE attendance_import_days (user_id bigint, work_date date, restaurant_key text,
                     status text, worked_minutes integer);

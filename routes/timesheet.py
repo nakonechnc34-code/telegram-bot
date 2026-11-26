@@ -247,7 +247,6 @@ def _sync_timesheet_matrix(user_id, date_from, date_to, include_imports=False):
             query = """SELECT u.user_id, u.full_name, u.position, u.restaurant_key AS main_restaurant_key,
                        COALESCE(ir.hourly_rate, 0) AS rate, u.payment_type, r.name AS restaurant_name
                 FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key
-                LEFT JOIN position_rates pr ON u.position = pr.position_name
                 LEFT JOIN timesheet_individual_rates ir ON ir.user_id=u.user_id
                 WHERE COALESCE(u.is_fired, FALSE) = FALSE
                   AND COALESCE(u.is_admin, FALSE) = FALSE
@@ -1879,7 +1878,6 @@ def _sync_rate_employees(actor):
                 ir.hourly_rate::text AS individual_rate,
                 COALESCE(ir.hourly_rate, 0)::text AS rate
                 FROM users u LEFT JOIN restaurants r ON r.key=u.restaurant_key
-                LEFT JOIN position_rates pr ON pr.position_name=u.position
                 LEFT JOIN timesheet_individual_rates ir ON ir.user_id=u.user_id
                 WHERE NOT COALESCE(u.is_fired,FALSE) AND u.login IS NOT NULL"""
             params = []

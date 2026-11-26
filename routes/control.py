@@ -1212,13 +1212,14 @@ async def refresh_control_notifications(conn, user):
         return
     scope = await restaurant_scope(user)
     await conn.execute("""INSERT INTO control_notifications(recipient_id,restaurant_key,event_kind,source_id)
-        SELECT $1,c.restaurant_key,'check_overdue',c.id FROM control_checks c
-        WHERE c.completed_at IS NULL AND c.due_at<NOW()
+        SELECT $1,c.restaurant_key,e.kind,c.id FROM control_checks c
+        CROSS JOIN LATERAL (VALUES ('check_overdue',c.due_at<NOW()),('check_assigned',c.guest_id IS NULL)) e(kind,active)
+        WHERE c.completed_at IS NULL AND e.active
           AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))
         UNION ALL
         SELECT $1,c.restaurant_key,e.kind,t.id FROM control_tasks t
         JOIN control_checks c ON c.id=t.check_id
-        CROSS JOIN LATERAL (VALUES ('task_overdue',t.due_at<NOW()),('task_critical',t.critical)) e(kind,active)
+        CROSS JOIN LATERAL (VALUES ('task_overdue',t.due_at<NOW()),('task_critical',t.critical),('task_assigned',t.assignee_id=$1)) e(kind,active)
         WHERE t.status!='closed' AND e.active
           AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))
         ON CONFLICT (recipient_id,event_kind,source_id) DO NOTHING""",user["user_id"],scope)

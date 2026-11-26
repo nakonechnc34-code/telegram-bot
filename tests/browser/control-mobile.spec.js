@@ -83,3 +83,34 @@ for(const [kind,target,list] of [['check_overdue','101','checkList'],['task_crit
  await expect(page.getByRole('dialog')).toBeHidden();
  });
 }
+
+test('Mobile overview coalesces refresh events with delayed API',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ const calls={};
+ await page.route('http://control.test/**',async route=>{
+ const url=new URL(route.request().url());
+ if(url.pathname.startsWith('/api/control/')){
+ const key=url.pathname.slice('/api/control/'.length);
+ calls[key]=(calls[key]||0)+1;
+ const data=key==='me'?{full_name:'Test',template_editor:false}:key==='restaurants'?{restaurants:[]}:key==='checks'?{checks:[]}:key==='tasks'?{tasks:[]}:key==='haccp/equipment'?{equipment:[]}:key==='analytics/rating'?{restaurants:[]}:key==='notifications'?{notifications:[],unread:0}:{};
+ if(key==='analytics/rating')await new Promise(resolve=>setTimeout(resolve,500));
+ return route.fulfill({json:data});
+ }
+ const name=url.pathname==='/'?'control.html':url.pathname.slice(1);
+ return route.fulfill({body:fs.readFileSync(path.join(root,name)),contentType:name.endsWith('.js')?'application/javascript':name.endsWith('.css')?'text/css':'text/html'});
+ });
+ await page.addInitScript(()=>sessionStorage.setItem('wokker_control_token','test'));
+ await page.goto('http://control.test/');
+ await expect(page.locator('.overview-rating')).toBeVisible();
+ const before=calls['analytics/rating'];
+ await page.evaluate(()=>{
+ const title=document.getElementById('title'),home=document.getElementById('home');
+ title.textContent='Главная';
+ home.hidden=true;
+ home.hidden=false;
+ title.textContent='Главная';
+ });
+ await expect.poll(()=>calls['analytics/rating']).toBe(before+1);
+ await expect(page.locator('.overview-rating')).toBeVisible();
+ expect(calls['analytics/rating']).toBe(before+1);
+});

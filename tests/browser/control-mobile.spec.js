@@ -56,3 +56,30 @@ test('Mystery guest sees only own checks and logout on mobile',async({page})=>{
  expect(await page.evaluate(()=>sessionStorage.getItem('wokker_control_token'))).toBeNull();
  expect(calls).not.toContain('analytics/rating');
 });
+
+for(const [kind,target,list] of [['check_overdue','101','checkList'],['task_critical','202','taskBoard'],['haccp_deviation','303','haccpList']]){
+ test('Notification focuses authorized '+kind,async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ const notification={id:'1',source_id:kind==='haccp_deviation'?'999':target,equipment_id:kind==='haccp_deviation'?target:null,event_kind:kind,restaurant_key:'a',restaurant_name:'Test restaurant',created_at:'2026-11-26T08:00:00Z',read_at:null};
+ await page.route('http://control.test/**',async route=>{
+ const url=new URL(route.request().url());
+ if(url.pathname.startsWith('/api/control/')){
+ const key=url.pathname.slice('/api/control/'.length);
+ const data=key==='me'?{full_name:'Test',template_editor:false}:key==='restaurants'?{restaurants:[]}:key==='notifications'?{notifications:[notification],unread:1}:key==='checks'?{checks:[{id:'101',definition:{title:'Target check',sections:[]},restaurant_key:'a',due_at:'2026-11-25T08:00:00Z'}]}:key==='tasks'?{tasks:[{id:'202',status:'new',description:'Target task',restaurant_key:'a',critical:true}],manager:false,user_id:'7'}:key==='haccp/equipment'?{equipment:[{id:'303',name:'Target fridge',restaurant_key:'a',kind:'fridge',unit:'C',lower_limit:2,upper_limit:6}],manager:false}:key==='analytics/rating'?{restaurants:[]}:null;
+ return data?route.fulfill({json:data}):route.fulfill({status:403,json:{error:'Нет доступа'}});
+ }
+ const name=url.pathname==='/'?'control.html':url.pathname.slice(1);
+ return route.fulfill({body:fs.readFileSync(path.join(root,name)),contentType:name.endsWith('.js')?'application/javascript':name.endsWith('.css')?'text/css':'text/html'});
+ });
+ await page.addInitScript(()=>sessionStorage.setItem('wokker_control_token','test'));
+ await page.goto('http://control.test/');
+ await page.getByRole('button',{name:/^Требуют внимания/}).click();
+ await expect(page.locator('.notification-history')).toContainText('Test restaurant');
+ await page.locator('.notification-history').getByRole('button',{name:'Перейти в раздел'}).click();
+ const row=page.locator('#'+list+' [data-notification-source="'+target+'"]');
+ await expect(row).toBeVisible();
+ await expect(row).toBeFocused();
+ await expect(row).toHaveCSS('outline-style','solid');
+ await expect(page.getByRole('dialog')).toBeHidden();
+ });
+}

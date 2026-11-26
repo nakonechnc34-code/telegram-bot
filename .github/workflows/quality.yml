@@ -120,3 +120,39 @@ jobs:
           sql = next(n.value for n in ast.walk(fn) if isinstance(n, ast.Constant) and isinstance(n.value, str) and 'INSERT INTO control_notifications' in n.value)
           subprocess.run(['psql','-h','localhost','-U','ci','-d','control_ci','-v','ON_ERROR_STOP=1'], input='PREPARE notification_refresh(bigint,text[]) AS '+sql+'; EXECUTE notification_refresh(900001,ARRAY[]::text[]); DEALLOCATE notification_refresh;', text=True, check=True)
           PY
+      - name: Verify all six notification events on populated database
+        run: |
+          python - <<'PY'
+          import ast
+          import subprocess
+          from pathlib import Path
+          tree = ast.parse(Path('routes/control.py').read_text())
+          fn = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == 'refresh_control_notifications')
+          sql = next(n.value for n in ast.walk(fn) if isinstance(n, ast.Constant) and isinstance(n.value, str) and 'INSERT INTO control_notifications' in n.value)
+          fixture = """
+          BEGIN;
+          INSERT INTO restaurants(key,name) VALUES ('ci-a','A'),('ci-b','B');
+          INSERT INTO users(user_id,full_name) VALUES (900001,'Recipient'),(900002,'Other');
+          INSERT INTO control_templates(id,title,created_by) VALUES (900001,'Test',900001);
+          INSERT INTO control_template_versions(id,template_id,version,definition) VALUES (900001,900001,1,'{}');
+          INSERT INTO control_checks(id,restaurant_key,version_id,assigned_by,due_at) VALUES
+          (900001,'ci-a',900001,900001,NOW()-INTERVAL '1 day'),(900002,'ci-b',900001,900002,NOW()-INTERVAL '1 day');
+          INSERT INTO control_tasks(id,check_id,question_key,description,critical,assignee_id,due_at) VALUES
+          (900001,900001,'q','Test',TRUE,900001,NOW()-INTERVAL '1 day');
+          INSERT INTO control_equipment(id,restaurant_key,name,kind,unit,lower_limit,upper_limit,created_by)
+          VALUES (900001,'ci-a','Test','temperature','C',2,6,900001);
+          INSERT INTO control_readings(equipment_id,value,lower_limit,upper_limit,deviation,recorded_by)
+          VALUES (900001,9,2,6,TRUE,900001);
+          """
+          assertions = """
+          DO $verify$
+          BEGIN
+            IF (SELECT count(*) FROM control_notifications WHERE recipient_id=900001) <> 6
+            OR (SELECT count(DISTINCT event_kind) FROM control_notifications WHERE recipient_id=900001) <> 6
+            OR EXISTS (SELECT 1 FROM control_notifications WHERE restaurant_key='ci-b' OR recipient_id<>900001)
+            THEN RAISE EXCEPTION 'Notification generation or scope failed'; END IF;
+          END $verify$;
+          ROLLBACK;
+          """
+          subprocess.run(['psql','-h','localhost','-U','ci','-d','control_ci','-v','ON_ERROR_STOP=1'],input=fixture+'PREPARE refresh_events(bigint,text[]) AS '+sql+"; EXECUTE refresh_events(900001,ARRAY['ci-a']); EXECUTE refresh_events(900001,ARRAY['ci-a']); "+assertions,text=True,check=True)
+          PY

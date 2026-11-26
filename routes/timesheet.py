@@ -941,7 +941,9 @@ async def handle_import_attendance(request):
 # ИСПРАВЛЕНО: добавлен флаг only_me и LEFT JOIN для корректной работы сотрудников без часов
 # Imported employee-days supersede legacy records, including absence days.
 _EFFECTIVE_ATTENDANCE_SQL = """
-    WITH daily AS (
+    WITH rounding AS (
+        SELECT step_minutes AS step FROM timesheet_rounding_settings WHERE singleton = TRUE
+    ), daily AS (
         SELECT d.user_id, d.work_date, d.restaurant_key,
                CASE WHEN d.status = 'work' THEN d.worked_minutes ELSE 0 END AS minutes
         FROM attendance_import_days d
@@ -949,8 +951,8 @@ _EFFECTIVE_ATTENDANCE_SQL = """
         SELECT *, SUM(minutes) OVER (PARTITION BY user_id, work_date) AS total
         FROM daily
     ), allocation AS (
-        SELECT *, COALESCE(FLOOR(minutes::numeric * (ROUND(total::numeric / 5) * 5) / NULLIF(total, 0)), 0) AS base,
-               COALESCE(MOD(minutes::numeric * (ROUND(total::numeric / 5) * 5), NULLIF(total, 0)), 0) AS remainder
+        SELECT *, COALESCE(FLOOR(minutes::numeric * (ROUND(total::numeric / (SELECT step FROM rounding)) * (SELECT step FROM rounding)) / NULLIF(total, 0)), 0) AS base,
+               COALESCE(MOD(minutes::numeric * (ROUND(total::numeric / (SELECT step FROM rounding)) * (SELECT step FROM rounding)), NULLIF(total, 0)), 0) AS remainder
         FROM totals
     ), ranked AS (
         SELECT *, ROW_NUMBER() OVER (PARTITION BY user_id, work_date ORDER BY remainder DESC, restaurant_key COLLATE "C") AS rank,
@@ -958,7 +960,7 @@ _EFFECTIVE_ATTENDANCE_SQL = """
         FROM allocation
     )
     SELECT t.user_id, t.work_date, t.restaurant_key,
-           ROUND(ROUND(t.hours::numeric * 60) / 5) * 5 / 60 AS hours
+           ROUND(ROUND(t.hours::numeric * 60) / (SELECT step FROM rounding)) * (SELECT step FROM rounding) / 60 AS hours
     FROM timesheet_records t
     WHERE NOT EXISTS (
         SELECT 1 FROM attendance_import_days d
@@ -966,7 +968,7 @@ _EFFECTIVE_ATTENDANCE_SQL = """
     )
     UNION ALL
     SELECT user_id, work_date, restaurant_key,
-           (base + CASE WHEN rank <= ROUND(total::numeric / 5) * 5 - allocated THEN 1 ELSE 0 END) / 60 AS hours
+           (base + CASE WHEN rank <= ROUND(total::numeric / (SELECT step FROM rounding)) * (SELECT step FROM rounding) - allocated THEN 1 ELSE 0 END) / 60 AS hours
     FROM ranked
 """
 

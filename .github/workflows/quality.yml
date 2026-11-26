@@ -212,6 +212,8 @@ jobs:
           (900012,'ci_login','user','900012','secret-guest'),
           (900012,'ci_target','user','900011','ordinary'),
           (900011,'ci_actor','user','900012','ordinary');
+          UPDATE users SET full_name='Changed Guest',login='changed-guest' WHERE user_id=900011;
+          UPDATE users SET position='УС' WHERE user_id=900011;
           """
           script = fixture+'PREPARE audit_visibility(boolean) AS '+sql+'; EXECUTE audit_visibility(FALSE); EXECUTE audit_visibility(TRUE); ROLLBACK;'
           result = subprocess.run(['psql','-X','-qAt','-h','localhost','-U','ci','-d','control_ci','-v','ON_ERROR_STOP=1'],input=script,text=True,check=True,capture_output=True)

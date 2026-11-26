@@ -1220,14 +1220,14 @@ async def refresh_control_notifications(conn, user):
         SELECT $1,c.restaurant_key,e.kind,t.id FROM control_tasks t
         JOIN control_checks c ON c.id=t.check_id
         CROSS JOIN LATERAL (VALUES ('task_overdue',t.due_at<NOW()),('task_critical',t.critical),('task_assigned',t.assignee_id=$1)) e(kind,active)
-        WHERE t.status!='closed' AND e.active
+        WHERE t.status!='closed' AND e.active AND ($3::boolean OR t.assignee_id=$1)
           AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))
         UNION ALL
         SELECT $1,e.restaurant_key,'haccp_deviation',r.id FROM control_readings r
         JOIN control_equipment e ON e.id=r.equipment_id
         WHERE r.deviation AND r.recorded_at >= NOW() - INTERVAL '30 days'
           AND ($2::text[] IS NULL OR e.restaurant_key=ANY($2))
-        ON CONFLICT (recipient_id,event_kind,source_id) DO NOTHING""",user["user_id"],scope)
+        ON CONFLICT (recipient_id,event_kind,source_id) DO NOTHING""",user["user_id"],scope,task_manager(user))
 
 @routes.post("/api/control/notifications")
 async def notifications(request):
@@ -1242,9 +1242,10 @@ async def notifications(request):
             LEFT JOIN control_readings cr ON n.event_kind='haccp_deviation' AND cr.id=n.source_id
             LEFT JOIN control_equipment e ON e.id=cr.equipment_id AND e.restaurant_key=n.restaurant_key WHERE n.recipient_id=$1
             AND ($2::text[] IS NULL OR n.restaurant_key=ANY($2))
-            ORDER BY n.created_at DESC,n.id DESC LIMIT 100""",user["user_id"],scope)
+            AND (n.event_kind NOT LIKE 'task_%' OR EXISTS (SELECT 1 FROM control_tasks nt JOIN control_checks nc ON nc.id=nt.check_id WHERE nt.id=n.source_id AND nc.restaurant_key=n.restaurant_key AND ($3::boolean OR nt.assignee_id=$1)))
+            ORDER BY n.created_at DESC,n.id DESC LIMIT 100""",user["user_id"],scope,task_manager(user))
         unread=await conn.fetchval("""SELECT count(*) FROM control_notifications WHERE recipient_id=$1
-            AND read_at IS NULL AND ($2::text[] IS NULL OR restaurant_key=ANY($2))""",user["user_id"],scope)
+            AND read_at IS NULL AND ($2::text[] IS NULL OR restaurant_key=ANY($2)) AND (control_notifications.event_kind NOT LIKE 'task_%' OR EXISTS (SELECT 1 FROM control_tasks nt JOIN control_checks nc ON nc.id=nt.check_id WHERE nt.id=control_notifications.source_id AND nc.restaurant_key=control_notifications.restaurant_key AND ($3::boolean OR nt.assignee_id=$1)))""",user["user_id"],scope,task_manager(user))
     items=[dict(row,id=str(row["id"]),source_id=str(row["source_id"]),created_at=row["created_at"].isoformat(),read_at=row["read_at"].isoformat() if row["read_at"] else None) for row in rows]
     return web.json_response({"notifications":items,"unread":unread},headers=NO_STORE)
 
@@ -1277,8 +1278,9 @@ async def read_notifications(request):
         changed=await conn.fetchval("""WITH updated AS (UPDATE control_notifications SET read_at=NOW()
             WHERE recipient_id=$1 AND read_at IS NULL
             AND ($2::text[] IS NULL OR restaurant_key=ANY($2))
+            AND (control_notifications.event_kind NOT LIKE 'task_%' OR EXISTS (SELECT 1 FROM control_tasks nt JOIN control_checks nc ON nc.id=nt.check_id WHERE nt.id=control_notifications.source_id AND nc.restaurant_key=control_notifications.restaurant_key AND ($4::boolean OR nt.assignee_id=$1)))
             AND ($3::bigint IS NULL OR id=$3) RETURNING id)
-            SELECT count(*) FROM updated""",user["user_id"],scope,nid)
+            SELECT count(*) FROM updated""",user["user_id"],scope,nid,task_manager(user))
         unread=await conn.fetchval("""SELECT count(*) FROM control_notifications WHERE recipient_id=$1
-            AND read_at IS NULL AND ($2::text[] IS NULL OR restaurant_key=ANY($2))""",user["user_id"],scope)
+            AND read_at IS NULL AND ($2::text[] IS NULL OR restaurant_key=ANY($2)) AND (control_notifications.event_kind NOT LIKE 'task_%' OR EXISTS (SELECT 1 FROM control_tasks nt JOIN control_checks nc ON nc.id=nt.check_id WHERE nt.id=control_notifications.source_id AND nc.restaurant_key=control_notifications.restaurant_key AND ($3::boolean OR nt.assignee_id=$1)))""",user["user_id"],scope,task_manager(user))
     return web.json_response({"updated":changed,"unread":unread},headers=NO_STORE)

@@ -412,3 +412,59 @@ def test_accruals_invalid_dates(monkeypatch):
     response = asyncio.run(timesheet.handle_timesheet_accruals(request({"date_from": "invalid"})))
     assert response.status == 400
     run.assert_not_awaited()
+
+
+@pytest.mark.parametrize("method", ["GET", "POST"])
+@pytest.mark.parametrize("role", [
+    {"position": "HR", "is_admin": False},
+    {"position": "Территориальный управляющий", "is_admin": True},
+    {"position": "Повар"},
+])
+def test_rounding_settings_denies_non_hr(monkeypatch, method, role):
+    user = {"user_id": 42, **role}
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(user, None)))
+    run = AsyncMock()
+    monkeypatch.setattr(timesheet, "_run", run)
+    req = request({"step_minutes": 15, "revision": 0})
+    req.method = method
+    assert asyncio.run(timesheet.handle_timesheet_rounding(req)).status == 403
+    run.assert_not_awaited()
+
+
+@pytest.mark.parametrize("body", [
+    None, [], {}, {"step_minutes": True, "revision": 0},
+    {"step_minutes": 7, "revision": 0}, {"step_minutes": 5.0, "revision": 0},
+    {"step_minutes": 5, "revision": True}, {"step_minutes": 5, "revision": -1},
+    {"step_minutes": 5, "revision": 2147483647},
+])
+def test_rounding_settings_rejects_invalid_payload(monkeypatch, body):
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(
+        {"user_id": 42, "is_super_admin": True}, None)))
+    run = AsyncMock()
+    monkeypatch.setattr(timesheet, "_run", run)
+    assert asyncio.run(timesheet.handle_timesheet_rounding(request(body))).status == 400
+    run.assert_not_awaited()
+
+
+@pytest.mark.parametrize("role", [{"is_super_admin": True}, {"is_admin": True, "position": "HR"}])
+def test_rounding_settings_read_write_and_conflict(monkeypatch, role):
+    user = {"user_id": 42, **role}
+    monkeypatch.setattr(timesheet, "_timesheet_user", AsyncMock(return_value=(user, None)))
+    current = {"step_minutes": 5, "revision": 0, "history": []}
+    changed = {"step_minutes": 15, "revision": 1, "history": [
+        {"revision": 1, "previous_step": 5, "new_step": 15, "actor_id": 42}]}
+    run = AsyncMock(side_effect=[current, changed, None])
+    monkeypatch.setattr(timesheet, "_run", run)
+    req = request()
+    req.method = "GET"
+    response = asyncio.run(timesheet.handle_timesheet_rounding(req))
+    assert response.status == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert json.loads(response.body) == current
+    run.assert_awaited_with(timesheet._sync_rounding_settings, user, None)
+    body = {"step_minutes": 15, "revision": 0}
+    response = asyncio.run(timesheet.handle_timesheet_rounding(request(body)))
+    assert response.status == 200
+    assert json.loads(response.body) == changed
+    run.assert_awaited_with(timesheet._sync_rounding_settings, user, body)
+    assert asyncio.run(timesheet.handle_timesheet_rounding(request(body))).status == 409

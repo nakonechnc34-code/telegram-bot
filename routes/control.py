@@ -551,7 +551,7 @@ async def haccp_equipment(request):
         return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
     scope=await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
-        rows=await conn.fetch("""SELECT e.*,r.value AS last_value,r.recorded_at AS last_recorded_at,r.deviation AS last_deviation
+        rows=await conn.fetch("""SELECT e.id,e.restaurant_key,e.name,e.kind,e.unit,e.lower_limit,e.upper_limit,r.value AS last_value,r.recorded_at AS last_recorded_at,r.deviation AS last_deviation
             FROM control_equipment e LEFT JOIN LATERAL
             (SELECT value,recorded_at,deviation FROM control_readings WHERE equipment_id=e.id ORDER BY id DESC LIMIT 1) r ON TRUE
             WHERE ($1::text[] IS NULL OR e.restaurant_key=ANY($1)) ORDER BY e.restaurant_key,e.name LIMIT 500""",scope)
@@ -626,7 +626,7 @@ async def haccp_readings(request):
         return web.json_response({"error":"invalid_period"},status=400,headers=NO_STORE)
     scope=await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
-        rows=await conn.fetch("""SELECT r.* FROM control_readings r JOIN control_equipment e ON e.id=r.equipment_id
+        rows=await conn.fetch("""SELECT r.id,r.equipment_id,r.value,r.lower_limit,r.upper_limit,r.deviation,r.comment,r.recorded_at FROM control_readings r JOIN control_equipment e ON e.id=r.equipment_id
             WHERE e.id=$1 AND ($2::text[] IS NULL OR e.restaurant_key=ANY($2))
             AND r.recorded_at >= ($3::date::timestamp AT TIME ZONE 'Europe/Moscow')
             AND r.recorded_at < ($4::date::timestamp AT TIME ZONE 'Europe/Moscow')
@@ -674,7 +674,7 @@ async def list_schedules(request):
         return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
     scope=await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
-        rows=await conn.fetch("""SELECT s.*,t.title FROM control_schedules s
+        rows=await conn.fetch("""SELECT s.id,s.restaurant_key,s.version_id,s.frequency,s.next_due,s.anchor_day,s.active,t.title FROM control_schedules s
             JOIN control_template_versions v ON v.id=s.version_id JOIN control_templates t ON t.id=v.template_id
             WHERE ($1::text[] IS NULL OR s.restaurant_key=ANY($1)) ORDER BY s.next_due LIMIT 500""",scope)
     return web.json_response({"schedules":[journal_json(r) for r in rows]},headers=NO_STORE)
@@ -841,7 +841,7 @@ async def read_document(request):
         return web.json_response({"error":"invalid_id"},status=400,headers=NO_STORE)
     scope=await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
-        row=await conn.fetchrow("""SELECT v.*,d.category,d.restaurant_key FROM control_document_versions v JOIN control_documents d ON d.id=v.document_id
+        row=await conn.fetchrow("""SELECT v.id,v.document_id,v.version,v.title,v.content,v.published_at,d.category,d.restaurant_key FROM control_document_versions v JOIN control_documents d ON d.id=v.document_id
             WHERE v.id=$1 AND NOT d.archived AND (d.restaurant_key IS NULL OR $2::text[] IS NULL OR d.restaurant_key=ANY($2))""",vid,scope)
     if not row:
         return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)

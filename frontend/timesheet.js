@@ -604,6 +604,7 @@ function rateButton(cell,label,action){
         finally{b.disabled=false;}
     });cell.append(b);
 }
+function labelRateCells(row,labels){Array.from(row.cells).forEach((cell,i)=>{cell.dataset.label=labels[i];});}
 function renderRateEmployees(){
     const rows=byId('rates-rows');rows.replaceChildren();
     if(!ratesData)return;
@@ -614,6 +615,7 @@ function renderRateEmployees(){
         const row=rows.insertRow();
         for(const value of [e.full_name+(e.payment_type==='fixed'?' · Оклад':''),e.restaurant_name,e.rate])row.insertCell().textContent=value??'—';
         const actions=row.insertCell();
+        labelRateCells(row,['Сотрудник','Ресторан','Ставка, ₽/ч','Действие']);
         if(ratesData.can_manage)rateButton(actions,'Изменить',async()=>{
             const values=await rateDialog('Изменение ставки — '+e.full_name,[{key:'rate',label:'Новая ставка, ₽/ч',value:e.rate,required:true}]);
             if(!values||!token||byId('rates-panel').hidden)return;
@@ -647,6 +649,7 @@ async function loadRates(){
             const row=byId('rate-request-rows').insertRow();
             for(const value of [q.full_name,q.proposed_rate,q.reason,({pending:'На рассмотрении',approved:'Согласовано',rejected:'Отклонено'})[q.status]||q.status])row.insertCell().textContent=value??'—';
             const actions=row.insertCell();
+            labelRateCells(row,['Сотрудник','Новая ставка','Причина','Статус','Решение']);
             if(data.can_manage&&q.status==='pending')for(const [decision,label] of [['approved','Согласовать'],['rejected','Отклонить']]){
                 rateButton(actions,label,async()=>{
                     const values=await rateDialog(label+' — '+q.full_name,[{key:'comment',label:decision==='rejected'?'Причина отклонения':'Комментарий (необязательно)',multiline:true,required:decision==='rejected'}]);
@@ -659,6 +662,7 @@ async function loadRates(){
         for(const h of history.history){
             const row=byId('rate-history-rows').insertRow();
             for(const value of [h.full_name,h.previous_rate,h.new_rate,h.created_at,h.actor_id])row.insertCell().textContent=value??'—';
+            labelRateCells(row,['Сотрудник','Было','Стало','Дата','Автор']);
         }
         byId('rates-status').textContent='';
     }catch(e){if(version===ratesVersion)byId('rates-status').textContent=e.message;}

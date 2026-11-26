@@ -19,13 +19,19 @@ CREATE INDEX IF NOT EXISTS idx_news_status ON news(status);
 CREATE INDEX IF NOT EXISTS idx_standards_status ON standards(status);
 
 -- Индекс для выплат: поиск по дате и статусу
-CREATE INDEX IF NOT EXISTS idx_payments_date ON payments(payment_date, status);
-
--- Индекс для выплат: поиск по сотруднику и дате
-CREATE INDEX IF NOT EXISTS idx_payments_user_date ON payments(user_id, payment_date);
+DO $ BEGIN
+    IF to_regclass('payments') IS NOT NULL THEN
+        CREATE INDEX IF NOT EXISTS idx_payments_date ON payments(payment_date, status);
+        CREATE INDEX IF NOT EXISTS idx_payments_user_date ON payments(user_id, payment_date);
+    END IF;
+END $;
 
 -- Индекс для вопросов: поиск по replied
 CREATE INDEX IF NOT EXISTS idx_questions_replied ON questions(replied);
 
 -- Индекс для academy_progress: поиск по user_id и course_id
-CREATE INDEX IF NOT EXISTS idx_academy_progress_user_course ON academy_progress(user_id, course_id);
+DO $ BEGIN
+    IF to_regclass('academy_progress') IS NOT NULL THEN
+        CREATE INDEX IF NOT EXISTS idx_academy_progress_user_course ON academy_progress(user_id, course_id);
+    END IF;
+END $;

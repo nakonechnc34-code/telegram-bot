@@ -118,7 +118,7 @@ jobs:
           tree = ast.parse(Path('routes/control.py').read_text())
           fn = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == 'refresh_control_notifications')
           sql = next(n.value for n in ast.walk(fn) if isinstance(n, ast.Constant) and isinstance(n.value, str) and 'INSERT INTO control_notifications' in n.value)
-          subprocess.run(['psql','-h','localhost','-U','ci','-d','control_ci','-v','ON_ERROR_STOP=1'], input='PREPARE notification_refresh(bigint,text[]) AS '+sql+'; EXECUTE notification_refresh(900001,ARRAY[]::text[]); DEALLOCATE notification_refresh;', text=True, check=True)
+          subprocess.run(['psql','-h','localhost','-U','ci','-d','control_ci','-v','ON_ERROR_STOP=1'], input='PREPARE notification_refresh(bigint,text[],boolean) AS '+sql+'; EXECUTE notification_refresh(900001,ARRAY[]::text[],FALSE); DEALLOCATE notification_refresh;', text=True, check=True)
           PY
       - name: Verify all six notification events on populated database
         run: |
@@ -154,5 +154,5 @@ jobs:
           END $verify$;
           ROLLBACK;
           """
-          subprocess.run(['psql','-h','localhost','-U','ci','-d','control_ci','-v','ON_ERROR_STOP=1'],input=fixture+'PREPARE refresh_events(bigint,text[]) AS '+sql+"; EXECUTE refresh_events(900001,ARRAY['ci-a']); EXECUTE refresh_events(900001,ARRAY['ci-a']); "+assertions,text=True,check=True)
+          subprocess.run(['psql','-h','localhost','-U','ci','-d','control_ci','-v','ON_ERROR_STOP=1'],input=fixture+'PREPARE refresh_events(bigint,text[],boolean) AS '+sql+"; EXECUTE refresh_events(900001,ARRAY['ci-a'],FALSE); EXECUTE refresh_events(900001,ARRAY['ci-a'],FALSE); "+assertions,text=True,check=True)
           PY

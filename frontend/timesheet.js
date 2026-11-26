@@ -332,6 +332,7 @@ dateInput.value = [today.getFullYear(), String(today.getMonth() + 1).padStart(2,
     String(today.getDate()).padStart(2, '0')].join('-');
 for (const [key, label] of Object.entries(labels)) editForm.elements.status.add(new Option(label, key));
 function clearSession(){
+    resetRounding();
     historyVersion++;
     byId('attendance-history-rows').replaceChildren();
     byId('attendance-history-status').textContent = '';
@@ -505,11 +506,64 @@ function openApproval(){
 byId('approval-form').addEventListener('submit',e=>{e.preventDefault();loadApproval();});
 for(const id of ['approval-restaurant','approval-month'])byId(id).addEventListener('change',()=>{byId('approval-comment').value='';loadApproval();});
 
+let roundingVersion = 0, roundingRevision = null;
+function resetRounding(){
+    roundingVersion++;
+    roundingRevision=null;
+    byId('rounding-form').hidden=true;
+    byId('rounding-form').querySelector('button').disabled=true;
+    byId('rounding-history').hidden=true;
+    byId('rounding-rows').replaceChildren();
+    byId('rounding-status').textContent='';
+}
+function renderRounding(data){
+    roundingRevision=data.revision;
+    byId('rounding-step').value=String(data.step_minutes);
+    const rows=byId('rounding-rows');
+    rows.replaceChildren();
+    for(const item of data.history){
+        const row=rows.insertRow();
+        for(const value of [item.created_at,item.actor_id,item.previous_step,item.new_step]){
+            row.insertCell().textContent=value??'—';
+        }
+    }
+    byId('rounding-form').hidden=false;
+    byId('rounding-form').querySelector('button').disabled=false;
+    byId('rounding-history').hidden=false;
+}
+async function loadRounding(){
+    resetRounding();
+    const version=roundingVersion;
+    byId('rounding-status').textContent='Загрузка…';
+    try{
+        const data=await api('/api/timesheet/rounding',{method:'GET'});
+        if(version!==roundingVersion||!token)return;
+        renderRounding(data);
+        byId('rounding-status').textContent='';
+    }catch(e){if(version===roundingVersion)byId('rounding-status').textContent=e.message;}
+}
+byId('rounding-form').addEventListener('submit',async e=>{
+    e.preventDefault();
+    if(roundingRevision===null)return;
+    const version=roundingVersion, button=e.currentTarget.querySelector('button');
+    button.disabled=true;
+    try{
+        const data=await api('/api/timesheet/rounding',{body:JSON.stringify({step_minutes:Number(byId('rounding-step').value),revision:roundingRevision})});
+        if(version!==roundingVersion||!token)return;
+        renderRounding(data);
+        byId('rounding-status').textContent='Настройки сохранены';
+    }catch(error){
+        if(version!==roundingVersion)return;
+        await loadRounding();
+        if(roundingVersion===version+1)byId('rounding-status').textContent=error.message;
+    }
+});
 function showPage(index) {
     byId('page-title').textContent = pageNames[index];
     byId('home-panel').hidden = index !== 0;
     byId('timesheet-panel').hidden = index !== 1;
     byId('future-panel').hidden = index !== 5;
+    if(index===5 && token)loadRounding();else resetRounding();
     byId('approval-panel').hidden = index !== 4;
     if(index === 4 && token) openApproval();
     else approvalVersion++;

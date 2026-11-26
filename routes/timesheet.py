@@ -1062,25 +1062,16 @@ def _sync_reports(user_id, date_from, date_to, only_me=False):
             base = "WITH effective_attendance AS (" + _EFFECTIVE_ATTENDANCE_SQL + """),
                 period_attendance AS (
                     SELECT * FROM effective_attendance WHERE work_date BETWEEN %s::date AND %s::date
-                ), salary_restaurant AS (
-                    SELECT DISTINCT ON (e.user_id) e.user_id,
-                        COALESCE(e.restaurant_key, owner.restaurant_key) AS restaurant_key
-                    FROM period_attendance e JOIN users owner ON owner.user_id = e.user_id
-                    ORDER BY e.user_id,
-                        (COALESCE(e.restaurant_key, owner.restaurant_key) IS NOT DISTINCT FROM owner.restaurant_key) DESC,
-                        COALESCE(e.restaurant_key, owner.restaurant_key) NULLS LAST
                 )
                 SELECT u.full_name, u.position,
                        COALESCE(tr.name, r.name) AS restaurant_name,
                        COALESCE(SUM(t.hours), 0) as total_hours,
                        COALESCE(ir.hourly_rate, 0) AS rate, u.payment_type,
-                       (COALESCE(SUM(t.hours), 0) * COALESCE(ir.hourly_rate, 0)) as total_salary
+                       ROUND(ROUND(COALESCE(SUM(t.hours), 0)*60)::numeric * COALESCE(ir.hourly_rate, 0)/60,2) as total_salary
                 FROM users u 
                 LEFT JOIN period_attendance t ON u.user_id = t.user_id
-                LEFT JOIN salary_restaurant sr ON sr.user_id = u.user_id
                 LEFT JOIN restaurants r ON u.restaurant_key = r.key
                 LEFT JOIN restaurants tr ON t.restaurant_key = tr.key
-                LEFT JOIN position_rates pr ON u.position = pr.position_name
                 LEFT JOIN timesheet_individual_rates ir ON ir.user_id=u.user_id
                 WHERE COALESCE(u.is_fired, FALSE) = FALSE AND u.login IS NOT NULL"""
             
@@ -1099,7 +1090,7 @@ def _sync_reports(user_id, date_from, date_to, only_me=False):
                 base += " AND u.user_id = %s"
                 params.append(user_id)
                 
-            base += " GROUP BY u.user_id, u.full_name, u.position, COALESCE(tr.name, r.name), COALESCE(t.restaurant_key, u.restaurant_key), u.restaurant_key, sr.user_id, sr.restaurant_key, u.rate, pr.rate, ir.hourly_rate, u.payment_type ORDER BY COALESCE(tr.name, r.name), u.full_name"
+            base += " GROUP BY u.user_id, u.full_name, u.position, COALESCE(tr.name, r.name), COALESCE(t.restaurant_key, u.restaurant_key), u.restaurant_key, ir.hourly_rate, u.payment_type ORDER BY COALESCE(tr.name, r.name), u.full_name"
 
             cur.execute(base, params)
             return [dict(r) for r in cur.fetchall()]

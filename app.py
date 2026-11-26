@@ -162,6 +162,7 @@ def run_migrations():
                 cur.execute((migrations / "016_control_guest.sql").read_text(encoding="utf-8"))
                 cur.execute((migrations / "017_control_notifications.sql").read_text(encoding="utf-8"))
                 cur.execute((migrations / "018_control_guest_identity_history.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "019_control_query_indexes.sql").read_text(encoding="utf-8"))
                 cur.execute("SELECT 1 FROM users LIMIT 1")
                 if cur.fetchone() is None:
                     if not config.LOGIN_RE.fullmatch(config.ADMIN_LOGIN):

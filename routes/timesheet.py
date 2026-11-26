@@ -1664,6 +1664,7 @@ def _can_set_individual_rate(user):
 def _sync_set_individual_rate(actor, target, rate):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT pg_advisory_xact_lock(814726, 2)")
             cur.execute("SELECT * FROM users WHERE user_id=%s FOR UPDATE", (actor,))
             if not _can_set_individual_rate(cur.fetchone()):
                 return 403
@@ -1714,6 +1715,7 @@ async def handle_individual_rate(request):
 def _sync_create_rate_request(actor, target, rate, reason):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT pg_advisory_xact_lock(814726, 2)")
             cur.execute("SELECT * FROM users WHERE user_id=%s FOR UPDATE", (actor,))
             user = cur.fetchone()
             if not user or user.get("is_fired") or not (_is_tu(user) or user.get("is_super_admin")):
@@ -1757,6 +1759,7 @@ async def handle_create_rate_request(request):
 def _sync_decide_rate_request(actor, request_id, decision, comment):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT pg_advisory_xact_lock(814726, 2)")
             cur.execute("SELECT * FROM users WHERE user_id=%s FOR UPDATE", (actor,))
             if not _can_set_individual_rate(cur.fetchone()):
                 return 403

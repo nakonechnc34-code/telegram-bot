@@ -223,3 +223,45 @@ jobs:
               assert sum('|'+action+'|' in row for row in rows)==1, rows
           print('Mystery guest audit privacy verified')
           PY
+
+      - name: Verify live CONTROL session and restaurant scope on PostgreSQL
+        env:
+          DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/control_ci
+          ADMIN_PASSWORD: ci-only-placeholder-not-used-for-login
+        run: |
+          python -m pip install -r requirements.txt
+          python - <<'PY'
+          import asyncio
+          import hashlib
+          from types import SimpleNamespace
+          from unittest.mock import patch
+          import asyncpg
+          from routes import control
+
+          async def main():
+              pool = await asyncpg.create_pool(dsn='postgresql://ci:ci@127.0.0.1:5432/control_ci')
+              token = 'a'*64
+              digest = hashlib.sha256(token.encode()).hexdigest()
+              request = SimpleNamespace(app={},path='/api/control/restaurants',headers={'Authorization':'Bearer '+token})
+              try:
+                  await pool.execute("INSERT INTO users(user_id,full_name,position,restaurant_key,permissions) VALUES(900099,'CI scope','УС','a','{\"control_access\":true,\"control_view_all\":true}')")
+                  await pool.execute("INSERT INTO control_sessions(token_hash,user_id) VALUES($1,900099)",digest)
+                  with patch.object(control.db,'get_pool',return_value=pool):
+                      user = await control.control_user(request)
+                      assert await control.restaurant_scope(user) == ['a']
+                      await pool.execute("UPDATE users SET restaurant_key='b' WHERE user_id=900099")
+                      assert await control.restaurant_scope(await control.control_user(request)) == ['b']
+                      await pool.execute("UPDATE users SET permissions='{}' WHERE user_id=900099")
+                      assert await control.control_user(request) is None
+                      await pool.execute("UPDATE users SET permissions='{\"control_access\":true}',is_fired=true WHERE user_id=900099")
+                      assert await control.control_user(request) is None
+                      await pool.execute("UPDATE users SET is_fired=false WHERE user_id=900099")
+                      assert await control.control_user(request) is not None
+                      await pool.execute("UPDATE control_sessions SET expires_at=NOW()-INTERVAL '1 second' WHERE token_hash=$1",digest)
+                      assert await control.control_user(request) is None
+              finally:
+                  await pool.execute("DELETE FROM users WHERE user_id=900099")
+                  await pool.close()
+          asyncio.run(main())
+          print('Live session and restaurant scope verified')
+          PY

@@ -421,7 +421,7 @@ async def list_tasks(request):
         return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
     scope = await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
-        rows = await conn.fetch("""SELECT t.*,c.restaurant_key, CASE WHEN $4::boolean OR NOT EXISTS (SELECT 1 FROM users g WHERE g.user_id=t.assignee_id AND lower(btrim(COALESCE(g.position, '')))='тайный гость') THEN t.assignee_id ELSE NULL END AS assignee_id,
+        rows = await conn.fetch("""SELECT t.*,c.restaurant_key, CASE WHEN $4::boolean OR NOT EXISTS (SELECT 1 FROM control_guest_identity_history g WHERE g.user_id=t.assignee_id) THEN t.assignee_id ELSE NULL END AS assignee_id,
             (t.due_at<NOW() AND t.status!='closed') AS overdue
             FROM control_tasks t JOIN control_checks c ON c.id=t.check_id
             WHERE ($1::text[] IS NULL OR c.restaurant_key=ANY($1))
@@ -514,7 +514,7 @@ async def task_history(request):
         return web.json_response({"error":"invalid_request"},status=400,headers=NO_STORE)
     scope=await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
-        rows=await conn.fetch("""SELECT CASE WHEN $5::boolean OR NOT EXISTS (SELECT 1 FROM users g WHERE g.user_id=h.actor_id AND lower(btrim(COALESCE(g.position, '')))='тайный гость') THEN h.actor_id ELSE NULL END AS actor_id,h.action,
+        rows=await conn.fetch("""SELECT CASE WHEN $5::boolean OR NOT EXISTS (SELECT 1 FROM control_guest_identity_history g WHERE g.user_id=h.actor_id) THEN h.actor_id ELSE NULL END AS actor_id,h.action,
             CASE WHEN $5::boolean THEN h.details ELSE h.details::jsonb - 'assignee_id' - 'previous_assignee_id' END AS details,h.created_at FROM control_task_history h
             JOIN control_tasks t ON t.id=h.task_id JOIN control_checks c ON c.id=t.check_id
             WHERE t.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))
@@ -959,7 +959,7 @@ async def list_check_photos(request):
         return web.json_response({"error":"invalid_id"},status=400,headers=NO_STORE)
     scope=await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
-        rows=await conn.fetch("""SELECT p.id,p.question_key,CASE WHEN $3::boolean OR (c.guest_id IS NULL AND NOT EXISTS (SELECT 1 FROM users u WHERE u.user_id=p.uploaded_by AND lower(btrim(COALESCE(u.position, ''))) = 'тайный гость')) THEN p.uploaded_by ELSE NULL END AS uploaded_by,p.created_at FROM control_check_photos p
+        rows=await conn.fetch("""SELECT p.id,p.question_key,CASE WHEN $3::boolean OR (c.guest_id IS NULL AND NOT EXISTS (SELECT 1 FROM control_guest_identity_history u WHERE u.user_id=p.uploaded_by)) THEN p.uploaded_by ELSE NULL END AS uploaded_by,p.created_at FROM control_check_photos p
             JOIN control_checks c ON c.id=p.check_id WHERE c.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))""",cid,scope,_is_hr_or_super(user))
     return web.json_response({"photos":[journal_json(r) for r in rows]},headers=NO_STORE)
 
@@ -994,8 +994,8 @@ async def task_photos(request):
             WHERE t.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2)) AND ($3::boolean OR t.assignee_id=$4)""",tid,scope,task_manager(user),user["user_id"])
         if not task:
             return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
-        before=await conn.fetchrow("SELECT p.id,CASE WHEN $3::boolean OR (c.guest_id IS NULL AND NOT EXISTS (SELECT 1 FROM users u WHERE u.user_id=p.uploaded_by AND lower(btrim(COALESCE(u.position, ''))) = 'тайный гость')) THEN p.uploaded_by ELSE NULL END AS uploaded_by,p.created_at FROM control_check_photos p JOIN control_checks c ON c.id=p.check_id WHERE p.check_id=$1 AND p.question_key=$2",task["check_id"],task["question_key"],_is_hr_or_super(user))
-        after=await conn.fetch("SELECT p.id,CASE WHEN $2::boolean OR NOT EXISTS (SELECT 1 FROM users u WHERE u.user_id=p.uploaded_by AND lower(btrim(COALESCE(u.position, ''))) = 'тайный гость') THEN p.uploaded_by ELSE NULL END AS uploaded_by,p.created_at FROM control_task_photos p WHERE p.task_id=$1 ORDER BY p.id DESC LIMIT 100",tid,_is_hr_or_super(user))
+        before=await conn.fetchrow("SELECT p.id,CASE WHEN $3::boolean OR (c.guest_id IS NULL AND NOT EXISTS (SELECT 1 FROM control_guest_identity_history u WHERE u.user_id=p.uploaded_by)) THEN p.uploaded_by ELSE NULL END AS uploaded_by,p.created_at FROM control_check_photos p JOIN control_checks c ON c.id=p.check_id WHERE p.check_id=$1 AND p.question_key=$2",task["check_id"],task["question_key"],_is_hr_or_super(user))
+        after=await conn.fetch("SELECT p.id,CASE WHEN $2::boolean OR NOT EXISTS (SELECT 1 FROM control_guest_identity_history u WHERE u.user_id=p.uploaded_by) THEN p.uploaded_by ELSE NULL END AS uploaded_by,p.created_at FROM control_task_photos p WHERE p.task_id=$1 ORDER BY p.id DESC LIMIT 100",tid,_is_hr_or_super(user))
     return web.json_response({"before":journal_json(before) if before else None,"after":[journal_json(p) for p in after]},headers=NO_STORE)
 
 @routes.get("/api/control/task-photos/{id:\\d+}")

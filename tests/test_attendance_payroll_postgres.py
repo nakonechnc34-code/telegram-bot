@@ -321,7 +321,6 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
                     login text, is_admin boolean, is_super_admin boolean);
                 CREATE TABLE restaurants (key text PRIMARY KEY, name text, territory_manager_id bigint);
                 CREATE TABLE position_rates (position_name text, rate numeric);
-                 CREATE TABLE timesheet_individual_rates (user_id bigint PRIMARY KEY, hourly_rate numeric);
                 CREATE TABLE timesheet_records (user_id bigint, work_date date, restaurant_key text, hours numeric);
                 CREATE TABLE attendance_import_days (user_id bigint, work_date date, restaurant_key text,
                     status text, worked_minutes integer);
@@ -333,7 +332,7 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
                 INSERT INTO attendance_import_days VALUES (1,'2026-11-01','a','work',493);""")
             root = Path(__file__).resolve().parents[1] / "database"
             for filename in ("008_timesheet_approval.sql", "009_timesheet_approval_locks.sql",
-                             "010_timesheet_accrual_snapshots.sql"):
+                             "010_timesheet_accrual_snapshots.sql", "012_timesheet_individual_rates.sql"):
                 cur.execute((root / filename).read_text(encoding="utf-8"))
         monkeypatch.setattr(timesheet, "get_conn", lambda: nullcontext(conn))
         tu = {"user_id":10,"position":"Территориальный управляющий","is_admin":True}
@@ -353,8 +352,22 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
         assert report(10)[0]["total_salary"] == Decimal("2970.00")
         assert report(20) == []
         assert report(1,True)[0]["total_salary"] == Decimal("2970.00")
+        assert timesheet._sync_set_individual_rate(10,1,Decimal("600")) == 403
+        assert timesheet._sync_create_rate_request(20,1,Decimal("600"),"Outside territory") == 404
+        assert timesheet._sync_create_rate_request(10,1,Decimal("600"),"Promotion") == 201
+        assert timesheet._sync_create_rate_request(10,1,Decimal("650"),"Duplicate") == 409
         with conn.cursor() as cur:
-            cur.execute("UPDATE users SET rate=600 WHERE user_id=1")
+            cur.execute("SELECT id FROM timesheet_rate_requests WHERE user_id=1")
+            request_id=cur.fetchone()[0]
+        assert timesheet._sync_decide_rate_request(10,request_id,"approved","") == 403
+        assert timesheet._sync_decide_rate_request(30,request_id,"approved","Approved") == 200
+        assert timesheet._sync_decide_rate_request(30,request_id,"approved","Again") == 409
+        with conn.cursor() as cur:
+            cur.execute("SELECT hourly_rate FROM timesheet_individual_rates WHERE user_id=1")
+            assert cur.fetchone()[0] == Decimal("600")
+            cur.execute("SELECT new_rate,actor_id,request_id FROM timesheet_rate_history")
+            assert cur.fetchall() == [(Decimal("600"),30,request_id)]
+            cur.execute("UPDATE users SET rate=999 WHERE user_id=1")
             cur.execute("UPDATE timesheet_rounding_settings SET step_minutes=60")
         assert report()[0]["rate"] == Decimal(360)
         assert report()[0]["total_salary"] == Decimal("2970.00")

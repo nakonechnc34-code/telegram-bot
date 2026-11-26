@@ -369,6 +369,11 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
         assert report(10)[0]["total_salary"] == Decimal("2970.00")
         assert report(20) == []
         assert report(1,True)[0]["total_salary"] == Decimal("2970.00")
+        assert {row["user_id"] for row in timesheet._sync_rate_employees(10)["employees"]} == {1}
+        assert timesheet._sync_rate_employees(20)["employees"] == []
+        assert timesheet._sync_rate_employees(1) is None
+        assert timesheet._sync_rate_records(1,"history") is None
+        assert timesheet._sync_rate_employees(30)["can_manage"] is True
         assert timesheet._sync_set_individual_rate(10,1,Decimal("600")) == 403
         assert timesheet._sync_create_rate_request(20,1,Decimal("600"),"Outside territory") == 404
         assert timesheet._sync_create_rate_request(10,1,Decimal("600"),"Promotion") == 201
@@ -376,9 +381,14 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
         with conn.cursor() as cur:
             cur.execute("SELECT id FROM timesheet_rate_requests WHERE user_id=1")
             request_id=cur.fetchone()[0]
+        assert {row["id"] for row in timesheet._sync_rate_records(10,"requests")} == {request_id}
+        assert timesheet._sync_rate_records(20,"requests") == []
         assert timesheet._sync_decide_rate_request(10,request_id,"approved","") == 403
         assert timesheet._sync_decide_rate_request(30,request_id,"approved","Approved") == 200
         assert timesheet._sync_decide_rate_request(30,request_id,"approved","Again") == 409
+        assert {row["user_id"] for row in timesheet._sync_rate_records(10,"history")} == {1}
+        assert timesheet._sync_rate_records(20,"history") == []
+        assert {row["user_id"] for row in timesheet._sync_rate_records(30,"history")} == {1}
         with conn.cursor() as cur:
             cur.execute("SELECT hourly_rate FROM timesheet_individual_rates WHERE user_id=1")
             assert cur.fetchone()[0] == Decimal("600")

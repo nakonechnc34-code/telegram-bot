@@ -535,7 +535,11 @@ async def handle_admin_audit(request):
                         SELECT 1 FROM users u
                         WHERE lower(btrim(COALESCE(u.position, ''))) = 'тайный гость'
                           AND (u.user_id = a.admin_id OR
-                               (a.target_type = 'user' AND u.user_id::text = a.target_id::text))
+                               (a.target_type = 'user' AND u.user_id::text = a.target_id::text)
+                               OR (NULLIF(btrim(u.full_name), '') IS NOT NULL AND
+                                   strpos(lower(COALESCE(a.details::text, '')), lower(btrim(u.full_name))) > 0)
+                               OR (NULLIF(btrim(u.login), '') IS NOT NULL AND
+                                   strpos(lower(COALESCE(a.details::text, '')), lower(btrim(u.login))) > 0))
                     )
                     ORDER BY a.created_at DESC LIMIT 300
                 """, (_is_hr_or_super(admin),))

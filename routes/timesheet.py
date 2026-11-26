@@ -1603,3 +1603,55 @@ async def handle_approval_status(request):
     if result is None:
         return denied(403)
     return web.json_response(result,headers={"Cache-Control":"no-store"})
+
+
+# Individual hourly rates: only HR may write.
+def _can_set_individual_rate(user):
+    return bool(user and not user.get("is_fired") and user.get("is_admin")
+                and (user.get("position") or "").strip().upper() == "HR")
+
+
+def _sync_set_individual_rate(actor, target, rate):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id=%s FOR UPDATE", (actor,))
+            if not _can_set_individual_rate(cur.fetchone()):
+                return 403
+            cur.execute("SELECT user_id FROM users WHERE user_id=%s AND NOT COALESCE(is_fired,FALSE) FOR UPDATE", (target,))
+            if not cur.fetchone():
+                return 404
+            cur.execute("SELECT hourly_rate FROM timesheet_individual_rates WHERE user_id=%s FOR UPDATE", (target,))
+            old = cur.fetchone()
+            previous = old["hourly_rate"] if old else None
+            if previous == rate:
+                return 200
+            cur.execute("""INSERT INTO timesheet_individual_rates(user_id,hourly_rate,updated_by)
+                VALUES (%s,%s,%s) ON CONFLICT(user_id) DO UPDATE SET
+                hourly_rate=EXCLUDED.hourly_rate, updated_by=EXCLUDED.updated_by,
+                revision=timesheet_individual_rates.revision+1, updated_at=NOW()""", (target,rate,actor))
+            cur.execute("""INSERT INTO timesheet_rate_history(user_id,previous_rate,new_rate,actor_id)
+                VALUES (%s,%s,%s,%s)""", (target,previous,rate,actor))
+            return 200
+
+
+@routes.post('/api/timesheet/individual-rate')
+async def handle_individual_rate(request):
+    from decimal import Decimal, InvalidOperation
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    if not _can_set_individual_rate(user):
+        return denied(403)
+    try:
+        data = await request.json()
+        target = data["user_id"]
+        raw = data["hourly_rate"]
+        if type(target) is not int or not 0 < target < 2**63 or type(raw) not in (str,int,float):
+            raise ValueError()
+        rate = Decimal(str(raw))
+        if not rate.is_finite() or not 0 <= rate <= Decimal("9999999999.99") or rate != rate.quantize(Decimal("0.01")):
+            raise ValueError()
+    except (ValueError, TypeError, KeyError, InvalidOperation):
+        return web.json_response({"error":"Некорректная ставка"}, status=400)
+    status = await _run(_sync_set_individual_rate, user["user_id"], target, rate)
+    return web.json_response({"ok":status == 200}, status=status, headers={"Cache-Control":"no-store"})

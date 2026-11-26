@@ -185,4 +185,17 @@ def test_preview_ambiguous_numeric_aliases_rejected():
     assert not result["ok"]
     assert not result["records"]
     assert "021" in result["errors"][0]
-    assert "2026-11-16" in result["errors"][0]
+    assert "неоднозначен" in result["errors"][0]
+
+
+def test_matching_errors_are_grouped_by_employee_and_restaurant():
+    result = preview([("2026-11-16", "9181", "10:03-21:59", "A"),
+                      ("2026-11-17", "9181", "9:59-21:59", "A")])
+    assert not result["ok"]
+    assert result["error_count"] == 1
+    assert "не найден" in result["errors"][0]
+
+
+def test_restaurant_name_normalization():
+    from routes.timesheet import _attendance_restaurant_name
+    assert _attendance_restaurant_name("  Белая   дача ") == _attendance_restaurant_name("БЕЛАЯ ДАЧА")

@@ -332,6 +332,7 @@ dateInput.value = [today.getFullYear(), String(today.getMonth() + 1).padStart(2,
     String(today.getDate()).padStart(2, '0')].join('-');
 for (const [key, label] of Object.entries(labels)) editForm.elements.status.add(new Option(label, key));
 function clearSession(){
+    resetRates();
     resetRounding();
     historyVersion++;
     byId('attendance-history-rows').replaceChildren();
@@ -456,7 +457,7 @@ function openReports(){
     }
 }
 
-const pageNames = ['Главная','Табель','Начисления','Отчёты','Согласование','Настройки','Панель загрузки'];
+const pageNames = ['Главная','Табель','Начисления','Отчёты','Согласование','Настройки','Панель загрузки','Ставки сотрудников'];
 
 const approvalLabels = {draft:'Черновик',pending:'На согласовании',approved:'Утверждён',returned:'Возвращён на доработку'};
 let approvalVersion = 0;
@@ -558,11 +559,91 @@ byId('rounding-form').addEventListener('submit',async e=>{
         if(roundingVersion===version+1)byId('rounding-status').textContent=error.message;
     }
 });
+let ratesVersion=0, ratesData=null;
+function resetRates(){
+    ratesVersion++;ratesData=null;
+    for(const id of ['rates-rows','rate-request-rows','rate-history-rows'])byId(id).replaceChildren();
+    byId('rates-status').textContent='';
+    byId('rates-search').value='';
+    byId('rates-restaurant').replaceChildren(new Option('Все рестораны',''));
+}
+function rateButton(cell,label,action){
+    const b=document.createElement('button');b.type='button';b.textContent=label;
+    b.addEventListener('click',async()=>{
+        const version=ratesVersion;b.disabled=true;
+        try{await action();if(version===ratesVersion&&token)await loadRates();}
+        catch(e){if(version===ratesVersion)byId('rates-status').textContent=e.message;}
+        finally{b.disabled=false;}
+    });cell.append(b);
+}
+function renderRateEmployees(){
+    const rows=byId('rates-rows');rows.replaceChildren();
+    if(!ratesData)return;
+    const search=byId('rates-search').value.trim().toLowerCase(), restaurant=byId('rates-restaurant').value;
+    for(const e of ratesData.employees){
+        if(restaurant&&e.restaurant_key!==restaurant)continue;
+        if(search&&!String(e.full_name).toLowerCase().includes(search))continue;
+        const row=rows.insertRow();
+        for(const value of [e.full_name+(e.payment_type==='fixed'?' · Оклад':''),e.restaurant_name,e.rate])row.insertCell().textContent=value??'—';
+        const actions=row.insertCell();
+        if(ratesData.can_manage)rateButton(actions,'Изменить',async()=>{
+            const rate=prompt('Новая почасовая ставка, ₽',e.rate);
+            if(rate===null)return;
+            await api('/api/timesheet/individual-rate',{body:JSON.stringify({user_id:e.user_id,hourly_rate:rate.trim().replace(',','.')})});
+        });
+        if(ratesData.can_request)rateButton(actions,'Запросить',async()=>{
+            const rate=prompt('Предлагаемая почасовая ставка, ₽',e.rate);
+            if(rate===null)return;
+            const reason=prompt('Причина изменения ставки');
+            if(reason===null)return;
+            await api('/api/timesheet/rate-requests',{body:JSON.stringify({user_id:e.user_id,proposed_rate:rate.trim().replace(',','.'),reason})});
+        });
+    }
+}
+async function loadRates(){
+    const version=++ratesVersion;ratesData=null;
+    for(const id of ['rates-rows','rate-request-rows','rate-history-rows'])byId(id).replaceChildren();
+    byId('rates-status').textContent='Загрузка…';
+    try{
+        const [data,requests,history]=await Promise.all([
+            api('/api/timesheet/rate-employees',{method:'GET'}),
+            api('/api/timesheet/rate-requests',{method:'GET'}),
+            api('/api/timesheet/rate-history',{method:'GET'})]);
+        if(version!==ratesVersion||!token)return;
+        ratesData=data;
+        const select=byId('rates-restaurant'),previous=select.value;
+        select.replaceChildren(new Option('Все рестораны',''));
+        for(const [key,name] of restaurantNames)if(key)select.add(new Option(name,key));
+        select.value=previous;renderRateEmployees();
+        for(const q of requests.requests){
+            const row=byId('rate-request-rows').insertRow();
+            for(const value of [q.full_name,q.proposed_rate,q.reason,({pending:'На рассмотрении',approved:'Согласовано',rejected:'Отклонено'})[q.status]||q.status])row.insertCell().textContent=value??'—';
+            const actions=row.insertCell();
+            if(data.can_manage&&q.status==='pending')for(const [decision,label] of [['approved','Согласовать'],['rejected','Отклонить']]){
+                rateButton(actions,label,async()=>{
+                    const comment=prompt(decision==='rejected'?'Причина отклонения':'Комментарий (необязательно)');
+                    if(comment===null)return;
+                    await api('/api/timesheet/rate-requests/'+encodeURIComponent(q.id)+'/decision',{body:JSON.stringify({decision,comment})});
+                });
+            }
+        }
+        for(const h of history.history){
+            const row=byId('rate-history-rows').insertRow();
+            for(const value of [h.full_name,h.previous_rate,h.new_rate,h.created_at,h.actor_id])row.insertCell().textContent=value??'—';
+        }
+        byId('rates-status').textContent='';
+    }catch(e){if(version===ratesVersion)byId('rates-status').textContent=e.message;}
+}
+byId('rates-search').addEventListener('input',renderRateEmployees);
+byId('rates-restaurant').addEventListener('change',renderRateEmployees);
+byId('rates-refresh').addEventListener('click',loadRates);
 function showPage(index) {
     byId('page-title').textContent = pageNames[index];
     byId('home-panel').hidden = index !== 0;
     byId('timesheet-panel').hidden = index !== 1;
     byId('future-panel').hidden = index !== 5;
+    byId('rates-panel').hidden = index !== 7;
+    if(index===7&&token)loadRates();else resetRates();
     if(index===5 && token)loadRounding();else resetRounding();
     byId('approval-panel').hidden = index !== 4;
     if(index === 4 && token) openApproval();

@@ -242,6 +242,8 @@ def test_http_manual_mapping():
         async def run(fn, *args):
             if fn.__name__ == "_parse_excel_rows":
                 return rows
+            if fn.__name__ == "_load_saved_attendance_mapping":
+                return []
             assert args[1][0][1] == "021"
             return {"ok": True}
         async with TestClient(TestServer(app)) as client:
@@ -265,3 +267,17 @@ def test_http_manual_mapping():
                         assert response.status == expected
                         await response.read()
     asyncio.run(scenario())
+
+
+def test_saved_mapping_is_single_pass_and_manual_override():
+    from routes.timesheet import _merge_saved_attendance_mapping
+    rows = [("2026-11-16", "9181", "09:00-12:00", "A")]
+    saved = [
+        {"kind": "employees", "source": "9181", "target": "021"},
+        {"kind": "employees", "source": "021", "target": "999"},
+        {"kind": "restaurants", "source": "A", "target": "B"},
+    ]
+    assert _merge_saved_attendance_mapping(rows, saved, None) == [
+        ("2026-11-16", "021", "09:00-12:00", "B")]
+    assert _merge_saved_attendance_mapping(rows, saved, {"employees": {"9181": "42"}}) == [
+        ("2026-11-16", "42", "09:00-12:00", "B")]

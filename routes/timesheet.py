@@ -700,6 +700,8 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
     statuses = {}
     errors = []
     matching_errors = set()
+    unresolved_employees = set()
+    unresolved_restaurants = set()
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT user_id, personnel_number, restaurant_key FROM users WHERE personnel_number IS NOT NULL AND COALESCE(is_fired, FALSE) = FALSE")
@@ -715,6 +717,7 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
         number = _normalize_attendance_number(number)
         candidates = users.get(number, [])
         if len(candidates) != 1:
+            unresolved_employees.add(str(original_number))
             reason = "не найден" if not candidates else "неоднозначен"
             matching_errors.add(f"Табельный номер {original_number}: {reason} ({name or '-'})")
             continue
@@ -726,6 +729,8 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
         matches = [r["key"] for r in restaurants if _attendance_restaurant_name(r["name"]) == _attendance_restaurant_name(name)] if name else []
         key = matches[0] if len(matches) == 1 else (default_rest_key or employee["restaurant_key"]) if not name else None
         if key not in known or not _restaurant_in_scope(user, key, territory):
+            if name:
+                unresolved_restaurants.add(name)
             matching_errors.add(f"Неизвестный или недоступный ресторан: {name or '-'}")
             continue
         if raw in ("В", "Б", "Н"):
@@ -769,7 +774,8 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
                     errors.append("Пересечение смен в разных ресторанах или рабочих датах")
                     break
     errors.extend(sorted(matching_errors))
-    return {"ok": not errors, "preview": True, "records": records,
+    matching = {"employees": sorted(unresolved_employees), "restaurants": sorted(unresolved_restaurants)} if _is_hr_or_super(user) else None
+    return {"matching": matching, "ok": not errors, "preview": True, "records": records,
             "total_minutes": sum(r["minutes"] for r in records) if not errors else None,
             "error_count": len(errors), "errors": errors[:50]}
 
@@ -945,6 +951,8 @@ async def handle_import_attendance(request):
         if part is None:
             break
         if part.name == 'file':
+            if file_data is not None:
+                return web.json_response({"error": "Допускается один файл"}, status=400)
             file_data = bytearray()
             while chunk := await part.read_chunk():
                 file_data.extend(chunk)
@@ -954,7 +962,11 @@ async def handle_import_attendance(request):
             if not _is_hr_or_super(user):
                 return denied(403)
             try:
-                raw_mapping = await part.read(decode=False)
+                raw_mapping = bytearray()
+                while chunk := await part.read_chunk():
+                    raw_mapping.extend(chunk)
+                    if len(raw_mapping) > 100000:
+                        break
                 if len(raw_mapping) > 100000:
                     return web.json_response({"error": "Слишком много соответствий"}, status=400)
                 mapping = json.loads(raw_mapping)

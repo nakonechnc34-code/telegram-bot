@@ -458,6 +458,9 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
                 HAVING s.worked_minutes <> COALESCE(SUM(d.worked_minutes),0)
                     OR s.total_salary <> COALESCE(SUM(d.total_salary),0)""")
             assert cur.fetchall() == []
+        # Persist only in the disposable CI database for the subsequent dump/restore step.
+        if os.getenv("ATTENDANCE_BACKUP_FIXTURE") == "1":
+            conn.commit()
     finally:
         conn.rollback()
         conn.close()

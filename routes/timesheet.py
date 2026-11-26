@@ -1028,8 +1028,7 @@ def _sync_reports(user_id, date_from, date_to, only_me=False):
                        COALESCE(tr.name, r.name) AS restaurant_name,
                        COALESCE(SUM(t.hours), 0) as total_hours,
                        COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, u.payment_type,
-                       CASE WHEN u.payment_type = 'fixed' THEN 0
-                            ELSE (COALESCE(SUM(t.hours), 0) * COALESCE(NULLIF(u.rate, 0), pr.rate, 0)) END as total_salary
+                       (COALESCE(SUM(t.hours), 0) * COALESCE(NULLIF(u.rate, 0), pr.rate, 0)) as total_salary
                 FROM users u 
                 LEFT JOIN period_attendance t ON u.user_id = t.user_id
                 LEFT JOIN salary_restaurant sr ON sr.user_id = u.user_id
@@ -1508,7 +1507,7 @@ def _snapshot_approved_accruals(cur, key, month, revision):
         INSERT INTO timesheet_accrual_snapshots
             (restaurant_key,month_start,revision,user_id,full_name,position,restaurant_name,payment_type,rate,worked_minutes,total_salary)
         SELECT c.restaurant_key,%s,%s,c.user_id,c.full_name,c.position,r.name,c.payment_type,c.rate,c.minutes,
-               ROUND(CASE WHEN c.payment_type='fixed' THEN 0 ELSE c.minutes::numeric*c.rate/60 END,2)
+               ROUND(c.minutes::numeric*c.rate/60,2)
         FROM candidates c JOIN restaurants r ON r.key=c.restaurant_key
         WHERE c.restaurant_key=%s""", (month,month,month,revision,key))
 

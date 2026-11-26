@@ -311,6 +311,8 @@ def _sync_timesheet_matrix(user_id, date_from, date_to, include_imports=False):
                         "h": r["worked_minutes"] / 60, "minutes": r["worked_minutes"],
                         "s": r["status"], "rk": r["restaurant_key"], "imported": True}
             if include_imports:
+                cur.execute("SELECT step_minutes FROM timesheet_rounding_settings WHERE singleton = TRUE")
+                step_minutes = cur.fetchone()["step_minutes"]
                 cur.execute("""SELECT user_id, work_date, restaurant_key, worked_minutes
                     FROM attendance_import_days
                     WHERE user_id = ANY(%s) AND work_date BETWEEN %s::date AND %s::date
@@ -322,7 +324,7 @@ def _sync_timesheet_matrix(user_id, date_from, date_to, include_imports=False):
                 for eid in emp_ids:
                     for day, cells in imported[eid].items():
                         raw = {key: cell["minutes"] for key, cell in cells.items()}
-                        rounded = allocate_daily_minutes(all_daily[(eid, day)])
+                        rounded = allocate_daily_minutes(all_daily[(eid, day)], step_minutes)
                         for key, cell in cells.items():
                             cell["raw_minutes"] = raw[key]
                             cell["minutes"] = rounded[key]
@@ -332,7 +334,7 @@ def _sync_timesheet_matrix(user_id, date_from, date_to, include_imports=False):
                             raw = int(round(cell["h"] * 60))
                             if 0 <= raw <= 1440:
                                 cell["raw_minutes"] = raw
-                                cell["minutes"] = round_daily_minutes(raw)
+                                cell["minutes"] = round_daily_minutes(raw, step_minutes)
                                 cell["h"] = cell["minutes"] / 60
             for e in employees:
                 e["imported_by_date"] = imported[e["user_id"]]

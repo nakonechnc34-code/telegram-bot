@@ -152,7 +152,41 @@ jobs:
             OR EXISTS (SELECT 1 FROM control_notifications WHERE restaurant_key='ci-b' OR recipient_id<>900001)
             THEN RAISE EXCEPTION 'Notification generation or scope failed'; END IF;
           END $verify$;
-          ROLLBACK;
           """
-          subprocess.run(['psql','-h','localhost','-U','ci','-d','control_ci','-v','ON_ERROR_STOP=1'],input=fixture+'PREPARE refresh_events(bigint,text[],boolean) AS '+sql+"; EXECUTE refresh_events(900001,ARRAY['ci-a'],FALSE); EXECUTE refresh_events(900001,ARRAY['ci-a'],FALSE); "+assertions,text=True,check=True)
+          def query(name, prefix):
+              node = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == name)
+              return next(n.value for n in ast.walk(node) if isinstance(n, ast.Constant) and isinstance(n.value, str) and n.value.startswith(prefix))
+          history = query('notifications', 'SELECT n.id')
+          unread = query('notifications', 'SELECT count(*)')
+          mark = query('read_notifications', 'WITH updated')
+          permissions = """
+          UPDATE control_tasks SET assignee_id=900002 WHERE id=900001;
+          EXECUTE refresh_events(900001,ARRAY['ci-a'],FALSE);
+          EXECUTE refresh_events(900002,ARRAY['ci-a'],FALSE);
+          CREATE TEMP TABLE observed(label text, total bigint);
+          """
+          # Execute the production statements, asserting their actual results through psql output.
+          checks = [
+              ("EXECUTE visible_count(900001,ARRAY['ci-a'],FALSE)", "3"),
+              ("EXECUTE visible_count(900001,ARRAY['ci-a'],TRUE)", "6"),
+              ("EXECUTE visible_count(900001,ARRAY[]::text[],TRUE)", "0"),
+              ("EXECUTE visible_count(900002,ARRAY['ci-a'],FALSE)", "6"),
+              ("EXECUTE mark_visible(900001,ARRAY['ci-a'],NULL,FALSE)", "3"),
+              ("EXECUTE visible_count(900001,ARRAY['ci-a'],TRUE)", "3"),
+          ]
+          prepared = 'PREPARE visible_history(bigint,text[],boolean) AS '+history+'; PREPARE visible_count(bigint,text[],boolean) AS '+unread+'; PREPARE mark_visible(bigint,text[],bigint,boolean) AS '+mark+';'
+          script = fixture+'PREPARE refresh_events(bigint,text[],boolean) AS '+sql+"; EXECUTE refresh_events(900001,ARRAY['ci-a'],FALSE); EXECUTE refresh_events(900001,ARRAY['ci-a'],FALSE); "+assertions+prepared+permissions
+          script += "EXECUTE visible_history(900001,ARRAY['ci-a'],FALSE);"
+          for statement, expected in checks:
+              script += "\n\\echo ASSERT_"+expected+"\n"+statement+";\n"
+          script += "ROLLBACK;"
+          result = subprocess.run(['psql','-X','-qAt','-h','localhost','-U','ci','-d','control_ci','-v','ON_ERROR_STOP=1'],input=script,text=True,check=True,capture_output=True)
+          lines = result.stdout.splitlines()
+          actual = [(line.removeprefix('ASSERT_'),lines[i+1]) for i,line in enumerate(lines) if line.startswith('ASSERT_')]
+          assert len(actual)==len(checks) and all(a==b for a,b in actual), actual
+          history_rows = [line for line in lines[:lines.index('ASSERT_3')] if '|' in line]
+          assert len(history_rows)==3 and all('|task_' not in line for line in history_rows), history_rows
+          print('Notification permission revocation and reassignment verified')
+          # Original fixture execution is superseded by the assertions above.
+          # 
           PY

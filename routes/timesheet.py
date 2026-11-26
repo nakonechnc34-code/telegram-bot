@@ -1126,7 +1126,10 @@ async def handle_timesheet_reports(request):
 
     # ИСПРАВЛЕНО: Передаем True в only_me, чтобы каждый видел только свою зарплату в личном кабинете
     report = await _run(_sync_approved_reports, user["user_id"], date_from, date_to, True)
-    return web.json_response({"report": report})
+    legacy = await _run(_sync_legacy_partial_months, user["user_id"], date_from, date_to, True)
+    return web.json_response({"report": [{**row, "total_hours": float(row["total_hours"]),
+        "rate": float(row["rate"]), "total_salary": float(row["total_salary"])} for row in report],
+        "legacy_partial_months": legacy}, headers={"Cache-Control":"no-store"})
 
 
 @routes.post('/api/timesheet/accruals')
@@ -1143,7 +1146,8 @@ async def handle_timesheet_accruals(request):
     except (ValueError, TypeError, OverflowError):
         return web.json_response({"error": "invalid_dates"}, status=400)
     report = await _run(_sync_approved_reports, user["user_id"], date_from, date_to, False)
-    return web.json_response({"report": [
+    legacy = await _run(_sync_legacy_partial_months, user["user_id"], date_from, date_to, False)
+    return web.json_response({"legacy_partial_months": legacy, "report": [
         {**row, "total_hours": float(row["total_hours"]),
          "rate": float(row["rate"]), "total_salary": float(row["total_salary"])}
         for row in report
@@ -1173,9 +1177,17 @@ async def handle_timesheet_export_excel(request):
     only_me = request.query.get("only_me") == "true"
     report = await _run(_sync_approved_reports, user["user_id"], date_from, date_to, only_me)
 
+    legacy = await _run(_sync_legacy_partial_months, user["user_id"], date_from, date_to, only_me)
     wb = Workbook()
     ws = wb.active
     ws.title = "Табель"
+    if legacy:
+        notice = wb.create_sheet("Предупреждение")
+        notice.append(["Отчёт неполный: отсутствует ежедневная детализация исторических табелей."])
+        notice.append(["Выберите полный календарный месяц для просмотра исторических начислений."])
+        for month in legacy:
+            notice.append([month])
+        notice.column_dimensions["A"].width = 100
 
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color="1C1C1E", end_color="1C1C1E", fill_type="solid")

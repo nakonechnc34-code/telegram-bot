@@ -5,8 +5,13 @@ ALTER TABLE standards ADD COLUMN IF NOT EXISTS restaurant_key TEXT;
 -- Legacy production standards table may predate the category column.
 ALTER TABLE standards ADD COLUMN IF NOT EXISTS category TEXT;
 -- Existing group_name values represent the same category in the current API.
-UPDATE standards SET category = group_name
-WHERE category IS NULL AND group_name IS NOT NULL;
+DO $compat$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+        WHERE table_schema=current_schema() AND table_name='standards' AND column_name='group_name') THEN
+        EXECUTE 'UPDATE standards SET category = group_name WHERE category IS NULL AND group_name IS NOT NULL';
+    END IF;
+END $compat$;
 
 ALTER TABLE certification_questions ADD COLUMN IF NOT EXISTS options JSONB;
 ALTER TABLE certification_questions ADD COLUMN IF NOT EXISTS correct_index INTEGER;

@@ -22,7 +22,9 @@ async function api(path, { body, method = 'POST', binary = false } = {}) {
         const error = await response.json().catch(() => ({}));
         if (response.status === 403) throw new Error('Нет доступа к этой операции');
         if (response.status === 401) { clearSession(); throw new Error('Сессия завершилась. Войдите снова'); }
-        throw new Error(error.error || 'Запрос не выполнен');
+        const failure = new Error(error.error || 'Запрос не выполнен');
+        failure.details = error;
+        throw failure;
     }
     return binary ? response.blob() : response.json();
 }
@@ -492,7 +494,20 @@ async function loadApproval(){
                 try{
                     await api('/api/timesheet/approval/transition',{body:JSON.stringify({...payload,action,comment,revision:data.revision})});
                     if(version===approvalVersion){byId('approval-comment').value='';await loadApproval();}
-                }catch(e){if(version===approvalVersion){status.textContent=e.message;for(const b of actions.querySelectorAll('button'))b.disabled=false;}}
+                }catch(e){
+                    if(version!==approvalVersion)return;
+                    for(const b of actions.querySelectorAll('button'))b.disabled=false;
+                    actions.querySelector('[data-missing-rates-link]')?.remove();
+                    if(e.details?.error==='missing_hourly_rates'){
+                        const names=(e.details.employees||[]).map(employee=>employee.full_name).join(', ');
+                        status.textContent='Утверждение невозможно: не назначена почасовая ставка. '+names;
+                        const link=document.createElement('button');
+                        link.type='button';link.dataset.missingRatesLink='true';
+                        link.textContent='Перейти к ставкам сотрудников';
+                        link.addEventListener('click',()=>document.querySelector('nav [data-page="7"]').click());
+                        actions.append(link);
+                    }else status.textContent=e.message;
+                }
             });
             actions.append(button);
         }

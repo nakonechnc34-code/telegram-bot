@@ -678,11 +678,11 @@ def _sync_matching_registry(user, change=None):
                 cur.execute("SELECT pg_advisory_xact_lock(814726, 3)")
                 if target is not None:
                     if kind == "employees":
-                        cur.execute("SELECT personnel_number FROM users WHERE personnel_number IS NOT NULL AND COALESCE(is_fired,FALSE)=FALSE")
-                        matches = [r for r in cur.fetchall() if _normalize_attendance_number(r["personnel_number"]) == _normalize_attendance_number(target)]
+                        cur.execute("SELECT user_id FROM users WHERE user_id::text=%s AND COALESCE(is_fired,FALSE)=FALSE", (target,))
+                        matches = cur.fetchall()
                     else:
-                        cur.execute("SELECT name FROM restaurants")
-                        matches = [r for r in cur.fetchall() if _attendance_restaurant_name(r["name"]) == _attendance_restaurant_name(target)]
+                        cur.execute("SELECT key FROM restaurants WHERE key=%s", (target,))
+                        matches = cur.fetchall()
                     if len(matches) != 1:
                         raise ValueError("Unknown or ambiguous target")
                 cur.execute("SELECT target FROM attendance_matching WHERE kind=%s AND source=%s FOR UPDATE", (kind, source))
@@ -748,8 +748,16 @@ def _merge_saved_attendance_mapping(rows, saved, manual):
 def _load_saved_attendance_mapping():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT kind,source,target FROM attendance_matching")
-            return cur.fetchall()
+            cur.execute("""SELECT m.kind,m.source,
+                CASE WHEN m.kind='employees' THEN u.personnel_number::text ELSE r.name END AS target
+                FROM attendance_matching m
+                LEFT JOIN users u ON m.kind='employees' AND u.user_id::text=m.target
+                    AND COALESCE(u.is_fired,FALSE)=FALSE
+                LEFT JOIN restaurants r ON m.kind='restaurants' AND r.key=m.target""")
+            entries = cur.fetchall()
+            if any(not entry["target"] for entry in entries):
+                raise ValueError("Saved matching target no longer available")
+            return entries
 
 
 def _apply_attendance_mapping(user, rows, mapping):

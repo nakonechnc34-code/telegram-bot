@@ -600,3 +600,54 @@ def test_payroll_transaction_lock_postgres():
         second.rollback()
         first.close()
         second.close()
+
+
+def test_persistent_matching_postgres(monkeypatch):
+    from contextlib import nullcontext
+    from pathlib import Path
+    from routes import timesheet
+    dsn = os.getenv("ATTENDANCE_TEST_DSN")
+    if not dsn:
+        pytest.skip("ATTENDANCE_TEST_DSN not configured")
+    conn = psycopg2.connect(dsn)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("CREATE SCHEMA attendance_matching_test")
+            cur.execute("SET LOCAL search_path TO attendance_matching_test")
+            cur.execute("""CREATE TABLE users (user_id bigint PRIMARY KEY, personnel_number text,
+                restaurant_key text, is_fired boolean);
+                CREATE TABLE restaurants (key text PRIMARY KEY, name text, territory_manager_id bigint);
+                INSERT INTO users VALUES (1,'021','a',false),(2,NULL,'a',false),(3,'042','a',false);
+                INSERT INTO restaurants VALUES ('a','A',2)""")
+            for filename in ("007_attendance_imports.sql", "015_attendance_matching.sql"):
+                sql = (Path(__file__).resolve().parents[1] / "database" / filename).read_text(encoding="utf-8")
+                cur.execute(sql)
+                cur.execute(sql)
+        monkeypatch.setattr(timesheet, "get_conn", lambda: nullcontext(conn))
+        actor = {"user_id": 2, "is_super_admin": True}
+        registry = timesheet._sync_matching_registry
+        registry(actor, ("employees", "external", "1"))
+        registry(actor, ("restaurants", "old restaurant", "a"))
+        registry(actor, ("employees", "external", "3"))
+        registry(actor, ("employees", "external", "1"))
+        registry(actor, ("employees", "external", "1"))
+        assert len(registry(actor)["history"]) == 4
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET personnel_number='099' WHERE user_id=1")
+            cur.execute("UPDATE users SET personnel_number='021' WHERE user_id=3")
+            cur.execute("UPDATE restaurants SET name='Renamed' WHERE key='a'")
+        rows = [("2026-11-16", "external", "09:00-12:00", "old restaurant")]
+        def mapped():
+            return timesheet._merge_saved_attendance_mapping(rows, timesheet._load_saved_attendance_mapping(), None)
+        assert timesheet._sync_stage_attendance(actor, mapped())["ok"]
+        with conn.cursor() as cur:
+            cur.execute("SELECT user_id,restaurant_key,worked_minutes FROM attendance_import_days")
+            assert cur.fetchall() == [(1, "a", 180)]
+            cur.execute("UPDATE users SET is_fired=true WHERE user_id=1")
+        assert not timesheet._sync_preview_attendance(actor, mapped())["ok"]
+        registry(actor, ("employees", "external", None))
+        assert len(registry(actor)["history"]) == 5
+        assert not timesheet._sync_preview_attendance(actor, mapped())["ok"]
+    finally:
+        conn.rollback()
+        conn.close()

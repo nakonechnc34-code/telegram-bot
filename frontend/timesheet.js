@@ -416,7 +416,9 @@ async function loadAccruals() {
         for(const name of [...new Set(accrualRows.map(r=>r.restaurant_name).filter(Boolean))].sort())select.add(new Option(name,name));
         if([...select.options].some(o=>o.value===previous))select.value=previous;
         renderAccruals();
-        byId('accruals-status').textContent=accrualRows.length?'':'Нет данных за период';
+        byId('accruals-status').textContent=result.legacy_partial_months?.length
+            ? 'Внимание: отчёт неполный. Для исторических табелей выберите полный месяц: '+result.legacy_partial_months.join(', ')
+            : (accrualRows.length?'':'Нет данных за период');
     } catch(error) {
         if(version===accrualVersion)byId('accruals-status').textContent=error.message;
     }

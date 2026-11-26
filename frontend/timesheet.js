@@ -561,11 +561,39 @@ byId('rounding-form').addEventListener('submit',async e=>{
 });
 let ratesVersion=0, ratesData=null;
 function resetRates(){
+    for(const dialog of document.querySelectorAll('dialog[data-rate-dialog]'))if(dialog.open)dialog.close();
     ratesVersion++;ratesData=null;
     for(const id of ['rates-rows','rate-request-rows','rate-history-rows'])byId(id).replaceChildren();
     byId('rates-status').textContent='';
     byId('rates-search').value='';
     byId('rates-restaurant').replaceChildren(new Option('Все рестораны',''));
+}
+function rateDialog(title, fields){
+    return new Promise(resolve=>{
+        const dialog=document.createElement('dialog');
+        const form=document.createElement('form');form.method='dialog';
+        const heading=document.createElement('h2');heading.textContent=title;form.append(heading);
+        const inputs={};
+        for(const field of fields){
+            const label=document.createElement('label');label.textContent=field.label;
+            const input=document.createElement(field.multiline?'textarea':'input');
+            input.required=!!field.required;input.value=field.value||'';
+            if(field.multiline)input.maxLength=2000;
+            else{input.type='number';input.min='0';input.max='9999999999.99';input.step='0.01';input.inputMode='decimal';}
+            label.append(input);form.append(label);inputs[field.key]=input;
+        }
+        const actions=document.createElement('div');actions.className='toolbar';
+        const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Отмена';
+        const submit=document.createElement('button');submit.type='submit';submit.textContent='Подтвердить';
+        actions.append(cancel,submit);form.append(actions);dialog.append(form);document.body.append(dialog);
+        let result=null;
+        cancel.addEventListener('click',()=>dialog.close());
+        form.addEventListener('submit',event=>{
+            event.preventDefault();result=Object.fromEntries(Object.entries(inputs).map(([key,input])=>[key,input.value.trim()]));dialog.close();
+        });
+        dialog.addEventListener('close',()=>{dialog.remove();resolve(result);},{once:true});
+        dialog.dataset.rateDialog='true';dialog.showModal();
+    });
 }
 function rateButton(cell,label,action){
     const b=document.createElement('button');b.type='button';b.textContent=label;
@@ -587,15 +615,15 @@ function renderRateEmployees(){
         for(const value of [e.full_name+(e.payment_type==='fixed'?' · Оклад':''),e.restaurant_name,e.rate])row.insertCell().textContent=value??'—';
         const actions=row.insertCell();
         if(ratesData.can_manage)rateButton(actions,'Изменить',async()=>{
-            const rate=prompt('Новая почасовая ставка, ₽',e.rate);
-            if(rate===null)return;
+            const values=await rateDialog('Изменение ставки — '+e.full_name,[{key:'rate',label:'Новая ставка, ₽/ч',value:e.rate,required:true}]);
+            if(!values||!token||byId('rates-panel').hidden)return;
+            const rate=values.rate;
             await api('/api/timesheet/individual-rate',{body:JSON.stringify({user_id:e.user_id,hourly_rate:rate.trim().replace(',','.')})});
         });
         if(ratesData.can_request)rateButton(actions,'Запросить',async()=>{
-            const rate=prompt('Предлагаемая почасовая ставка, ₽',e.rate);
-            if(rate===null)return;
-            const reason=prompt('Причина изменения ставки');
-            if(reason===null)return;
+            const values=await rateDialog('Запрос изменения — '+e.full_name,[{key:'rate',label:'Предлагаемая ставка, ₽/ч',value:e.rate,required:true},{key:'reason',label:'Причина изменения',multiline:true,required:true}]);
+            if(!values||!token||byId('rates-panel').hidden)return;
+            const {rate,reason}=values;
             await api('/api/timesheet/rate-requests',{body:JSON.stringify({user_id:e.user_id,proposed_rate:rate.trim().replace(',','.'),reason})});
         });
     }
@@ -621,8 +649,9 @@ async function loadRates(){
             const actions=row.insertCell();
             if(data.can_manage&&q.status==='pending')for(const [decision,label] of [['approved','Согласовать'],['rejected','Отклонить']]){
                 rateButton(actions,label,async()=>{
-                    const comment=prompt(decision==='rejected'?'Причина отклонения':'Комментарий (необязательно)');
-                    if(comment===null)return;
+                    const values=await rateDialog(label+' — '+q.full_name,[{key:'comment',label:decision==='rejected'?'Причина отклонения':'Комментарий (необязательно)',multiline:true,required:decision==='rejected'}]);
+                    if(!values||!token||byId('rates-panel').hidden)return;
+                    const comment=values.comment;
                     await api('/api/timesheet/rate-requests/'+encodeURIComponent(q.id)+'/decision',{body:JSON.stringify({decision,comment})});
                 });
             }

@@ -975,7 +975,7 @@ _EFFECTIVE_ATTENDANCE_SQL = """
 
 
 def _sync_approved_reports(user_id, date_from, date_to, only_me=False):
-    """Return only current approved monthly snapshots, never draft calculations."""
+    """Return approved monthly totals or immutable daily detail, never draft calculations."""
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT * FROM users WHERE user_id=%s", (user_id,))
@@ -1014,6 +1014,40 @@ def _sync_approved_reports(user_id, date_from, date_to, only_me=False):
                        ORDER BY s.restaurant_name,s.full_name"""
             cur.execute(sql,params)
             return [dict(row) for row in cur.fetchall()]
+
+
+def _sync_legacy_partial_months(user_id, date_from, date_to, only_me=False):
+    """Identify visible approved months whose historical daily detail is unavailable."""
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id=%s", (user_id,))
+            user = cur.fetchone()
+            if not user or user.get("is_fired"):
+                return []
+            sql = """SELECT DISTINCT s.month_start::text AS month_start
+                FROM timesheet_accrual_snapshots s
+                JOIN timesheet_approvals a ON a.restaurant_key=s.restaurant_key
+                    AND a.month_start=s.month_start AND a.revision=s.revision
+                CROSS JOIN (SELECT %s::date AS start_date,%s::date AS end_date) b
+                WHERE a.status='approved' AND s.month_start<=b.end_date
+                    AND s.month_start+INTERVAL '1 month'>b.start_date
+                    AND NOT (s.month_start>=b.start_date AND
+                        s.month_start+INTERVAL '1 month'-INTERVAL '1 day'<=b.end_date)
+                    AND (s.worked_minutes>0 OR s.total_salary>0)
+                    AND NOT EXISTS (SELECT 1 FROM timesheet_accrual_snapshot_days d
+                        WHERE d.restaurant_key=s.restaurant_key AND d.month_start=s.month_start
+                        AND d.revision=s.revision AND d.user_id=s.user_id)"""
+            params = [date_from,date_to]
+            if only_me:
+                sql += " AND s.user_id=%s"
+                params.append(user_id)
+            elif _is_tu(user):
+                sql += " AND s.restaurant_key IN (SELECT key FROM restaurants WHERE territory_manager_id=%s)"
+                params.append(user_id)
+            elif not _is_hr_or_super(user):
+                return []
+            cur.execute(sql+" ORDER BY month_start",params)
+            return [row["month_start"] for row in cur.fetchall()]
 
 
 def _sync_reports(user_id, date_from, date_to, only_me=False):

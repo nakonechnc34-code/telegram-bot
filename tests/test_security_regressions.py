@@ -468,3 +468,37 @@ def test_rounding_settings_read_write_and_conflict(monkeypatch, role):
     assert json.loads(response.body) == changed
     run.assert_awaited_with(timesheet._sync_rounding_settings, user, body)
     assert asyncio.run(timesheet.handle_timesheet_rounding(request(body))).status == 409
+
+
+@pytest.mark.parametrize("role", [
+    {"position":"HR","is_admin":False},
+    {"position":"Территориальный управляющий","is_admin":True},
+    {"position":"Повар"},
+    {"is_super_admin":True,"is_fired":True},
+])
+def test_individual_rate_denies_unauthorized(monkeypatch, role):
+    monkeypatch.setattr(timesheet,"_timesheet_user",AsyncMock(return_value=({"user_id":42,**role},None)))
+    run=AsyncMock()
+    monkeypatch.setattr(timesheet,"_run",run)
+    assert asyncio.run(timesheet.handle_individual_rate(request({"user_id":99,"hourly_rate":"400"}))).status==403
+    run.assert_not_awaited()
+
+
+@pytest.mark.parametrize("raw", [True, -1, "NaN", "Infinity", "400.001", "10000000000", None, []])
+def test_individual_rate_invalid_values(monkeypatch, raw):
+    monkeypatch.setattr(timesheet,"_timesheet_user",AsyncMock(return_value=({"user_id":42,"is_super_admin":True},None)))
+    run=AsyncMock()
+    monkeypatch.setattr(timesheet,"_run",run)
+    assert asyncio.run(timesheet.handle_individual_rate(request({"user_id":99,"hourly_rate":raw}))).status==400
+    run.assert_not_awaited()
+
+
+@pytest.mark.parametrize("role", [{"is_super_admin":True},{"is_admin":True,"position":"HR"}])
+def test_individual_rate_authorized(monkeypatch, role):
+    from decimal import Decimal
+    monkeypatch.setattr(timesheet,"_timesheet_user",AsyncMock(return_value=({"user_id":42,**role},None)))
+    run=AsyncMock(return_value=200)
+    monkeypatch.setattr(timesheet,"_run",run)
+    response=asyncio.run(timesheet.handle_individual_rate(request({"user_id":99,"hourly_rate":"400.25","actor_id":999})))
+    assert response.status==200
+    run.assert_awaited_once_with(timesheet._sync_set_individual_rate,42,99,Decimal("400.25"))

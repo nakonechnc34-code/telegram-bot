@@ -74,3 +74,15 @@ def test_employee_endpoint_requires_authentication():
         response = asyncio.run(timesheet.handle_employee_payment_summary(Request({})))
         assert response.status == 401
         run.assert_not_awaited()
+
+
+def test_mystery_guest_cannot_access_employee_payment_summary():
+    user = {"user_id": 42, "position": " Тайный гость ", "is_admin": True,
+            "permissions": {"timesheet_access": True}}
+    with patch.object(timesheet, "get_auth_user", new_callable=AsyncMock,
+                      return_value=(user, None)), \
+         patch.object(timesheet, "_run", new_callable=AsyncMock) as run:
+        response = asyncio.run(timesheet.handle_employee_payment_summary(
+            Request({"date_from": "2026-11-01", "date_to": "2026-11-30"})))
+        assert response.status == 403
+        run.assert_not_awaited()

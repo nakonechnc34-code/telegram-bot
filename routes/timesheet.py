@@ -671,7 +671,7 @@ def _attendance_restaurant_name(value):
 
 
 def _apply_attendance_mapping(user, rows, mapping):
-    if not mapping:
+    if mapping is None:
         return rows
     if not _is_hr_or_super(user):
         raise PermissionError("Manual matching requires HR or super administrator")
@@ -945,6 +945,7 @@ async def handle_import_attendance(request):
     file_data = None
     default_rest = request.query.get("restaurant_key")
     mapping = None
+    mapping_seen = False
 
     while True:
         part = await reader.next()
@@ -961,6 +962,9 @@ async def handle_import_attendance(request):
         elif part.name == "mapping":
             if not _is_hr_or_super(user):
                 return denied(403)
+            if mapping_seen:
+                return web.json_response({"error": "Допускается один набор соответствий"}, status=400)
+            mapping_seen = True
             try:
                 raw_mapping = bytearray()
                 while chunk := await part.read_chunk():
@@ -970,6 +974,8 @@ async def handle_import_attendance(request):
                 if len(raw_mapping) > 100000:
                     return web.json_response({"error": "Слишком много соответствий"}, status=400)
                 mapping = json.loads(raw_mapping)
+                if not isinstance(mapping, dict):
+                    raise ValueError("Invalid mapping")
             except (ValueError, UnicodeError):
                 return web.json_response({"error": "Некорректные соответствия"}, status=400)
 

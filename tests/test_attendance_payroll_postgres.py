@@ -396,6 +396,24 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
         with conn.cursor() as cur:
             cur.execute("SELECT revision,total_salary FROM timesheet_accrual_snapshots ORDER BY revision")
             assert cur.fetchall() == [(2,Decimal("2970.00")),(5,Decimal("4800.00"))]
+        assert transition(admin,"reopen",5,"Fractional cents") == 200
+        with conn.cursor() as cur:
+            cur.execute("UPDATE timesheet_rounding_settings SET step_minutes=1")
+            cur.execute("DELETE FROM attendance_import_days WHERE user_id=1")
+            cur.execute("INSERT INTO attendance_import_days VALUES (1,'2026-11-01','a','work',1),(1,'2026-11-02','a','work',1),(1,'2026-11-03','a','work',1)")
+        assert timesheet._sync_set_individual_rate(30,1,Decimal("100")) == 200
+        assert transition(tu,"submit",6) == 200
+        assert transition(admin,"approve",7) == 200
+        assert report()[0]["total_salary"] == Decimal("5.00")
+        parts = [timesheet._sync_approved_reports(30,f"2026-11-0{day}",f"2026-11-0{day}")[0]["total_salary"] for day in (1,2,3)]
+        assert parts == [Decimal("1.67"),Decimal("1.66"),Decimal("1.67")]
+        with conn.cursor() as cur:
+            cur.execute("""SELECT s.revision FROM timesheet_accrual_snapshots s
+                LEFT JOIN timesheet_accrual_snapshot_days d USING (restaurant_key,month_start,revision,user_id)
+                GROUP BY s.restaurant_key,s.month_start,s.revision,s.user_id,s.worked_minutes,s.total_salary
+                HAVING s.worked_minutes <> COALESCE(SUM(d.worked_minutes),0)
+                    OR s.total_salary <> COALESCE(SUM(d.total_salary),0)""")
+            assert cur.fetchall() == []
     finally:
         conn.rollback()
         conn.close()

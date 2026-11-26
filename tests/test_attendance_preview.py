@@ -3,11 +3,11 @@ from unittest.mock import MagicMock, patch
 from routes.timesheet import _sync_preview_attendance
 
 
-def preview(rows, allowed=True):
+def preview(rows, allowed=True, employees=None):
     conn = MagicMock()
     cursor = conn.__enter__.return_value.cursor.return_value.__enter__.return_value
     cursor.fetchall.side_effect = [
-        [{"user_id": 1, "personnel_number": "021", "restaurant_key": "a"}],
+        employees if employees is not None else [{"user_id": 1, "personnel_number": "021", "restaurant_key": "a"}],
         [{"key": "a", "name": "A", "territory_manager_id": 1},
          {"key": "b", "name": "B", "territory_manager_id": 2}],
     ]
@@ -28,7 +28,7 @@ def test_preview_multiple_shifts():
     assert result["ok"]
     assert result["total_minutes"] == 300
     assert len(result["records"]) == 2
-    assert result["records"][0]["personnel_number"] == "021"
+    assert result["records"][0]["personnel_number"] == "21"
 
 
 def test_preview_cross_restaurant_overlap():
@@ -169,3 +169,20 @@ def test_excel_to_preview_preserves_minutes_and_personnel_number():
     assert result["ok"]
     assert result["total_minutes"] == 755
     assert sorted(record["minutes"] for record in result["records"]) == [35, 245, 475]
+
+def test_preview_numeric_aliases_merge():
+    result = preview([("2026-11-16", "21", "09:00-12:00", "A"),
+                      ("2026-11-16", "0021", "11:00-13:00", "A")])
+    assert result["ok"]
+    assert result["total_minutes"] == 240
+    assert len(result["records"]) == 1
+
+
+def test_preview_ambiguous_numeric_aliases_rejected():
+    result = preview([("2026-11-16", "021", "09:00-12:00", "A")],
+                     employees=[{"user_id": 1, "personnel_number": "021", "restaurant_key": "a"},
+                                {"user_id": 2, "personnel_number": "21", "restaurant_key": "a"}])
+    assert not result["ok"]
+    assert not result["records"]
+    assert "021" in result["errors"][0]
+    assert "2026-11-16" in result["errors"][0]

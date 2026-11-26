@@ -26,9 +26,10 @@ def test_read_scope(context,body,expected):
     assert response.status==200
     assert json.loads(response.text)=={"updated":1,"unread":2}
     sql,*args=conn.fetchval.call_args_list[0].args
-    assert args==[42,["a"],expected]
+    assert args==[42,["a"],expected,False]
     assert "recipient_id=$1" in sql and "restaurant_key=ANY($2)" in sql
     assert "read_at IS NULL" in sql
+    assert "nt.assignee_id=$1" in sql
     assert response.headers["Cache-Control"]=="no-store"
 
 @pytest.mark.parametrize("body",[{},{"id":123},{"id":"0"},{"id":"9223372036854775808"},{"all":True,"id":"1"},{"all":"true"},{"recipient_id":99,"id":"1"}])
@@ -41,12 +42,12 @@ def test_generation_scope_and_deduplication(context):
     user,conn=context
     asyncio.run(control.refresh_control_notifications(conn,user))
     sql,*args=conn.execute.call_args.args
-    assert args==[42,["a"]]
+    assert args==[42,["a"],False]
     assert "ON CONFLICT (recipient_id,event_kind,source_id) DO NOTHING" in sql
     assert sql.count("restaurant_key=ANY($2)")==3
     for kind in ("check_assigned","check_overdue","task_assigned","task_overdue","task_critical","haccp_deviation"):
         assert "'"+kind+"'" in sql
-    assert "t.assignee_id=$1" in sql
+    assert "($3::boolean OR t.assignee_id=$1)" in sql
     assert "r.deviation" in sql
 
 @pytest.mark.parametrize("handler",[control.notifications,control.read_notifications])

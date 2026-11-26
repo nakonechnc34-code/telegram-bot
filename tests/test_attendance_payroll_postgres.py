@@ -424,3 +424,42 @@ def test_fixed_salary_snapshot_no_duplicate_postgres(monkeypatch):
     finally:
         conn.rollback()
         conn.close()
+
+
+def test_rounding_settings_migration_and_history_postgres(monkeypatch):
+    from contextlib import nullcontext
+    from pathlib import Path
+    from routes import timesheet
+    dsn = os.getenv("ATTENDANCE_TEST_DSN")
+    if not dsn:
+        pytest.skip("ATTENDANCE_TEST_DSN not configured")
+    conn = psycopg2.connect(dsn)
+    try:
+        sql = (Path(__file__).resolve().parents[1] / "database" /
+               "011_timesheet_rounding_settings.sql").read_text(encoding="utf-8")
+        with conn.cursor() as cur:
+            cur.execute("CREATE SCHEMA rounding_history_test")
+            cur.execute("SET LOCAL search_path TO rounding_history_test")
+            cur.execute("CREATE TABLE users (user_id bigint PRIMARY KEY)")
+            cur.execute("INSERT INTO users VALUES (42)")
+            cur.execute(sql)
+            cur.execute(sql)
+        monkeypatch.setattr(timesheet, "get_conn", lambda: nullcontext(conn))
+        actor = {"user_id": 42, "is_super_admin": True}
+        settings = timesheet._sync_rounding_settings
+        assert settings(actor) == {"step_minutes": 5, "revision": 0, "history": []}
+        first = settings(actor, {"step_minutes": 15, "revision": 0})
+        assert first["revision"] == 1
+        assert first["step_minutes"] == 15
+        assert settings(actor, {"step_minutes": 30, "revision": 0}) is None
+        assert settings(actor, {"step_minutes": 15, "revision": 1}) == first
+        second = settings(actor, {"step_minutes": 60, "revision": 1})
+        assert second["revision"] == 2
+        assert [(h["revision"], h["previous_step"], h["new_step"], h["actor_id"])
+                for h in second["history"]] == [(2, 15, 60, 42), (1, 5, 15, 42)]
+        with conn.cursor() as cur:
+            cur.execute(sql)
+        assert settings(actor) == second
+    finally:
+        conn.rollback()
+        conn.close()

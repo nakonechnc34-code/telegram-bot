@@ -43,7 +43,11 @@ def test_generation_scope_and_deduplication(context):
     sql,*args=conn.execute.call_args.args
     assert args==[42,["a"]]
     assert "ON CONFLICT (recipient_id,event_kind,source_id) DO NOTHING" in sql
-    assert sql.count("restaurant_key=ANY($2)")==2
+    assert sql.count("restaurant_key=ANY($2)")==3
+    for kind in ("check_assigned","check_overdue","task_assigned","task_overdue","task_critical","haccp_deviation"):
+        assert "'"+kind+"'" in sql
+    assert "t.assignee_id=$1" in sql
+    assert "r.deviation" in sql
 
 @pytest.mark.parametrize("handler",[control.notifications,control.read_notifications])
 def test_guest_denied(context,handler):

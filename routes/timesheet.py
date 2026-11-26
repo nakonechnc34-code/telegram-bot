@@ -1605,10 +1605,9 @@ async def handle_approval_status(request):
     return web.json_response(result,headers={"Cache-Control":"no-store"})
 
 
-# Individual hourly rates: only HR may write.
+# Individual hourly rates: HR and super administrators may write.
 def _can_set_individual_rate(user):
-    return bool(user and not user.get("is_fired") and user.get("is_admin")
-                and (user.get("position") or "").strip().upper() == "HR")
+    return bool(user and not user.get("is_fired") and _is_hr_or_super(user))
 
 
 def _sync_set_individual_rate(actor, target, rate):

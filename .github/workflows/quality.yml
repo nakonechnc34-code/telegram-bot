@@ -265,3 +265,41 @@ jobs:
           asyncio.run(main())
           print('Live session and restaurant scope verified')
           PY
+
+      - name: Benchmark CONTROL analytics on synthetic network data
+        run: |
+          python - <<'PY'
+          import ast
+          import json
+          import subprocess
+          from pathlib import Path
+          tree = ast.parse(Path('routes/control.py').read_text())
+          fn = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == 'control_analytics')
+          sql = next(n.value for n in ast.walk(fn) if isinstance(n, ast.Constant) and isinstance(n.value,str) and 'WITH bounds AS' in n.value)
+          fixture = """
+          BEGIN;
+          INSERT INTO users(user_id,full_name) VALUES(910001,'CI benchmark');
+          INSERT INTO restaurants(key,name) SELECT 'bench-'||g,'Benchmark '||g FROM generate_series(1,100) g;
+          INSERT INTO control_templates(id,title,created_by) VALUES(910001,'Benchmark',910001);
+          INSERT INTO control_template_versions(id,template_id,version,definition) VALUES(910001,910001,1,'{}');
+          INSERT INTO control_checks(restaurant_key,version_id,assigned_by,due_at,completed_at,score)
+          SELECT 'bench-'||(1+g%100),910001,910001,NOW()-g*INTERVAL '1 minute',CASE WHEN g%5<>0 THEN NOW()-g*INTERVAL '1 minute' END,80
+          FROM generate_series(1,100000) g;
+          INSERT INTO control_tasks(check_id,question_key,description,critical,created_at,due_at)
+          SELECT id,'0:0','Benchmark',id%10=0,due_at,due_at FROM control_checks WHERE version_id=910001 AND id%2=0;
+          ANALYZE control_checks;
+          ANALYZE control_tasks;
+          ANALYZE restaurants;
+          SET LOCAL statement_timeout='15s';
+          """
+          script = fixture+'PREPARE bench(date,date,text[]) AS '+sql+'; EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) EXECUTE bench(CURRENT_DATE-30,CURRENT_DATE+1,NULL); EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) EXECUTE bench(CURRENT_DATE-30,CURRENT_DATE+1,ARRAY[\'bench-1\']); ROLLBACK;'
+          result = subprocess.run(['psql','-X','-qAt','-h','localhost','-U','ci','-d','control_ci','-v','ON_ERROR_STOP=1'],input=script,text=True,check=True,capture_output=True)
+          decoder=json.JSONDecoder()
+          remaining=result.stdout.strip()
+          for scope in ('network','restaurant'):
+              plan,end=decoder.raw_decode(remaining)
+              remaining=remaining[end:].strip()
+              ms=plan[0]['Execution Time']
+              print(f'CONTROL analytics {scope}: {ms:.2f} ms')
+              assert ms<10000, (scope,ms)
+          PY

@@ -658,6 +658,13 @@ def _parse_excel_rows(file_data):
 
 
 
+def _normalize_attendance_number(value):
+    number = str(value).strip()
+    if number.isascii() and number.isdecimal():
+        return number.lstrip("0") or "0"
+    return number
+
+
 def _sync_preview_attendance(user, rows, default_rest_key=None):
     """Validate scope and calculate minutes without changing payroll records."""
     from utils.attendance_minutes import shift_interval, worked_minutes
@@ -669,15 +676,17 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
             cur.execute("SELECT user_id, personnel_number, restaurant_key FROM users WHERE personnel_number IS NOT NULL AND COALESCE(is_fired, FALSE) = FALSE")
             users = {}
             for employee in cur.fetchall():
-                users.setdefault(str(employee["personnel_number"]).strip(), []).append(employee)
+                users.setdefault(_normalize_attendance_number(employee["personnel_number"]), []).append(employee)
             cur.execute("SELECT key, name, territory_manager_id FROM restaurants")
             restaurants = cur.fetchall()
     territory = {r["key"] for r in restaurants if r["territory_manager_id"] == user["user_id"]}
     known = {r["key"] for r in restaurants}
     for day, number, raw, name in rows:
+        original_number = number
+        number = _normalize_attendance_number(number)
         candidates = users.get(number, [])
         if len(candidates) != 1:
-            errors.append("Неизвестный или неоднозначный табельный номер")
+            errors.append(f"Табельный номер {original_number}: не найден или неоднозначен ({name or '-'}, {day})")
             continue
         employee = candidates[0]
         if not _is_hr_or_super(user) and employee["user_id"] != user["user_id"]:
@@ -855,7 +864,7 @@ def _sync_stage_attendance(user, rows, default_rest_key=None):
             cur.execute("SELECT pg_advisory_xact_lock(814726, 2)")
             employee_ids = {}
             for number in sorted({r["personnel_number"] for r in records}):
-                cur.execute("SELECT user_id FROM users WHERE personnel_number IS NOT NULL AND BTRIM(personnel_number::text) = %s AND COALESCE(is_fired, FALSE) = FALSE FOR SHARE", (number,))
+                cur.execute("SELECT user_id FROM users WHERE personnel_number IS NOT NULL AND (CASE WHEN BTRIM(personnel_number::text) ~ '^[0-9]+$' THEN COALESCE(NULLIF(LTRIM(BTRIM(personnel_number::text), '0'), ''), '0') ELSE BTRIM(personnel_number::text) END) = %s AND COALESCE(is_fired, FALSE) = FALSE FOR SHARE", (number,))
                 employees = cur.fetchall()
                 if len(employees) != 1:
                     raise ValueError("Employee changed during import")

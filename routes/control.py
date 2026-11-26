@@ -176,10 +176,10 @@ async def save_template(request):
         body = await request.json()
         definition = validate_template(body)
         tid = body.get("id")
-        if tid is not None and (type(tid) is not int or tid <= 0):
+        if tid is not None and (not valid_control_id(tid) or tid <= 0):
             raise ValueError("invalid_id")
         expected = body.get("version")
-        if tid is not None and (type(expected) is not int or expected <= 0):
+        if tid is not None and (not valid_control_id(expected) or expected <= 0):
             raise ValueError("invalid_version")
     except (ValueError, TypeError) as exc:
         return web.json_response({"error": str(exc)[:100]}, status=400, headers=NO_STORE)
@@ -198,6 +198,10 @@ async def save_template(request):
                 await conn.execute("UPDATE control_templates SET title=$1 WHERE id=$2", definition["title"], tid)
             await conn.execute("INSERT INTO control_template_versions(template_id,version,definition) VALUES($1,$2,$3::jsonb)", tid, version, json.dumps(definition, ensure_ascii=False))
     return web.json_response({"id": tid, "version": version}, headers=NO_STORE)
+
+
+def valid_control_id(value):
+    return type(value) is int and 0 < value < 2**63
 
 
 def control_permission(user,key):
@@ -302,7 +306,7 @@ async def assign_check(request):
             raise ValueError()
         key, tid, version = body["restaurant_key"],body["template_id"],body["version"]
         due = datetime.fromisoformat(body["due_at"])
-        if not isinstance(key,str) or type(tid) is not int or type(version) is not int or due.tzinfo is None:
+        if not isinstance(key,str) or not valid_control_id(tid) or not valid_control_id(version) or due.tzinfo is None:
             raise ValueError()
     except (ValueError,TypeError,KeyError):
         return web.json_response({"error":"invalid_assignment"},status=400,headers=NO_STORE)
@@ -364,7 +368,7 @@ async def complete_check(request):
         return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
     try:
         body=await request.json()
-        if not isinstance(body,dict) or type(body.get("id")) is not int:
+        if not isinstance(body,dict) or not valid_control_id(body.get("id")):
             raise ValueError()
     except (ValueError,TypeError):
         return web.json_response({"error":"invalid_check"},status=400,headers=NO_STORE)
@@ -443,7 +447,7 @@ async def change_task(request):
         return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
     try:
         body=await request.json()
-        if not isinstance(body,dict) or type(body.get("id")) is not int:
+        if not isinstance(body,dict) or not valid_control_id(body.get("id")):
             raise ValueError()
         action=body.get("action")
         comment=body.get("comment","")
@@ -468,7 +472,7 @@ async def change_task(request):
                 try:
                     assignee=body["assignee_id"]
                     due=datetime.fromisoformat(body["due_at"])
-                    if type(assignee) is not int or due.tzinfo is None:
+                    if not valid_control_id(assignee) or due.tzinfo is None:
                         raise ValueError()
                 except (ValueError,TypeError,KeyError):
                     return web.json_response({"error":"invalid_assignment"},status=400,headers=NO_STORE)
@@ -508,7 +512,7 @@ async def task_history(request):
         return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
     try:
         body=await request.json()
-        if not isinstance(body,dict) or type(body.get("id")) is not int:
+        if not isinstance(body,dict) or not valid_control_id(body.get("id")):
             raise ValueError()
     except (ValueError,TypeError):
         return web.json_response({"error":"invalid_request"},status=400,headers=NO_STORE)
@@ -592,7 +596,7 @@ async def haccp_add_reading(request):
         eid=body["equipment_id"]
         value=reading_number(body["value"])
         comment=body.get("comment","")
-        if type(eid) is not int or not isinstance(comment,str) or len(comment)>4000:
+        if not valid_control_id(eid) or not isinstance(comment,str) or len(comment)>4000:
             raise ValueError()
     except (ValueError,TypeError,KeyError,AttributeError):
         return web.json_response({"error":"invalid_reading"},status=400,headers=NO_STORE)
@@ -619,7 +623,7 @@ async def haccp_readings(request):
         body=await request.json()
         eid=body["equipment_id"]
         start,end=date.fromisoformat(body["start"]),date.fromisoformat(body["end"])
-        if type(eid) is not int or not 0 <= (end-start).days <= 366:
+        if not valid_control_id(eid) or not 0 <= (end-start).days <= 366:
             raise ValueError()
         exclusive=end+timedelta(days=1)
     except (ValueError,TypeError,KeyError,OverflowError):
@@ -690,7 +694,7 @@ async def save_schedule(request):
         b=await request.json()
         key,tid,version,freq=b["restaurant_key"],b["template_id"],b["version"],b["frequency"]
         due=datetime.fromisoformat(b["next_due"])
-        if not isinstance(key,str) or type(tid) is not int or type(version) is not int or freq not in ("daily","weekly","monthly") or due.tzinfo is None or due<=datetime.now(timezone.utc):
+        if not isinstance(key,str) or not valid_control_id(tid) or not valid_control_id(version) or freq not in ("daily","weekly","monthly") or due.tzinfo is None or due<=datetime.now(timezone.utc):
             raise ValueError()
     except (ValueError,TypeError,KeyError):
         return web.json_response({"error":"invalid_schedule"},status=400,headers=NO_STORE)
@@ -717,7 +721,7 @@ async def pause_schedule(request):
         return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
     try:
         b=await request.json()
-        if type(b.get("id")) is not int:
+        if not valid_control_id(b.get("id")):
             raise ValueError()
     except (ValueError,TypeError,AttributeError):
         return web.json_response({"error":"invalid_id"},status=400,headers=NO_STORE)
@@ -803,7 +807,7 @@ async def save_document(request):
         title,content,category,key=validate_document(b)
         did=b.get("id")
         expected=b.get("version")
-        if did is not None and (type(did) is not int or did<=0 or type(expected) is not int or expected<=0):
+        if did is not None and (not valid_control_id(did) or did<=0 or not valid_control_id(expected) or expected<=0):
             raise ValueError("invalid_version")
     except (ValueError,TypeError) as exc:
         return web.json_response({"error":str(exc)[:100]},status=400,headers=NO_STORE)
@@ -835,7 +839,7 @@ async def read_document(request):
     try:
         b=await request.json()
         vid=b["version_id"]
-        if type(vid) is not int:
+        if not valid_control_id(vid):
             raise ValueError()
     except (ValueError,TypeError,KeyError):
         return web.json_response({"error":"invalid_id"},status=400,headers=NO_STORE)
@@ -855,7 +859,7 @@ async def acknowledge_document(request):
     try:
         b=await request.json()
         vid=b["version_id"]
-        if type(vid) is not int:
+        if not valid_control_id(vid):
             raise ValueError()
     except (ValueError,TypeError,KeyError):
         return web.json_response({"error":"invalid_id"},status=400,headers=NO_STORE)
@@ -919,7 +923,7 @@ async def upload_check_photo(request):
     try:
         body=await request.json()
         cid,key,encoded=body["id"],body["question_key"],body["photo"]
-        if type(cid) is not int or not isinstance(key,str) or not isinstance(encoded,str) or len(encoded)>6990510:
+        if not valid_control_id(cid) or not isinstance(key,str) or not isinstance(encoded,str) or len(encoded)>6990510:
             raise ValueError("invalid_photo")
         data=base64.b64decode(encoded,validate=True)
         data,mime=await asyncio.to_thread(sanitize_photo,data)
@@ -953,7 +957,7 @@ async def list_check_photos(request):
     try:
         body=await request.json()
         cid=body["id"]
-        if type(cid) is not int:
+        if not valid_control_id(cid):
             raise ValueError()
     except (ValueError,TypeError,KeyError):
         return web.json_response({"error":"invalid_id"},status=400,headers=NO_STORE)
@@ -987,7 +991,7 @@ async def task_photos(request):
     try:
         body=await request.json()
         tid=body["id"]
-        if type(tid) is not int:
+        if not valid_control_id(tid):
             raise ValueError()
     except (ValueError,TypeError,KeyError):
         return web.json_response({"error":"invalid_id"},status=400,headers=NO_STORE)

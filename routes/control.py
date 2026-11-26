@@ -1222,6 +1222,11 @@ async def refresh_control_notifications(conn, user):
         CROSS JOIN LATERAL (VALUES ('task_overdue',t.due_at<NOW()),('task_critical',t.critical),('task_assigned',t.assignee_id=$1)) e(kind,active)
         WHERE t.status!='closed' AND e.active
           AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))
+        UNION ALL
+        SELECT $1,e.restaurant_key,'haccp_deviation',r.id FROM control_readings r
+        JOIN control_equipment e ON e.id=r.equipment_id
+        WHERE r.deviation AND r.recorded_at >= NOW() - INTERVAL '30 days'
+          AND ($2::text[] IS NULL OR e.restaurant_key=ANY($2))
         ON CONFLICT (recipient_id,event_kind,source_id) DO NOTHING""",user["user_id"],scope)
 
 @routes.post("/api/control/notifications")

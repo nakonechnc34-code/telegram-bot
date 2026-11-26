@@ -106,3 +106,17 @@ jobs:
           END $$;
           ROLLBACK;
           SQL
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate actual notification generation SQL
+        run: |
+          python - <<'PY'
+          import ast
+          import subprocess
+          from pathlib import Path
+          tree = ast.parse(Path('routes/control.py').read_text())
+          fn = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == 'refresh_control_notifications')
+          sql = next(n.value for n in ast.walk(fn) if isinstance(n, ast.Constant) and isinstance(n.value, str) and 'INSERT INTO control_notifications' in n.value)
+          subprocess.run(['psql','-h','localhost','-U','ci','-d','control_ci','-v','ON_ERROR_STOP=1'], input='PREPARE notification_refresh(bigint,text[]) AS '+sql+'; EXECUTE notification_refresh(900001,ARRAY[]::text[]); DEALLOCATE notification_refresh;', text=True, check=True)
+          PY

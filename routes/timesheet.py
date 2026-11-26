@@ -243,7 +243,7 @@ def _sync_timesheet_matrix(user_id, date_from, date_to, include_imports=False):
             is_us = "управляющий сменой" in (u.get("position") or "").lower()
 
             query = """SELECT u.user_id, u.full_name, u.position, u.restaurant_key AS main_restaurant_key,
-                       COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, u.payment_type, r.name AS restaurant_name
+                       (CASE WHEN u.payment_type = 'fixed' THEN 0 ELSE COALESCE(NULLIF(u.rate, 0), pr.rate, 0) END) AS rate, u.payment_type, r.name AS restaurant_name
                 FROM users u LEFT JOIN restaurants r ON u.restaurant_key = r.key
                 LEFT JOIN position_rates pr ON u.position = pr.position_name
                 WHERE COALESCE(u.is_fired, FALSE) = FALSE
@@ -1027,8 +1027,8 @@ def _sync_reports(user_id, date_from, date_to, only_me=False):
                 SELECT u.full_name, u.position,
                        COALESCE(tr.name, r.name) AS restaurant_name,
                        COALESCE(SUM(t.hours), 0) as total_hours,
-                       COALESCE(NULLIF(u.rate, 0), pr.rate, 0) AS rate, u.payment_type,
-                       (COALESCE(SUM(t.hours), 0) * COALESCE(NULLIF(u.rate, 0), pr.rate, 0)) as total_salary
+                       (CASE WHEN u.payment_type = 'fixed' THEN 0 ELSE COALESCE(NULLIF(u.rate, 0), pr.rate, 0) END) AS rate, u.payment_type,
+                       (COALESCE(SUM(t.hours), 0) * (CASE WHEN u.payment_type = 'fixed' THEN 0 ELSE COALESCE(NULLIF(u.rate, 0), pr.rate, 0) END)) as total_salary
                 FROM users u 
                 LEFT JOIN period_attendance t ON u.user_id = t.user_id
                 LEFT JOIN salary_restaurant sr ON sr.user_id = u.user_id
@@ -1495,7 +1495,7 @@ def _snapshot_approved_accruals(cur, key, month, revision):
                      m.restaurant_key NULLS LAST
         ), candidates AS (
             SELECT u.user_id,u.full_name,u.position,u.payment_type,
-                   COALESCE(NULLIF(u.rate,0),pr.rate,0) AS rate,
+                   (CASE WHEN u.payment_type = 'fixed' THEN 0 ELSE COALESCE(NULLIF(u.rate, 0), pr.rate, 0) END) AS rate,
                    COALESCE(m.restaurant_key,u.restaurant_key) AS restaurant_key,
                    COALESCE(m.minutes,0) AS minutes,
                    COALESCE(s.restaurant_key,u.restaurant_key) AS salary_key

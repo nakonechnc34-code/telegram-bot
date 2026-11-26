@@ -983,13 +983,24 @@ def _sync_approved_reports(user_id, date_from, date_to, only_me=False):
             if not user or user.get("is_fired"):
                 return []
             sql = """SELECT s.full_name,s.position,s.restaurant_name,
-                       SUM(s.worked_minutes)::numeric/60 AS total_hours,
-                       s.rate,s.payment_type,SUM(s.total_salary) AS total_salary
+                       SUM(CASE WHEN period.full_month THEN s.worked_minutes ELSE detail.minutes END)::numeric/60 AS total_hours,
+                       s.rate,s.payment_type,SUM(CASE WHEN period.full_month THEN s.total_salary ELSE detail.salary END) AS total_salary
                 FROM timesheet_accrual_snapshots s
                 JOIN timesheet_approvals a ON a.restaurant_key=s.restaurant_key
                     AND a.month_start=s.month_start AND a.revision=s.revision
-                WHERE a.status='approved' AND s.month_start >= %s::date
-                    AND s.month_start + INTERVAL '1 month' - INTERVAL '1 day' <= %s::date"""
+                CROSS JOIN (SELECT %s::date AS start_date,%s::date AS end_date) bounds
+                CROSS JOIN LATERAL (SELECT s.month_start>=bounds.start_date
+                    AND s.month_start+INTERVAL '1 month'-INTERVAL '1 day'<=bounds.end_date AS full_month) period
+                LEFT JOIN LATERAL (
+                    SELECT SUM(d.worked_minutes) AS minutes,SUM(d.total_salary) AS salary
+                    FROM timesheet_accrual_snapshot_days d
+                    WHERE d.restaurant_key=s.restaurant_key AND d.month_start=s.month_start
+                        AND d.revision=s.revision AND d.user_id=s.user_id
+                        AND d.work_date BETWEEN bounds.start_date AND bounds.end_date
+                ) detail ON NOT period.full_month
+                WHERE a.status='approved' AND s.month_start<=bounds.end_date
+                    AND s.month_start+INTERVAL '1 month'>bounds.start_date
+                    AND (period.full_month OR detail.minutes IS NOT NULL)"""
             params = [date_from,date_to]
             if only_me:
                 sql += " AND s.user_id=%s"

@@ -527,3 +527,29 @@ def test_rounding_settings_migration_and_history_postgres(monkeypatch):
     finally:
         conn.rollback()
         conn.close()
+
+
+def test_payroll_transaction_lock_postgres():
+    dsn = os.getenv("ATTENDANCE_TEST_DSN")
+    if not dsn:
+        pytest.skip("ATTENDANCE_TEST_DSN not configured")
+    first = psycopg2.connect(dsn)
+    second = psycopg2.connect(dsn)
+    try:
+        with first.cursor() as owner, second.cursor() as contender:
+            owner.execute("SELECT pg_advisory_xact_lock(814726, 2)")
+            contender.execute("SELECT pg_try_advisory_xact_lock(814726, 2)")
+            assert contender.fetchone() == (False,)
+            first.commit()
+            contender.execute("SELECT pg_try_advisory_xact_lock(814726, 2)")
+            assert contender.fetchone() == (True,)
+            owner.execute("SELECT pg_try_advisory_xact_lock(814726, 2)")
+            assert owner.fetchone() == (False,)
+            second.rollback()
+            owner.execute("SELECT pg_try_advisory_xact_lock(814726, 2)")
+            assert owner.fetchone() == (True,)
+    finally:
+        first.rollback()
+        second.rollback()
+        first.close()
+        second.close()

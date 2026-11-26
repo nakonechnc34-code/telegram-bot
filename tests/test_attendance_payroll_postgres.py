@@ -82,8 +82,10 @@ def test_fixed_salary_report_postgres(monkeypatch):
         rows = timesheet._sync_reports(1, "2026-11-01", "2026-11-30")
         fixed = [r for r in rows if r["full_name"] == "Fixed"]
         assert len(fixed) == 2
-        assert sum(r["total_salary"] for r in fixed) == 80000
-        assert next(r for r in fixed if r["restaurant_name"] == "A")["total_salary"] == 80000
+        assert all(row["payment_type"] == "fixed" for row in fixed)
+        assert all(row["total_hours"] > 0 for row in fixed)
+        assert sum(r["total_salary"] for r in fixed) == 0
+        assert next(r for r in fixed if r["restaurant_name"] == "A")["total_salary"] == 0
         assert sum(r["total_salary"] for r in rows if r["full_name"] == "Hourly") == 3500
         monkeypatch.setattr(timesheet, "_is_hr_or_super", lambda u: False)
         personal = timesheet._sync_reports(2, "2026-11-01", "2026-11-30", True)
@@ -96,9 +98,9 @@ def test_fixed_salary_report_postgres(monkeypatch):
         assert territory and {r["restaurant_name"] for r in territory} == {"A"}
         shift = timesheet._sync_reports(20, "2026-11-01", "2026-11-30")
         assert shift and {r["restaurant_name"] for r in shift} == {"B"}
-        assert next(r for r in territory if r["full_name"] == "Fixed")["total_salary"] == 80000
+        assert next(r for r in territory if r["full_name"] == "Fixed")["total_salary"] == 0
         assert next(r for r in shift if r["full_name"] == "Fixed")["total_salary"] == 0
-        assert sum(r["total_salary"] for r in territory + shift if r["full_name"] == "Fixed") == 80000
+        assert sum(r["total_salary"] for r in territory + shift if r["full_name"] == "Fixed") == 0
         assert sum(r["total_salary"] for r in territory + shift if r["full_name"] == "Hourly") == 3500
     finally:
         conn.rollback()
@@ -365,7 +367,7 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
         conn.close()
 
 
-def test_fixed_salary_snapshot_no_duplicate_postgres(monkeypatch):
+def test_fixed_salary_snapshot_is_informational_postgres(monkeypatch):
     from contextlib import nullcontext
     from datetime import date
     from pathlib import Path
@@ -406,21 +408,21 @@ def test_fixed_salary_snapshot_no_duplicate_postgres(monkeypatch):
                        timesheet._sync_approved_reports(30,"2026-11-01","2026-11-30"))
         transition("a","submit",0)
         transition("a","approve",1)
-        assert total() == Decimal("80000.00")
+        assert total() == Decimal("0.00")
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET restaurant_key='b' WHERE user_id=1")
         transition("b","submit",0)
         transition("b","approve",1)
-        assert total() == Decimal("80000.00")
+        assert total() == Decimal("0.00")
         transition("a","reopen",2,"Transfer")
         assert total() == Decimal("0.00")
         transition("b","reopen",2,"Recalculate transferred salary")
         transition("b","submit",3)
         transition("b","approve",4)
-        assert total() == Decimal("80000.00")
+        assert total() == Decimal("0.00")
         transition("a","submit",3)
         transition("a","approve",4)
-        assert total() == Decimal("80000.00")
+        assert total() == Decimal("0.00")
     finally:
         conn.rollback()
         conn.close()

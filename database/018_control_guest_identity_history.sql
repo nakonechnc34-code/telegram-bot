@@ -10,6 +10,13 @@ SELECT user_id,COALESCE(full_name,''),COALESCE(login,'') FROM users
 WHERE lower(btrim(COALESCE(position,'')))='тайный гость'
 ON CONFLICT DO NOTHING;
 
+-- Recover former guests identifiable from existing mystery-check assignments.
+INSERT INTO control_guest_identity_history(user_id,full_name,login)
+SELECT DISTINCT c.guest_id,COALESCE(u.full_name,''),COALESCE(u.login,'')
+FROM control_checks c LEFT JOIN users u ON u.user_id=c.guest_id
+WHERE c.guest_id IS NOT NULL
+ON CONFLICT DO NOTHING;
+
 CREATE OR REPLACE FUNCTION control_remember_guest_identity() RETURNS trigger
 LANGUAGE plpgsql AS $guest$
 BEGIN

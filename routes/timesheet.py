@@ -1759,3 +1759,48 @@ async def handle_decide_rate_request(request):
         return web.json_response({"error":"Некорректное решение"},status=400)
     status = await _run(_sync_decide_rate_request,user["user_id"],request_id,decision,comment.strip())
     return web.json_response({"ok":status == 200},status=status,headers={"Cache-Control":"no-store"})
+
+
+def _sync_rate_records(actor, kind):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id=%s", (actor,))
+            user = cur.fetchone()
+            if not user or user.get("is_fired") or not (_can_set_individual_rate(user) or _is_tu(user)):
+                return None
+            if kind == "requests":
+                sql = """SELECT q.id,q.user_id,u.full_name,u.restaurant_key,
+                    q.proposed_rate::text AS proposed_rate,q.reason,q.status,
+                    q.requested_by,q.created_at::text AS created_at,q.decided_by,
+                    q.decided_at::text AS decided_at,q.decision_comment,
+                    ir.hourly_rate::text AS current_rate
+                    FROM timesheet_rate_requests q JOIN users u ON u.user_id=q.user_id
+                    LEFT JOIN timesheet_individual_rates ir ON ir.user_id=u.user_id
+                    LEFT JOIN restaurants r ON r.key=u.restaurant_key"""
+                order = " ORDER BY (q.status='pending') DESC,q.id DESC"
+            else:
+                sql = """SELECT h.id,h.user_id,u.full_name,u.restaurant_key,
+                    h.previous_rate::text AS previous_rate,h.new_rate::text AS new_rate,
+                    h.actor_id,h.request_id,h.created_at::text AS created_at
+                    FROM timesheet_rate_history h JOIN users u ON u.user_id=h.user_id
+                    LEFT JOIN restaurants r ON r.key=u.restaurant_key"""
+                order = " ORDER BY h.id DESC"
+            params = []
+            if not _can_set_individual_rate(user):
+                sql += " WHERE r.territory_manager_id=%s"
+                params.append(actor)
+            cur.execute(sql + order + " LIMIT 500", params)
+            return [dict(row) for row in cur.fetchall()]
+
+
+@routes.get('/api/timesheet/rate-requests')
+@routes.get('/api/timesheet/rate-history')
+async def handle_rate_records(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    kind = "requests" if request.path.endswith("/rate-requests") else "history"
+    rows = await _run(_sync_rate_records,user["user_id"],kind)
+    if rows is None:
+        return denied(403)
+    return web.json_response({kind:rows},headers={"Cache-Control":"no-store"})

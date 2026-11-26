@@ -532,9 +532,8 @@ async def handle_admin_audit(request):
                 cur.execute("""
                     SELECT a.* FROM admin_audit a
                     WHERE %s OR NOT EXISTS (
-                        SELECT 1 FROM users u
-                        WHERE lower(btrim(COALESCE(u.position, ''))) = 'тайный гость'
-                          AND (u.user_id = a.admin_id OR
+                        SELECT 1 FROM control_guest_identity_history u
+                        WHERE (u.user_id = a.admin_id OR
                                (a.target_type = 'user' AND u.user_id::text = a.target_id::text)
                                OR (NULLIF(btrim(u.full_name), '') IS NOT NULL AND
                                    strpos(lower(COALESCE(a.details::text, '')), lower(btrim(u.full_name))) > 0)

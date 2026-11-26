@@ -85,3 +85,24 @@ jobs:
       - name: Verify notification schema
         run: |
           psql -h localhost -U ci -d control_ci -v ON_ERROR_STOP=1 -c "SELECT recipient_id, restaurant_key, event_kind, source_id, created_at, read_at FROM control_notifications LIMIT 0"
+      - name: Verify notification constraints and persistence
+        run: |
+          psql -h localhost -U ci -d control_ci -v ON_ERROR_STOP=1 <<'SQL'
+          BEGIN;
+          INSERT INTO restaurants(key,name) VALUES ('ci-notification','CI');
+          INSERT INTO users(user_id,full_name) VALUES (900001,'CI recipient'),(900002,'CI other');
+          INSERT INTO control_notifications(recipient_id,restaurant_key,event_kind,source_id)
+          VALUES (900001,'ci-notification','task_critical',1),(900002,'ci-notification','task_critical',1);
+          INSERT INTO control_notifications(recipient_id,restaurant_key,event_kind,source_id)
+          VALUES (900001,'ci-notification','task_critical',1) ON CONFLICT (recipient_id,event_kind,source_id) DO NOTHING;
+          UPDATE control_notifications SET read_at=NOW() WHERE recipient_id=900001 AND read_at IS NULL;
+          DO $$
+          BEGIN
+            IF (SELECT count(*) FROM control_notifications WHERE restaurant_key='ci-notification') <> 2
+              OR (SELECT count(*) FROM control_notifications WHERE recipient_id=900001 AND read_at IS NOT NULL) <> 1
+              OR (SELECT count(*) FROM control_notifications WHERE recipient_id=900002 AND read_at IS NULL) <> 1 THEN
+              RAISE EXCEPTION 'Notification persistence or recipient isolation failed';
+            END IF;
+          END $$;
+          ROLLBACK;
+          SQL

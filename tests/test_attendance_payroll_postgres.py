@@ -442,6 +442,15 @@ def test_fixed_salary_snapshot_is_informational_postgres(monkeypatch):
             return sum(row["total_salary"] for row in
                        timesheet._sync_approved_reports(30,"2026-11-01","2026-11-30"))
         transition("a","submit",0)
+        status, result = timesheet._sync_approval_transition(admin,"a",month,"approve","",1)
+        assert status == 409
+        assert result == {"error":"missing_hourly_rates","employees":[{"user_id":1,"full_name":"Fixed"}]}
+        with conn.cursor() as cur:
+            cur.execute("SELECT status,revision FROM timesheet_approvals WHERE restaurant_key='a'")
+            assert cur.fetchone() == ("pending",1)
+            cur.execute("SELECT count(*) FROM timesheet_accrual_snapshots")
+            assert cur.fetchone()[0] == 0
+            cur.execute("INSERT INTO timesheet_individual_rates VALUES (1,0)")
         transition("a","approve",1)
         assert total() == Decimal("0.00")
         with conn.cursor() as cur:

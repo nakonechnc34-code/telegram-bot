@@ -425,7 +425,7 @@ async def list_tasks(request):
         return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
     scope = await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
-        rows = await conn.fetch("""SELECT t.*,c.restaurant_key, CASE WHEN $4::boolean OR NOT EXISTS (SELECT 1 FROM control_guest_identity_history g WHERE g.user_id=t.assignee_id) THEN t.assignee_id ELSE NULL END AS assignee_id,
+        rows = await conn.fetch("""SELECT t.id,t.check_id,t.question_key,t.description,t.critical,t.status,t.created_at,t.due_at,c.restaurant_key, CASE WHEN $4::boolean OR NOT EXISTS (SELECT 1 FROM control_guest_identity_history g WHERE g.user_id=t.assignee_id) THEN t.assignee_id ELSE NULL END AS assignee_id,
             (t.due_at<NOW() AND t.status!='closed') AS overdue
             FROM control_tasks t JOIN control_checks c ON c.id=t.check_id
             WHERE ($1::text[] IS NULL OR c.restaurant_key=ANY($1))

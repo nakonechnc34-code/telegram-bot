@@ -1697,3 +1697,65 @@ async def handle_create_rate_request(request):
         return web.json_response({"error":"Некорректный запрос"}, status=400)
     status = await _run(_sync_create_rate_request,user["user_id"],target,rate,reason.strip())
     return web.json_response({"ok":status == 201},status=status,headers={"Cache-Control":"no-store"})
+
+
+def _sync_decide_rate_request(actor, request_id, decision, comment):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id=%s FOR UPDATE", (actor,))
+            if not _can_set_individual_rate(cur.fetchone()):
+                return 403
+            cur.execute("SELECT user_id FROM timesheet_rate_requests WHERE id=%s", (request_id,))
+            target = cur.fetchone()
+            if not target:
+                return 404
+            cur.execute("SELECT user_id,is_fired FROM users WHERE user_id=%s FOR UPDATE", (target["user_id"],))
+            employee = cur.fetchone()
+            cur.execute("SELECT * FROM timesheet_rate_requests WHERE id=%s FOR UPDATE", (request_id,))
+            pending = cur.fetchone()
+            if not pending:
+                return 404
+            if pending["status"] != "pending":
+                return 409
+            if decision == "approved":
+                if not employee or employee["is_fired"]:
+                    return 409
+                cur.execute("SELECT hourly_rate FROM timesheet_individual_rates WHERE user_id=%s FOR UPDATE", (pending["user_id"],))
+                old = cur.fetchone()
+                previous = old["hourly_rate"] if old else None
+                rate = pending["proposed_rate"]
+                if previous != rate:
+                    cur.execute("""INSERT INTO timesheet_individual_rates(user_id,hourly_rate,updated_by)
+                        VALUES (%s,%s,%s) ON CONFLICT(user_id) DO UPDATE SET
+                        hourly_rate=EXCLUDED.hourly_rate,updated_by=EXCLUDED.updated_by,
+                        revision=timesheet_individual_rates.revision+1,updated_at=NOW()""",
+                        (pending["user_id"],rate,actor))
+                    cur.execute("""INSERT INTO timesheet_rate_history(user_id,previous_rate,new_rate,actor_id,request_id)
+                        VALUES (%s,%s,%s,%s,%s)""",(pending["user_id"],previous,rate,actor,request_id))
+            cur.execute("""UPDATE timesheet_rate_requests SET status=%s,decided_by=%s,
+                decided_at=NOW(),decision_comment=%s WHERE id=%s""",(decision,actor,comment,request_id))
+            return 200
+
+
+@routes.post('/api/timesheet/rate-requests/{request_id}/decision')
+async def handle_decide_rate_request(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    if not _can_set_individual_rate(user):
+        return denied(403)
+    try:
+        request_id = int(request.match_info["request_id"])
+        data = await request.json()
+        decision = data["decision"]
+        comment = data.get("comment","")
+        if not 0 < request_id < 2**63 or decision not in ("approved","rejected"):
+            raise ValueError()
+        if not isinstance(comment,str) or len(comment.strip()) > 2000:
+            raise ValueError()
+        if decision == "rejected" and not comment.strip():
+            raise ValueError()
+    except (ValueError,TypeError,KeyError,AttributeError):
+        return web.json_response({"error":"Некорректное решение"},status=400)
+    status = await _run(_sync_decide_rate_request,user["user_id"],request_id,decision,comment.strip())
+    return web.json_response({"ok":status == 200},status=status,headers={"Cache-Control":"no-store"})

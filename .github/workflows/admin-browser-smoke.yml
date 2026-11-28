@@ -1,11 +1,14 @@
 name: Admin browser smoke
 on:
   pull_request:
-    paths:
-      - 'frontend/**'
-      - 'tests/browser/**'
-      - '.github/workflows/admin-browser-smoke.yml'
   workflow_dispatch:
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   chromium-smoke:
     runs-on: ubuntu-24.04
@@ -15,12 +18,26 @@ jobs:
         working-directory: tests/browser
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Select checks for changed files
+        id: changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/changed-components.sh"
       - uses: actions/setup-node@v4
+        if: steps.changed.outputs.browser == 'true'
         with:
           node-version: '22'
-      - run: npm install --no-audit --no-fund
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        if: steps.changed.outputs.browser == 'true'
       - run: npx playwright install --with-deps chromium
+        if: steps.changed.outputs.browser == 'true'
       - run: npm test
+        if: steps.changed.outputs.browser == 'true'
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

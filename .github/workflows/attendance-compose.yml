@@ -2,9 +2,14 @@ name: Attendance Compose smoke
 on:
   pull_request:
   push:
-    branches: [feat/attendance-minute-validation]
+    branches: [main, feat/attendance-minute-validation]
+  workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   smoke:
     runs-on: ubuntu-latest
@@ -13,17 +18,30 @@ jobs:
       ATTENDANCE_LOCAL_ADMIN_PASSWORD: LocalSmokeOnly-2026!
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Select checks for changed files
+        id: changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/changed-components.sh"
       - name: Validate Compose
+        if: steps.changed.outputs.attendance == 'true'
         run: docker compose -f compose.attendance-test.yml config --quiet
       - name: Start isolated stack
+        if: steps.changed.outputs.attendance == 'true'
         run: docker compose -f compose.attendance-test.yml up --build --wait --wait-timeout 180
       - name: Verify database migration
+        if: steps.changed.outputs.attendance == 'true'
         run: |
           docker compose -f compose.attendance-test.yml exec -T db psql -v ON_ERROR_STOP=1 -U attendance_test -d attendance_test -c 'SELECT count(*) FROM attendance_imports; SELECT count(*) FROM attendance_import_days; SELECT count(*) FROM attendance_import_intervals; SELECT count(*) FROM timesheet_records;'
       - name: Verify HTTP endpoints
+        if: steps.changed.outputs.attendance == 'true'
         run: |
           docker compose -f compose.attendance-test.yml exec -T app python -c "import json, urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8080/api/health')); assert d['status']=='healthy' and d['database']=='ok'; assert urllib.request.urlopen('http://127.0.0.1:8080/timesheet').status==200"
       - name: Verify backup and restore
+        if: steps.changed.outputs.attendance == 'true' && github.event_name != 'pull_request'
         run: |
           docker compose -f compose.attendance-test.yml exec -T db psql -v ON_ERROR_STOP=1 -U attendance_test -d attendance_test -c "INSERT INTO restaurants (key,name) VALUES ('backup-test','Backup test');"
           docker compose -f compose.attendance-test.yml exec -T db pg_dump -U attendance_test -d attendance_test -Fc > /tmp/attendance-test.dump
@@ -33,5 +51,5 @@ jobs:
           docker compose -f compose.attendance-test.yml exec -T db psql -v ON_ERROR_STOP=1 -U attendance_test -d attendance_restore -c 'SELECT count(*) FROM users; SELECT count(*) FROM attendance_import_days; SELECT count(*) FROM timesheet_records;'
           rm -f /tmp/attendance-test.dump
       - name: Cleanup isolated stack
-        if: always()
+        if: always() && steps.changed.outputs.attendance == 'true'
         run: docker compose -f compose.attendance-test.yml down -v --remove-orphans

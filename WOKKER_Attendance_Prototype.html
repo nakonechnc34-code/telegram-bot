@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="ru" data-theme="blue">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Автономный интерактивный прототип импорта табелей WOKKER.">
+<title>WOKKER ТАБЕЛЬ — Импорт табеля</title>
+<style>
+:root{color-scheme:light;--bg:#f3f6fd;--surface:#fff;--soft:#eef3ff;--ink:#152442;--muted:#4e5e7b;--line:#d8e2f2;--control:#7b8dab;--primary:#234ec9;--on:#fff;--side:#fff;--r:20px;--small:11px;--gap:24px;--pad:26px;--heading:system-ui,sans-serif;--shadow:0 6px 20px #233e8010}
+[data-theme=hr]{--bg:#101a25;--surface:#172634;--soft:#213647;--ink:#f2fbff;--muted:#b4c7d7;--line:#354d60;--control:#8da5b7;--primary:#69e1b7;--on:#102721;--side:#13202c;--r:11px;--small:7px;--gap:16px;--pad:20px;--shadow:none;color-scheme:dark}
+[data-theme=premium]{--bg:#f5f1ea;--surface:#fffdf9;--soft:#efe8da;--ink:#27241e;--muted:#60574a;--line:#ded4c2;--control:#897963;--primary:#594020;--on:#fff;--side:#fbf7f0;--r:4px;--small:3px;--gap:28px;--pad:28px;--heading:Georgia,serif;--shadow:none}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,sans-serif}button,input,select{font:inherit;color:inherit}button,select{cursor:pointer}button{min-height:44px;border:1px solid var(--line);border-radius:var(--small);padding:8px 14px;background:var(--surface);display:inline-flex;gap:8px;align-items:center;justify-content:center;font-weight:650;text-align:left}button:hover:not(:disabled){background:var(--soft)}button:disabled{opacity:.55;cursor:default}.primary,.primary:hover:not(:disabled){background:var(--primary);color:var(--on);border-color:var(--primary)}.primary:hover:not(:disabled){filter:brightness(.9)}.quiet{background:transparent;border-color:transparent}.danger{color:#a52530}[data-theme=hr] .danger{color:#ffabb3}:focus-visible{outline:3px solid var(--primary);outline-offset:3px}a{color:var(--primary)}.skip{position:fixed;z-index:5;left:12px;top:-100px;background:var(--surface);padding:10px}.skip:focus{top:12px}svg.icon{width:19px;height:19px;flex:none;stroke:currentColor;stroke-width:1.65;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.shell{min-height:100vh;display:grid;grid-template-columns:252px minmax(0,1fr)}aside{background:var(--side);border-right:1px solid var(--line);padding:25px 17px 18px;display:flex;flex-direction:column;gap:30px;position:sticky;top:0;height:100vh}.brand{display:flex;gap:12px;align-items:center;padding:0 7px;line-height:1.2}.brandmark{display:grid;place-items:center;width:45px;height:45px;border-radius:13px;background:var(--primary);color:var(--on)}.brandmark svg{width:26px;height:26px}.brand strong{font-size:20px;letter-spacing:.04em}.brand small{display:block;color:var(--muted);letter-spacing:.15em;font-weight:700;font-size:10px;margin-top:3px}nav{display:grid;gap:5px}nav button{justify-content:flex-start;width:100%;border-color:transparent;background:transparent}nav button[aria-current=page],.tabs button[aria-current=page]{background:var(--soft);color:var(--primary);border-color:var(--line)}.navcount{margin-left:auto}.identity{margin-top:auto;padding:14px 7px 0;border-top:1px solid var(--line);display:flex;gap:10px;align-items:center}.identity small{display:block;color:var(--muted)}.avatar,.tile{display:grid;place-items:center;background:var(--soft);color:var(--primary);width:40px;height:40px;border-radius:var(--small);flex:none}.top{min-height:72px;background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px clamp(16px,4vw,52px)}.crumb{display:flex;gap:8px;align-items:center;color:var(--muted)}.top label{display:flex;gap:8px;align-items:center;color:var(--muted)}main{max-width:1550px;margin:auto;padding:34px clamp(16px,4vw,52px) 48px;min-width:0}.eyebrow{color:var(--primary);font-size:12px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;margin:0 0 6px}h1,h2,h3{font-family:var(--heading);line-height:1.16;margin:0;overflow-wrap:anywhere}h1{font-size:clamp(32px,4vw,50px);letter-spacing:-.045em}h2{font-size:24px;letter-spacing:-.025em}h3{font-size:17px}p{margin:0}.muted,.sub{color:var(--muted)}.sub{margin-top:10px}.header{margin-bottom:var(--gap)}.grid{display:grid;grid-template-columns:minmax(0,1.62fr) minmax(0,1fr);gap:var(--gap);align-items:start}.stack{display:grid;gap:var(--gap);min-width:0}.panel{min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:var(--pad);box-shadow:var(--shadow)}.panelhead,.row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.panelhead{margin-bottom:16px}.flex,.actions,.tabs,.badges{display:flex;gap:9px;align-items:center;flex-wrap:wrap;min-width:0}.tabs{margin-bottom:var(--gap)}.tabs button{flex:0 0 auto}.badge{border-radius:999px;padding:3px 9px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:5px;background:var(--soft);color:var(--ink)}.badge.ok{background:#dbf6e9;color:#185941}.badge.warn{background:#fff0d6;color:#794700}.badge.err{background:#ffe6e8;color:#902331}.badge.info{background:#e7eeff;color:#2246a0}.badge i{width:6px;height:6px;border-radius:50%;background:currentColor}.drop{background:var(--soft);border:1px dashed var(--control);border-radius:calc(var(--small) + 4px);min-height:300px;display:grid;place-content:center;justify-items:center;gap:9px;padding:20px;text-align:center;overflow-wrap:anywhere}.drop.over{outline:3px solid var(--primary);outline-offset:-3px}.drop .actions{justify-content:center}.sheetart{width:130px;height:79px;color:var(--primary)}.drop h3{font-size:22px}.drop .actions{margin-top:7px}.notice{display:flex;gap:10px;align-items:flex-start;background:var(--soft);border-radius:var(--small);padding:13px;color:var(--ink);margin-top:14px}.notice svg{margin-top:2px;color:var(--primary)}.steps{list-style:none;padding:0;margin:0;display:grid;gap:14px}.steps li{display:flex;align-items:center;gap:12px;color:var(--muted)}.stepnum{display:grid;place-items:center;width:31px;height:31px;border-radius:50%;background:var(--soft);font-weight:700;flex:none}.steps [aria-current=step]{color:var(--ink);font-weight:750}.steps [aria-current=step] .stepnum{background:var(--primary);color:var(--on)}.steps .done .stepnum{color:#185941;background:#dbf6e9}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(140px,100%),1fr));gap:10px}.stat{border:1px solid var(--line);background:var(--surface);border-radius:var(--small);padding:13px;min-width:0}.stat strong{display:block;font-size:26px;line-height:1.2;font-variant-numeric:tabular-nums}.stat small{color:var(--muted)}.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(145px,100%),1fr));gap:11px;margin:0 0 15px}.field{display:grid;gap:4px;color:var(--muted);font-size:13px}input:not([type=checkbox]),select{width:100%;min-height:44px;border:1px solid var(--control);border-radius:var(--small);padding:8px 11px;background:var(--surface);font-size:15px}input[type=checkbox]{width:19px;height:19px;accent-color:var(--primary);vertical-align:middle}.check{display:flex;gap:8px;align-items:center;min-height:44px}.tablebox{overflow:auto;max-width:100%;border:1px solid var(--line);border-radius:var(--small);margin-top:12px}table{border-collapse:collapse;width:100%;font-size:14px}th,td{text-align:left;padding:12px 13px;border-bottom:1px solid var(--line);vertical-align:middle}thead{background:var(--soft);color:var(--muted)}th{white-space:nowrap}td small{display:block;color:var(--muted)}tr:last-child td{border-bottom:0}td button{white-space:nowrap}.empty{text-align:center;display:grid;justify-items:center;gap:9px;padding:28px 12px;color:var(--muted)}.empty h3{color:var(--ink)}.file-name{overflow-wrap:anywhere}.recent{display:grid;gap:10px}.recent .row{border-top:1px solid var(--line);padding-top:10px}.recent .row button{margin-left:auto}.rules{padding-left:19px;color:var(--muted);margin:12px 0 0}.rules li+li{margin-top:7px}progress{width:min(100%,360px);height:14px;accent-color:var(--primary)}dialog{width:min(560px,calc(100% - 24px));max-height:calc(100% - 24px);overflow:auto;border:1px solid var(--line);border-radius:var(--r);color:var(--ink);background:var(--surface);padding:var(--pad);box-shadow:0 14px 70px #0609194a}dialog::backdrop{background:#121e3870}dialog.drawer{margin:0 0 0 auto;height:100%;max-height:100%;width:min(530px,100%);border-radius:var(--r) 0 0 var(--r)}dialog form,.formgrid{display:grid;gap:12px}dialog .actions{margin-top:10px}.details{display:grid;grid-template-columns:1fr 1fr;gap:10px}.details div{padding:10px;background:var(--soft);border-radius:var(--small)}dt{font-size:13px;color:var(--muted)}dd{margin:3px 0 0;overflow-wrap:anywhere}.toast{position:fixed;inset:auto 18px 18px auto;z-index:3;max-width:min(430px,calc(100% - 36px));padding:12px 14px;border:1px solid var(--line);border-radius:var(--small);background:var(--surface);box-shadow:0 10px 32px #0003;display:flex;gap:10px;align-items:center}.toast:empty{display:none}.toast svg{color:var(--primary)}[hidden]{display:none!important}
+@media(prefers-reduced-motion:no-preference){button{transition:background .15s,filter .15s}.toast,dialog[open]{animation:appear .2s ease-out}@keyframes appear{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}}
+@media(max-width:1100px){.shell{grid-template-columns:208px minmax(0,1fr)}.grid{grid-template-columns:minmax(0,1fr)}.grid>.stack:nth-child(2){grid-template-columns:repeat(auto-fit,minmax(min(245px,100%),1fr))}}
+@media(max-width:760px){.shell{display:block}aside{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);gap:13px;padding:12px 14px 8px}.brandmark{width:37px;height:37px}.brand strong{font-size:16px}.identity{display:none}nav{display:flex;flex-wrap:wrap;gap:3px}nav button{width:auto;font-size:13px;padding:6px 8px}.navcount{display:none}.top{min-height:53px;padding:5px 14px;flex-wrap:wrap}.top select{font-size:13px;min-height:44px}.crumb{font-size:13px}main{padding-top:22px}.panel{padding:16px}.drop{min-height:280px}.tabs button{flex:auto;font-size:13px}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.toast{inset:auto 12px 12px auto}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">К содержанию</a>
+<div class="shell">
+<aside><div class="brand"><span class="brandmark" id="brandIcon"></span><div><strong>WOKKER</strong><small>ТАБЕЛЬ</small></div></div><nav aria-label="Разделы модуля" id="nav"></nav><div class="identity"><span class="avatar">К</span><div><strong>Кадровая служба</strong><small>Демонстрационный доступ</small></div></div></aside>
+<div><header class="top"><div class="crumb" id="crumb"></div><label>Оформление <select id="theme"><option value="blue">Мягкий синий</option><option value="hr">Панель кадровой службы</option><option value="premium">Премиальный минимализм</option></select></label></header><main id="main" tabindex="-1"></main></div>
+</div>
+<input type="file" id="file" accept=".xlsx,.xls" hidden>
+<dialog id="dialog" aria-labelledby="dialog-title"></dialog>
+<div class="toast" role="status" id="toast"></div>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const paths = {
+ brand:'<path d="M3 6l4 12 5-8 5 8 4-12M5 6h2m10 0h2"/>',
+ upload:'<path d="M12 16V4m-5 5 5-5 5 5M4 15v5h16v-5"/>',
+ history:'<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
+ settings:'<circle cx="12" cy="12" r="3"/><path d="m9 3-1 3-3 1-2 4 2 2v3l4 3 3-1 3 1 4-3v-3l2-2-2-4-3-1-1-3z"/>',
+ file:'<path d="M6 3h8l4 4v14H6zM14 3v5h4M9 12h6m-6 4h6"/>',
+ check:'<path d="m5 12 4 4L19 6"/>',
+ info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/>',
+ arrow:'<path d="M5 12h14m-5-5 5 5-5 5"/>',
+ chevron:'<path d="m9 6 6 6-6 6"/>',
+ close:'<path d="m6 6 12 12M18 6 6 18"/>',
+ download:'<path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/>',
+ shield:'<path d="m12 3 7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/><path d="m9 12 2 2 4-4"/>',
+ alert:'<path d="m12 3 10 17H2zM12 9v5m0 3h.01"/>'
+};
+const ico = name => '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">'+paths[name]+'</svg>';
+const art = '<svg class="sheetart" viewBox="0 0 132 80" fill="none" aria-hidden="true"><rect x="28" y="16" width="72" height="50" rx="11" fill="currentColor" opacity=".12" transform="rotate(-12 64 41)"/><rect x="45" y="8" width="49" height="60" rx="9" fill="var(--surface)" stroke="currentColor" stroke-width="1.7"/><path d="M55 27h29v26H55zm0 8h29m-29 9h29M65 27v26m9-26v26" stroke="currentColor" stroke-width="1.3"/><circle cx="93" cy="59" r="13" fill="currentColor"/><path d="M93 65V53m-4 4 4-4 4 4" stroke="var(--on)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 53v10m-5-5h10m86-38v10m-5-5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".65"/></svg>';
+const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm = value => String(value ?? '').trim().toLocaleLowerCase('ru').replace(/ё/g,'е').replace(/\s+/g,' ');
+const nf = new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2});
+const hours = n => nf.format(n/60)+' ч';
+const date = v => v ? v.slice(0,10).split('-').reverse().join('.') : '—';
+const stamp = v => new Date(v).toLocaleString('ru-RU',{dateStyle:'short',timeStyle:'short'});
+const now = () => new Date().toISOString();
+const uid = () => crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)+Math.random().toString(36).slice(2);
+const people = [
+ {id:'emp-1',no:'0101',name:'Сотрудник Альфа',rest:'r-1'},
+ {id:'emp-2',no:'0102',name:'Сотрудник Бета',rest:'r-2'},
+ {id:'emp-3',no:'0103',name:'Сотрудник Гамма',rest:'r-1'},
+ {id:'emp-4',no:'0104',name:'Сотрудник Гамма',rest:'r-2'},
+ {id:'emp-5',no:'0105',name:'Сотрудник Дельта',rest:'r-2'}
+];
+const rests = [{id:'r-1',name:'Метрополис'},{id:'r-2',name:'Город'},{id:'r-3',name:'Город Север'}];
+const status = {fix:'Требует исправления',wait:'Ожидает сопоставления',ready:'Готово к обработке',fixed:'Исправлено',done:'Обработано',conflict:'Конфликт данных'};
+const types = {employee:'Сотрудник не сопоставлен',restaurant:'Ресторан не сопоставлен',interval:'Некорректный интервал',overlap:'Пересечение смен',approved:'Табель утверждён'};
+const reportStatus = {full:'Загружен полностью',partial:'Загружен частично',fix:'Требует исправления',done:'Обработан',failed:'Ошибка обработки'};
+const colors = {fix:'warn',wait:'warn',ready:'info',fixed:'info',done:'ok',conflict:'err',full:'ok',partial:'warn',failed:'err'};
+const pages = {upload:'Загрузка табеля',history:'История загрузок',settings:'Настройки'};
+const tabs = {errors:'Ошибки загрузки',employees:'Сопоставление сотрудников',restaurants:'Сопоставление ресторанов',archive:'Архив исходных файлов',audit:'История изменений',options:'Параметры импорта'};
+const steps = ['Выбор файла','Анализ Excel','Проверка данных','Сохранение отчёта','Результат загрузки'];
+const key = 'wokker-attendance-prototype-v1';
+const demoName = 'Табель_демо_ноябрь.xlsx';
+// Учебные книги Excel встроены для автономного скачивания.
+const demoBook = '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';
+const archiveBook = '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';
+const seed = [
+ ['0101','Сотрудник Альфа','Метрополис','2026-11-12','09:00','17:00',480],
+ ['0102','Сотрудник Бета','Город','2026-11-12','10:00','18:00',480],
+ ['0203','Сотрудник Гамма','Метрополис','2026-11-12','09:00','15:00',360],
+ ['0105','Сотрудник Дельта','ТЦ Метрополис','2026-11-13','11:00','18:00',420],
+ ['0101','Сотрудник Альфа','Метрополис','2026-11-12','16:00','20:00',240],
+ ['0102','Сотрудник Бета','Город','2026-11-13','18:00','10:00',480],
+ ['0305','Сотрудник Дельта','Город','2026-11-14','09:00','16:00',420],
+ ['0102','Сотрудник Бета','Город','2026-10-31','09:00','15:00',360]
+].map(([no,name,restaurant,day,start,end,declared],i)=>({i:i+2,no,name,restaurant,day,start,end,declared}));
+function initial(){
+ const original = {name:'Архив_октябрь.xlsx',size:atob(archiveBook).length,data:'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,'+archiveBook};
+ const approvedRow={...seed[7],id:'arch:2',raw:{...seed[7]},employee:'emp-2',rest:'r-2',minutes:360,processed:true,issue:false,status:'done'};
+ return {theme:'blue',reports:[{id:'arch',fingerprint:'archive',file:original,uploaded:'2026-11-02T08:30:00Z',by:'Кадровая служба',approved:true,rows:[approvedRow]}],maps:{employees:{},restaurants:{[norm('ВОККЕР Метрополис')]:{source:'ВОККЕР Метрополис',name:'',target:'r-1',updated:'2026-11-01T10:00:00Z'},[norm('Старый павильон')]:{source:'Старый павильон',name:'',target:'r-old',updated:'2026-11-01T10:00:00Z'}}},audit:[],options:{round:5,suggestions:true}};
+}
+let state;
+try { state=JSON.parse(localStorage.getItem(key)) || initial(); } catch { state=initial(); }
+let page='upload',tab='errors',stage=0,draft=null,result=null,run=0,toastTimer,dialogAction,dialogOrigin;
+let filters={},selected=new Set();
+function persist(){localStorage.setItem(key,JSON.stringify(state));}
+function commit(next){const previous=state;state=next;try{persist();return true;}catch{state=previous;toast('Не удалось сохранить данные. Проверьте доступное место и настройки браузера.','alert');return false;}}
+function audit(action, detail){state.audit.unshift({at:now(),action,detail,by:'Кадровая служба'});}
+function toast(message, icon='check'){clearTimeout(toastTimer);$('toast').innerHTML=ico(icon)+esc(message);toastTimer=setTimeout(()=>$('toast').replaceChildren(),4600);}
+function badge(value,label){return '<span class="badge '+(colors[value]||'')+'"><i></i>'+esc(label)+'</span>';}
+function button(label,action,value='',cls='',icon='',disabled=false){return '<button type="button" class="'+cls+'" data-action="'+action+'" data-value="'+esc(value)+'"'+(disabled?' disabled':'')+'>'+(icon?ico(icon):'')+esc(label)+'</button>';}
+function field(label,input){return '<label class="field">'+esc(label)+input+'</label>';}
+function options(items,value='',placeholder=''){return (placeholder?'<option value="">'+esc(placeholder)+'</option>':'')+items.map(([id,name])=>'<option value="'+esc(id)+'"'+(String(id)===String(value)?' selected':'')+'>'+esc(name)+'</option>').join('');}
+function metrics(items){return '<div class="stats">'+items.map(([label,value])=>'<div class="stat"><strong>'+esc(value)+'</strong><small>'+esc(label)+'</small></div>').join('')+'</div>';}
+function empty(title,detail,action=''){return '<div class="empty"><span class="tile">'+ico('file')+'</span><h3>'+esc(title)+'</h3><p>'+esc(detail)+'</p>'+action+'</div>';}
+function table(headers,rows){return '<div class="tablebox" tabindex="0" role="region" aria-label="Таблица с горизонтальной прокруткой"><table><thead><tr>'+headers.map(h=>'<th scope="col">'+h+'</th>').join('')+'</tr></thead><tbody>'+rows.map(c=>'<tr>'+c.map(v=>'<td>'+v+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>';}
+function panel(title,content,action=''){return '<section class="panel"><div class="panelhead"><h2>'+title+'</h2>'+action+'</div>'+content+'</section>';}
+const heading = (title,detail) => '<div class="header"><p class="eyebrow">Импорт рабочего времени</p><h1>'+title+'</h1><p class="sub">'+detail+'</p></div>';
+const allRows = () => state.reports.flatMap(report=>report.rows.map(row=>({row,report})));
+const issues = () => allRows().filter(x=>x.row.issue);
+const byId = (kind,id) => (kind==='employees'?people:rests).find(x=>x.id===id);
+const identifier = (kind,row) => kind==='employees'?row.no:row.restaurant;
+function direct(kind,source){
+ const entries=kind==='employees'?people:rests;
+ return entries.filter(x=>norm(kind==='employees'?x.no:x.name)===norm(source));
+}
+function candidates(kind,source,name){
+ const exact=direct(kind,source);
+ if(exact.length)return exact;
+ if(!state.options.suggestions)return [];
+ return kind==='employees' ? people.filter(p=>name&&norm(p.name)===norm(name)) : rests.filter(r=>norm(source).includes(norm(r.name))||norm(r.name).includes(norm(source)));
+}
+function match(kind,source){
+ const key=norm(source);
+ const saved=Object.hasOwn(state.maps[kind],key)?state.maps[kind][key]:null;
+ if(saved)return byId(kind,saved.target)?.id;
+ const exact=direct(kind,source);
+ return exact.length===1?exact[0].id:undefined;
+}
+const minute = value => /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? Number(value.slice(0,2))*60+Number(value.slice(3)) : NaN;
+function check(row, ledger){
+ const employee=match('employees',row.no), rest=match('restaurants',row.restaurant);
+ const start=minute(row.start), end=minute(row.end);
+ const reject=(type,status)=>({type,status,employee,rest,minutes:0});
+ if(!row.day || !Number.isFinite(start) || !Number.isFinite(end) || end<=start)return reject('interval','fix');
+ const minutes=Math.round((end-start)/state.options.round)*state.options.round;
+ if(minutes<=0)return reject('interval','fix');
+ if(!employee)return reject('employee','wait');
+ if(!rest)return reject('restaurant','wait');
+ if(state.reports.some(r=>r.approved&&r.rows.some(x=>x.rest===rest&&x.day.slice(0,7)===row.day.slice(0,7))))return reject('approved','conflict');
+ if(ledger.some(x=>x.employee===employee&&x.day===row.day&&start<minute(x.end)&&end>minute(x.start)))return reject('overlap','conflict');
+ return {type:null,status:'ready',employee,rest,minutes};
+}
+const ledger = () => allRows().map(x=>x.row).filter(row=>row.processed);
+function plan(rows){
+ const occupied=ledger();
+ return rows.map(row=>{
+  const item={...row,...check(row,occupied)};
+  if(!item.type)occupied.push(item);
+  return item;
+ });
+}
+function summary(rows){
+ const pending=rows.filter(r=>r.processed===false||r.type&&!r.processed);
+ const saved=rows.filter(r=>r.processed||r.processed===undefined&&!r.type);
+ return {people:new Set(rows.map(r=>r.no)).size,matched:new Set(rows.filter(r=>r.employee).map(r=>r.no)).size,
+  restaurants:new Set(rows.map(r=>r.rest||norm(r.restaurant))).size,shifts:rows.length,
+  minutes:saved.reduce((n,r)=>n+r.minutes,0),missing:pending.reduce((n,r)=>n+r.declared,0),
+  pending:pending.length,unmatched:new Set(pending.filter(r=>!r.employee).map(r=>r.no)).size};
+}
+function period(rows){const dates=rows.map(r=>r.day).filter(Boolean).sort();return dates.length?(dates[0]===dates.at(-1)?date(dates[0]):date(dates[0])+' — '+date(dates.at(-1))):'—';}
+function rstatus(r){const s=summary(r.rows);return r.failed?'failed':s.pending?(s.minutes?'partial':'fix'):r.rows.some(x=>x.issue)?'done':'full';}
+function recheck(list,process=false){
+ const occupied=ledger();
+ let count=0, minutes=0,ready=0;
+ for(const {row} of list){
+  if(row.processed)continue;
+  const checked=check(row,occupied);
+  Object.assign(row,checked);
+  if(checked.type){row.lastType=checked.type;continue;}
+  ready++;
+  if(process){
+   row.processed=true;row.status='done';occupied.push(row);count++;minutes+=row.minutes;
+  }else if(row.edited)row.status='fixed';
+ }
+ return {count,minutes,ready};
+}
+function clone(){return structuredClone(state);}
+function mutate(change){
+ const before=clone();
+ const output=change();
+ if(!commit(state)){state=before;return false;}
+ return output ?? true;
+}
+function render(){
+ document.documentElement.dataset.theme=state.theme;$('theme').value=state.theme;
+ $('nav').innerHTML=Object.entries(pages).map(([id,label])=>'<button type="button" data-action="page" data-value="'+id+'"'+(page===id?' aria-current="page"':'')+'>'+ico(id)+'<span>'+label+'</span>'+(id==='settings'&&issues().some(x=>!x.row.processed)?'<span class="badge warn navcount">'+issues().filter(x=>!x.row.processed).length+'</span>':'')+'</button>').join('');
+ $('crumb').innerHTML='<span>Табель</span>'+ico('chevron')+'<strong>'+pages[page]+'</strong>';
+ $('main').innerHTML=page==='upload'?uploadPage():page==='history'?heading(pages.history,'Отчёты, результаты импорта и исходные файлы.')+historyPage():settingsPage();
+}
+function stageGraphic(){return '<ol class="steps">'+steps.map((s,i)=>'<li '+(stage===i?'aria-current="step"':stage>i?'class="done"':'')+'><span class="stepnum">'+(stage>i?ico('check'):i+1)+'</span><span>'+s+'</span></li>').join('')+'</ol>';}
+function uploadPage(){
+ let content;
+ if(stage===0){
+  content='<div class="drop" id="drop">'+art+'<h3>Перетащите Excel сюда</h3><p class="muted">Поддерживаются файлы .xlsx и .xls до 2 МБ</p><div class="actions">'+button('Выбрать файл','pick','','primary','upload')+button('Загрузить демонстрационный отчёт','demo','','','file')+'</div></div><p class="notice">'+ico('info')+'<span>Прототип подставляет учебные строки для любого Excel. Выбранный файл остаётся в этом браузере. Используйте вымышленные данные.</span></p>';
+ }else if(stage===1||stage===3){
+  content='<div class="drop" role="status">'+art+'<h3>'+steps[stage]+'</h3><progress aria-label="'+steps[stage]+'"></progress><p class="muted">'+esc(draft?.file.name)+'</p></div>';
+ }else if(stage===2&&draft?.rows){
+  const rows=plan(draft.rows),s=summary(rows);
+  content='<div class="row"><div class="flex"><span class="tile">'+ico('file')+'</span><div class="file-name"><strong>'+esc(draft.file.name)+'</strong><p class="muted">'+sizeLabel(draft.file.size)+' · '+period(rows)+'</p></div></div>'+button('Заменить файл','replace')+'</div><p class="sub"><strong>Рестораны:</strong> '+esc([...new Set(rows.map(r=>byId('restaurants',r.rest)?.name||r.restaurant))].join(', '))+'</p><div class="notice">'+ico(s.pending?'alert':'check')+'<span>'+ (s.pending?'Исходный файл и корректные часы будут сохранены. Проблемные строки появятся в центре ошибок.':'Все строки прошли проверку.')+'</span></div><div class="stack" style="margin-top:14px">'+metrics([['Сотрудников в отчёте',s.people],['Сопоставлено сотрудников',s.matched],['Ресторанов',s.restaurants],['Рабочих смен',s.shifts],['Корректных часов',hours(s.minutes)],['Ошибок',s.pending],['Несопоставленных сотрудников',s.unmatched]])+'<div class="actions">'+button('Сохранить отчёт','save','','primary','check')+button('Просмотреть строки','preview')+'</div></div>';
+ }else{
+  const report=state.reports.find(r=>r.id===result);
+  if(!report)return heading(pages.upload,'Импортируйте смены из Excel.')+panel('Файл отчёта',button('Новая загрузка','new','','primary'));
+  const s=summary(report.rows);
+  content='<div class="notice">'+ico('check')+'<span><strong>Отчёт успешно сохранён.</strong><br>'+esc(report.file.name)+' · '+period(report.rows)+'</span></div><div class="stack" style="margin-top:16px">'+metrics([['Загружено',hours(s.minutes)],['Не обработано',hours(s.missing)],['Ошибок осталось',s.pending]])+'<div class="actions">'+(s.pending?button('Открыть ошибки отчёта','report-errors',report.id,'primary','arrow'):'')+button('Открыть отчёт','detail',report.id)+button('Новая загрузка','new')+'</div></div>';
+ }
+ const recent=state.reports.slice(0,2).map(r=>'<div class="row"><div class="file-name"><strong>'+esc(r.file.name)+'</strong><p class="muted">'+date(r.uploaded)+'</p></div>'+badge(rstatus(r),reportStatus[rstatus(r)])+button('Открыть','detail',r.id,'quiet','arrow')+'</div>').join('');
+ return heading(pages.upload,'Загрузите Excel, проверьте смены и сохраните отчёт.')+'<div class="grid"><div class="stack">'+panel(stage===2?'Предварительная проверка':stage===4?'Результат загрузки':'Файл отчёта',content,badge('info','Excel'))+panel('Последние отчёты',recent?'<div class="recent">'+recent+'</div>':empty('Отчётов пока нет','Здесь появятся сохранённые отчёты.'),button('Вся история','page','history','quiet','arrow'))+'</div><div class="stack">'+panel('Этапы импорта',stageGraphic())+panel('Сохранность данных','<div class="flex"><span class="tile">'+ico('shield')+'</span><strong>Часы проходят проверку</strong></div><ul class="rules"><li>Исходный Excel хранится в архиве.</li><li>Ошибки можно исправить после загрузки.</li><li>Утверждённые табели защищены от изменений.</li></ul>')+'</div></div>';
+}
+const sizeLabel = n=>n<1024?nf.format(n)+' Б':nf.format(n/1024)+' КБ';
+async function choose(file,demo=false){
+ if(!demo&&(!file||!/\.(xlsx|xls)$/i.test(file.name)||!file.size||file.size>2*1024*1024)){toast('Выберите непустой файл .xlsx или .xls размером до 2 МБ.','alert');return;}
+ const token=++run;stage=1;draft=null;render();
+ try{
+  const stored=demo?{name:demoName,size:atob(demoBook).length,data:'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,'+demoBook}:await new Promise((resolve,reject)=>{
+   const reader=new FileReader();reader.onload=()=>resolve({name:file.name,size:file.size,data:reader.result});reader.onerror=reject;reader.readAsDataURL(file);
+  });
+  const fingerprint=stored.data.slice(stored.data.indexOf(',')+1);
+  await new Promise(resolve=>setTimeout(resolve,450));
+  if(token!==run)return;
+  draft={file:stored,fingerprint,rows:structuredClone(seed)};
+  stage=2;render();if(page==='upload')$('main').focus();
+ }catch{if(token===run){stage=0;render();toast('Не удалось прочитать выбранный файл.','alert');}}
+}
+async function save(){
+ if(stage!==2||!draft)return;
+ const duplicate=state.reports.find(r=>r.file.data.split(',')[1]===draft.fingerprint);
+ if(duplicate){result=duplicate.id;stage=4;render();toast('Этот файл уже сохранён. Открыт результат предыдущей загрузки.');return;}
+ stage=3;render();const token=run;
+ await new Promise(resolve=>setTimeout(resolve,420));
+ if(run!==token)return;
+ const id=uid();
+ const rows=plan(draft.rows).map(row=>({...row,raw:structuredClone(draft.rows.find(r=>r.i===row.i)),id:id+':'+row.i,processed:!row.type,issue:!!row.type,lastType:row.type,status:row.type?row.status:'done'}));
+ if(mutate(()=>{state.reports.unshift({id,file:draft.file,uploaded:now(),by:'Кадровая служба',approved:false,rows});audit('Сохранён отчёт',draft.file.name+' · '+hours(summary(rows).minutes));})){
+  result=id;stage=4;render();toast('Отчёт сохранён.');
+ }else{stage=2;render();}
+}
+function historyPage(archive=false){
+ const reports=state.reports.filter(r=>!filters.q||norm(r.file.name+' '+r.by).includes(norm(filters.q))).filter(r=>!filters.state||rstatus(r)===filters.state);
+ const rows=reports.map(r=>{
+  const s=summary(r.rows), rs=rstatus(r);
+  const name='<strong class="file-name">'+esc(r.file.name)+'</strong><small>'+sizeLabel(r.file.size)+(r.approved?' · Утверждён HR':'')+'</small>';
+  return archive?[name,stamp(r.uploaded),esc(r.by),period(r.rows),button('Скачать исходный Excel','download',r.id,'','download'),button('Подробнее','detail',r.id,'quiet','arrow')]:
+   [name,stamp(r.uploaded)+'<small>'+esc(r.by)+'</small>',period(r.rows),s.people+' / '+s.restaurants,hours(s.minutes),hours(s.missing),String(s.pending),badge(rs,reportStatus[rs]),button('Подробнее','detail',r.id,'quiet','arrow')];
+ });
+ const control='<div class="filters">'+search('Искать по файлу или автору')+(archive?'':selectFilter('state','Статус',Object.entries(reportStatus)))+'</div><div id="records">'+
+ (rows.length?table(archive?['Исходный файл','Загружен','Автор','Период','Файл','Действия']:['Отчёт','Дата и автор','Период','Сотрудники / рестораны','Загружено','Не обработано','Ошибки','Статус','Действия'],rows):empty('Отчёты не найдены','Измените параметры поиска или загрузите новый отчёт.'))+'</div>';
+ return panel(archive?'Файлы Excel':'Сохранённые отчёты',control,button('Новая загрузка','new','','primary','upload'));
+}
+function search(label){return field(label,'<input type="search" data-filter="q" value="'+esc(filters.q||'')+'" placeholder="Введите запрос">');}
+function selectFilter(key,label,items){return field(label,'<select data-filter="'+key+'">'+options(items,filters[key],'Все')+'</select>');}
+function visibleIssues(){
+ return issues().filter(({row:r,report:p})=>{
+  const restaurant=r.rest||match('restaurants',r.restaurant)||norm(r.restaurant);
+  return (!filters.q||norm(p.file.name+' '+r.no+' '+r.name+' '+r.restaurant+' '+types[r.type||r.lastType]).includes(norm(filters.q)))&&
+   (!filters.report||p.id===filters.report)&&(!filters.restaurant||restaurant===filters.restaurant)&&
+   (!filters.employee||r.no===filters.employee)&&(!filters.period||r.day.slice(0,7)===filters.period)&&
+   (!filters.type||(r.type||r.lastType)===filters.type)&&(!filters.state||r.status===filters.state);
+ });
+}
+function errorPage(){
+ const all=issues(), active=all.filter(x=>!x.row.processed), filtered=visibleIssues();
+ const keyName=x=>x.row.rest||match('restaurants',x.row.restaurant)||norm(x.row.restaurant);
+ const unique=(make)=>[...new Map(all.map(make))];
+ const input='<div class="filters">'+search('Поиск')+
+  selectFilter('restaurant','Ресторан',unique(x=>[keyName(x),byId('restaurants',keyName(x))?.name||x.row.restaurant]))+
+  selectFilter('employee','Сотрудник',unique(x=>[x.row.no,x.row.no+' · '+x.row.name]))+
+  selectFilter('period','Период',unique(x=>[x.row.day.slice(0,7),x.row.day.slice(5,7)+'.'+x.row.day.slice(0,4)]))+
+  selectFilter('type','Тип ошибки',Object.entries(types))+selectFilter('state','Статус',Object.entries(status))+
+  selectFilter('report','Отчёт',state.reports.map(r=>[r.id,r.file.name]))+'</div>';
+ const checks=filtered.filter(x=>!x.row.processed);
+ const rows=filtered.map(({row:r,report:p})=>{
+  const edit=r.type==='employee'||r.type==='restaurant'?button('Сопоставить','issue-map',r.id):button('Исправить','edit',r.id);
+  return ['<input type="checkbox" data-row="'+esc(r.id)+'" aria-label="Выбрать строку '+r.i+'" '+(selected.has(r.id)?'checked ':'')+(r.processed?'disabled':'')+'>',
+   date(p.uploaded)+'<small>'+esc(p.file.name)+'</small>',
+   esc(r.no)+'<small>'+esc(r.name||'Имя не указано')+'</small>',
+   esc(r.restaurant),date(r.day),hours(r.processed?r.minutes:r.declared)+'<small>'+esc(r.start+'–'+r.end)+'</small>',
+   esc(types[r.type||r.lastType]||'—'),badge(r.status,status[r.status]),
+   '<div class="actions">'+(!r.processed?edit:'')+button('Excel','download',p.id,'quiet','download')+'</div>'];
+ });
+ const records='<div id="records"><p class="muted">Показано строк: '+filtered.length+'</p>'+(rows.length?table(['<input type="checkbox" aria-label="Выбрать видимые строки" data-all '+(!checks.length?'disabled ':checks.every(x=>selected.has(x.row.id))?'checked ':'')+'>','Загрузка','Сотрудник','Ресторан','Дата смены','Часы','Причина','Статус','Действия'],rows):empty('Строки не найдены',all.length?'Измените фильтры, чтобы увидеть другие строки.':'Загрузите демонстрационный отчёт, чтобы открыть сценарий исправления.',all.length?'':button('К загрузке','page','upload','primary')) )+'</div>';
+ const actions='<div class="actions">'+button('Повторная проверка','recheck')+button('Массовое исправление','batch','','','',!selected.size)+button('Обработать выбранные','process-selected','','','',!selected.size)+button('Обработать все исправленные','process-all','','primary','check',!active.length)+button('Скачать отчёт об ошибках','export-errors','','quiet','download',!filtered.length)+button('Сбросить фильтры','clear','','quiet')+'</div>';
+ return '<div class="stack">'+metrics([['Всего ошибок',all.length],['Необработанные часы',hours(active.reduce((sum,x)=>sum+x.row.declared,0))],['Проблемные отчёты',new Set(active.map(x=>x.report.id)).size],['Исправлено или обработано',all.filter(x=>['fixed','done','ready'].includes(x.row.status)).length]])+panel('Строки на проверке',input+actions+records)+'</div>';
+}
+function matchingEntries(kind){
+ const entries=new Map(Object.entries(state.maps[kind]).map(([key,value])=>[key,{...value,key}]));
+ for(const {row} of issues()){
+  if((kind==='employees'&&row.lastType!=='employee')||(kind==='restaurants'&&row.lastType!=='restaurant'))continue;
+  const source=identifier(kind,row), key=norm(source);
+  if(!entries.has(key))entries.set(key,{key,source,name:kind==='employees'?row.name:'',target:'',updated:''});
+ }
+ return [...entries.values()];
+}
+function matchingPage(kind){
+ const isPeople=kind==='employees';
+ const entries=matchingEntries(kind).filter(m=>!filters.q||norm([m.source,m.name,byId(kind,m.target)?.name,byId(kind,m.target)?.no,...candidates(kind,m.source,m.name).map(x=>x.name+' '+(x.no||''))].join(' ')).includes(norm(filters.q)));
+ const rows=entries.map(m=>{
+  const target=byId(kind,m.target), suggestions=candidates(kind,m.source,m.name);
+  const mark=m.target?(target?badge('done','Подтверждено'):badge('err','Устарело')):badge('wait','Ожидает сопоставления');
+  const predicted=suggestions.length===1?esc(suggestions[0].name):suggestions.length>1?'Несколько кандидатов':'—';
+  const actions='<div class="actions">'+button(m.target?'Редактировать':'Сопоставить','map',m.key)+ (m.target?button('Удалить','map-delete',m.key,'danger'):'')+'</div>';
+  return [esc(m.source)+(m.name?'<small>'+esc(m.name)+'</small>':''),predicted,target?esc(target.name)+(isPeople?'<small>'+esc(target.no)+'</small>':''):'—',...(isPeople?[esc(byId('restaurants',target?.rest)?.name||'—')]:[]),mark,m.updated?stamp(m.updated):'—',actions];
+ });
+ const actions='<div class="actions">'+button('Добавить соответствие','map','','primary')+button('Массовое сопоставление','map-batch')+button('Проверить устаревшие','stale')+button('Обработать связанные ошибки','related','','','check')+button('История изменений','tab','audit','quiet')+'</div>';
+ return panel(isPeople?'Справочник сотрудников':'Варианты названий ресторанов','<p class="sub" style="margin-bottom:12px">'+(isPeople?'Соответствия сохраняются по внутреннему идентификатору сотрудника.':'Несколько названий из Excel можно привязать к одному ресторану.')+'</p><div class="filters">'+search(isPeople?'Поиск по имени или табельному номеру':'Поиск по названию')+'</div>'+actions+'<div id="records">'+(rows.length?table(['Из Excel','Предложение','В системе',...(isPeople?['Ресторан сотрудника']:[]),'Статус','Обновлено','Действия'],rows):empty('Соответствия не найдены','Добавьте соответствие или загрузите отчёт с неизвестными строками.'))+'</div>');
+}
+function auditPage(){
+ const rows=state.audit.filter(x=>!filters.q||norm(x.action+' '+x.detail).includes(norm(filters.q))).map(x=>[stamp(x.at),esc(x.by),esc(x.action),esc(x.detail)]);
+ return panel('Журнал операций','<div class="filters">'+search('Поиск по действию')+'</div><div id="records">'+(rows.length?table(['Дата и время','Автор','Операция','Подробности'],rows):empty('Операций пока нет','Здесь появятся загрузки, исправления и изменения настроек.'))+'</div>');
+}
+function optionsPage(){
+ return '<div class="stack">'+panel('Правила проверки','<form id="prefs" class="formgrid">'+field('Шаг округления рабочего времени','<select name="round">'+options([[1,'1 минута'],[5,'5 минут'],[10,'10 минут'],[15,'15 минут']],state.options.round)+'</select>')+'<label class="check"><input name="suggestions" type="checkbox" '+(state.options.suggestions?'checked':'')+'> Предлагать соответствия по имени или названию</label><p class="muted">Проверка пересечений и защита утверждённых периодов действуют при каждой записи.</p><div class="actions"><button type="submit" class="primary">Сохранить параметры</button></div></form>')+panel('Демонстрационные данные','<p class="sub">Сброс вернёт исходный пример и очистит созданные в прототипе отчёты, сопоставления и историю.</p><div class="actions" style="margin-top:12px">'+button('Сбросить демонстрационные данные','reset','','danger')+'</div>')+'</div>';
+}
+function settingsPage(){
+ const detail={errors:'Проверьте проблемные строки и восстановите часы из сохранённых отчётов.',employees:'Сопоставьте исходные номера с карточками сотрудников.',restaurants:'Настройте соответствия между названиями из Excel и ресторанами в справочнике.',archive:'Оригиналы загруженных отчётов.',audit:'Загрузка, сопоставления и действия с отчётами.',options:'Правила проверки и настройки демонстрационной среды.'};
+ const tabsHtml='<nav class="tabs" aria-label="Разделы настроек">'+Object.entries(tabs).map(([k,v])=>'<button type="button" data-action="tab" data-value="'+k+'"'+(k===tab?' aria-current="page"':'')+'>'+v+'</button>').join('')+'</nav>';
+ const sub=tab==='errors'?errorPage():tab==='archive'?historyPage(true):tab==='audit'?auditPage():tab==='options'?optionsPage():matchingPage(tab);
+ return heading(tabs[tab],detail[tab])+tabsHtml+sub;
+}
+function refreshRecords(){
+ const focused=document.activeElement;
+ const controls=focused?.dataset.filter, start=controls==='q'?focused.selectionStart:null;
+ const html=page==='history'?historyPage():tab==='errors'?errorPage():tab==='archive'?historyPage(true):tab==='audit'?auditPage():matchingPage(tab);
+ const helper=document.createElement('div');helper.innerHTML=html;
+ if($('records')&&helper.querySelector('#records'))$('records').replaceWith(helper.querySelector('#records'));
+ const next=helper.querySelector('[data-action=export-errors]'), current=document.querySelector('[data-action=export-errors]');
+ if(next&&current)current.disabled=next.disabled;
+ if(start!==null&&typeof start==='number')focused.setSelectionRange(start,start);
+}
+function hrefDownload(name,url){
+ const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();
+}
+function download(report){if(report)hrefDownload(report.file.name,report.file.data);}
+function exportErrors(){
+ const cell=value=>'"'+String(value??'').replace(/^[=+\-@\t\r]/,"'$&").replace(/"/g,'""')+'"';
+ const rows=[['Дата загрузки','Отчёт','Табельный номер','Сотрудник','Ресторан','Дата смены','Часы','Причина','Статус']];
+ for(const {row:r,report:p} of visibleIssues())rows.push([stamp(p.uploaded),p.file.name,r.no,r.name,r.restaurant,date(r.day),nf.format((r.processed?r.minutes:r.declared)/60),types[r.type||r.lastType],status[r.status]]);
+ const url=URL.createObjectURL(new Blob(['\ufeff'+rows.map(r=>r.map(cell).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8'}));
+ hrefDownload('Ошибки_табеля.csv',url);setTimeout(()=>URL.revokeObjectURL(url),5000);
+}
+function modal(title,html,options={}){
+ const dialog=$('dialog');
+ if(!dialog.open)dialogOrigin=document.activeElement;
+ dialog.className=options.drawer?'drawer':'';
+ dialog.innerHTML='<div class="panelhead"><h2 id="dialog-title">'+esc(title)+'</h2><button type="button" class="quiet" data-action="close" aria-label="Закрыть">'+ico('close')+'</button></div>'+html;
+ dialogAction=options.submit;
+ if(!dialog.open)dialog.showModal();
+}
+const close=()=>$('dialog').close();
+$('dialog').addEventListener('close',()=>{if(dialogOrigin?.isConnected)dialogOrigin.focus();dialogAction=null;});
+function confirmAction(title,detail,label,fn){
+ modal(title,'<form><p>'+esc(detail)+'</p><div class="actions">'+button('Отмена','close')+'<button type="submit" class="danger">'+esc(label)+'</button></div></form>',{submit:fn});
+}
+function detail(report){
+ if(!report)return;
+ const s=summary(report.rows), rs=rstatus(report);
+ const d=[['Автор',report.by],['Загружен',stamp(report.uploaded)],['Период',period(report.rows)],['Согласование',report.approved?'Утверждён HR':'Черновик'],['Сотрудников',s.people],['Ресторанов',s.restaurants]];
+ const deletion=report.approved?'<p class="notice">'+ico('shield')+'Удаление утверждённого отчёта заблокировано.</p>':button('Удалить отчёт','delete',report.id,'danger');
+ modal(report.file.name,badge(rs,reportStatus[rs])+'<dl class="details">'+d.map(([a,b])=>'<div><dt>'+esc(a)+'</dt><dd>'+esc(b)+'</dd></div>').join('')+'</dl>'+metrics([['Загружено',hours(s.minutes)],['Не обработано',hours(s.missing)],['Ошибок осталось',s.pending]])+'<div class="actions">'+button('Скачать исходный Excel','download',report.id,'primary','download')+(report.rows.some(r=>r.issue)?button('Открыть ошибки отчёта','report-errors',report.id):'')+deletion+'</div>',{drawer:true});
+}
+function processRows(list,process){
+ let result;
+ if(!list.some(x=>!x.row.processed)){toast('Нет необработанных строк для этой операции.','info');return;}
+ if(mutate(()=>{result=recheck(list,process);audit(process?'Восстановление часов':'Повторная проверка',process?result.count+' строк · '+hours(result.minutes):result.ready+' строк готовы к обработке');})){
+  selected.clear();render();toast(process?'Восстановлено '+hours(result.minutes)+' · строк: '+result.count+'.':'Готовы к обработке: '+result.ready+'.');
+ }
+}
+function issueEdit(ids){
+ const list=issues().filter(x=>ids.includes(x.row.id)&&!x.row.processed);
+ if(!list.length)return;
+ const row=list[0].row;
+ const many=list.length>1;
+ const common=field('Начало смены','<input type="time" name="start" required value="'+(many?'':esc(row.start))+'">')+field('Окончание смены','<input type="time" name="end" required value="'+(many?'':esc(row.end))+'">');
+ modal(many?'Исправить выбранные смены':'Исправить смену', '<form><p class="muted">'+(many?'Один интервал будет применён к '+list.length+' выбранным строкам. Каждая строка пройдёт отдельную проверку.':esc(row.no+' · '+row.name+' · '+date(row.day)))+'</p>'+common+'<div class="actions"><button type="submit" class="primary">Сохранить исправление</button>'+button('Отмена','close')+'</div></form>',{submit:data=>{
+  const start=data.get('start'),end=data.get('end');
+  if(minute(end)<=minute(start)){showFormError('Окончание смены должно быть позже начала.');return;}
+  if(mutate(()=>{list.forEach(({row:r})=>{r.start=start;r.end=end;r.edited=true;});recheck(list);audit('Исправлены интервалы',list.length+' строк · '+start+'–'+end);})){close();render();toast('Исправления сохранены. Готовые строки можно обработать.');}
+ }});
+}
+function showFormError(text){
+ const dialog=$('dialog');
+ let line=dialog.querySelector('[role=alert]');
+ if(!line){line=document.createElement('p');line.setAttribute('role','alert');line.className='notice danger';dialog.querySelector('form').prepend(line);}
+ line.textContent=text;
+}
+const directory = kind => kind==='employees'?people:rests;
+const directoryLabel = (kind,x) => x.name+(kind==='employees'?' · '+x.no+' · '+byId('restaurants',x.rest).name:'');
+const directoryOptions = (kind,target='',query='') => options(directory(kind).filter(x=>x.id===target||norm(directoryLabel(kind,x)).includes(norm(query))).map(x=>[x.id,directoryLabel(kind,x)]),target,'Выберите из справочника');
+function saveMaps(kind,records){
+ return mutate(()=>{
+  for(const {source,name,target} of records){
+   const k=norm(source), prev=state.maps[kind][k];
+   state.maps[kind]={...state.maps[kind],[k]:{source,name,target,updated:now()}};
+   audit('Сохранено соответствие',source+' → '+byId(kind,target).name+(prev?' (обновлено)':''));
+  }
+  recheck(issues().filter(x=>records.some(r=>norm(r.source)===norm(identifier(kind,x.row)))));
+ });
+}
+function mapDialog(kind,record){
+ const isPeople=kind==='employees', locked=!!record;
+ const suggestions=record?candidates(kind,record.source,record.name):[];
+ modal(isPeople?'Сопоставить сотрудника':'Сопоставить ресторан','<form>'+
+  field(isPeople?'Табельный номер из Excel':'Название из Excel','<input name="source" maxlength="100" required value="'+esc(record?.source)+'" '+(locked?'readonly':'')+'>')+
+  (isPeople?field('Имя из Excel','<input name="name" maxlength="100" value="'+esc(record?.name)+'">'):'')+
+  (suggestions.length?'<p class="notice">'+ico('info')+'<span>'+ (suggestions.length>1?'Несколько кандидатов. Проверьте и выберите соответствие.':'Предложение: '+esc(directoryLabel(kind,suggestions[0])))+'</span></p>':'')+
+  field(isPeople?'Поиск по ФИО или табельному номеру':'Поиск по ресторану','<input type="search" data-directory="'+kind+'">')+
+  field('Запись в системе','<select name="target" required>'+directoryOptions(kind,record?.target||'')+'</select>')+
+  '<div class="actions"><button type="submit" class="primary">Сохранить соответствие</button>'+button('Отмена','close')+'</div></form>',{submit:data=>{
+   const source=data.get('source').trim(),name=(data.get('name')||'').trim(),target=data.get('target');
+   if(!source||!byId(kind,target)){showFormError('Укажите исходное значение и запись из справочника.');return;}
+   if(!record&&Object.hasOwn(state.maps[kind],norm(source))){showFormError('Соответствие уже существует. Откройте его для редактирования.');return;}
+   if(saveMaps(kind,[{source,name,target}])){close();render();toast('Соответствие сохранено. Связанные строки проверены.');}
+  }});
+}
+function batchMap(kind){
+ const pending=matchingEntries(kind).filter(m=>!byId(kind,m.target));
+ if(!pending.length){toast('Нет соответствий, ожидающих подтверждения.','info');return;}
+ modal('Массовое сопоставление','<form><p class="muted">Выберите записи, которые хотите подтвердить. Пустые поля будут пропущены.</p>'+pending.map((m,i)=>{
+  const suggested=candidates(kind,m.source,m.name);
+  return field(m.source+(m.name?' · '+m.name:'')+(suggested.length>1?' · несколько кандидатов':''),'<select name="m'+i+'">'+directoryOptions(kind)+'</select>');
+ }).join('')+'<div class="actions"><button type="submit" class="primary">Подтвердить выбранные</button>'+button('Отмена','close')+'</div></form>',{submit:data=>{
+  const records=pending.map((m,i)=>({...m,target:data.get('m'+i)})).filter(m=>byId(kind,m.target));
+  if(!records.length){showFormError('Выберите хотя бы одно соответствие.');return;}
+  if(saveMaps(kind,records)){close();render();toast('Подтверждено соответствий: '+records.length+'.');}
+ }});
+}
+function go(next,section='errors',presets={}){
+ page=next;tab=section;filters=presets;selected.clear();render();$('main').focus();window.scrollTo(0,0);
+}
+function newUpload(){run++;stage=0;draft=null;result=null;go('upload');}
+function pickedReport(id){return state.reports.find(r=>r.id===id);}
+const actions={
+ page:value=>go(value),tab:value=>go('settings',value),new:newUpload,
+ pick:()=>$('file').click(),replace:()=>$('file').click(),demo:()=>choose(null,true),save,close,
+ detail:value=>detail(pickedReport(value)),download:value=>download(pickedReport(value)),
+ 'report-errors':value=>{if($('dialog').open)close();go('settings','errors',{report:value});},
+ preview:()=>{
+  if(!draft)return;
+  const rows=plan(draft.rows).map(r=>[String(r.i),esc(r.no)+'<small>'+esc(r.name)+'</small>',esc(r.restaurant),date(r.day),esc(r.start+'–'+r.end),r.type?badge(r.status,types[r.type]):badge('done',hours(r.minutes))]);
+  modal('Строки Excel',table(['Строка','Сотрудник','Ресторан','Дата','Интервал','Проверка'],rows),{drawer:true});
+ },
+ delete:value=>{
+  const report=pickedReport(value);if(!report||report.approved)return;
+  confirmAction('Удалить отчёт?','Будут удалены исходный файл, ошибки и только часы этого учебного отчёта. Запись об удалении останется в истории.','Удалить отчёт',()=>{
+   const current=pickedReport(value);if(!current||current.approved)return;
+   if(mutate(()=>{state.reports=state.reports.filter(r=>r.id!==value);audit('Удалён отчёт',current.file.name);})){close();if(result===value){newUpload();go('history');}else render();toast('Отчёт удалён.');}
+  });
+ },
+ edit:value=>issueEdit([value]),batch:()=>issueEdit([...selected]),
+ 'issue-map':value=>{
+  const item=issues().find(x=>x.row.id===value);if(!item)return;
+  const kind=item.row.type==='employee'?'employees':'restaurants',source=identifier(kind,item.row);
+  mapDialog(kind,{source,name:kind==='employees'?item.row.name:'',...state.maps[kind][norm(source)]});
+ },
+ map:value=>mapDialog(tab,value?matchingEntries(tab).find(r=>r.key===value):undefined),
+ 'map-batch':()=>batchMap(tab),
+ 'map-delete':value=>{
+  const kind=tab,record=state.maps[kind][value];if(!record)return;
+  confirmAction('Удалить соответствие?',record.source+' снова будет проверяться по справочнику при импорте и восстановлении.','Удалить соответствие',()=>{
+   if(mutate(()=>{delete state.maps[kind][value];recheck(issues().filter(x=>norm(identifier(kind,x.row))===value));audit('Удалено соответствие',record.source);})){close();render();toast('Соответствие удалено.');}
+  });
+ },
+ stale:()=>{const count=Object.values(state.maps[tab]).filter(m=>!byId(tab,m.target)).length;toast(count?'Устаревших соответствий: '+count+'. Они отмечены в таблице.':'Все подтверждённые записи есть в справочнике.',count?'info':'check');},
+ related:()=>processRows(issues().filter(x=>state.maps[tab][norm(identifier(tab,x.row))]&&byId(tab,state.maps[tab][norm(identifier(tab,x.row))].target)),true),
+ clear:()=>{filters={};selected.clear();render();},
+ recheck:()=>processRows(selected.size?visibleIssues().filter(x=>selected.has(x.row.id)):visibleIssues(),false),
+ 'process-selected':()=>processRows(visibleIssues().filter(x=>selected.has(x.row.id)),true),
+ 'process-all':()=>processRows(issues().filter(x=>['ready','fixed'].includes(x.row.status)),true),
+ 'export-errors':exportErrors,
+ reset:()=>confirmAction('Сбросить демонстрационные данные?','Созданные в этом браузере отчёты, сопоставления и журнал будут удалены.','Сбросить данные',()=>{
+  const next=initial();
+  if(commit(next)){close();newUpload();toast('Демонстрационные данные сброшены.');}
+ })
+};
+function updateSelection(){
+ const visible=visibleIssues().filter(x=>!x.row.processed);
+ const all=document.querySelector('[data-all]');
+ if(all){all.checked=visible.length>0&&visible.every(x=>selected.has(x.row.id));all.indeterminate=!all.checked&&visible.some(x=>selected.has(x.row.id));}
+ document.querySelectorAll('[data-action=batch],[data-action=process-selected]').forEach(btn=>{btn.disabled=!selected.size;});
+}
+document.addEventListener('click',event=>{
+ const target=event.target.closest('button[data-action]');
+ if(target&&!target.disabled)actions[target.dataset.action]?.(target.dataset.value);
+});
+document.addEventListener('input',event=>{
+ const control=event.target;
+ if(control.dataset.filter==='q'){filters.q=control.value;selected.clear();refreshRecords();updateSelection();}
+ if(control.dataset.directory){
+  const select=$('dialog').querySelector('[name=target]');
+  select.innerHTML=directoryOptions(control.dataset.directory,select.value,control.value);
+ }
+});
+document.addEventListener('change',event=>{
+ const v=event.target;
+ if(v.id==='theme'){if(!mutate(()=>{state.theme=v.value;}))v.value=state.theme;document.documentElement.dataset.theme=state.theme;return;}
+ if(v.id==='file'){if(v.files.length)choose(v.files[0]);v.value='';return;}
+ if(v.dataset.filter&&v.dataset.filter!=='q'){filters[v.dataset.filter]=v.value;selected.clear();refreshRecords();updateSelection();return;}
+ if(v.dataset.row){if(v.checked)selected.add(v.dataset.row);else selected.delete(v.dataset.row);updateSelection();return;}
+ if(v.hasAttribute('data-all')){
+  visibleIssues().filter(x=>!x.row.processed).forEach(x=>{if(v.checked)selected.add(x.row.id);else selected.delete(x.row.id);});
+  document.querySelectorAll('[data-row]:not(:disabled)').forEach(b=>{b.checked=selected.has(b.dataset.row);});updateSelection();
+ }
+});
+document.addEventListener('submit',event=>{
+ event.preventDefault();
+ const fields=new FormData(event.target);
+ if(event.target.closest('dialog')){dialogAction?.(fields);return;}
+ if(event.target.id==='prefs'&&mutate(()=>{state.options={round:Number(fields.get('round')),suggestions:fields.has('suggestions')};recheck(issues());audit('Изменены параметры импорта','Шаг округления: '+state.options.round+' мин.');})){render();toast('Параметры сохранены.');}
+});
+for(const type of ['dragenter','dragover','dragleave','drop'])document.addEventListener(type,event=>{
+ const zone=event.target.closest('#drop');
+ if(type==='dragover'||type==='drop')event.preventDefault();
+ if(!zone)return;
+ if(type==='dragenter'||type==='dragover'){zone.classList.add('over');return;}
+ if(type==='dragleave'&&zone.contains(event.relatedTarget))return;
+ zone.classList.remove('over');
+ if(type==='drop'&&event.dataTransfer.files.length)choose(event.dataTransfer.files[0]);
+});
+$('brandIcon').innerHTML=ico('brand');
+render();
+</script>
+</body>
+</html>

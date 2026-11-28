@@ -54,3 +54,24 @@ def test_us_cannot_inherit_network_scope():
     user = {"position": "УС", "restaurant_key": "a",
             "permissions": {"control_access": True, "control_view_all": True}}
     assert asyncio.run(restaurant_scope(user)) == ["a"]
+
+@pytest.mark.parametrize("role", [
+    {"position":"HR","is_admin":True},
+    {"position":"Администратор","is_admin":True},
+    {"position":"Территориальный управляющий"},
+    {"position":"УС"},
+    {"position":"Тайный гость"},
+])
+def test_role_requires_explicit_access_and_revocation(role):
+    assert not control_allowed(dict(role, permissions={}))
+    assert control_allowed(dict(role, permissions={"control_access":True}))
+    assert not control_allowed(dict(role, permissions={"control_access":"true"}))
+    assert not control_allowed(dict(role, permissions={"control_access":True}, is_fired=True))
+
+@pytest.mark.parametrize("role", [{"position":"Работник"}, {"position":"Кассир"}, {"position":"Повар"}])
+def test_ordinary_employee_access_flag_alone_is_insufficient(role):
+    assert not control_allowed(dict(role, permissions={"control_access":True}))
+
+def test_super_admin_access_and_revocation():
+    assert control_allowed({"is_super_admin":True})
+    assert not control_allowed({"is_super_admin":True,"is_fired":True})

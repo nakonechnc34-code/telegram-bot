@@ -160,6 +160,9 @@ def run_migrations():
                 cur.execute((migrations / "014_control_photos.sql").read_text(encoding="utf-8"))
                 cur.execute((migrations / "015_control_task_photos.sql").read_text(encoding="utf-8"))
                 cur.execute((migrations / "016_control_guest.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "017_control_notifications.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "018_control_guest_identity_history.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "019_control_query_indexes.sql").read_text(encoding="utf-8"))
                 cur.execute("SELECT 1 FROM users LIMIT 1")
                 if cur.fetchone() is None:
                     if not config.LOGIN_RE.fullmatch(config.ADMIN_LOGIN):
@@ -553,6 +556,10 @@ async def handle_control_js(request):
     return await _send_static_file("control.js", "application/javascript")
 
 app.router.add_get("/control.css", handle_control_css)
+async def handle_control_mobile_js(request):
+    return await _send_static_file("control-mobile.js", "application/javascript")
+
+app.router.add_get("/control-mobile.js", handle_control_mobile_js)
 app.router.add_get("/control.js", handle_control_js)
 app.router.add_get("/control", handle_control_page)
 app.router.add_get("/control/", handle_control_page)

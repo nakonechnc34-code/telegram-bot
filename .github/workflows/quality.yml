@@ -52,3 +52,297 @@ jobs:
         run: |
           python -m pip install --upgrade 'setuptools>=84.1.0' pip-audit
           python -m pip_audit
+
+  control-postgres:
+    name: CONTROL PostgreSQL migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: control_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d control_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGPASSWORD: ci
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply SQL migrations twice
+        run: |
+          for pass in 1 2; do
+            for migration in database/*.sql; do
+              psql -h localhost -U ci -d control_ci -v ON_ERROR_STOP=1 -f "$migration"
+            done
+          done
+      - name: Verify notification schema
+        run: |
+          psql -h localhost -U ci -d control_ci -v ON_ERROR_STOP=1 -c "SELECT recipient_id, restaurant_key, event_kind, source_id, created_at, read_at FROM control_notifications LIMIT 0"
+      - name: Verify notification constraints and persistence
+        run: |
+          psql -h localhost -U ci -d control_ci -v ON_ERROR_STOP=1 <<'SQL'
+          BEGIN;
+          INSERT INTO restaurants(key,name) VALUES ('ci-notification','CI');
+          INSERT INTO users(user_id,full_name) VALUES (900001,'CI recipient'),(900002,'CI other');
+          INSERT INTO control_notifications(recipient_id,restaurant_key,event_kind,source_id)
+          VALUES (900001,'ci-notification','task_critical',1),(900002,'ci-notification','task_critical',1);
+          INSERT INTO control_notifications(recipient_id,restaurant_key,event_kind,source_id)
+          VALUES (900001,'ci-notification','task_critical',1) ON CONFLICT (recipient_id,event_kind,source_id) DO NOTHING;
+          UPDATE control_notifications SET read_at=NOW() WHERE recipient_id=900001 AND read_at IS NULL;
+          DO $$
+          BEGIN
+            IF (SELECT count(*) FROM control_notifications WHERE restaurant_key='ci-notification') <> 2
+              OR (SELECT count(*) FROM control_notifications WHERE recipient_id=900001 AND read_at IS NOT NULL) <> 1
+              OR (SELECT count(*) FROM control_notifications WHERE recipient_id=900002 AND read_at IS NULL) <> 1 THEN
+              RAISE EXCEPTION 'Notification persistence or recipient isolation failed';
+            END IF;
+          END $$;
+          ROLLBACK;
+          SQL
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate actual notification generation SQL
+        run: |
+          python - <<'PY'
+          import ast
+          import subprocess
+          from pathlib import Path
+          tree = ast.parse(Path('routes/control.py').read_text())
+          fn = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == 'refresh_control_notifications')
+          sql = next(n.value for n in ast.walk(fn) if isinstance(n, ast.Constant) and isinstance(n.value, str) and 'INSERT INTO control_notifications' in n.value)
+          subprocess.run(['psql','-h','localhost','-U','ci','-d','control_ci','-v','ON_ERROR_STOP=1'], input='PREPARE notification_refresh(bigint,text[],boolean) AS '+sql+'; EXECUTE notification_refresh(900001,ARRAY[]::text[],FALSE); DEALLOCATE notification_refresh;', text=True, check=True)
+          PY
+      - name: Verify all six notification events on populated database
+        run: |
+          python - <<'PY'
+          import ast
+          import subprocess
+          from pathlib import Path
+          tree = ast.parse(Path('routes/control.py').read_text())
+          fn = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == 'refresh_control_notifications')
+          sql = next(n.value for n in ast.walk(fn) if isinstance(n, ast.Constant) and isinstance(n.value, str) and 'INSERT INTO control_notifications' in n.value)
+          fixture = """
+          BEGIN;
+          INSERT INTO restaurants(key,name) VALUES ('ci-a','A'),('ci-b','B');
+          INSERT INTO users(user_id,full_name) VALUES (900001,'Recipient'),(900002,'Other');
+          INSERT INTO control_templates(id,title,created_by) VALUES (900001,'Test',900001);
+          INSERT INTO control_template_versions(id,template_id,version,definition) VALUES (900001,900001,1,'{}');
+          INSERT INTO control_checks(id,restaurant_key,version_id,assigned_by,due_at) VALUES
+          (900001,'ci-a',900001,900001,NOW()-INTERVAL '1 day'),(900002,'ci-b',900001,900002,NOW()-INTERVAL '1 day');
+          INSERT INTO control_tasks(id,check_id,question_key,description,critical,assignee_id,due_at) VALUES
+          (900001,900001,'q','Test',TRUE,900001,NOW()-INTERVAL '1 day');
+          INSERT INTO control_equipment(id,restaurant_key,name,kind,unit,lower_limit,upper_limit,created_by)
+          VALUES (900001,'ci-a','Test','temperature','C',2,6,900001);
+          INSERT INTO control_readings(equipment_id,value,lower_limit,upper_limit,deviation,recorded_by)
+          VALUES (900001,9,2,6,TRUE,900001);
+          """
+          assertions = """
+          DO $verify$
+          BEGIN
+            IF (SELECT count(*) FROM control_notifications WHERE recipient_id=900001) <> 6
+            OR (SELECT count(DISTINCT event_kind) FROM control_notifications WHERE recipient_id=900001) <> 6
+            OR EXISTS (SELECT 1 FROM control_notifications WHERE restaurant_key='ci-b' OR recipient_id<>900001)
+            THEN RAISE EXCEPTION 'Notification generation or scope failed'; END IF;
+          END $verify$;
+          """
+          def query(name, prefix):
+              node = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == name)
+              return next(n.value for n in ast.walk(node) if isinstance(n, ast.Constant) and isinstance(n.value, str) and n.value.startswith(prefix))
+          history = query('notifications', 'SELECT n.id')
+          unread = query('notifications', 'SELECT count(*)')
+          mark = query('read_notifications', 'WITH updated')
+          permissions = """
+          UPDATE control_tasks SET assignee_id=900002 WHERE id=900001;
+          EXECUTE refresh_events(900001,ARRAY['ci-a'],FALSE);
+          EXECUTE refresh_events(900002,ARRAY['ci-a'],FALSE);
+          CREATE TEMP TABLE observed(label text, total bigint);
+          """
+          # Execute the production statements, asserting their actual results through psql output.
+          checks = [
+              ("EXECUTE visible_count(900001,ARRAY['ci-a'],FALSE)", "3"),
+              ("EXECUTE visible_count(900001,ARRAY['ci-a'],TRUE)", "6"),
+              ("EXECUTE visible_count(900001,ARRAY[]::text[],TRUE)", "0"),
+              ("EXECUTE visible_count(900002,ARRAY['ci-a'],FALSE)", "6"),
+              ("EXECUTE mark_visible(900001,ARRAY['ci-a'],NULL,FALSE)", "3"),
+              ("EXECUTE visible_count(900001,ARRAY['ci-a'],TRUE)", "3"),
+          ]
+          prepared = 'PREPARE visible_history(bigint,text[],boolean) AS '+history+'; PREPARE visible_count(bigint,text[],boolean) AS '+unread+'; PREPARE mark_visible(bigint,text[],bigint,boolean) AS '+mark+';'
+          script = fixture+'PREPARE refresh_events(bigint,text[],boolean) AS '+sql+"; EXECUTE refresh_events(900001,ARRAY['ci-a'],FALSE); EXECUTE refresh_events(900001,ARRAY['ci-a'],FALSE); "+assertions+prepared+permissions
+          script += "EXECUTE visible_history(900001,ARRAY['ci-a'],FALSE);"
+          for statement, expected in checks:
+              script += "\n\\echo ASSERT_"+expected+"\n"+statement+";\n"
+          script += "ROLLBACK;"
+          result = subprocess.run(['psql','-X','-qAt','-h','localhost','-U','ci','-d','control_ci','-v','ON_ERROR_STOP=1'],input=script,text=True,check=True,capture_output=True)
+          lines = result.stdout.splitlines()
+          actual = [(line.removeprefix('ASSERT_'),lines[i+1]) for i,line in enumerate(lines) if line.startswith('ASSERT_')]
+          assert len(actual)==len(checks) and all(a==b for a,b in actual), actual
+          history_rows = [line for line in lines[:lines.index('ASSERT_3')] if '|' in line]
+          assert len(history_rows)==3 and all('|task_' not in line for line in history_rows), history_rows
+          print('Notification permission revocation and reassignment verified')
+          # Original fixture execution is superseded by the assertions above.
+          # 
+          PY
+
+      - name: Verify mystery guest audit privacy on PostgreSQL
+        run: |
+          python - <<'PY'
+          import ast
+          import subprocess
+          from pathlib import Path
+          tree = ast.parse(Path('routes/core.py').read_text())
+          fn = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == 'handle_admin_audit')
+          sql = next(n.value for n in ast.walk(fn) if isinstance(n, ast.Constant) and isinstance(n.value, str) and 'SELECT a.* FROM admin_audit' in n.value)
+          sql = sql.replace('%s', '$1')
+          fixture = """
+          BEGIN;
+          INSERT INTO users(user_id,full_name,login,position) VALUES
+          (900011,'Private Guest','secret-guest','Тайный гость'),
+          (900012,'Normal User','normal-ci','УС');
+          INSERT INTO admin_audit(admin_id,action,target_type,target_id,details) VALUES
+          (900012,'ci_safe','user','900012','ordinary'),
+          (900012,'ci_name','user','900012','PRIVATE GUEST'),
+          (900012,'ci_login','user','900012','secret-guest'),
+          (900012,'ci_target','user','900011','ordinary'),
+          (900011,'ci_actor','user','900012','ordinary');
+          UPDATE users SET full_name='Changed Guest',login='changed-guest' WHERE user_id=900011;
+          UPDATE users SET position='УС' WHERE user_id=900011;
+          """
+          script = fixture+'PREPARE audit_visibility(boolean) AS '+sql+'; EXECUTE audit_visibility(FALSE); EXECUTE audit_visibility(TRUE); ROLLBACK;'
+          result = subprocess.run(['psql','-X','-qAt','-h','localhost','-U','ci','-d','control_ci','-v','ON_ERROR_STOP=1'],input=script,text=True,check=True,capture_output=True)
+          rows = result.stdout.splitlines()
+          assert len(rows)==6 and '|ci_safe|' in rows[0], rows
+          for action in ('ci_name','ci_login','ci_target','ci_actor'):
+              assert sum('|'+action+'|' in row for row in rows)==1, rows
+          print('Mystery guest audit privacy verified')
+          PY
+
+      - name: Verify live CONTROL session and restaurant scope on PostgreSQL
+        env:
+          DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/control_ci
+          ADMIN_PASSWORD: ci-only-placeholder-not-used-for-login
+        run: |
+          python -m pip install -r requirements.txt
+          python - <<'PY'
+          import asyncio
+          import hashlib
+          from types import SimpleNamespace
+          from unittest.mock import patch
+          import asyncpg
+          from routes import control
+
+          async def main():
+              pool = await asyncpg.create_pool(dsn='postgresql://ci:ci@127.0.0.1:5432/control_ci')
+              token = 'a'*64
+              digest = hashlib.sha256(token.encode()).hexdigest()
+              request = SimpleNamespace(app={},path='/api/control/restaurants',headers={'Authorization':'Bearer '+token})
+              try:
+                  await pool.execute("INSERT INTO users(user_id,full_name,position,restaurant_key,permissions) VALUES(900099,'CI scope','УС','a','{\"control_access\":true,\"control_view_all\":true}')")
+                  await pool.execute("INSERT INTO control_sessions(token_hash,user_id) VALUES($1,900099)",digest)
+                  with patch.object(control.db,'get_pool',return_value=pool):
+                      user = await control.control_user(request)
+                      assert await control.restaurant_scope(user) == ['a']
+                      await pool.execute("UPDATE users SET restaurant_key='b' WHERE user_id=900099")
+                      assert await control.restaurant_scope(await control.control_user(request)) == ['b']
+                      await pool.execute("UPDATE users SET permissions='{}' WHERE user_id=900099")
+                      assert await control.control_user(request) is None
+                      await pool.execute("UPDATE users SET permissions='{\"control_access\":true}',is_fired=true WHERE user_id=900099")
+                      assert await control.control_user(request) is None
+                      await pool.execute("UPDATE users SET is_fired=false WHERE user_id=900099")
+                      assert await control.control_user(request) is not None
+                      await pool.execute("UPDATE control_sessions SET expires_at=NOW()-INTERVAL '1 second' WHERE token_hash=$1",digest)
+                      assert await control.control_user(request) is None
+              finally:
+                  await pool.execute("DELETE FROM users WHERE user_id=900099")
+                  await pool.close()
+          asyncio.run(main())
+          print('Live session and restaurant scope verified')
+          PY
+
+      - name: Benchmark CONTROL analytics on synthetic network data
+        run: |
+          python - <<'PY'
+          import ast
+          import json
+          import subprocess
+          from pathlib import Path
+          tree = ast.parse(Path('routes/control.py').read_text())
+          fn = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == 'control_analytics')
+          sql = next(n.value for n in ast.walk(fn) if isinstance(n, ast.Constant) and isinstance(n.value,str) and 'WITH bounds AS' in n.value)
+          fixture = """
+          BEGIN;
+          INSERT INTO users(user_id,full_name) VALUES(910001,'CI benchmark');
+          INSERT INTO restaurants(key,name) SELECT 'bench-'||g,'Benchmark '||g FROM generate_series(1,100) g;
+          INSERT INTO control_templates(id,title,created_by) VALUES(910001,'Benchmark',910001);
+          INSERT INTO control_template_versions(id,template_id,version,definition) VALUES(910001,910001,1,'{}');
+          INSERT INTO control_checks(restaurant_key,version_id,assigned_by,due_at,completed_at,score)
+          SELECT 'bench-'||(1+g%100),910001,910001,NOW()-g*INTERVAL '1 minute',CASE WHEN g%5<>0 THEN NOW()-g*INTERVAL '1 minute' END,80
+          FROM generate_series(1,100000) g;
+          INSERT INTO control_tasks(check_id,question_key,description,critical,created_at,due_at)
+          SELECT id,'0:0','Benchmark',id%10=0,due_at,due_at FROM control_checks WHERE version_id=910001 AND id%2=0;
+          ANALYZE control_checks;
+          ANALYZE control_tasks;
+          ANALYZE restaurants;
+          SET LOCAL statement_timeout='15s';
+          """
+          script = fixture+'PREPARE bench(date,date,text[]) AS '+sql+'; EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) EXECUTE bench(CURRENT_DATE-30,CURRENT_DATE+1,NULL); EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) EXECUTE bench(CURRENT_DATE-30,CURRENT_DATE+1,ARRAY[\'bench-1\']); ROLLBACK;'
+          result = subprocess.run(['psql','-X','-qAt','-h','localhost','-U','ci','-d','control_ci','-v','ON_ERROR_STOP=1'],input=script,text=True,check=True,capture_output=True)
+          decoder=json.JSONDecoder()
+          remaining=result.stdout.strip()
+          for scope in ('network','restaurant'):
+              plan,end=decoder.raw_decode(remaining)
+              remaining=remaining[end:].strip()
+              ms=plan[0]['Execution Time']
+              print(f'CONTROL analytics {scope}: {ms:.2f} ms')
+              assert ms<10000, (scope,ms)
+          PY
+
+      - name: Verify historical guest task and photo privacy
+        run: |
+          python - <<'PY'
+          import ast
+          import subprocess
+          from pathlib import Path
+          tree=ast.parse(Path('routes/control.py').read_text())
+          def query(name, fragment):
+              fn=next(n for n in tree.body if isinstance(n,ast.AsyncFunctionDef) and n.name==name)
+              return next(n.value for n in ast.walk(fn) if isinstance(n,ast.Constant) and isinstance(n.value,str) and fragment in n.value)
+          fixture="""
+          BEGIN;
+          INSERT INTO users(user_id,full_name,position) VALUES (920001,'Historical guest','Тайный гость'),(920002,'Manager','УС');
+          INSERT INTO restaurants(key,name) VALUES ('privacy-ci','Privacy CI');
+          INSERT INTO control_templates(id,title,created_by) VALUES(920001,'Privacy',920002);
+          INSERT INTO control_template_versions(id,template_id,version,definition) VALUES(920001,920001,1,'{}');
+          INSERT INTO control_checks(id,restaurant_key,version_id,assigned_by,due_at) VALUES(920001,'privacy-ci',920001,920002,NOW());
+          INSERT INTO control_tasks(id,check_id,question_key,description,assignee_id) VALUES(920001,920001,'q','Privacy',920001);
+          INSERT INTO control_task_history(task_id,actor_id,action,details) VALUES(920001,920001,'assign','{"assignee_id":920001}');
+          INSERT INTO control_check_photos(check_id,question_key,uploaded_by,content_type,content) VALUES(920001,'q',920001,'image/png',decode('01','hex'));
+          INSERT INTO control_task_photos(task_id,uploaded_by,content_type,content) VALUES(920001,920001,'image/png',decode('01','hex'));
+          UPDATE users SET position='УС' WHERE user_id=920001;
+          """
+          cases=[
+              ('list_tasks','SELECT t.id,t.check_id','text[],boolean,bigint,boolean',"ARRAY['privacy-ci'],TRUE,920002", 'assignee_id'),
+              ('task_history','SELECT CASE WHEN $5','bigint,text[],boolean,bigint,boolean',"920001,ARRAY['privacy-ci'],TRUE,920002",'actor_id'),
+              ('list_check_photos','SELECT p.id,p.question_key','bigint,text[],boolean',"920001,ARRAY['privacy-ci']",'uploaded_by'),
+              ('task_photos','SELECT p.id,CASE WHEN $2','bigint,boolean',"920001",'uploaded_by'),
+          ]
+          # Use real SQL projections and CSV headers to detect duplicate columns.
+          for name,fragment,types,args,column in cases:
+              sql=query(name,fragment)
+              script=fixture+'PREPARE privacy('+types+') AS '+sql+'; EXECUTE privacy('+args+',FALSE); EXECUTE privacy('+args+',TRUE); ROLLBACK;'
+              result=subprocess.run(['psql','-X','--csv','-q','-h','localhost','-U','ci','-d','control_ci','-v','ON_ERROR_STOP=1'],input=script,text=True,check=True,capture_output=True)
+              import csv,io
+              rows=list(csv.reader(io.StringIO(result.stdout)))
+              assert len(rows)==4, (name,rows)
+              assert rows[0].count(column)==1, (name,rows[0])
+              idx=rows[0].index(column)
+              assert rows[1][idx]=='' and rows[3][idx]=='920001', (name,rows)
+              print(name+': historical identity redaction verified')
+          PY

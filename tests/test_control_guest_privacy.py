@@ -49,3 +49,30 @@ def test_guest_profile_does_not_disclose_name(guest_session):
     assert "Private Name" not in response.text
     assert "user_id" not in payload
     assert response.headers["Cache-Control"] == "no-store"
+
+@pytest.mark.parametrize(("role","visible"), [
+ ({"is_super_admin":True},True),
+ ({"position":"HR","is_admin":True},True),
+ ({"position":"Администратор","is_admin":True},False),
+ ({"position":"Территориальный управляющий"},False),
+ ({"position":"УС"},False),
+])
+def test_guest_directory_identity_by_role(monkeypatch,role,visible):
+    actor={"user_id":42,"permissions":{"control_access":True,"control_manage":True},**role}
+    monkeypatch.setattr(control,"control_user",AsyncMock(return_value=actor))
+    monkeypatch.setenv("CONTROL_GUEST_ALIAS_SECRET","test-only-secret")
+    pool=MagicMock()
+    conn=pool.acquire.return_value.__aenter__.return_value
+    conn.fetch=AsyncMock(return_value=[{"user_id":123456789,"full_name":"Private Name","position":"Тайный гость","permissions":{"control_access":True}}])
+    monkeypatch.setattr(control.db,"get_pool",lambda app:pool)
+    response=asyncio.run(control.list_guests(req("/api/control/guests")))
+    assert response.status==200
+    item=json.loads(response.text)["guests"][0]
+    if visible:
+        assert item=={"id":"123456789","name":"Private Name"}
+    else:
+        assert item["id"]==control.guest_alias(123456789)
+        assert item["name"]=="Тайный гость "+item["id"][:10]
+        assert "Private Name" not in response.text
+        assert item["id"]!="123456789"
+    assert response.headers["Cache-Control"]=="no-store"

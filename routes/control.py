@@ -176,10 +176,10 @@ async def save_template(request):
         body = await request.json()
         definition = validate_template(body)
         tid = body.get("id")
-        if tid is not None and (type(tid) is not int or tid <= 0):
+        if tid is not None and (not valid_control_id(tid) or tid <= 0):
             raise ValueError("invalid_id")
         expected = body.get("version")
-        if tid is not None and (type(expected) is not int or expected <= 0):
+        if tid is not None and (not valid_control_id(expected) or expected <= 0):
             raise ValueError("invalid_version")
     except (ValueError, TypeError) as exc:
         return web.json_response({"error": str(exc)[:100]}, status=400, headers=NO_STORE)
@@ -198,6 +198,10 @@ async def save_template(request):
                 await conn.execute("UPDATE control_templates SET title=$1 WHERE id=$2", definition["title"], tid)
             await conn.execute("INSERT INTO control_template_versions(template_id,version,definition) VALUES($1,$2,$3::jsonb)", tid, version, json.dumps(definition, ensure_ascii=False))
     return web.json_response({"id": tid, "version": version}, headers=NO_STORE)
+
+
+def valid_control_id(value):
+    return type(value) is int and 0 < value < 2**63
 
 
 def control_permission(user,key):
@@ -302,7 +306,7 @@ async def assign_check(request):
             raise ValueError()
         key, tid, version = body["restaurant_key"],body["template_id"],body["version"]
         due = datetime.fromisoformat(body["due_at"])
-        if not isinstance(key,str) or type(tid) is not int or type(version) is not int or due.tzinfo is None:
+        if not isinstance(key,str) or not valid_control_id(tid) or not valid_control_id(version) or due.tzinfo is None:
             raise ValueError()
     except (ValueError,TypeError,KeyError):
         return web.json_response({"error":"invalid_assignment"},status=400,headers=NO_STORE)
@@ -364,7 +368,7 @@ async def complete_check(request):
         return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
     try:
         body=await request.json()
-        if not isinstance(body,dict) or type(body.get("id")) is not int:
+        if not isinstance(body,dict) or not valid_control_id(body.get("id")):
             raise ValueError()
     except (ValueError,TypeError):
         return web.json_response({"error":"invalid_check"},status=400,headers=NO_STORE)
@@ -421,7 +425,7 @@ async def list_tasks(request):
         return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
     scope = await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
-        rows = await conn.fetch("""SELECT t.*,c.restaurant_key, CASE WHEN $4::boolean OR NOT EXISTS (SELECT 1 FROM users g WHERE g.user_id=t.assignee_id AND lower(btrim(COALESCE(g.position, '')))='тайный гость') THEN t.assignee_id ELSE NULL END AS assignee_id,
+        rows = await conn.fetch("""SELECT t.id,t.check_id,t.question_key,t.description,t.critical,t.status,t.created_at,t.due_at,c.restaurant_key, CASE WHEN $4::boolean OR NOT EXISTS (SELECT 1 FROM control_guest_identity_history g WHERE g.user_id=t.assignee_id) THEN t.assignee_id ELSE NULL END AS assignee_id,
             (t.due_at<NOW() AND t.status!='closed') AS overdue
             FROM control_tasks t JOIN control_checks c ON c.id=t.check_id
             WHERE ($1::text[] IS NULL OR c.restaurant_key=ANY($1))
@@ -443,7 +447,7 @@ async def change_task(request):
         return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
     try:
         body=await request.json()
-        if not isinstance(body,dict) or type(body.get("id")) is not int:
+        if not isinstance(body,dict) or not valid_control_id(body.get("id")):
             raise ValueError()
         action=body.get("action")
         comment=body.get("comment","")
@@ -468,7 +472,7 @@ async def change_task(request):
                 try:
                     assignee=body["assignee_id"]
                     due=datetime.fromisoformat(body["due_at"])
-                    if type(assignee) is not int or due.tzinfo is None:
+                    if not valid_control_id(assignee) or due.tzinfo is None:
                         raise ValueError()
                 except (ValueError,TypeError,KeyError):
                     return web.json_response({"error":"invalid_assignment"},status=400,headers=NO_STORE)
@@ -508,13 +512,13 @@ async def task_history(request):
         return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
     try:
         body=await request.json()
-        if not isinstance(body,dict) or type(body.get("id")) is not int:
+        if not isinstance(body,dict) or not valid_control_id(body.get("id")):
             raise ValueError()
     except (ValueError,TypeError):
         return web.json_response({"error":"invalid_request"},status=400,headers=NO_STORE)
     scope=await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
-        rows=await conn.fetch("""SELECT CASE WHEN $5::boolean OR NOT EXISTS (SELECT 1 FROM users g WHERE g.user_id=h.actor_id AND lower(btrim(COALESCE(g.position, '')))='тайный гость') THEN h.actor_id ELSE NULL END AS actor_id,h.action,
+        rows=await conn.fetch("""SELECT CASE WHEN $5::boolean OR NOT EXISTS (SELECT 1 FROM control_guest_identity_history g WHERE g.user_id=h.actor_id) THEN h.actor_id ELSE NULL END AS actor_id,h.action,
             CASE WHEN $5::boolean THEN h.details ELSE h.details::jsonb - 'assignee_id' - 'previous_assignee_id' END AS details,h.created_at FROM control_task_history h
             JOIN control_tasks t ON t.id=h.task_id JOIN control_checks c ON c.id=t.check_id
             WHERE t.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))
@@ -551,7 +555,7 @@ async def haccp_equipment(request):
         return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
     scope=await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
-        rows=await conn.fetch("""SELECT e.*,r.value AS last_value,r.recorded_at AS last_recorded_at,r.deviation AS last_deviation
+        rows=await conn.fetch("""SELECT e.id,e.restaurant_key,e.name,e.kind,e.unit,e.lower_limit,e.upper_limit,r.value AS last_value,r.recorded_at AS last_recorded_at,r.deviation AS last_deviation
             FROM control_equipment e LEFT JOIN LATERAL
             (SELECT value,recorded_at,deviation FROM control_readings WHERE equipment_id=e.id ORDER BY id DESC LIMIT 1) r ON TRUE
             WHERE ($1::text[] IS NULL OR e.restaurant_key=ANY($1)) ORDER BY e.restaurant_key,e.name LIMIT 500""",scope)
@@ -592,7 +596,7 @@ async def haccp_add_reading(request):
         eid=body["equipment_id"]
         value=reading_number(body["value"])
         comment=body.get("comment","")
-        if type(eid) is not int or not isinstance(comment,str) or len(comment)>4000:
+        if not valid_control_id(eid) or not isinstance(comment,str) or len(comment)>4000:
             raise ValueError()
     except (ValueError,TypeError,KeyError,AttributeError):
         return web.json_response({"error":"invalid_reading"},status=400,headers=NO_STORE)
@@ -619,14 +623,14 @@ async def haccp_readings(request):
         body=await request.json()
         eid=body["equipment_id"]
         start,end=date.fromisoformat(body["start"]),date.fromisoformat(body["end"])
-        if type(eid) is not int or not 0 <= (end-start).days <= 366:
+        if not valid_control_id(eid) or not 0 <= (end-start).days <= 366:
             raise ValueError()
         exclusive=end+timedelta(days=1)
     except (ValueError,TypeError,KeyError,OverflowError):
         return web.json_response({"error":"invalid_period"},status=400,headers=NO_STORE)
     scope=await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
-        rows=await conn.fetch("""SELECT r.* FROM control_readings r JOIN control_equipment e ON e.id=r.equipment_id
+        rows=await conn.fetch("""SELECT r.id,r.equipment_id,r.value,r.lower_limit,r.upper_limit,r.deviation,r.comment,r.recorded_at FROM control_readings r JOIN control_equipment e ON e.id=r.equipment_id
             WHERE e.id=$1 AND ($2::text[] IS NULL OR e.restaurant_key=ANY($2))
             AND r.recorded_at >= ($3::date::timestamp AT TIME ZONE 'Europe/Moscow')
             AND r.recorded_at < ($4::date::timestamp AT TIME ZONE 'Europe/Moscow')
@@ -674,7 +678,7 @@ async def list_schedules(request):
         return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
     scope=await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
-        rows=await conn.fetch("""SELECT s.*,t.title FROM control_schedules s
+        rows=await conn.fetch("""SELECT s.id,s.restaurant_key,s.version_id,s.frequency,s.next_due,s.anchor_day,s.active,t.title FROM control_schedules s
             JOIN control_template_versions v ON v.id=s.version_id JOIN control_templates t ON t.id=v.template_id
             WHERE ($1::text[] IS NULL OR s.restaurant_key=ANY($1)) ORDER BY s.next_due LIMIT 500""",scope)
     return web.json_response({"schedules":[journal_json(r) for r in rows]},headers=NO_STORE)
@@ -690,7 +694,7 @@ async def save_schedule(request):
         b=await request.json()
         key,tid,version,freq=b["restaurant_key"],b["template_id"],b["version"],b["frequency"]
         due=datetime.fromisoformat(b["next_due"])
-        if not isinstance(key,str) or type(tid) is not int or type(version) is not int or freq not in ("daily","weekly","monthly") or due.tzinfo is None or due<=datetime.now(timezone.utc):
+        if not isinstance(key,str) or not valid_control_id(tid) or not valid_control_id(version) or freq not in ("daily","weekly","monthly") or due.tzinfo is None or due<=datetime.now(timezone.utc):
             raise ValueError()
     except (ValueError,TypeError,KeyError):
         return web.json_response({"error":"invalid_schedule"},status=400,headers=NO_STORE)
@@ -717,7 +721,7 @@ async def pause_schedule(request):
         return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
     try:
         b=await request.json()
-        if type(b.get("id")) is not int:
+        if not valid_control_id(b.get("id")):
             raise ValueError()
     except (ValueError,TypeError,AttributeError):
         return web.json_response({"error":"invalid_id"},status=400,headers=NO_STORE)
@@ -803,7 +807,7 @@ async def save_document(request):
         title,content,category,key=validate_document(b)
         did=b.get("id")
         expected=b.get("version")
-        if did is not None and (type(did) is not int or did<=0 or type(expected) is not int or expected<=0):
+        if did is not None and (not valid_control_id(did) or did<=0 or not valid_control_id(expected) or expected<=0):
             raise ValueError("invalid_version")
     except (ValueError,TypeError) as exc:
         return web.json_response({"error":str(exc)[:100]},status=400,headers=NO_STORE)
@@ -835,13 +839,13 @@ async def read_document(request):
     try:
         b=await request.json()
         vid=b["version_id"]
-        if type(vid) is not int:
+        if not valid_control_id(vid):
             raise ValueError()
     except (ValueError,TypeError,KeyError):
         return web.json_response({"error":"invalid_id"},status=400,headers=NO_STORE)
     scope=await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
-        row=await conn.fetchrow("""SELECT v.*,d.category,d.restaurant_key FROM control_document_versions v JOIN control_documents d ON d.id=v.document_id
+        row=await conn.fetchrow("""SELECT v.id,v.document_id,v.version,v.title,v.content,v.published_at,d.category,d.restaurant_key FROM control_document_versions v JOIN control_documents d ON d.id=v.document_id
             WHERE v.id=$1 AND NOT d.archived AND (d.restaurant_key IS NULL OR $2::text[] IS NULL OR d.restaurant_key=ANY($2))""",vid,scope)
     if not row:
         return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
@@ -855,7 +859,7 @@ async def acknowledge_document(request):
     try:
         b=await request.json()
         vid=b["version_id"]
-        if type(vid) is not int:
+        if not valid_control_id(vid):
             raise ValueError()
     except (ValueError,TypeError,KeyError):
         return web.json_response({"error":"invalid_id"},status=400,headers=NO_STORE)
@@ -919,7 +923,7 @@ async def upload_check_photo(request):
     try:
         body=await request.json()
         cid,key,encoded=body["id"],body["question_key"],body["photo"]
-        if type(cid) is not int or not isinstance(key,str) or not isinstance(encoded,str) or len(encoded)>6990510:
+        if not valid_control_id(cid) or not isinstance(key,str) or not isinstance(encoded,str) or len(encoded)>6990510:
             raise ValueError("invalid_photo")
         data=base64.b64decode(encoded,validate=True)
         data,mime=await asyncio.to_thread(sanitize_photo,data)
@@ -953,13 +957,13 @@ async def list_check_photos(request):
     try:
         body=await request.json()
         cid=body["id"]
-        if type(cid) is not int:
+        if not valid_control_id(cid):
             raise ValueError()
     except (ValueError,TypeError,KeyError):
         return web.json_response({"error":"invalid_id"},status=400,headers=NO_STORE)
     scope=await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
-        rows=await conn.fetch("""SELECT p.id,p.question_key,CASE WHEN $3::boolean OR (c.guest_id IS NULL AND NOT EXISTS (SELECT 1 FROM users u WHERE u.user_id=p.uploaded_by AND lower(btrim(COALESCE(u.position, ''))) = 'тайный гость')) THEN p.uploaded_by ELSE NULL END AS uploaded_by,p.created_at FROM control_check_photos p
+        rows=await conn.fetch("""SELECT p.id,p.question_key,CASE WHEN $3::boolean OR (c.guest_id IS NULL AND NOT EXISTS (SELECT 1 FROM control_guest_identity_history u WHERE u.user_id=p.uploaded_by)) THEN p.uploaded_by ELSE NULL END AS uploaded_by,p.created_at FROM control_check_photos p
             JOIN control_checks c ON c.id=p.check_id WHERE c.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))""",cid,scope,_is_hr_or_super(user))
     return web.json_response({"photos":[journal_json(r) for r in rows]},headers=NO_STORE)
 
@@ -968,10 +972,13 @@ async def get_check_photo(request):
     user=await control_user(request)
     if not user:
         return web.Response(status=403,headers=NO_STORE)
+    raw_id=request.match_info["id"]
+    if not raw_id.isascii() or not raw_id.isdecimal() or len(raw_id)>19 or not 0<int(raw_id)<2**63:
+        return web.Response(status=404,headers=NO_STORE)
     scope=await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
         row=await conn.fetchrow("""SELECT p.content,p.content_type FROM control_check_photos p
-            JOIN control_checks c ON c.id=p.check_id WHERE p.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))""",int(request.match_info["id"]),scope)
+            JOIN control_checks c ON c.id=p.check_id WHERE p.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))""",int(raw_id),scope)
     if not row:
         return web.Response(status=404,headers=NO_STORE)
     return await safe_photo_response(row["content"])
@@ -984,7 +991,7 @@ async def task_photos(request):
     try:
         body=await request.json()
         tid=body["id"]
-        if type(tid) is not int:
+        if not valid_control_id(tid):
             raise ValueError()
     except (ValueError,TypeError,KeyError):
         return web.json_response({"error":"invalid_id"},status=400,headers=NO_STORE)
@@ -994,8 +1001,8 @@ async def task_photos(request):
             WHERE t.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2)) AND ($3::boolean OR t.assignee_id=$4)""",tid,scope,task_manager(user),user["user_id"])
         if not task:
             return web.json_response({"error":"not_found"},status=404,headers=NO_STORE)
-        before=await conn.fetchrow("SELECT p.id,CASE WHEN $3::boolean OR (c.guest_id IS NULL AND NOT EXISTS (SELECT 1 FROM users u WHERE u.user_id=p.uploaded_by AND lower(btrim(COALESCE(u.position, ''))) = 'тайный гость')) THEN p.uploaded_by ELSE NULL END AS uploaded_by,p.created_at FROM control_check_photos p JOIN control_checks c ON c.id=p.check_id WHERE p.check_id=$1 AND p.question_key=$2",task["check_id"],task["question_key"],_is_hr_or_super(user))
-        after=await conn.fetch("SELECT p.id,CASE WHEN $2::boolean OR NOT EXISTS (SELECT 1 FROM users u WHERE u.user_id=p.uploaded_by AND lower(btrim(COALESCE(u.position, ''))) = 'тайный гость') THEN p.uploaded_by ELSE NULL END AS uploaded_by,p.created_at FROM control_task_photos p WHERE p.task_id=$1 ORDER BY p.id DESC LIMIT 100",tid,_is_hr_or_super(user))
+        before=await conn.fetchrow("SELECT p.id,CASE WHEN $3::boolean OR (c.guest_id IS NULL AND NOT EXISTS (SELECT 1 FROM control_guest_identity_history u WHERE u.user_id=p.uploaded_by)) THEN p.uploaded_by ELSE NULL END AS uploaded_by,p.created_at FROM control_check_photos p JOIN control_checks c ON c.id=p.check_id WHERE p.check_id=$1 AND p.question_key=$2",task["check_id"],task["question_key"],_is_hr_or_super(user))
+        after=await conn.fetch("SELECT p.id,CASE WHEN $2::boolean OR NOT EXISTS (SELECT 1 FROM control_guest_identity_history u WHERE u.user_id=p.uploaded_by) THEN p.uploaded_by ELSE NULL END AS uploaded_by,p.created_at FROM control_task_photos p WHERE p.task_id=$1 ORDER BY p.id DESC LIMIT 100",tid,_is_hr_or_super(user))
     return web.json_response({"before":journal_json(before) if before else None,"after":[journal_json(p) for p in after]},headers=NO_STORE)
 
 @routes.get("/api/control/task-photos/{id:\\d+}")
@@ -1003,11 +1010,14 @@ async def get_task_photo(request):
     user=await control_user(request)
     if not user:
         return web.Response(status=403,headers=NO_STORE)
+    raw_id=request.match_info["id"]
+    if not raw_id.isascii() or not raw_id.isdecimal() or len(raw_id)>19 or not 0<int(raw_id)<2**63:
+        return web.Response(status=404,headers=NO_STORE)
     scope=await restaurant_scope(user)
     async with db.get_pool(request.app).acquire() as conn:
         row=await conn.fetchrow("""SELECT p.content,p.content_type FROM control_task_photos p JOIN control_tasks t ON t.id=p.task_id
             JOIN control_checks c ON c.id=t.check_id WHERE p.id=$1 AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))
-            AND ($3::boolean OR t.assignee_id=$4)""",int(request.match_info["id"]),scope,task_manager(user),user["user_id"])
+            AND ($3::boolean OR t.assignee_id=$4)""",int(raw_id),scope,task_manager(user),user["user_id"])
     if not row:
         return web.Response(status=404,headers=NO_STORE)
     return await safe_photo_response(row["content"])
@@ -1204,3 +1214,83 @@ async def analytics_rating(request):
         values={k:round(float(r[k]),2) if r[k] is not None else None for k in ("checklists","audits","mystery_guest","haccp","tasks")}
         items.append({"restaurant_key":r["key"],"name":r["name"],**calculate_control_rating(values)})
     return web.json_response({"weights":RATING_WEIGHTS,"restaurants":items,"learning_basis":"in_development"},headers=NO_STORE)
+
+
+async def refresh_control_notifications(conn, user):
+    """Materialize current attention events only for the authenticated recipient."""
+    if not control_allowed(user) or is_mystery_guest(user):
+        return
+    scope = await restaurant_scope(user)
+    await conn.execute("""INSERT INTO control_notifications(recipient_id,restaurant_key,event_kind,source_id)
+        SELECT $1,c.restaurant_key,e.kind,c.id FROM control_checks c
+        CROSS JOIN LATERAL (VALUES ('check_overdue',c.due_at<NOW()),('check_assigned',c.guest_id IS NULL)) e(kind,active)
+        WHERE c.completed_at IS NULL AND e.active
+          AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))
+        UNION ALL
+        SELECT $1,c.restaurant_key,e.kind,t.id FROM control_tasks t
+        JOIN control_checks c ON c.id=t.check_id
+        CROSS JOIN LATERAL (VALUES ('task_overdue',t.due_at<NOW()),('task_critical',t.critical),('task_assigned',t.assignee_id=$1)) e(kind,active)
+        WHERE t.status!='closed' AND e.active AND ($3::boolean OR t.assignee_id=$1)
+          AND ($2::text[] IS NULL OR c.restaurant_key=ANY($2))
+        UNION ALL
+        SELECT $1,e.restaurant_key,'haccp_deviation',r.id FROM control_readings r
+        JOIN control_equipment e ON e.id=r.equipment_id
+        WHERE r.deviation AND r.recorded_at >= NOW() - INTERVAL '30 days'
+          AND ($2::text[] IS NULL OR e.restaurant_key=ANY($2))
+        ON CONFLICT (recipient_id,event_kind,source_id) DO NOTHING""",user["user_id"],scope,task_manager(user))
+
+@routes.post("/api/control/notifications")
+async def notifications(request):
+    user=await control_user(request)
+    if not user or is_mystery_guest(user):
+        return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    async with db.get_pool(request.app).acquire() as conn:
+        await refresh_control_notifications(conn,user)
+        rows=await conn.fetch("""SELECT n.id,n.restaurant_key,n.event_kind,n.source_id,n.created_at,n.read_at,r.name AS restaurant_name, e.id::text AS equipment_id
+            FROM control_notifications n JOIN restaurants r ON r.key=n.restaurant_key
+            LEFT JOIN control_readings cr ON n.event_kind='haccp_deviation' AND cr.id=n.source_id
+            LEFT JOIN control_equipment e ON e.id=cr.equipment_id AND e.restaurant_key=n.restaurant_key WHERE n.recipient_id=$1
+            AND ($2::text[] IS NULL OR n.restaurant_key=ANY($2))
+            AND (n.event_kind NOT LIKE 'task_%' OR EXISTS (SELECT 1 FROM control_tasks nt JOIN control_checks nc ON nc.id=nt.check_id WHERE nt.id=n.source_id AND nc.restaurant_key=n.restaurant_key AND ($3::boolean OR nt.assignee_id=$1)))
+            ORDER BY n.created_at DESC,n.id DESC LIMIT 100""",user["user_id"],scope,task_manager(user))
+        unread=await conn.fetchval("""SELECT count(*) FROM control_notifications WHERE recipient_id=$1
+            AND read_at IS NULL AND ($2::text[] IS NULL OR restaurant_key=ANY($2)) AND (control_notifications.event_kind NOT LIKE 'task_%' OR EXISTS (SELECT 1 FROM control_tasks nt JOIN control_checks nc ON nc.id=nt.check_id WHERE nt.id=control_notifications.source_id AND nc.restaurant_key=control_notifications.restaurant_key AND ($3::boolean OR nt.assignee_id=$1)))""",user["user_id"],scope,task_manager(user))
+    items=[dict(row,id=str(row["id"]),source_id=str(row["source_id"]),created_at=row["created_at"].isoformat(),read_at=row["read_at"].isoformat() if row["read_at"] else None) for row in rows]
+    return web.json_response({"notifications":items,"unread":unread},headers=NO_STORE)
+
+
+@routes.post("/api/control/notifications/read")
+async def read_notifications(request):
+    user=await control_user(request)
+    if not user or is_mystery_guest(user):
+        return web.json_response({"error":"Доступ запрещён"},status=403,headers=NO_STORE)
+    try:
+        body=await request.json()
+        if not isinstance(body,dict):
+            raise ValueError()
+        all_items=body.get("all") is True
+        raw=body.get("id")
+        if all_items:
+            if set(body)!={"all"}:
+                raise ValueError()
+            nid=None
+        else:
+            if set(body)!={"id"} or not isinstance(raw,str) or not raw.isascii() or not raw.isdecimal() or len(raw)>19:
+                raise ValueError()
+            nid=int(raw)
+            if not 0<nid<2**63:
+                raise ValueError()
+    except (ValueError,TypeError):
+        return web.json_response({"error":"invalid_notification"},status=400,headers=NO_STORE)
+    scope=await restaurant_scope(user)
+    async with db.get_pool(request.app).acquire() as conn:
+        changed=await conn.fetchval("""WITH updated AS (UPDATE control_notifications SET read_at=NOW()
+            WHERE recipient_id=$1 AND read_at IS NULL
+            AND ($2::text[] IS NULL OR restaurant_key=ANY($2))
+            AND (control_notifications.event_kind NOT LIKE 'task_%' OR EXISTS (SELECT 1 FROM control_tasks nt JOIN control_checks nc ON nc.id=nt.check_id WHERE nt.id=control_notifications.source_id AND nc.restaurant_key=control_notifications.restaurant_key AND ($4::boolean OR nt.assignee_id=$1)))
+            AND ($3::bigint IS NULL OR id=$3) RETURNING id)
+            SELECT count(*) FROM updated""",user["user_id"],scope,nid,task_manager(user))
+        unread=await conn.fetchval("""SELECT count(*) FROM control_notifications WHERE recipient_id=$1
+            AND read_at IS NULL AND ($2::text[] IS NULL OR restaurant_key=ANY($2)) AND (control_notifications.event_kind NOT LIKE 'task_%' OR EXISTS (SELECT 1 FROM control_tasks nt JOIN control_checks nc ON nc.id=nt.check_id WHERE nt.id=control_notifications.source_id AND nc.restaurant_key=control_notifications.restaurant_key AND ($3::boolean OR nt.assignee_id=$1)))""",user["user_id"],scope,task_manager(user))
+    return web.json_response({"updated":changed,"unread":unread},headers=NO_STORE)

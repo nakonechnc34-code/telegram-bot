@@ -464,7 +464,10 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
         with conn.cursor() as cur:
             cur.execute("UPDATE timesheet_rounding_settings SET step_minutes=1")
             cur.execute("DELETE FROM attendance_import_days WHERE user_id=1")
-            cur.execute("INSERT INTO attendance_import_days VALUES (1,'2026-11-01','a','work',1),(1,'2026-11-02','a','work',1),(1,'2026-11-03','a','work',1)")
+            cur.execute("""INSERT INTO attendance_import_days(import_id,user_id,work_date,restaurant_key,status,worked_minutes)
+                VALUES (%s,1,'2026-11-01','a','work',1),(%s,1,'2026-11-02','a','work',1),(%s,1,'2026-11-03','a','work',1)""",
+                (original_import,original_import,original_import))
+            cur.execute("UPDATE attendance_imports SET date_to='2026-11-03' WHERE id=%s", (original_import,))
         assert timesheet._sync_set_individual_rate(30,1,Decimal("100")) == 200
         assert transition(tu,"submit",6) == 200
         assert transition(admin,"approve",7) == 200

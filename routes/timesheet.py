@@ -876,9 +876,10 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
                 if start < right and (other_key != key or other_day != day):
                     errors.append("Пересечение смен в разных ресторанах или рабочих датах")
                     break
+    blocking_errors = len(errors)
     errors.extend(sorted(matching_errors))
     matching = {"employees": sorted(unresolved_employees), "restaurants": sorted(unresolved_restaurants)} if _is_hr_or_super(user) else None
-    return {"matching": matching, "ok": not errors, "preview": True, "records": records,
+    return {"matching": matching, "ok": not errors, "partial_allowed": bool(records and matching_errors and not blocking_errors and _is_hr_or_super(user)), "preview": True, "records": records,
             "total_minutes": sum(r["minutes"] for r in records) if not errors else None,
             "error_count": len(errors), "errors": errors[:50]}
 
@@ -960,10 +961,11 @@ async def handle_delete_attendance(request):
     return web.json_response({"ok": True, "deleted_count": deleted}, headers={"Cache-Control": "no-store"})
 
 
-def _attendance_saved_conflict(cur, records, employee_ids):
+def _attendance_saved_conflict(cur, records, employee_ids, partial=False):
     """Check surviving staged records before replacing restaurant/date pairs."""
     from utils.attendance_minutes import shift_interval
     replacements = {(r["restaurant_key"], r["date"]) for r in records}
+    exact_replacements = {(r["user_id"], r["restaurant_key"], r["date"]) for r in records}
     for record in records:
         day = date.fromisoformat(record["date"])
         cur.execute("""SELECT d.restaurant_key, d.work_date::text AS work_date,
@@ -976,7 +978,7 @@ def _attendance_saved_conflict(cur, records, employee_ids):
         incoming = [(offset + a, offset + b) for a, b in
                     (shift_interval(v) for v in record["shifts"])]
         for saved in cur.fetchall():
-            if (saved["restaurant_key"], saved["work_date"]) in replacements:
+            if ((record["user_id"], saved["restaurant_key"], saved["work_date"]) in exact_replacements if partial else (saved["restaurant_key"], saved["work_date"]) in replacements):
                 continue
             if saved["work_date"] == record["date"] and (
                 saved["status"] != "work" or record.get("status", "work") != "work"
@@ -991,11 +993,11 @@ def _attendance_saved_conflict(cur, records, employee_ids):
     return False
 
 
-def _sync_stage_attendance(user, rows, default_rest_key=None):
+def _sync_stage_attendance(user, rows, default_rest_key=None, partial=False):
     """Store a validated batch for review, without affecting legacy payroll."""
     from utils.attendance_minutes import shift_interval
     result = _sync_preview_attendance(user, rows, default_rest_key)
-    if not result["ok"] or not result["records"]:
+    if (not result["ok"] and not (partial and result["partial_allowed"])) or not result["records"]:
         return {"ok": False, "errors": result["errors"] or ["Нет записей для загрузки"]}
     records = result["records"]
     with get_conn() as conn:
@@ -1014,10 +1016,14 @@ def _sync_stage_attendance(user, rows, default_rest_key=None):
                     raise ValueError("Employee changed during import")
             if any(r["restaurant_key"] not in known or not _restaurant_in_scope(user,r["restaurant_key"],territory) for r in records):
                 raise ValueError("Restaurant changed during import")
-            if _attendance_saved_conflict(cur, records, employee_ids):
+            if _attendance_saved_conflict(cur, records, employee_ids, partial=True) if partial else _attendance_saved_conflict(cur, records, employee_ids):
                 return {"ok": False, "errors": ["Конфликт с ранее загруженным отчётом: пересечение смен или статусов отсутствия. Проверьте данные."]}
-            for key, day in sorted({(r["restaurant_key"], r["date"]) for r in records}):
-                cur.execute("DELETE FROM attendance_import_days WHERE restaurant_key = %s AND work_date = %s", (key, day))
+            if partial:
+                for uid, key, day in sorted({(r["user_id"], r["restaurant_key"], r["date"]) for r in records}):
+                    cur.execute("DELETE FROM attendance_import_days WHERE user_id=%s AND restaurant_key=%s AND work_date=%s", (uid,key,day))
+            else:
+                for key, day in sorted({(r["restaurant_key"], r["date"]) for r in records}):
+                    cur.execute("DELETE FROM attendance_import_days WHERE restaurant_key = %s AND work_date = %s", (key, day))
             cur.execute("DELETE FROM attendance_imports i WHERE NOT EXISTS (SELECT 1 FROM attendance_import_days d WHERE d.import_id = i.id)")
             cur.execute("INSERT INTO attendance_imports (uploaded_by, date_from, date_to) VALUES (%s, %s, %s) RETURNING id",
                         (user["user_id"], min(r["date"] for r in records), max(r["date"] for r in records)))

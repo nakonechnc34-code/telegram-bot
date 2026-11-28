@@ -669,6 +669,15 @@ def test_persistent_matching_postgres(monkeypatch):
         with conn.cursor() as cur:
             cur.execute("SELECT user_id,restaurant_key,worked_minutes FROM attendance_import_days")
             assert cur.fetchall() == [(1, "a", 180)]
+        absence_rows = [("2026-11-17", "external", "В", "old restaurant"),
+                        ("2026-11-18", "external", "Б", "old restaurant"),
+                        ("2026-11-19", "external", "Н", "old restaurant")]
+        absence_mapped = timesheet._merge_saved_attendance_mapping(
+            absence_rows, timesheet._load_saved_attendance_mapping(), None)
+        assert timesheet._sync_stage_attendance(actor, absence_mapped)["ok"]
+        with conn.cursor() as cur:
+            cur.execute("SELECT user_id,status,worked_minutes FROM attendance_import_days WHERE work_date > '2026-11-16' ORDER BY work_date")
+            assert cur.fetchall() == [(1,"vacation",0),(1,"sick",0),(1,"absent",0)]
             cur.execute("UPDATE users SET is_fired=true WHERE user_id=1")
         assert not timesheet._sync_preview_attendance(actor, mapped())["ok"]
         assert any(e["stale"] for e in registry(actor)["entries"] if e["kind"] == "employees")

@@ -353,7 +353,7 @@ byId('import-form').addEventListener('submit', async event => {
         renderAttendanceMatching(result.matching);
         const records = result.records;
         byId("confirm-attendance").textContent = result.partial_allowed ? "Сохранить отчёт с ошибками" : "Сохранить проверенный отчёт";
-        if ((result.ok || result.partial_allowed) && records.length) {
+        if (result.partial_allowed || (result.ok && records.length)) {
             if (!result.ok) params.set("partial", "1");
             verifiedAttendance = {data, params, version};
             byId('confirm-attendance').disabled = false;

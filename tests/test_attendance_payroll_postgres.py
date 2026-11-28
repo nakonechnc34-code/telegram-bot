@@ -649,7 +649,16 @@ def test_persistent_matching_postgres(monkeypatch):
         assert rows == [("2026-11-16", "external", "09:00-12:00", "old restaurant")]
         def mapped():
             return timesheet._merge_saved_attendance_mapping(rows, timesheet._load_saved_attendance_mapping(), None)
-        assert timesheet._sync_stage_attendance(actor, mapped())["ok"]
+        first = timesheet._sync_stage_attendance(actor, mapped())
+        assert first["ok"]
+        second = timesheet._sync_stage_attendance(actor, mapped())
+        assert second["ok"]
+        assert first["import_id"] != second["import_id"]
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM attendance_imports")
+            assert cur.fetchall() == [(second["import_id"],)]
+            cur.execute("SELECT start_minute,end_minute FROM attendance_import_intervals")
+            assert cur.fetchall() == [(540,720)]
         with conn.cursor() as cur:
             cur.execute("SELECT user_id,restaurant_key,worked_minutes FROM attendance_import_days")
             assert cur.fetchall() == [(1, "a", 180)]

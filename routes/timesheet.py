@@ -1038,7 +1038,8 @@ def _sync_stage_attendance(user, rows, default_rest_key=None, partial=False):
                 for start, end in sorted({shift_interval(v) for v in record["shifts"]}):
                     cur.execute("INSERT INTO attendance_import_intervals (day_id, start_minute, end_minute) VALUES (%s, %s, %s)",
                                 (day_id, start, end))
-    return {"ok": True, "import_id": import_id, "success_count": len(records), "staged": True}
+    return {"ok": True, "import_id": import_id, "success_count": len(records), "staged": True,
+            "partial": bool(partial and not result["ok"]), "errors": result["errors"], "error_count": result["error_count"]}
 
 
 @routes.post('/api/timesheet/import_attendance/stage')
@@ -1118,7 +1119,12 @@ async def handle_import_attendance(request):
         if not (_is_hr_or_super(user) or _is_tu(user)):
             return web.json_response({"error": "Нет права на загрузку"}, status=403)
         try:
-            result = await _run(_sync_stage_attendance, user, rows, default_rest)
+            if request.query.get("partial") == "1":
+                if not _is_hr_or_super(user):
+                    return denied(403)
+                result = await _run(_sync_stage_attendance, user, rows, default_rest, True)
+            else:
+                result = await _run(_sync_stage_attendance, user, rows, default_rest)
         except CheckViolation as exc:
             if exc.diag.message_primary != "Timesheet is locked for approval":
                 raise

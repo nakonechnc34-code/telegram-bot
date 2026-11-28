@@ -746,17 +746,25 @@ async def handle_attendance_matching(request):
 
 
 def _merge_saved_attendance_mapping(rows, saved, manual):
-    numbers = {str(number) for _, number, _, _ in rows}
-    names = {name for _, _, _, name in rows}
     merged = {"employees": {}, "restaurants": {}}
     for entry in saved:
-        kind, source = entry["kind"], entry["source"]
-        if source in (numbers if kind == "employees" else names):
-            merged[kind][source] = entry["target"]
-    for kind in merged:
-        merged[kind].update((manual or {}).get(kind, {}))
-    return [(day, merged["employees"].get(str(number), number), raw,
-             merged["restaurants"].get(name, name)) for day, number, raw, name in rows]
+        merged[entry["kind"]][entry["source"]] = entry["target"]
+    for kind, target_type in (("employees", "personnel_number"), ("restaurants", "restaurant_name")):
+        for source, target in (manual or {}).get(kind, {}).items():
+            merged[kind][source] = (target_type, target, source)
+
+    def source(value):
+        return value[2] if isinstance(value, tuple) else value
+
+    def resolve(kind, value):
+        key = source(value)
+        target = merged[kind].get(str(key) if kind == "employees" else key)
+        if isinstance(value, tuple) and value[0].startswith("confirmed_"):
+            return (*value, target)
+        return target if target is not None else value
+
+    return [(day, resolve("employees", number), raw, resolve("restaurants", name))
+            for day, number, raw, name in rows]
 
 
 def _load_saved_attendance_mapping():
@@ -801,46 +809,66 @@ def _sync_preview_attendance(user, rows, default_rest_key=None, pending=None):
     unresolved_restaurants = set()
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT user_id, personnel_number, restaurant_key FROM users WHERE personnel_number IS NOT NULL AND COALESCE(is_fired, FALSE) = FALSE")
+            cur.execute("SELECT user_id, personnel_number, restaurant_key FROM users WHERE COALESCE(is_fired, FALSE) = FALSE")
             users = {}
             users_by_id = {}
             for employee in cur.fetchall():
                 users_by_id[str(employee["user_id"])] = employee
-                users.setdefault(_normalize_attendance_number(employee["personnel_number"]), []).append(employee)
+                if employee["personnel_number"] is not None:
+                    users.setdefault(_normalize_attendance_number(employee["personnel_number"]), []).append(employee)
             cur.execute("SELECT key, name, territory_manager_id FROM restaurants")
             restaurants = cur.fetchall()
     territory = {r["key"] for r in restaurants if r["territory_manager_id"] == user["user_id"]}
     known = {r["key"] for r in restaurants}
     for day, number, raw, name in rows:
-        original_row = (day, number, raw, name)
-        original_number = number[2] if isinstance(number, tuple) and len(number) > 2 else number
-        if isinstance(number, tuple):
+        original_number = number[2] if isinstance(number, tuple) else number
+        original_name = name[2] if isinstance(name, tuple) else name
+        if isinstance(number, tuple) and number[0] != "personnel_number":
             selected = users_by_id.get(number[1])
+            if selected is None and len(number) == 4 and number[3]:
+                selected = users_by_id.get(number[3][1])
             candidates = [selected] if selected else []
         else:
-            candidates = users.get(_normalize_attendance_number(number), [])
-        if len(candidates) != 1:
+            target_number = number[1] if isinstance(number, tuple) else number
+            candidates = users.get(_normalize_attendance_number(target_number), [])
+        employee = candidates[0] if len(candidates) == 1 else None
+        if isinstance(name, tuple) and name[0] != "restaurant_name":
+            target_key = name[1]
+            if target_key not in known and len(name) == 4 and name[3]:
+                target_key = name[3][1]
+            matches = [target_key]
+        elif name:
+            target_name = name[1] if isinstance(name, tuple) else name
+            matches = [r["key"] for r in restaurants if _attendance_restaurant_name(r["name"]) == _attendance_restaurant_name(target_name)]
+        else:
+            matches = []
+        key = matches[0] if len(matches) == 1 else (default_rest_key or (employee or {}).get("restaurant_key")) if not name else None
+        restaurant_unresolved = bool(name or employee) and (key not in known or not _restaurant_in_scope(user, key, territory))
+        if not employee:
             unresolved_employees.add(str(original_number))
             reason = "не найден" if not candidates else "неоднозначен"
-            matching_errors.add(f"Табельный номер {original_number}: {reason} ({name or '-'})")
+            matching_errors.add(f"Табельный номер {original_number}: {reason} ({original_name or '-'})")
+        if restaurant_unresolved:
+            if original_name:
+                unresolved_restaurants.add(original_name)
+            matching_errors.add(f"Неизвестный или недоступный ресторан: {original_name or '-'}")
+        if not employee or restaurant_unresolved:
             if pending is not None:
-                pending.append(original_row)
+                if employee and isinstance(number, tuple):
+                    number = ("confirmed_employee", str(employee["user_id"]), original_number)
+                elif isinstance(number, tuple) and number[0] == "confirmed_employee":
+                    number = original_number
+                if name and not restaurant_unresolved and isinstance(name, tuple):
+                    name = ("confirmed_restaurant", key, original_name)
+                elif isinstance(name, tuple) and name[0] == "confirmed_restaurant":
+                    name = original_name
+                pending.append((day, number, raw, name))
             continue
-        employee = candidates[0]
         number = employee["user_id"]
         if not _is_hr_or_super(user) and employee["user_id"] != user["user_id"]:
             if not (_is_tu(user) or "управляющий сменой" in (user.get("position") or "").lower()) or not _restaurant_in_scope(user, employee["restaurant_key"], territory):
                 errors.append("Нет доступа к сотруднику")
                 continue
-        matches = [name[1]] if isinstance(name, tuple) else [r["key"] for r in restaurants if _attendance_restaurant_name(r["name"]) == _attendance_restaurant_name(name)] if name else []
-        key = matches[0] if len(matches) == 1 else (default_rest_key or employee["restaurant_key"]) if not name else None
-        if key not in known or not _restaurant_in_scope(user, key, territory):
-            if name:
-                unresolved_restaurants.add(name[2] if isinstance(name, tuple) and len(name) > 2 else str(name))
-            matching_errors.add(f"Неизвестный или недоступный ресторан: {name or '-'}")
-            if pending is not None:
-                pending.append(original_row)
-            continue
         if raw in ("В", "Б", "Н"):
             statuses.setdefault((number, day, key), set()).add(raw)
             continue
@@ -850,7 +878,7 @@ def _sync_preview_attendance(user, rows, default_rest_key=None, pending=None):
             errors.append("Строка не содержит корректный интервал смены")
             continue
         groups.setdefault((number, day, key), []).append(raw)
-    records = [{"user_id": number, "personnel_number": _normalize_attendance_number(users_by_id[str(number)]["personnel_number"]), "date": day, "restaurant_key": key,
+    records = [{"user_id": number, "personnel_number": _normalize_attendance_number(users_by_id[str(number)]["personnel_number"] or ""), "date": day, "restaurant_key": key,
                 "minutes": worked_minutes(values), "shifts": values}
                for (number, day, key), values in sorted(groups.items())]
     work_days = {(number, day) for number, day, key in groups}
@@ -861,7 +889,7 @@ def _sync_preview_attendance(user, rows, default_rest_key=None, pending=None):
             errors.append("Конфликт статуса отсутствия и смены")
         else:
             status = {"В": "vacation", "Б": "sick", "Н": "absent"}[next(iter(values))]
-            records.append({"user_id": number, "personnel_number": _normalize_attendance_number(users_by_id[str(number)]["personnel_number"]), "date": day, "restaurant_key": key,
+            records.append({"user_id": number, "personnel_number": _normalize_attendance_number(users_by_id[str(number)]["personnel_number"] or ""), "date": day, "restaurant_key": key,
                             "minutes": 0, "shifts": [], "status": status})
     for entries in status_days.values():
         if len(entries) > 1:
@@ -969,8 +997,7 @@ async def handle_delete_attendance(request):
 def _attendance_saved_conflict(cur, records, employee_ids, partial=False):
     """Check surviving staged records before replacing restaurant/date pairs."""
     from utils.attendance_minutes import shift_interval
-    replacements = {(r["restaurant_key"], r["date"]) for r in records}
-    exact_replacements = {(r["user_id"], r["restaurant_key"], r["date"]) for r in records}
+    replacements = {(r["restaurant_key"], r["date"]) for r in records} if not partial else set()
     for record in records:
         day = date.fromisoformat(record["date"])
         cur.execute("""SELECT d.restaurant_key, d.work_date::text AS work_date,
@@ -983,7 +1010,7 @@ def _attendance_saved_conflict(cur, records, employee_ids, partial=False):
         incoming = [(offset + a, offset + b) for a, b in
                     (shift_interval(v) for v in record["shifts"])]
         for saved in cur.fetchall():
-            if ((record["user_id"], saved["restaurant_key"], saved["work_date"]) in exact_replacements if partial else (saved["restaurant_key"], saved["work_date"]) in replacements):
+            if (saved["restaurant_key"], saved["work_date"]) in replacements:
                 continue
             if saved["work_date"] == record["date"] and (
                 saved["status"] != "work" or record.get("status", "work") != "work"
@@ -998,29 +1025,41 @@ def _attendance_saved_conflict(cur, records, employee_ids, partial=False):
     return False
 
 
-def _sync_stage_attendance(user, rows, default_rest_key=None, partial=False, source_file=None, retry_id=None):
+def _sync_stage_attendance(user, rows, default_rest_key=None, partial=False, source_file=None, retry_id=None, expected_pending=None):
     """Store a validated batch for review, without affecting legacy payroll."""
     from utils.attendance_minutes import shift_interval
     pending = []
     result = _sync_preview_attendance(user, rows, default_rest_key, pending) if partial else _sync_preview_attendance(user, rows, default_rest_key)
-    if (not result["ok"] and (retry_id is not None or not (partial and result["partial_allowed"]))) or (not result["records"] and not (partial and result["partial_allowed"])):
-        return {"ok": False, "errors": result["errors"] or ["Нет записей для загрузки"]}
+    allow_pending = partial and result["partial_allowed"]
+    if not result["ok"] and not allow_pending:
+        return {"ok": False, "errors": result["errors"]}
     records = result["records"]
-    report_id = None
-    if partial and (not _is_hr_or_super(user) or not source_file):
+    if not records and (not allow_pending or retry_id is not None):
+        return {"ok": False, "errors": result["errors"] or ["Нет записей для загрузки"]}
+    if partial and (not _is_hr_or_super(user) or (retry_id is None and not source_file)):
         raise ValueError("Partial import requires authorized source file")
+    report_id = retry_id
+    diagnostics = {key: result[key] for key in ("errors", "matching", "error_count")} if partial else None
+    if partial:
+        diagnostics["pending_rows"] = pending
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Serialize staged replacements; delete only exact restaurant/date pairs.
             cur.execute("SELECT pg_advisory_xact_lock(814726, 2)")
-            if not records and partial and retry_id is None:
-                cur.execute("""INSERT INTO attendance_partial_reports
-                    (uploaded_by, source_file, diagnostics, default_restaurant_key)
-                    VALUES (%s,%s,%s::jsonb,%s) RETURNING id""",
-                    (user["user_id"], bytes(source_file), json.dumps({"errors": result["errors"], "matching": result["matching"], "error_count": result["error_count"], "pending_rows": pending}), default_rest_key))
-                return {"ok": True, "partial": True, "report_id": cur.fetchone()["id"],
-                        "import_id": None, "success_count": 0, "staged": True,
-                        "errors": result["errors"], "error_count": result["error_count"]}
+            if retry_id is not None:
+                cur.execute("""SELECT diagnostics->'pending_rows' AS pending_rows
+                    FROM attendance_partial_reports WHERE id=%s AND resolved_at IS NULL FOR UPDATE""", (retry_id,))
+                archive = cur.fetchone()
+                if not archive or (expected_pending is not None and archive["pending_rows"] != expected_pending):
+                    return {"ok": False, "errors": ["Отчёт изменён или уже обработан. Повторите проверку."]}
+            elif source_file:
+                cur.execute("""SELECT id FROM attendance_partial_reports
+                    WHERE sha256(source_file)=sha256(%s::bytea)
+                    AND COALESCE(default_restaurant_key, '')=COALESCE(%s, '')
+                    ORDER BY id LIMIT 1""", (bytes(source_file), default_rest_key))
+                existing_report = cur.fetchone()
+                if existing_report:
+                    message = "Файл уже сохранён. Проверьте архив отчётов." if _is_hr_or_super(user) else "Файл уже сохранён"
+                    return {"ok": False, "errors": [message]}
             employee_ids = {}
             cur.execute("SELECT key, territory_manager_id FROM restaurants FOR SHARE")
             restaurants = cur.fetchall()
@@ -1033,15 +1072,7 @@ def _sync_stage_attendance(user, rows, default_rest_key=None, partial=False, sou
                     raise ValueError("Employee changed during import")
             if any(r["restaurant_key"] not in known or not _restaurant_in_scope(user,r["restaurant_key"],territory) for r in records):
                 raise ValueError("Restaurant changed during import")
-            if _attendance_saved_conflict(cur, records, employee_ids, partial=True) if partial else _attendance_saved_conflict(cur, records, employee_ids):
-                return {"ok": False, "errors": ["Конфликт с ранее загруженным отчётом: пересечение смен или статусов отсутствия. Проверьте данные."]}
-            if retry_id is not None:
-                cur.execute("SELECT id FROM attendance_partial_reports WHERE id=%s AND resolved_at IS NULL FOR UPDATE", (retry_id,))
-                if not cur.fetchone():
-                    return {"ok": False, "errors": ["Отчёт уже обработан или не найден"]}
-                if not result["ok"]:
-                    return {"ok": False, "errors": result["errors"]}
-                # Never overwrite existing employee-day records during archive recovery.
+            if partial:
                 new_records = []
                 for record in records:
                     cur.execute("""SELECT d.status, d.worked_minutes, i.start_minute, i.end_minute
@@ -1057,38 +1088,36 @@ def _sync_stage_attendance(user, rows, default_rest_key=None, partial=False, sou
                     if expected != actual or any(row["status"] != record.get("status", "work") or row["worked_minutes"] != record["minutes"] for row in existing):
                         return {"ok": False, "errors": ["Исправленный отчёт отличается от сохранённого рабочего дня. Требуется ручная сверка; отчёт не закрыт."]}
                 records = new_records
-                if _attendance_saved_conflict(cur, records, employee_ids, partial=True):
-                    return {"ok": False, "errors": ["Конфликт с сохранёнными сменами"]}
-                if not records:
-                    cur.execute("UPDATE attendance_partial_reports SET resolved_at=now() WHERE id=%s", (retry_id,))
-                    return {"ok": True, "success_count": 0, "report_id": retry_id, "staged": True}
-            if partial:
-                for uid, key, day in sorted({(r["user_id"], r["restaurant_key"], r["date"]) for r in records}):
-                    cur.execute("DELETE FROM attendance_import_days WHERE user_id=%s AND restaurant_key=%s AND work_date=%s", (uid,key,day))
-            else:
+            if _attendance_saved_conflict(cur, records, employee_ids, partial):
+                return {"ok": False, "errors": ["Конфликт с ранее загруженным отчётом: пересечение смен или статусов отсутствия. Проверьте данные."]}
+            if not partial:
                 for key, day in sorted({(r["restaurant_key"], r["date"]) for r in records}):
                     cur.execute("DELETE FROM attendance_import_days WHERE restaurant_key = %s AND work_date = %s", (key, day))
-            cur.execute("DELETE FROM attendance_imports i WHERE NOT EXISTS (SELECT 1 FROM attendance_import_days d WHERE d.import_id = i.id)")
-            cur.execute("INSERT INTO attendance_imports (uploaded_by, date_from, date_to) VALUES (%s, %s, %s) RETURNING id",
-                        (user["user_id"], min(r["date"] for r in records), max(r["date"] for r in records)))
-            import_id = cur.fetchone()["id"]
-            for record in records:
-                cur.execute("""INSERT INTO attendance_import_days
-                    (import_id, user_id, work_date, restaurant_key, status, worked_minutes)
-                    VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
-                    (import_id, record["user_id"], record["date"], record["restaurant_key"],
-                     record.get("status", "work"), record["minutes"]))
-                day_id = cur.fetchone()["id"]
-                for start, end in sorted({shift_interval(v) for v in record["shifts"]}):
-                    cur.execute("INSERT INTO attendance_import_intervals (day_id, start_minute, end_minute) VALUES (%s, %s, %s)",
-                                (day_id, start, end))
+            import_id = None
+            if records:
+                cur.execute("DELETE FROM attendance_imports i WHERE NOT EXISTS (SELECT 1 FROM attendance_import_days d WHERE d.import_id = i.id)")
+                cur.execute("INSERT INTO attendance_imports (uploaded_by, date_from, date_to) VALUES (%s, %s, %s) RETURNING id",
+                            (user["user_id"], min(r["date"] for r in records), max(r["date"] for r in records)))
+                import_id = cur.fetchone()["id"]
+                for record in records:
+                    cur.execute("""INSERT INTO attendance_import_days
+                        (import_id, user_id, work_date, restaurant_key, status, worked_minutes)
+                        VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
+                        (import_id, record["user_id"], record["date"], record["restaurant_key"],
+                         record.get("status", "work"), record["minutes"]))
+                    day_id = cur.fetchone()["id"]
+                    for start, end in sorted({shift_interval(v) for v in record["shifts"]}):
+                        cur.execute("INSERT INTO attendance_import_intervals (day_id, start_minute, end_minute) VALUES (%s, %s, %s)",
+                                    (day_id, start, end))
             if retry_id is not None:
-                cur.execute("UPDATE attendance_partial_reports SET resolved_at=now() WHERE id=%s", (retry_id,))
-            if partial and not result["ok"]:
+                cur.execute("""UPDATE attendance_partial_reports SET diagnostics=%s::jsonb,
+                    resolved_at=CASE WHEN %s THEN NULL ELSE now() END WHERE id=%s""",
+                    (json.dumps(diagnostics), bool(pending), retry_id))
+            elif allow_pending:
                 cur.execute("""INSERT INTO attendance_partial_reports
                     (uploaded_by, source_file, diagnostics, default_restaurant_key)
                     VALUES (%s,%s,%s::jsonb,%s) RETURNING id""",
-                    (user["user_id"], bytes(source_file), json.dumps({"errors": result["errors"], "matching": result["matching"], "error_count": result["error_count"], "pending_rows": pending}), default_rest_key))
+                    (user["user_id"], bytes(source_file), json.dumps(diagnostics), default_rest_key))
                 report_id = cur.fetchone()["id"]
     return {"ok": True, "report_id": report_id, "import_id": import_id, "success_count": len(records), "staged": True,
             "partial": bool(partial and not result["ok"]), "errors": result["errors"], "error_count": result["error_count"]}
@@ -1150,9 +1179,6 @@ async def handle_partial_report_preview(request):
             raise ValueError()
     except ValueError:
         return web.json_response({"error": "Некорректный номер отчёта"}, status=400)
-    source = await _run(_sync_partial_report_file, report_id)
-    if source is None:
-        return web.json_response({"error": "Отчёт не найден"}, status=404)
     try:
         rows, default_rest = await _run(_sync_partial_report_pending, report_id)
         saved = await _run(_load_saved_attendance_mapping)
@@ -1177,14 +1203,13 @@ async def handle_partial_report_stage(request):
             raise ValueError()
     except ValueError:
         return web.json_response({"error": "Некорректный номер отчёта"}, status=400)
-    source = await _run(_sync_partial_report_file, report_id)
-    if source is None:
-        return web.json_response({"error": "Отчёт не найден"}, status=404)
     try:
         rows, default_rest = await _run(_sync_partial_report_pending, report_id)
+        expected_pending = json.loads(json.dumps(rows))
         saved = await _run(_load_saved_attendance_mapping)
         rows = _merge_saved_attendance_mapping(rows, saved, None)
-        result = await _run(_sync_stage_attendance, user, rows, default_rest, True, source, report_id)
+        result = await _run(_sync_stage_attendance, user, rows, default_rest, True,
+                            None, report_id, expected_pending)
     except CheckViolation as exc:
         if exc.diag.message_primary != "Timesheet is locked for approval":
             raise
@@ -1298,7 +1323,7 @@ async def handle_import_attendance(request):
                     return denied(403)
                 result = await _run(_sync_stage_attendance, user, rows, default_rest, True, file_data)
             else:
-                result = await _run(_sync_stage_attendance, user, rows, default_rest)
+                result = await _run(_sync_stage_attendance, user, rows, default_rest, False, file_data)
         except CheckViolation as exc:
             if exc.diag.message_primary != "Timesheet is locked for approval":
                 raise

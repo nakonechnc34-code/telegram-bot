@@ -244,7 +244,7 @@ def test_http_manual_mapping():
                 return rows
             if fn.__name__ == "_load_saved_attendance_mapping":
                 return []
-            assert args[1][0][1] == "021"
+            assert args[1][0][1] == ("personnel_number", "021", "9181")
             return {"ok": True}
         async with TestClient(TestServer(app)) as client:
             for endpoint in ("preview", "stage"):
@@ -280,7 +280,7 @@ def test_saved_mapping_is_single_pass_and_manual_override():
     assert _merge_saved_attendance_mapping(rows, saved, None) == [
         ("2026-11-16", "021", "09:00-12:00", "B")]
     assert _merge_saved_attendance_mapping(rows, saved, {"employees": {"9181": "42"}}) == [
-        ("2026-11-16", "42", "09:00-12:00", "B")]
+        ("2026-11-16", ("personnel_number", "42", "9181"), "09:00-12:00", "B")]
 
 
 def test_matching_registry_http_denies_non_privileged_users():

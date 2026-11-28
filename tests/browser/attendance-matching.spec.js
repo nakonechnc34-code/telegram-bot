@@ -76,11 +76,13 @@ test('partial archive requires successful preview before recovery', async ({page
       resolved = true;
       return route.fulfill({json:{ok:true,success_count:1}});
     }
-    return route.fulfill({json:{records:[{id:7,created_at:'2026-11-28',resolved_at:resolved?'2026-11-28':null,diagnostics:{error_count:1,errors:['Не найден сотрудник']}}]}});
+    return route.fulfill({json:{records:[{id:7,created_at:'2026-11-28',resolved_at:resolved?'2026-11-28':null,diagnostics:{error_count:1,errors:['Не найден сотрудник'],matching:{employees:['external'],restaurants:[]}}}]}});
   });
   await page.getByText('Отчёты с ошибками',{exact:true}).click();
   const panel = page.locator('#partial-report-list');
   await expect(panel).toContainText('Отчёт №7');
+  await panel.getByRole('button',{name:'Сопоставить сотрудника external'}).click();
+  await expect(page.locator('#registry-form input[name="source"]')).toHaveValue('external');
   const save = panel.getByRole('button',{name:'Сохранить исправленные часы'});
   await expect(save).toBeDisabled();
   await panel.getByRole('button',{name:'Повторная проверка'}).click();
@@ -97,6 +99,5 @@ test('partial archive requires successful preview before recovery', async ({page
 test('partial archive does not expose records on forbidden response', async ({page}) => {
   await openRegistry(page,false);
   await page.route('**/api/timesheet/import_attendance/partial_reports', route => route.fulfill({status:403,json:{error:'Forbidden'}}));
-  await page.getByText('Отчёты с ошибками',{exact:true}).click();
-  await expect(page.locator('#partial-report-list button')).toHaveCount(0);
+  await expect(page.getByText('Отчёты с ошибками',{exact:true})).toBeHidden();
 });

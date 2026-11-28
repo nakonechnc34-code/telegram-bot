@@ -339,7 +339,8 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
                 UPDATE users SET personnel_number='021' WHERE user_id=1;""")
             root = Path(__file__).resolve().parents[1] / "database"
             for filename in ("007_attendance_imports.sql", "015_attendance_matching.sql", "008_timesheet_approval.sql", "009_timesheet_approval_locks.sql",
-                             "010_timesheet_accrual_snapshots.sql", "012_timesheet_individual_rates.sql", "013_timesheet_daily_snapshots.sql", "014_timesheet_rate_backfill.sql"):
+                             "010_timesheet_accrual_snapshots.sql", "012_timesheet_individual_rates.sql", "013_timesheet_daily_snapshots.sql", "014_timesheet_rate_backfill.sql",
+                             "016_attendance_partial_reports.sql", "017_attendance_archive_lookup.sql"):
                 cur.execute((root / filename).read_text(encoding="utf-8"))
         with conn.cursor() as cur:
             cur.execute("INSERT INTO attendance_imports(uploaded_by,date_from,date_to) VALUES (30,'2026-11-01','2026-11-01') RETURNING id")
@@ -796,7 +797,9 @@ def test_full_size_attendance_import_postgres(monkeypatch):
 
 
 def test_partial_archive_recovery_postgres(monkeypatch):
-    from contextlib import nullcontext
+    from concurrent.futures import ThreadPoolExecutor
+    from contextlib import closing, contextmanager
+    from json import dumps, loads
     from pathlib import Path
     from io import BytesIO
     from openpyxl import Workbook
@@ -812,43 +815,83 @@ def test_partial_archive_recovery_postgres(monkeypatch):
                 CREATE TABLE users (user_id bigint PRIMARY KEY, personnel_number text,
                     restaurant_key text, is_fired boolean, full_name text);
                 CREATE TABLE restaurants (key text PRIMARY KEY, name text, territory_manager_id bigint);
-                INSERT INTO users VALUES (1,'021','a',false,'One'),(2,'042','a',false,'Two'),(999,NULL,'a',false,'Admin');
+                INSERT INTO users VALUES (1,'021','a',false,'One'),(2,'042','a',false,'Two'),(3,NULL,'a',false,'Three'),(999,NULL,'a',false,'Admin');
                 INSERT INTO restaurants VALUES ('a','A',999)""")
-            for filename in ("007_attendance_imports.sql", "015_attendance_matching.sql", "016_attendance_partial_reports.sql"):
+            for filename in ("007_attendance_imports.sql", "015_attendance_matching.sql", "016_attendance_partial_reports.sql", "017_attendance_archive_lookup.sql"):
                 cur.execute((Path(__file__).resolve().parents[1] / "database" / filename).read_text(encoding="utf-8"))
-        monkeypatch.setattr(timesheet, "get_conn", lambda: nullcontext(conn))
-        actor = {"user_id":999,"is_super_admin":True}
-        book = Workbook()
-        book.active.append(["Табельный номер","Подразделение","16.11.2026"])
-        book.active.append(["021","A","09:00-12:00"])
-        book.active.append(["external","A","10:00-14:00"])
-        buf = BytesIO()
-        book.save(buf)
-        source = buf.getvalue()
+        conn.commit()
+
+        @contextmanager
+        def test_connection():
+            with closing(psycopg2.connect(dsn, options="-c search_path=attendance_partial_test")) as connection:
+                with connection:
+                    yield connection
+
+        monkeypatch.setattr(timesheet, "get_conn", test_connection)
+        actor = {"user_id": 999, "is_super_admin": True}
+
+        def excel(*rows):
+            book = Workbook()
+            book.active.append(["Табельный номер", "Подразделение", "16.11.2026"])
+            for row in rows:
+                book.active.append(row)
+            buf = BytesIO()
+            book.save(buf)
+            return buf.getvalue()
+
+        source = excel(("021", "A", "09:00-12:00"), ("external", "A", "10:00-14:00"),
+                       ("042", "external restaurant", "15:00-17:00"))
         rows = timesheet._parse_excel_rows(source)
         first = timesheet._sync_stage_attendance(actor, rows, partial=True, source_file=source)
         assert first["ok"] and first["partial"] and first["success_count"] == 1
         report_id = first["report_id"]
         assert timesheet._sync_partial_report_file(report_id) == source
-        timesheet._sync_matching_registry(actor, ("employees","external","2"))
-        pending, default_rest = timesheet._sync_partial_report_pending(report_id)
-        assert pending == [("2026-11-16", "external", "10:00-14:00", "A")]
-        mapped = timesheet._merge_saved_attendance_mapping(pending, timesheet._load_saved_attendance_mapping(), None)
-        recovered = timesheet._sync_stage_attendance(actor, mapped, partial=True, source_file=source, retry_id=report_id)
-        assert recovered["ok"] and recovered["success_count"] == 1
-        assert not timesheet._sync_stage_attendance(actor, mapped, partial=True, source_file=source, retry_id=report_id)["ok"]
-        with conn.cursor() as cur:
-            cur.execute("SELECT user_id,worked_minutes FROM attendance_import_days ORDER BY user_id")
-            assert cur.fetchall() == [(1,180),(2,240)]
-            cur.execute("SELECT resolved_at IS NOT NULL FROM attendance_partial_reports WHERE id=%s",(report_id,))
-            assert cur.fetchone() == (True,)
-        unmatched = [("2026-11-17","unknown","08:00-09:00","A")]
-        archived = timesheet._sync_stage_attendance(actor, unmatched, partial=True, source_file=source)
+        assert not timesheet._sync_stage_attendance(actor, rows, partial=True, source_file=source)["ok"]
+
+        conflicting = excel(("021", "A", "07:00-12:00"), ("unknown", "A", "08:00-09:00"))
+        assert not timesheet._sync_stage_attendance(
+            actor, timesheet._parse_excel_rows(conflicting), partial=True, source_file=conflicting
+        )["ok"]
+
+        timesheet._sync_matching_registry(actor, ("employees", "external", "3"))
+
+        def recover():
+            pending, default_rest = timesheet._sync_partial_report_pending(report_id)
+            mapped = timesheet._merge_saved_attendance_mapping(pending, timesheet._load_saved_attendance_mapping(), None)
+            expected = loads(dumps(pending))
+            return lambda: timesheet._sync_stage_attendance(
+                actor, mapped, default_rest, partial=True, retry_id=report_id, expected_pending=expected
+            )
+
+        recovery = recover()
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(lambda _: recovery(), range(2)))
+        assert sorted(result["ok"] for result in results) == [False, True]
+        assert next(result for result in results if result["ok"])["success_count"] == 1
+        assert timesheet._sync_partial_report_pending(report_id)[0] == [
+            ("2026-11-16", "042", "15:00-17:00", "external restaurant")
+        ]
+
+        timesheet._sync_matching_registry(actor, ("restaurants", "external restaurant", "a"))
+        assert recover()()["success_count"] == 1
+        complete = timesheet._merge_saved_attendance_mapping(rows, timesheet._load_saved_attendance_mapping(), None)
+        assert not timesheet._sync_stage_attendance(actor, complete, source_file=source)["ok"]
+
+        unmatched = excel(("unknown", "A", "08:00-09:00"))
+        unmatched_rows = timesheet._parse_excel_rows(unmatched)
+        archived = timesheet._sync_stage_attendance(actor, unmatched_rows, partial=True, source_file=unmatched)
         assert archived["ok"] and archived["partial"] and archived["success_count"] == 0
-        assert timesheet._sync_partial_report_pending(archived["report_id"])[0] == unmatched
-        with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM attendance_import_days")
+        assert timesheet._sync_partial_report_pending(archived["report_id"])[0] == unmatched_rows
+
+        with test_connection() as connection, connection.cursor() as cur:
+            cur.execute("SELECT user_id,worked_minutes FROM attendance_import_days ORDER BY user_id")
+            assert cur.fetchall() == [(1, 180), (2, 120), (3, 240)]
+            cur.execute("SELECT resolved_at IS NOT NULL FROM attendance_partial_reports WHERE id=%s", (report_id,))
+            assert cur.fetchone() == (True,)
+            cur.execute("SELECT COUNT(*) FROM attendance_partial_reports")
             assert cur.fetchone() == (2,)
     finally:
         conn.rollback()
+        with conn, conn.cursor() as cur:
+            cur.execute("DROP SCHEMA IF EXISTS attendance_partial_test CASCADE")
         conn.close()

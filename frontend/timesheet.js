@@ -187,11 +187,14 @@ async function deleteAttendance(record, button) {
         button.disabled = false;
     }
 }
+let archiveVersion = 0;
 async function loadPartialReports() {
+    const version = ++archiveVersion;
     const panel = byId('partial-report-list');
     panel.replaceChildren();
     try {
         const result = await api('/api/timesheet/import_attendance/partial_reports', {method:'GET'});
+        if (version !== archiveVersion || !token) return;
         for (const report of result.records) {
             const item = document.createElement('div');
             const title = document.createElement('p');
@@ -199,6 +202,21 @@ async function loadPartialReports() {
             const status = document.createElement('p');
             status.textContent = (report.diagnostics.errors || []).join(' · ');
             item.append(title, status);
+            const matching = document.createElement('div');
+            item.append(matching);
+            const showMatching = sources => {
+                matching.replaceChildren();
+                for (const [kind, values] of Object.entries(sources || {})) {
+                    for (const source of values) {
+                        const button = document.createElement('button');
+                        button.type = 'button';
+                        button.textContent = (kind === 'employees' ? 'Сопоставить сотрудника ' : 'Сопоставить ресторан ') + source;
+                        button.onclick = () => openRegistryEntry(kind, source);
+                        matching.append(button);
+                    }
+                }
+            };
+            showMatching(report.diagnostics.matching);
             const base = '/api/timesheet/import_attendance/partial_reports/' + report.id;
             const action = (label, fn) => {
                 const button = document.createElement('button');
@@ -230,13 +248,14 @@ async function loadPartialReports() {
                     save.disabled = true;
                     const data = await api(base + '/preview');
                     status.textContent = data.ok ? 'Проверка пройдена' : (data.errors || []).join(' · ');
-                    save.disabled = !data.ok;
+                    showMatching(data.matching);
+                    save.disabled = !(data.ok || (data.partial_allowed && data.records?.length));
                 });
             }
             panel.append(item);
         }
         if (!result.records.length) panel.textContent = 'Нет отчётов с ошибками';
-    } catch (error) { panel.textContent = error.message; }
+    } catch (error) { if (version === archiveVersion) panel.textContent = error.message; }
 }
 const partialPanel = document.createElement('details');
 const partialTitle = document.createElement('summary');
@@ -245,9 +264,13 @@ const partialList = document.createElement('div');
 partialList.id = 'partial-report-list';
 partialPanel.append(partialTitle, partialList);
 byId('attendance-history-status').before(partialPanel);
+partialPanel.hidden = true;
 partialPanel.addEventListener('toggle', () => {
-    if (partialPanel.open) loadPartialReports();
-    else partialList.replaceChildren();
+    if (partialPanel.open && !partialPanel.hidden) loadPartialReports();
+    else {
+        archiveVersion++;
+        partialList.replaceChildren();
+    }
 });
 
 async function loadAttendanceHistory() {
@@ -821,6 +844,10 @@ function resetMatchingRegistry() {
     registryDirectory = {employees: [], restaurants: []};
     byId('registry-form').elements.target.replaceChildren();
     byId('matching-registry').hidden = true;
+    archiveVersion++;
+    partialPanel.hidden = true;
+    partialPanel.open = false;
+    partialList.replaceChildren();
     byId('registry-form').reset();
     byId('registry-rows').replaceChildren();
     byId('registry-history').replaceChildren();
@@ -840,10 +867,17 @@ function updateRegistryChoices(selected = '') {
     }
     target.value = selected;
 }
+function openRegistryEntry(kind, source, target = '') {
+    const form = byId('registry-form');
+    form.elements.kind.value = kind;
+    form.elements.source.value = source;
+    byId('registry-search').value = '';
+    updateRegistryChoices(target);
+    form.elements.target.focus();
+}
 function renderMatchingRegistry(data) {
     registryDirectory = {employees: data.employees || [], restaurants: data.restaurants || []};
     updateRegistryChoices();
-    const form = byId('registry-form');
     const rows = byId('registry-rows');
     rows.replaceChildren();
     const kindLabel = kind => kind === 'employees' ? 'Сотрудник' : 'Ресторан';
@@ -854,13 +888,7 @@ function renderMatchingRegistry(data) {
         const actions = row.insertCell();
         const edit = document.createElement('button');
         edit.type = 'button'; edit.textContent = 'Изменить';
-        edit.onclick = () => {
-            form.elements.kind.value = entry.kind;
-            form.elements.source.value = entry.source;
-            byId('registry-search').value = '';
-            updateRegistryChoices(entry.target);
-            form.elements.target.focus();
-        };
+        edit.onclick = () => openRegistryEntry(entry.kind, entry.source, entry.target);
         const remove = document.createElement('button');
         remove.type = 'button'; remove.textContent = 'Удалить';
         remove.onclick = () => {
@@ -885,6 +913,7 @@ async function loadMatchingRegistry() {
         if (version !== registryVersion || !token) return;
         renderMatchingRegistry(data);
         byId('matching-registry').hidden = false;
+        partialPanel.hidden = false;
         byId('registry-status').textContent = '';
     } catch (error) {
         if (version === registryVersion) resetMatchingRegistry();
@@ -903,6 +932,7 @@ async function changeMatchingRegistry(method, values) {
         updateRegistryChoices();
         clearAttendancePreview();
         status.textContent = 'Изменения сохранены';
+        if (partialPanel.open) await loadPartialReports();
     } catch (error) {
         if (version === registryVersion) status.textContent = error.message;
     } finally { registryBusy = false; }

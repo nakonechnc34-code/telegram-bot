@@ -997,7 +997,7 @@ def _sync_stage_attendance(user, rows, default_rest_key=None, partial=False, sou
     """Store a validated batch for review, without affecting legacy payroll."""
     from utils.attendance_minutes import shift_interval
     result = _sync_preview_attendance(user, rows, default_rest_key)
-    if (not result["ok"] and not (partial and result["partial_allowed"])) or not result["records"]:
+    if (not result["ok"] and (retry_id is not None or not (partial and result["partial_allowed"]))) or not result["records"]:
         return {"ok": False, "errors": result["errors"] or ["Нет записей для загрузки"]}
     records = result["records"]
     report_id = None
@@ -1122,6 +1122,37 @@ async def handle_partial_report_preview(request):
         result = await _run(_sync_preview_attendance, user, rows, None)
     except ValueError:
         return web.json_response({"error": "Не удалось проверить отчёт"}, status=400)
+    return web.json_response(result, headers={"Cache-Control": "no-store"})
+
+
+@routes.post('/api/timesheet/import_attendance/partial_reports/{report_id}/stage')
+async def handle_partial_report_stage(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    _require_timesheet_access(user)
+    if not _is_hr_or_super(user):
+        return denied(403)
+    try:
+        report_id = int(request.match_info["report_id"])
+        if not 0 < report_id < 2**63:
+            raise ValueError()
+    except ValueError:
+        return web.json_response({"error": "Некорректный номер отчёта"}, status=400)
+    source = await _run(_sync_partial_report_file, report_id)
+    if source is None:
+        return web.json_response({"error": "Отчёт не найден"}, status=404)
+    try:
+        rows = await _run(_parse_excel_rows, source)
+        saved = await _run(_load_saved_attendance_mapping)
+        rows = _merge_saved_attendance_mapping(rows, saved, None)
+        result = await _run(_sync_stage_attendance, user, rows, None, True, source, report_id)
+    except CheckViolation as exc:
+        if exc.diag.message_primary != "Timesheet is locked for approval":
+            raise
+        return web.json_response({"error": "Табель закрыт на согласование или утверждён"}, status=409)
+    except ValueError:
+        return web.json_response({"error": "Не удалось обработать отчёт"}, status=400)
     return web.json_response(result, headers={"Cache-Control": "no-store"})
 
 

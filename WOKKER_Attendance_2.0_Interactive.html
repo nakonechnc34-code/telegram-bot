@@ -26,6 +26,7 @@ body{font-size:14px}.shell{grid-template-columns:223px minmax(0,1fr)}aside{color
 @media(max-width:850px){.nav-category,.settingsnav nav>div{display:none}.brandmark{width:35px;height:35px}}
 #mobileMenu{display:none}
 @media(max-width:850px){aside{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}#mobileMenu{display:inline-flex;background:#294438;border-color:#506c5e;color:#f0f9f3}#nav{grid-column:1/-1}#mobileMenu[aria-expanded=false]+#nav{display:none}}
+.calendarwrap td button.manual-edit{box-shadow:inset 0 0 0 2px #b52e38}
 </style>
 </head>
 <body>
@@ -549,6 +550,7 @@ const initialMonth='2026-11';
 const approvals={draft:'Подготовлен',tu:'Утверждён ТУ',hr:'На согласовании HR',returned:'Возвращён на доработку',approved:'Утверждён HR'};
 const payTabs={due:'К выплате',extras:'Дополнительные выплаты',pending:'На согласовании',registers:'Реестры выплат',paid:'История выплат'};
 const extraLabels={draft:'Черновик',pending:'На согласовании HR',returned:'Возвращено на доработку',rejected:'Отклонено',approved:'Согласовано',planned:'Запланировано к выплате',paid:'Выплачено'};
+const registryStatusLabel=r=>r.status==='planned'&&r.confirmedCents?'Частично подтверждён':regLabels[r.status];
 const regLabels={planned:'Зарезервирован',paid:'Выплачен',cancelled:'Отменён',reversed:'Сторнирован'};
 const formulaLabels={multiply:'Расход компании = сумма × коэффициент',divide:'Расчётная сумма = сумма ÷ коэффициент',neutral:'Коэффициент для справки'};
 const monthLabel=value=>value?new Intl.DateTimeFormat('ru-RU',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(value+'-01T00:00:00Z')):'—';
@@ -652,25 +654,33 @@ function asAccount(x){
  return { ...x,key:accountKey(x.employee,x.rest,x.month) };
 }
 function accounts(){
- const rows=new Map(W().snapshots.map(x=>{const account=asAccount(x);return [account.key,{...account,extras:0}];}));
+ const rows=new Map(currentSnapshots().map(x=>{const account=asAccount(x);return [account.key,{...account,extras:0,source:"shift",correction:0}];}));
  for(const e of W().extras.filter(x=>x.status==='approved')){
   const key=accountKey(e.employee,e.rest,e.month);
-  const row=rows.get(key)||{key,employee:e.employee,rest:e.rest,month:e.month,minutes:0,rate:0,earned:0,extras:0};
+  const row=rows.get(key)||{key,employee:e.employee,rest:e.rest,month:e.month,minutes:0,rate:0,earned:0,extras:0,correction:0};
   row.extras+=e.cents;rows.set(key,row);
  }
  const activity=new Map();
  for(const r of W().registers.filter(x=>['paid','planned','reversed'].includes(x.status))){
   for(const line of r.lines){
-   const ledger=activity.get(line.key)||{reserved:0,paid:0,companies:new Set()};
-   if(r.status==='planned')ledger.reserved+=line.cents;
-   if(r.status==='paid')ledger.paid+=line.cents;
-   if(r.status!=='reversed')ledger.companies.add(r.company.id);
-   activity.set(line.key,ledger);
+   if(r.status==='reversed')continue;
+   if(line.correction&&rows.has(line.key))rows.get(line.key).correction+=line.correction;
+   for(const p of allocationsOf(line)){
+    const ledger=activity.get(p.key)||{reserved:0,paid:0,paidHours:0,paidCash:0,paidLegacy:0,companies:new Set()};
+    if(r.alignVersion===1){
+     const paidHours=r.hourActual?p.hourCents:0, paidCash=r.cashDate?p.separate:0;
+     ledger.paidHours+=paidHours;ledger.paidCash+=paidCash;ledger.paid+=paidHours+paidCash;
+     if(r.status==='planned')ledger.reserved+=p.cents-paidHours-paidCash;
+    }else if(r.status==='planned'){ledger.reserved+=p.cents;}
+    else{ledger.paid+=p.cents;ledger.paidLegacy+=p.cents;}
+    ledger.companies.add(r.company.id);
+    activity.set(p.key,ledger);
+   }
   }
  }
  return [...rows.values()].map(x=>{
-  const a=activity.get(x.key)||{reserved:0,paid:0,companies:new Set()};
-  const accrued=x.earned+x.extras,balance=accrued-a.paid;
+  const a=activity.get(x.key)||{reserved:0,paid:0,paidHours:0,paidCash:0,paidLegacy:0,companies:new Set()};
+  const accrued=x.earned+x.extras+x.correction,balance=accrued-a.paid;
   return {...x,...a,accrued,balance,due:balance-a.reserved};
  });
 }
@@ -735,6 +745,143 @@ function roundDays(shifts){
  for(const x of shifts)days.set(x.day,(days.get(x.day)||0)+x.minutes);
  return [...days].map(([day,minutes])=>({day,minutes:roundMinutes(minutes)}));
 }
+const alignmentModes={down:'Вниз с сохранением долга',up:'Вверх с согласованной корректировкой',separate:'Целые часы и отдельный перевод остатка'};
+const alignmentDefault={id:'default',mode:'down',from:'2026-01-01',carry:true,by:'Учебная настройка',at:'2026-01-01T00:00:00Z'};
+tabs.payround='Округление выплат';
+const policies=()=>W().alignmentPolicies||[alignmentDefault];
+const alignmentPolicy=day=>policies().filter(p=>p.from<=day).sort((a,b)=>b.from.localeCompare(a.from))[0]||alignmentDefault;
+const validHourlyRate=r=>Number.isSafeInteger(r)&&r>0;
+const integerFormat=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:0});
+const calculationHours=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:4});
+function alignPayment(requested,rate,mode){
+ if(!Object.hasOwn(alignmentModes,mode)||!validHourlyRate(rate)||!Number.isSafeInteger(requested)||requested<0)return null;
+ const budget=BigInt(requested), wage=BigInt(rate);
+ const fraction=budget%wage;
+ const whole=budget/wage+(mode==='up'&&fraction?1n:0n);
+ const hourCents=whole*wage;
+ const separate=mode==='separate'?fraction:0n;
+ const cents=hourCents+separate;
+ if(cents>BigInt(Number.MAX_SAFE_INTEGER))return null;
+ return {whole:Number(whole),hourCents:Number(hourCents),separate:Number(separate),cents:Number(cents),
+  correction:mode==='up'?Number(cents-budget):0,remainder:mode==='down'?Number(fraction):0};
+}
+function allocationsOf(line){
+ return line.allocations||[{key:line.key,month:line.month,cents:line.cents,hourCents:line.cents,separate:0}];
+}
+function lineMatches(line){
+ const a=alignPayment(line.requested,line.hourlyRate,line.mode);
+ return !!a&&a.cents>0&&['whole','hourCents','separate','cents','correction','remainder'].every(k=>line[k]===a[k])&&
+  ['hourCents','separate','cents'].every(k=>sum(allocationsOf(line),p=>p[k])===a[k])&&
+  allocationsOf(line).every(p=>p.key===accountKey(line.employee,line.rest,p.month)&&Number.isSafeInteger(p.cents)&&p.cents>0&&
+   p.hourCents>=0&&p.separate>=0&&p.cents===p.hourCents+p.separate)&&
+  new Set(allocationsOf(line).map(p=>p.key)).size===allocationsOf(line).length;
+}
+const registryMatches=r=>r.alignVersion===1&&r.lines.length>0&&r.lines.every(l=>l.mode===r.policy?.mode&&lineMatches(l))&&
+ new Set(r.lines.flatMap(l=>allocationsOf(l).map(a=>a.key))).size===sum(r.lines,l=>allocationsOf(l).length)&&
+ (!r.lines.some(l=>l.correction)||r.approvedBy&&r.basis)&&(!r.lines.some(l=>l.separate)||r.separateChannel===true);
+const documentedPaid=r=>(r.hourActual?sum(r.lines,l=>l.hourCents):0)+(r.cashDate?sum(r.lines,l=>l.separate):0);
+function confirmationMatches(r){
+ const confirmed=documentedPaid(r), total=sum(r.lines,l=>l.cents);
+ return confirmed===(r.confirmedCents||0)&&(r.status==='planned'?confirmed<total:confirmed===total);
+}
+function approvedForPayment(a){
+ return !['tu','hr','returned'].includes(approvalOf(a.rest,a.month))&&W().approvals[pair(a.rest,a.month)]?.reopened!==true;
+}
+function reconcileAccount(a){
+ const related=W().registers.filter(r=>['paid','planned'].includes(r.status)&&r.lines.some(l=>allocationsOf(l).some(p=>p.key===a.key)));
+ const isValid=related.every(r=>r.alignVersion===undefined||registryMatches(r)&&confirmationMatches(r));
+ return isValid&&a.balance>=0&&a.due>=0&&a.paid===a.paidHours+a.paidCash+a.paidLegacy&&
+  a.accrued===a.paid+a.balance&&a.balance===a.due+a.reserved;
+}
+function currentSnapshots(){
+ return [...new Map(W().snapshots.map(x=>[accountKey(x.employee,x.rest,x.month),x])).values()];
+}
+function workMinutesRaw(row){
+ if(!row.processed)return row.minutes;
+ const a=minute(row.start),b=minute(row.end);
+ return Number.isFinite(a)&&Number.isFinite(b)?(b<a?b+1440:b)-a:row.minutes;
+}
+function financeRows(rest,month){
+ const actual=actualShifts().filter(x=>x.rest===rest&&x.day.startsWith(month)&&x.minutes>0);
+ const obligations=accounts().filter(a=>a.rest===rest&&a.month===month);
+ const ids=new Set([...actual.map(x=>x.employee),...obligations.map(a=>a.employee)]);
+ const approved=approvalOf(rest,month)==='approved';
+ const policy=alignmentPolicy(today());
+ return [...ids].map(employee=>{
+  const items=actual.filter(x=>x.employee===employee);
+  const actualMinutes=sum(items,workMinutesRaw);
+  const a=obligations.find(x=>x.employee===employee);
+  const review=W().approvals[pair(rest,month)]?.financialReview?.rows.find(x=>x.employee===employee);
+  const rate=approved&&a?.rate!=null&&a?.source==='shift'?a.rate:W().rates[employee];
+  const billed=sum(roundDays(items),x=>x.minutes);
+  const earned=approved&&a?a.earned:validHourlyRate(rate)?amount(billed,rate):0;
+  const extras=a?.extras||0, adjustment=a?.correction||0;
+  const accrued=earned+extras+adjustment, balance=accrued-(a?.paid||0), due=Math.max(0,balance-(a?.reserved||0));
+  const payoutRate=W().rates[employee];
+  const settlement=alignPayment(due,payoutRate,policy.mode);
+  return {employee,rest,month,minutes:actualMinutes,billed,rate,earned,extras,adjustment,accrued,balance,due,payoutRate,settlement,policy,review,
+   paid:a?.paid||0,reserved:a?.reserved||0,excluded:!validHourlyRate(payoutRate)};
+ });
+}
+function financeTable(rows){
+ return table(['Сотрудник','Факт','Ставка','За часы','Доплаты','Обязательство / доступно','Расчётные часы','Целые часы','Сумма плана','Остаток','Проверка'],rows.map(a=>[
+  personCell(a.employee)+'<small>'+esc(restaurantName(a.rest))+'</small>',hours(a.minutes),validHourlyRate(a.payoutRate)?moneyCell(a.payoutRate):'—',moneyCell(a.earned),moneyCell(a.extras),
+  moneyCell(a.accrued)+'<small>'+money(a.due)+'</small>',a.settlement?calculationHours.format(a.due/a.payoutRate):'—',
+  a.settlement?integerFormat.format(a.settlement.whole):'—',a.settlement?moneyCell(a.settlement.cents):'—',
+  a.settlement?moneyCell(a.settlement.remainder)+(a.settlement.correction?'<small>Корректировка '+money(a.settlement.correction)+'</small>':a.settlement.separate?'<small>Отдельно '+money(a.settlement.separate)+'</small>':''):'—',
+  a.excluded?chip(missingHourlyRate,'err'):a.settlement.correction?chip('Требуется согласование HR','warn'):a.settlement.remainder?chip('Имеется денежный остаток','warn'):chip('Расчёт проверен','ok')
+ ]));
+}
+function financeDetail(value){
+ if(!admin())return;
+ const [employee,rest,month]=value.split('|');
+ const rows=financeRows(rest,month).filter(a=>a.employee===employee);
+ const a=rows[0];if(!a)return;
+ const plan=a.settlement;
+ modal(employeeLabel(employee),'<p class="muted">'+esc(restaurantName(rest)+' · '+monthLabel(month))+'</p>'+
+  metrics([['Фактически отработано',hours(a.minutes)],['Оплачиваемое время',hours(a.billed)],['Индивидуальная ставка',validHourlyRate(a.payoutRate)?money(a.payoutRate):'—'],['Начислено за часы',money(a.earned)],['Доплаты',money(a.extras)],['Утверждённые корректировки',money(a.adjustment)],['Обязательство',money(a.accrued)],['Доступно',money(a.due)],['Расчётные часы',plan?calculationHours.format(a.due/a.payoutRate):'—'],['Целые часы',plan?integerFormat.format(plan.whole):'—'],['Корректировка для согласования',plan?money(plan.correction):'—'],['Денежный остаток',plan?money(plan.remainder):'—'],['План целыми часами',plan?money(plan.hourCents):'—'],['Отдельный перевод',plan?money(plan.separate):'—'],['Итог к выплате',plan?money(plan.cents):'—']])+
+  (plan?'<p class="notice">'+ico('info')+'<span>'+esc(alignmentModes[a.policy.mode])+' · предварительная проверка</span></p>':'<p class="notice">'+ico('alert')+esc(missingHourlyRate)+'</p>')+
+  (a.review?'<p class="sub">Снимок проверки HR: '+money(a.review.earned+a.review.extras)+' · '+hours(a.review.minutes)+'</p>':''),{drawer:true});
+}
+function financeBatch(value=''){
+ if(!admin())return;
+ const [one,m]=value.split('|');
+ const month=m||filters.month||W().month;
+ const rows=restOptions().filter(([r])=>one?r===one:locationMatch(r)).flatMap(([r])=>financeRows(r,month)).filter(a=>matchesPerson(a.employee,filters.find));
+ modal('Проверка финансов · '+monthLabel(month),rows.length?financeTable(rows):empty('Нет расчётов','За период нет строк для проверки.'),{drawer:true});
+}
+function alignmentExample(){
+ modal('Учебный расчёт выплаты','<form id="alignmentExample">'+
+  field('Фактические часы','<input name="hours" inputmode="decimal" value="173,5" required>')+
+  field('Ставка, ₽/ч','<input name="rate" inputmode="decimal" value="350" required>')+
+  field('Доплаты, ₽','<input name="extras" inputmode="decimal" value="2000" required>')+
+  field('Переносимый денежный остаток, ₽','<input name="carry" inputmode="decimal" value="0" required>')+
+  field('Частичная выплата, ₽ (пусто — всё)','<input name="partial" inputmode="decimal">')+
+  field('Способ выравнивания','<select name="mode">'+options(Object.entries(alignmentModes),'down')+'</select>')+
+  '<div id="alignmentExampleResult" aria-live="polite"></div></form>',{drawer:true});
+ updateAlignmentExample($('alignmentExample'));
+}
+function updateAlignmentExample(form){
+ const d=new FormData(form), hours100=intMoney(d.get('hours')),rate=intMoney(d.get('rate')),extras=intMoney(d.get('extras')),carry=intMoney(d.get('carry'));
+ const target=$('alignmentExampleResult');
+ if(hours100===null||!validHourlyRate(rate)||extras===null||carry===null){target.innerHTML='<p class="notice">'+ico('alert')+'Укажите часы, положительную ставку, доплаты и остаток.</p>';return;}
+ const earned=Number((BigInt(hours100)*BigInt(rate)+50n)/100n);
+ const obligation=earned+extras+carry, requested=d.get('partial').trim()?intMoney(d.get('partial')):obligation;
+ const plan=requested!==null&&requested<=obligation?alignPayment(requested,rate,d.get('mode')):null;
+ target.innerHTML=plan?metrics([['Начислено за часы',money(earned)],['Обязательство',money(obligation)],['Расчётные часы',calculationHours.format(requested/rate)],['Целые часы',integerFormat.format(plan.whole)],['Целыми часами',money(plan.hourCents)],['Отдельно',money(plan.separate)],['Корректировка',money(plan.correction)],['Итог выплаты',money(plan.cents)],['Долг после выплаты',money(obligation+plan.correction-plan.cents)]])+
+  (plan.correction?'<p class="notice">'+ico('alert')+'Требуется отдельное основание HR.</p>':plan.separate?'<p class="notice">'+ico('info')+'Требуется денежный канал для остатка.</p>':''):'<p class="notice">'+ico('alert')+'Введите частичную сумму в пределах задолженности.</p>';
+}
+function paymentRoundingView(){
+ const rows=policies().slice().reverse().map(p=>[date(p.from),esc(alignmentModes[p.mode]),p.carry?'Включён':'По отдельным периодам',esc(p.by),stamp(p.at)]);
+ const current=alignmentPolicy(today());
+ return '<div class="stack">'+panel('Округление выплат','<p class="notice">'+ico('shield')+'<span>В реестры передаются только целые часы. Денежный остаток учитывается в задолженности.</span></p><form id="payRoundForm" class="formgrid">'+
+  field('Способ финансового выравнивания','<select name="mode">'+options(Object.entries(alignmentModes),current.mode)+'</select>')+
+  field('Дата начала действия','<input type="date" name="from" required value="'+esc(today())+'">')+
+  '<label class="check"><input type="checkbox" name="carry" '+(current.carry?'checked':'')+'> Объединять доступный долг прошлых периодов по сотруднику и ресторану</label>'+
+  '<p class="muted">Версии правил применяются к новым операциям. Режим «вверх» требует основания и подтверждения HR. Отдельный перевод доступен при наличии отдельного канала.</p>'+
+  '<div class="actions"><button type="submit" class="primary">Сохранить правило</button></div></form>')+panel('История правил',table(['Действует с','Способ','Перенос','Автор','Изменено'],rows),button('Учебный расчёт','alignment-example'))+'</div>';
+}
+
 function sheetsView(){
  const month=filters.month||W().month;
  const year=Number(month.slice(0,4)), mon=Number(month.slice(5));
@@ -743,25 +890,31 @@ function sheetsView(){
  const week=filters.week||'month', anchor=Number(filters.anchor||1);
  const visible=days.filter(d=>week==='month'||d>=anchor&&d<anchor+7);
  const actual=actualShifts().filter(x=>x.day.startsWith(month));
+ const financeIndex=new Map(admin()?restOptions().filter(([r])=>locationMatch(r)).flatMap(([r])=>financeRows(r,month)).map(x=>[accountKey(x.employee,x.rest,x.month),x]):[]);
  const rows=scopedPeople().flatMap(person=>{
   const associated=new Set([person.rest,...actual.filter(x=>x.employee===person.id).map(x=>x.rest)]);
   return [...associated].filter(locationMatch).filter(()=>matchesPerson(person.id,filters.find)).map(rest=>{
    const records=actual.filter(x=>x.employee===person.id&&x.rest===rest);
-   return {person,rest,records,total:sum(records.filter(x=>x.status==='work'||x.processed),x=>x.minutes)};
+   return {person,rest,records,total:sum(records.filter(x=>x.status==='work'||x.processed),workMinutesRaw)};
   });
  });
  const headers=['Сотрудник','Всего',...visible.map(d=>'<span class="'+([0,6].includes(new Date(Date.UTC(year,mon-1,d)).getUTCDay())?'weekend':'')+'">'+d+'</span>')];
  let contents=rows.length?table(headers,rows.map(({person,rest,records,total})=>[
-  personCell(person.id)+'<small>'+esc(restaurantName(rest))+'</small>',hours(total),...visible.map(d=>{
+  personCell(person.id)+'<small>'+esc(restaurantName(rest))+'</small>',hours(total)+(()=>{
+  const key=accountKey(person.id,rest,month), f=financeIndex.get(key);
+  return f?'<br>'+button(money(f.accrued),'finance-detail',key,'cell-link')+(f.excluded||f.settlement.remainder||f.settlement.correction||f.settlement.separate?'<small>Требуется выравнивание</small>':''):'';
+ })(),...visible.map(d=>{
    const day=month+'-'+String(d).padStart(2,'0');
    const hits=records.filter(x=>x.day===day), abs=hits.find(x=>['vacation','sick','absent'].includes(x.status));
-   const lab=abs?{vacation:'О',sick:'Б',absent:'Н'}[abs.status]:hits.length?nf.format(sum(hits,x=>x.minutes)/60):'·';
-   const spoken=abs?{vacation:'отпуск',sick:'больничный',absent:'неявка'}[abs.status]:hits.length?hours(sum(hits,x=>x.minutes)):'без смен';
-   return button(lab,'cell',person.id+'|'+rest+'|'+day,abs?'absence':hits.length?'worked':'quiet').replace('<button','<button aria-label="'+esc(person.name+' · '+date(day)+' · '+spoken)+'"');
+   const lab=abs?{vacation:'О',sick:'Б',absent:'Н'}[abs.status]:hits.length?nf.format(sum(hits,workMinutesRaw)/60):'·';
+   const spoken=abs?{vacation:'отпуск',sick:'больничный',absent:'неявка'}[abs.status]:hits.length?hours(sum(hits,workMinutesRaw)):'без смен';
+   const cellKey=person.id+'|'+rest+'|'+day;
+   const edited=W().cellEdits?.[cellKey]?.length;
+   return button(lab,'cell',cellKey,(abs?'absence':hits.length?'worked':'quiet')+(edited?' manual-edit':'' )).replace('<button','<button aria-label="'+esc(person.name+' · '+date(day)+' · '+spoken)+'"');
   })])):empty('Сотрудники не найдены','Измените фильтры или выберите другой период.');
  contents=contents.replace('class="tablebox"','class="tablebox calendarwrap"');
  const bars='<div class="flex mini">'+restOptions().filter(([r])=>locationMatch(r)).map(([r,n])=>chip(n+' · '+approvals[approvalOf(r,month)],approvalOf(r,month)==='approved'?'ok':'info')).join('')+'</div>';
- return '<div class="major">'+titleFor('Табели','Календарь смен и согласование рабочего времени.',button('К согласованию','go-approval','','primary','approval')+button('Скачать Excel','export-sheet','','','download'))+panel('Рабочее время',filterStrip(vm()+locationFilters()+vs('find','Сотрудник')+vfield('Представление','week',[['month','Месяц'],['week','Неделя']],week,''))+'<div class="row"><div class="actions">'+button('←','sheet-shift','-1')+'<strong>'+esc(monthLabel(month))+(week==='week'?' · '+visible[0]+'–'+visible.at(-1):'')+'</strong>'+button('→','sheet-shift','1')+'</div><p class="mini muted">О — отпуск · Б — больничный · Н — неявка</p></div>'+contents+'<div class="row strongline">'+bars+button('История табелей','go-approval','','quiet','history')+'</div>')+'</div>';
+ return '<div class="major">'+titleFor('Табели','Календарь смен и согласование рабочего времени.',button('К согласованию','go-approval','','primary','approval')+button('Скачать Excel','export-sheet','','','download')+(admin()?button('Проверить финансы','finance-batch'):'') )+panel('Рабочее время',filterStrip(vm()+locationFilters()+vs('find','Сотрудник')+vfield('Представление','week',[['month','Месяц'],['week','Неделя']],week,''))+'<div class="row"><div class="actions">'+button('←','sheet-shift','-1')+'<strong>'+esc(monthLabel(month))+(week==='week'?' · '+visible[0]+'–'+visible.at(-1):'')+'</strong>'+button('→','sheet-shift','1')+'</div><p class="mini muted">О — отпуск · Б — больничный · Н — неявка</p></div>'+contents+'<div class="row strongline">'+bars+button('История табелей','go-approval','','quiet','history')+'</div>')+'</div>';
 }
 function setFilters(next){filters={...filters,...next};render();}
 function moveSheet(delta){
@@ -777,16 +930,23 @@ function openCell(value){
  const hits=actualShifts().filter(x=>x.employee===employee&&x.rest===rest&&x.day===day);
  const base=W().cells[value], archived=hits.some(x=>x.processed);
  const locked=isLocked(rest,day.slice(0,7))||archived;
+ const changes=W().cellEdits?.[value]||[];
  const fields=field('Состояние','<select name="status">'+options([['work','Смена'],['vacation','Отпуск'],['sick','Больничный'],['absent','Неявка'],['none','Очистить день']],base?.status||'work')+'</select>')+field('Начало смены','<input type="time" name="start" value="'+esc(base?.start||'09:00')+'">')+field('Окончание смены','<input type="time" name="end" value="'+esc(base?.end||'17:00')+'">');
  const entries=hits.map(x=>'<p>'+esc(x.status==='work'||x.processed?(x.start+'–'+x.end+' · '+hours(x.minutes)):{vacation:'Отпуск',sick:'Больничный',absent:'Неявка'}[x.status])+'</p>').join('');
- modal(person.name+' · '+date(day),'<p class="muted">'+esc(restaurantName(rest))+'</p>'+(locked?'<div class="notice">'+ico('shield')+'<span>'+(archived?'Смена из сохранённого Excel.':'Период закрыт для правок.')+'</span></div>'+entries:'<form>'+fields+'<div class="actions"><button type="submit" class="primary">Сохранить день</button>'+button('Отмена','close')+'</div></form>'),{submit:data=>{
+ modal(person.name+' · '+date(day),'<p class="muted">'+esc(restaurantName(rest))+'</p>'+(locked?'<div class="notice">'+ico('shield')+'<span>'+(archived?'Смена из сохранённого Excel.':'Период закрыт для правок.')+'</span></div>'+entries:'<form>'+fields+'<div class="actions"><button type="submit" class="primary">Сохранить день</button>'+button('Отмена','close')+'</div></form>')+(changes.length?'<h3>История изменений</h3>'+eventList(changes):''),{submit:data=>{
   if(!canRest(rest)||isLocked(rest,day.slice(0,7))||archived)return;
   const status=data.get('status'),start=data.get('start'),end=data.get('end');
   const a=minute(start), b=minute(end);
   const duration=b<a?b+1440-a:b-a;
   if(status==='work'&&(!Number.isFinite(duration)||duration<=0)){showFormError('Укажите рабочий интервал.');return;}
   if(status==='work'&&actualShifts().some(x=>x.employee===employee&&(x.day!==day||x.rest!==rest)&&conflictingShift(x,day,a,b))){showFormError('Интервал пересекается со сменой в другом ресторане.');return;}
-  if(mutate(()=>{if(status==='none')delete W().cells[value];else W().cells[value]={employee,rest,day,start,end,status,minutes:status==='work'?duration:0};audit('Изменён день табеля',person.name+' · '+date(day)+' · '+restaurantName(rest));})){close();render();toast('День табеля сохранён.');}
+  if(mutate(()=>{
+   const detail=x=>x?(x.status==='work'?x.start+'–'+x.end:({vacation:'Отпуск',sick:'Больничный',absent:'Неявка'}[x.status]||'—')):'Пусто';
+   if(status==='none')delete W().cells[value];else W().cells[value]={employee,rest,day,start,end,status,minutes:status==='work'?duration:0};
+   W().cellEdits??={};W().cellEdits[value]??=[];
+   W().cellEdits[value].push({at:now(),by:actor(),label:'Изменён день табеля',comment:detail(base)+' → '+detail(W().cells[value])});
+   audit('Изменён день табеля',person.name+' · '+date(day)+' · '+restaurantName(rest));
+  })){close();render();toast('День табеля сохранён.');}
  }});
 }
 function eventList(events){
@@ -802,7 +962,8 @@ function approvalView(){
   const commands=role()==='tu'&&['draft','returned'].includes(item.status)?button('Утвердить от имени ТУ','approval-step',id+'|'+m+'|tu','primary'):
    role()==='tu'&&item.status==='tu'?button('Отправить HR','approval-step',id+'|'+m+'|hr','primary'):
    reviewAllowed()&&item.status==='hr'?button('Утвердить HR','approval-step',id+'|'+m+'|approved','primary')+button('Вернуть на доработку','approval-step',id+'|'+m+'|returned'):'';
-  return '<article class="detail-card"><div class="panelhead"><div><h3>'+esc(name)+'</h3><p class="muted">'+territoryOf(id)+' · '+hours(minutes)+'</p></div>'+chip(approvals[item.status],item.status==='approved'?'ok':item.status==='hr'?'warn':'info')+'</div><ol class="flow" aria-label="Этапы согласования">'+['draft','tu','hr','approved'].map(k=>'<li'+(k===item.status?' class="current" aria-current="step"':'')+'>'+approvals[k]+'</li>').join('')+'</ol><div class="actions" style="margin-top:12px">'+commands+button('История согласования','approval-log',id+'|'+m,'quiet','history')+'</div></article>';
+  return '<article class="detail-card"><div class="panelhead"><div><h3>'+esc(name)+'</h3><p class="muted">'+territoryOf(id)+' · '+hours(minutes)+'</p></div>'+chip(approvals[item.status],item.status==='approved'?'ok':item.status==='hr'?'warn':'info')+'</div><ol class="flow" aria-label="Этапы согласования">'+['draft','tu','hr','approved'].map(k=>'<li'+(k===item.status?' class="current" aria-current="step"':'')+'>'+approvals[k]+'</li>').join('')+'</ol><div class="actions" style="margin-top:12px">'+commands+(admin()?button('Финансовая проверка','finance-batch',id+'|'+m):'')+
+  (reviewAllowed()&&item.status==='approved'?button('Повторно открыть','approval-reopen',id+'|'+m,'danger'):'')+button('История согласования','approval-log',id+'|'+m,'quiet','history')+'</div></article>';
  }).join('');
  return '<div class="major">'+titleFor('Согласование','Проверка ТУ и утверждение кадровой службой.',button('К табелям','page','sheets','','sheets'))+panel('Рестораны и периоды',filterStrip(vm()+locationFilters())+'<div class="shop">'+(cards||empty('Рестораны не найдены','Измените фильтры.'))+'</div>')+'</div>';
 }
@@ -813,25 +974,51 @@ function changeApproval(value){
  if(!allowable())return;
  const shifts=actualShifts().filter(x=>x.rest===rest&&x.day.startsWith(month)&&x.minutes>0);
  const pending=issues().filter(({row:r})=>!r.processed&&(r.rest||match('restaurants',r.restaurant))===rest&&r.day.startsWith(month)).length;
+ const review=target==='approved'?financeRows(rest,month):[];
  const msg=target==='approved'?'Будет создан снимок начислений за утверждённые часы.':target==='tu'?'После подтверждения этот период закрывается для правок.':'Статус будет зафиксирован в истории.';
- modal(approvals[target]+' · '+restaurantName(rest),'<form><p>'+msg+'</p>'+(pending?'<p class="dashboardnote">В центре ошибок осталось строк этого ресторана: '+pending+'. Они не попадут в начисления.</p>':'')+
+ modal(approvals[target]+' · '+restaurantName(rest),'<form><p>'+msg+'</p>'+(review.length?financeTable(review)+'<p class="notice">'+ico('info')+'<span>Сохраняется финансовый предпросмотр. Резерв и корректировки требуют отдельного утверждения реестра.</span></p>':'')+(pending?'<p class="dashboardnote">В центре ошибок осталось строк этого ресторана: '+pending+'. Они не попадут в начисления.</p>':'')+
   field('Комментарий'+(target==='returned'?' (обязательно)':''),'<input name="comment" maxlength="300" '+(target==='returned'?'required':'')+'>')+'<div class="actions"><button type="submit" class="primary">Подтвердить</button>'+button('Отмена','close')+'</div></form>',{submit:data=>{
    if(!allowable())return;
    const comment=data.get('comment').trim();
    if(target==='returned'&&!comment){showFormError('Объясните причину возврата.');return;}
-   if(target==='approved'&&(!shifts.length||shifts.some(x=>!Object.hasOwn(W().rates,x.employee)))){showFormError('Требуются рабочие смены и назначенные ставки.');return;}
+   if(target==='approved'){
+    const latest=financeRows(rest,month);
+    if(!shifts.length||latest.some(a=>a.excluded)){showFormError('Требуются рабочие смены и положительные индивидуальные ставки.');return;}
+    if(JSON.stringify(latest)!==JSON.stringify(review)){showFormError('Исходные суммы изменились. Откройте проверку повторно.');return;}
+    if(latest.some(a=>a.accrued<a.paid+a.reserved)){showFormError('Новая сумма ниже подтверждённых или зарезервированных выплат. Нужна отдельная финансовая корректировка.');return;}
+   }
    if(mutate(()=>{
     const k=pair(rest,month), entry=W().approvals[k]||{events:[]};
     entry.status=target;entry.events.push({at:now(),by:actor(),label:approvals[target],comment});W().approvals[k]=entry;
     if(target==='approved'){
-     for(const employee of new Set(shifts.map(x=>x.employee))){
-      const days=roundDays(shifts.filter(x=>x.employee===employee)),minutes=sum(days,d=>d.minutes);
-      const rate=W().rates[employee];W().snapshots.push({employee,rest,month,minutes,days,rate,earned:amount(minutes,rate)});
+     entry.reopened=false;
+     entry.revision=(entry.revision||0)+1;
+     entry.financialReview={at:now(),by:actor(),rows:review.map(({review:previous,...row})=>row)};
+     for(const {employee,earned} of review){
+      const actual=shifts.filter(x=>x.employee===employee);
+      const days=roundDays(actual),minutes=sum(days,d=>d.minutes);
+      const rate=W().rates[employee];W().snapshots.push({employee,rest,month,minutes,days,actualMinutes:sum(actual,workMinutesRaw),rate,earned,revision:entry.revision});
      }
     }
     audit(approvals[target],restaurantName(rest)+' · '+monthLabel(month));
    })){close();render();toast('Статус табеля обновлён.');}
  }});
+}
+function reopenApproval(value){
+ const [rest,month]=value.split('|');
+ const opening=()=>reviewAllowed()&&approvalOf(rest,month)==='approved'&&W().approvals[value]?.status==='approved'&&
+  !accounts().some(a=>a.rest===rest&&a.month===month&&a.reserved);
+ if(!opening()){toast('Период закрыт архивом либо содержит действующий резерв выплаты.','alert');return;}
+ modal('Повторно открыть период','<form><p>Исторический снимок и выплаты сохранятся. Новые выплаты за период будут доступны после повторного утверждения HR.</p>'+
+  field('Основание','<input name="reason" required maxlength="300">')+'<div class="actions"><button type="submit" class="primary">Открыть период</button>'+button('Отмена','close')+'</div></form>',{submit:d=>{
+   const reason=d.get('reason').trim();
+   if(!opening()||!reason){showFormError('Укажите основание и проверьте наличие резервов.');return;}
+   if(mutate(()=>{
+    const entry=W().approvals[value];
+    entry.reopened=true;entry.status='returned';entry.events.push({at:now(),by:actor(),label:'Период открыт повторно',comment:reason});
+    audit('Период открыт повторно',restaurantName(rest)+' · '+monthLabel(month)+' · '+reason);
+   })){close();render();toast('Период открыт для правок.');}
+  }});
 }
 function filteredAccounts(){
  const list=accounts().filter(a=>locationMatch(a.rest)&&a.month===(filters.month||W().month)&&matchesPerson(a.employee,filters.find)&&
@@ -842,8 +1029,8 @@ function filteredAccounts(){
 function accountDetail(key){
  const a=accounts().find(x=>x.key===key);if(!a||!admin())return;
  const p=byId('employees',a.employee);
- const events=W().registers.filter(r=>r.lines.some(l=>l.key===key)).map(r=>[esc(r.number),esc(r.company.name),moneyCell(sum(r.lines.filter(l=>l.key===key),l=>l.cents)),chip(regLabels[r.status],r.status==='paid'?'ok':'info')]);
- modal(p.name,'<p class="muted">№ '+esc(p.no)+' · '+esc(restaurantName(a.rest)+' · '+monthLabel(a.month))+'</p>'+metrics([['Часы HR',hours(a.minutes)],['Ставка',a.rate?money(a.rate)+' / ч':'—'],['За часы',money(a.earned)],['Доплаты',money(a.extras)],['Выплачено',money(a.paid)],['Зарезервировано',money(a.reserved)],['Доступно',money(a.due)],['Долг',money(a.balance)]])+'<h3 style="margin-top:18px">Движение по выплатам</h3>'+(events.length?table(['Реестр','Компания','Сумма','Статус'],events):empty('Движений ещё нет','Здесь будут реестры сотрудника за выбранный период.')),{drawer:true});
+ const events=W().registers.filter(r=>r.lines.some(l=>allocationsOf(l).some(p=>p.key===key))).map(r=>[esc(r.number),esc(r.company.name),moneyCell(sum(r.lines.flatMap(allocationsOf).filter(p=>p.key===key),p=>p.cents)),chip(registryStatusLabel(r),r.status==='paid'?'ok':'info')]);
+ modal(p.name,'<p class="muted">№ '+esc(p.no)+' · '+esc(restaurantName(a.rest)+' · '+monthLabel(a.month))+'</p>'+metrics([['Часы HR',hours(a.minutes)],['Ставка',a.rate?money(a.rate)+' / ч':'—'],['За часы',money(a.earned)],['Доплаты',money(a.extras)],['Выплачено',money(a.paid)],['Зарезервировано',money(a.reserved)],['Доступно',money(a.due)],['Долг',money(a.balance)],['Корректировки',money(a.correction)],['Выплачено целыми часами',money(a.paidHours)],['Выплачено отдельно',money(a.paidCash)],['Исторические выплаты',money(a.paidLegacy)],['Сверка',reconcileAccount(a)?'Суммы сходятся':'Расхождение']])+'<h3 style="margin-top:18px">Движение по выплатам</h3>'+(events.length?table(['Реестр','Компания','Сумма','Статус'],events):empty('Движений ещё нет','Здесь будут реестры сотрудника за выбранный период.')),{drawer:true});
 }
 function accrualView(){
  const list=filteredAccounts();
@@ -870,9 +1057,9 @@ function paymentsView(){
 }
 function dueView(){
  const list=filteredAccounts();
- const picked=list.filter(x=>x.due>0&&chosenPay.has(x.key));
- const checks=list.filter(x=>x.due>0);
- const rows=list.map(a=>['<input type="checkbox" data-pay="'+esc(a.key)+'" aria-label="Выбрать '+esc(employeeLabel(a.employee))+'" '+(chosenPay.has(a.key)?'checked ':'')+(!a.due?'disabled':'')+'>',button(employeeLabel(a.employee),'account',a.key,'cell-link')+'<small>№ '+esc(byId('employees',a.employee).no)+'</small>',esc(restaurantName(a.rest))+'<small>'+territoryOf(a.rest)+'</small>',moneyCell(a.accrued),moneyCell(a.paid),moneyCell(a.reserved),'<strong>'+moneyCell(a.due)+'</strong>']);
+ const picked=list.filter(x=>x.due>0&&approvedForPayment(x)&&chosenPay.has(x.key));
+ const checks=list.filter(x=>x.due>0&&approvedForPayment(x));
+ const rows=list.map(a=>['<input type="checkbox" data-pay="'+esc(a.key)+'" aria-label="Выбрать '+esc(employeeLabel(a.employee))+'" '+(chosenPay.has(a.key)?'checked ':'')+(!a.due||!approvedForPayment(a)?'disabled':'')+'>',button(employeeLabel(a.employee),'account',a.key,'cell-link')+'<small>№ '+esc(byId('employees',a.employee).no)+'</small>',esc(restaurantName(a.rest))+'<small>'+territoryOf(a.rest)+'</small>',moneyCell(a.accrued),moneyCell(a.paid),moneyCell(a.reserved),'<strong>'+moneyCell(a.due)+'</strong>']);
  const controls=filterStrip(vm()+locationFilters()+vs('find','Поиск сотрудника')+vfield('Компания в реестре','company',companyChoices(),filters.company)+vfield('Остаток','debt',[['open','Доступен'],['reserved','Есть резерв'],['closed','Погашен']],filters.debt));
  const main=panel('Сотрудники к выплате',controls+'<div class="row"><label class="check"><input id="allPay" type="checkbox" '+(!checks.length?'disabled ':checks.every(x=>chosenPay.has(x.key))?'checked ':'')+'> Выбрать всех в выборке</label><strong>Выбрано: '+picked.length+'</strong></div>'+
   (rows.length?table(['Выбор','Сотрудник','Ресторан','Начислено','Выплачено','Резерв','Доступно'],rows):empty('Суммы к выплате не найдены','Измените фильтры или утвердите табель.')));
@@ -950,13 +1137,13 @@ function registerView(history){
  const states=history?['paid','reversed']:Object.keys(regLabels);
  const list=W().registers.filter(r=>states.includes(r.status)&&(!filters.status||r.status===filters.status)&&(!filters.company||r.company.id===filters.company)&&
    (!filters.month||r.date.startsWith(filters.month))&&(!filters.find||norm(r.number+' '+r.company.name+' '+r.by).includes(norm(filters.find))));
- const rows=list.map(r=>[esc(r.number)+'<small>'+stamp(r.at)+'</small>',date(history?r.actual:r.date),esc(r.company.name)+'<small>Коэффициент '+fmtRatio(r.company.coefficient)+'</small>',String(new Set(r.lines.map(l=>l.employee)).size),moneyCell(sum(r.lines,l=>l.cents)),chip(regLabels[r.status],r.status==='paid'?'ok':r.status==='planned'?'warn':'info'),esc(r.by),esc(r.confirmedBy||'—'),button('Открыть реестр','registry',r.id,'quiet','arrow')]);
+ const rows=list.map(r=>[esc(r.number)+'<small>'+stamp(r.at)+'</small>',date(history?r.actual:r.date),esc(r.company.name)+'<small>Коэффициент '+fmtRatio(r.company.coefficient)+'</small>',String(new Set(r.lines.map(l=>l.employee)).size),moneyCell(sum(r.lines,l=>l.cents)),chip(registryStatusLabel(r),r.status==='paid'?'ok':r.status==='planned'?'warn':'info'),esc(r.by),esc(r.confirmedBy||'—'),button('Открыть реестр','registry',r.id,'quiet','arrow')]);
  return panel(history?'Подтверждённые выплаты':'Реестры и резервы',filterStrip(vs('find','Номер, компания или автор')+monthPicker('Месяц выплаты','month',filters.month||'','Все')+vfield('Компания','company',companyChoices(),filters.company)+vfield('Статус','status',states.map(s=>[s,regLabels[s]]),filters.status))+
   (rows.length?table(['Реестр','Дата выплаты','Компания','Сотрудников','Сумма','Статус','Автор','Подтвердил',''],rows):empty('Реестры не найдены','Здесь появятся реестры после формирования выплаты.')));
 }
 function newRegistry(prefilled){
  if(!admin())return;
- const list=filteredAccounts().filter(a=>chosenPay.has(a.key)&&a.due>0);
+ const list=filteredAccounts().filter(a=>chosenPay.has(a.key)&&a.due>0&&approvedForPayment(a));
  const cs=W().companies.filter(c=>c.active&&activeVersion(c,today()));
  if(!list.length||!cs.length){toast('Выберите сотрудников и активную компанию с действующим коэффициентом.','alert');return;}
  const keys=list.map(a=>a.key);
@@ -966,48 +1153,82 @@ function newRegistry(prefilled){
   field('Плановая дата выплаты','<input type="date" name="date" value="'+esc(prefilled?.get('date')||today())+'" required>')+
   field('Вариант расчёта для просмотра','<select name="formula">'+options(Object.entries(formulaLabels),prefilled?.get('formula')||'neutral')+'</select>')+
   '<div class="shop">'+list.map((a,i)=>field(employeeLabel(a.employee)+' · '+restaurantName(a.rest)+' · доступно '+money(a.due),'<input name="p'+i+'" inputmode="decimal" value="' +esc(prefilled?.get('p'+i)??a.due/100)+'" required>')).join('')+'</div>'+
-  field('Комментарий','<textarea name="comment" maxlength="400">'+esc(prefilled?.get('comment'))+'</textarea>')+'<div class="dashboardnote">В учебном учёте долг уменьшается на введённую сумму после подтверждения факта выплаты.</div><div id="registryPreview" aria-live="polite"></div><div class="actions"><button type="submit" class="primary">Предпросмотр реестра</button>'+button('Отмена','close')+'</div></form>',{submit:data=>{
+  field('Комментарий','<textarea name="comment" maxlength="400">'+esc(prefilled?.get('comment'))+'</textarea>')+
+  (alignmentPolicy(today()).mode==='up'?field('Основание корректировки HR','<input name="alignmentBasis" maxlength="400" value="'+esc(prefilled?.get('alignmentBasis'))+'">'):'')+
+  (alignmentPolicy(today()).mode==='separate'?'<label class="check"><input type="checkbox" name="separateChannel" '+(prefilled?.get('separateChannel')?'checked':'')+'> Доступен отдельный канал денежного перевода</label>':'')+
+  '<div class="dashboardnote">'+esc(alignmentModes[alignmentPolicy(today()).mode])+' · '+(alignmentPolicy(today()).carry?'доступный долг прошлых периодов того же ресторана добавляется автоматически.':'каждый период рассчитывается отдельно.')+'</div><div id="registryPreview" aria-live="polite"></div><div class="actions"><button type="submit" class="primary">Предпросмотр реестра</button>'+button('Отмена','close')+'</div></form>',{submit:data=>{
    const result=buildRegistryPreview(data,keys);
-   if(!result){showFormError('Укажите корректные суммы в пределах доступного остатка и выберите компанию.');return;}
+   if(result.error){showFormError(result.error);return;}
    formPreview={result,data};previewRegistry(result,data,keys);
   }});
 }
 function buildRegistryPreview(data,keys){
  const c=W().companies.find(x=>x.id===data.get('company')&&x.active);
  const version=activeVersion(c,today()), day=data.get('date'),mode=data.get('formula');
- if(!c||!version||!day||!Object.hasOwn(formulaLabels,mode))return null;
- const list=accounts();
- const rows=keys.map((key,i)=>{
-  const a=list.find(x=>x.key===key),cents=intMoney(data.get('p'+i));
-  return a&&cents!==null&&cents<=a.due?{key,employee:a.employee,rest:a.rest,month:a.month,cents,hourlyRate:W().rates[a.employee]??null,due:a.due,balance:a.balance,accrued:a.accrued,calculated:calcRatio(cents,version.value,mode)}:null;
- });
- if(rows.some(x=>!x)||!rows.some(x=>x.cents))return null;
- return {company:{id:c.id,name:c.name,coefficient:version.value,effective:version.from},date:day,mode,lines:rows.filter(x=>x.cents>0),comment:data.get('comment').trim()};
+ if(!c||!version||!day||!Object.hasOwn(formulaLabels,mode))return {error:'Выберите компанию и укажите дату.'};
+ const policy=alignmentPolicy(today());
+ const basis=(data.get('alignmentBasis')||'').trim(),separateChannel=data.get('separateChannel')==='on';
+ const list=accounts(), selected=new Set(keys);
+ const rows=[];
+ for(const [i,key] of keys.entries()){
+  const a=list.find(x=>x.key===key),requested=intMoney(data.get('p'+i));
+  if(!a||requested===null||requested>a.due||!approvedForPayment(a)||!reconcileAccount(a))return {error:'Сумма превышает доступную задолженность, расчёт не сходится или период открыт для исправления.'};
+  if(!requested)continue;
+  const rate=W().rates[a.employee];
+  const prior=policy.carry?list.filter(p=>p.employee===a.employee&&p.rest===a.rest&&p.month<a.month&&p.due>0&&!selected.has(p.key)&&approvedForPayment(p)&&reconcileAccount(p)).map(p=>{
+   const registeredRemainder=Math.max(0,...W().registers.filter(r=>['paid','planned'].includes(r.status)).flatMap(r=>r.lines.filter(l=>l.key===p.key).map(l=>l.remainder||0)));
+   const carryEligible=p.due<rate?p.due:Math.min(p.due,registeredRemainder);
+   return {...p,carryEligible};
+  }).filter(p=>p.carryEligible).sort((x,y)=>x.month.localeCompare(y.month)):[];
+  const carry=sum(prior,p=>p.carryEligible), plan=alignPayment(requested+carry,rate,policy.mode);
+  if(!plan)return {error:employeeLabel(a.employee)+': '+missingHourlyRate+'.'};
+  if(plan.correction&&(role()!=='hr'||!basis||requested!==a.due))return {error:'Округление вверх требует основания HR и выбора всей доступной суммы периода.'};
+  if(plan.separate&&!separateChannel)return {error:'Подтвердите наличие отдельного канала для денежного остатка.'};
+  if(!plan.cents)return {error:employeeLabel(a.employee)+': выбранная сумма меньше одного часа. Остаток сохранён; снимите выбор строки или увеличьте сумму.'};
+  let left=plan.cents, hourLeft=plan.hourCents;
+  const allocations=[];
+  for(const src of [...prior.map(p=>({key:p.key,month:p.month,max:p.carryEligible})),{key,month:a.month,max:requested+plan.correction}]){
+   const cents=Math.min(left,src.max);if(!cents)continue;
+   const hourCents=Math.min(hourLeft,cents);
+   allocations.push({key:src.key,month:src.month,cents,hourCents,separate:cents-hourCents});
+   left-=cents;hourLeft-=hourCents;
+  }
+  const line={key,employee:a.employee,rest:a.rest,month:a.month,hourlyRate:rate,requested:requested+carry,initialAccrued:a.accrued+sum(prior,p=>p.accrued),
+   mode:policy.mode,...plan,carry,allocations,calculated:calcRatio(plan.cents,version.value,mode)};
+  if(left||!lineMatches(line))return {error:'Обнаружено расхождение между часами, суммой и распределением.'};
+  rows.push(line);
+ }
+ if(!rows.length)return {error:'Для выбранной суммы нет целого часа к выплате. Денежный остаток остаётся долгом.'};
+ const allocated=rows.flatMap(l=>l.allocations.map(p=>p.key));
+ if(new Set(allocated).size!==allocated.length)return {error:'Обнаружено повторное использование обязательства.'};
+ return {alignVersion:1,policy:{...policy},basis,separateChannel,approvedBy:role()==='hr'?actor():null,
+  company:{id:c.id,name:c.name,coefficient:version.value,effective:version.from},date:day,mode,lines:rows,comment:data.get('comment').trim()};
 }
 function previewRegistry(result,data,keys){
- const lines=result.lines, total=sum(lines,l=>l.cents),calculated=sum(lines,l=>l.calculated);
+ const lines=result.lines, total=sum(lines,l=>l.cents);
  const comparisons=Object.entries(formulaLabels).map(([m,n])=>[esc(n),moneyCell(sum(lines,l=>calcRatio(l.cents,result.company.coefficient,m)))]);
  modal('Предварительный реестр','<form><p class="muted">'+esc(result.company.name)+' · '+date(result.date)+' · коэффициент '+fmtRatio(result.company.coefficient)+'</p>'+
-  metrics([['Сотрудников',new Set(lines.map(l=>l.employee)).size],['Начислено',money(sum(lines,l=>l.accrued))],['К выплате',money(total)],['Расчётная сумма',money(calculated)],['Разница',money(calculated-total)],['Долг после фактической выплаты',money(sum(lines,l=>l.balance-l.cents))]])+
-  table(['Сотрудник','К выплате','Расчёт','Долг после выплаты'],lines.map(l=>[personCell(l.employee),moneyCell(l.cents),moneyCell(l.calculated),moneyCell(l.balance-l.cents)]))+
-  '<p class="dashboardnote">Демонстрационные варианты коэффициента. Рабочая финансовая формула требует согласования.</p>'+table(['Вариант','Расчётная сумма'],comparisons)+
+  '<div class="badges">'+chip('Расчёт проверен','ok')+chip('Требуется утверждение реестра','warn')+(lines.some(l=>l.remainder)?chip('Имеется денежный остаток','warn'):'')+'</div>'+
+  metrics([['Сотрудников',new Set(lines.map(l=>l.employee)).size],['Целые часы',integerFormat.format(sum(lines,l=>l.whole))],['К выплате',money(total)],['Целыми часами',money(sum(lines,l=>l.hourCents))],['Отдельным переводом',money(sum(lines,l=>l.separate))],['В долге из выбранной суммы',money(sum(lines,l=>l.remainder))]])+
+  table(['Сотрудник','Исходная сумма','Из прошлых периодов','Ставка','Целые часы','Целыми часами','Отдельно','Корректировка','Остаток','Итог'],lines.map(l=>[personCell(l.employee),moneyCell(l.requested),moneyCell(l.carry),moneyCell(l.hourlyRate),integerFormat.format(l.whole),moneyCell(l.hourCents),moneyCell(l.separate),moneyCell(l.correction),moneyCell(l.remainder),moneyCell(l.cents)]))+
+  (result.basis?'<p class="notice">'+ico('info')+esc('Основание HR: '+result.basis)+'</p>':'')+
+  '<p class="dashboardnote">Коэффициент показан для согласования формулы. Сумма обязательства, резерва и перевода рассчитывается по целым часам и отдельному денежному остатку.</p>'+table(['Демонстрационный вариант','Расчётная сумма'],comparisons)+
   '<div class="actions"><button type="submit" class="primary">Подтвердить формирование</button>'+button('Назад к суммам','registry-back')+button('Отмена','close')+'</div></form>',{submit:()=>{
    if(!admin()||formPreview?.result!==result)return;
    const current=buildRegistryPreview(data,keys);
-   if(!current||JSON.stringify(current)!==JSON.stringify(result)){showFormError('Остаток или коэффициент изменился. Сформируйте новый предварительный реестр.');return;}
+   if(current.error||JSON.stringify(current)!==JSON.stringify(result)||!registryMatches(current)){showFormError(current.error||'Расчёт изменился. Откройте новый предпросмотр.');return;}
    if(mutate(()=>{
     const number='ВП-'+String(W().registerSeq++).padStart(5,'0'),at=now();
-    W().registers.unshift({...result,id:uid(),number,at,by:actor(),status:'planned',events:[{at,by:actor(),label:'Реестр сформирован',comment:result.comment}]});
+    W().registers.unshift({...current,id:uid(),number,at,by:actor(),status:'planned',events:[{at,by:actor(),label:'Финансовая сверка и резервирование',comment:[current.comment,current.basis].filter(Boolean).join(' · ')}]});
     audit('Сформирован реестр',number+' · '+money(total));
-   })){formPreview=null;close();chosenPay.clear();goPay('registers');toast('Реестр сформирован, суммы зарезервированы.');}
+   })){formPreview=null;close();chosenPay.clear();goPay('registers');toast('Реестр утверждён, суммы зарезервированы.');}
  }});
 }
+
 const missingHourlyRate='Не указана почасовая ставка';
-const paymentHourFormat=new Intl.NumberFormat('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2});
 function paymentHourRows(lines){
  return lines.map(line=>{
-  const rate=line.hourlyRate;
-  return {...line,hourEquivalent:Number.isSafeInteger(rate)&&rate>0?line.cents/rate:null};
+   return {...line,hourEquivalent:Number.isInteger(line.whole)?line.whole:null};
  });
 }
 function paymentHourTotals(rows){
@@ -1015,7 +1236,7 @@ function paymentHourTotals(rows){
  return {hours:valid.length?sum(valid,r=>r.hourEquivalent):null,missing:rows.length-valid.length};
 }
 function paymentHourSummary({hours,missing}){
- return (hours===null?'—':paymentHourFormat.format(hours)+' ч')+
+ return (hours===null?'—':integerFormat.format(hours)+' ч')+
   (missing?' · без расчёта строк: '+missing:'');
 }
 function registryDetail(id){
@@ -1023,41 +1244,65 @@ function registryDetail(id){
  if(!admin()||!r)return;
  const hourRows=paymentHourRows(r.lines),hourTotals=paymentHourTotals(hourRows);
  const stateTag=r.status==='paid'?'ok':r.status==='planned'?'warn':'info';
- const cmds=r.status==='planned'?button('Подтвердить выплату','registry-step',id+'|paid','primary')+button('Отменить реестр','registry-step',id+'|cancelled','danger'):
+ const cmds=r.status==='planned'?button('Подтвердить выплату','registry-step',id+'|paid','primary','',!registryMatches(r)||!confirmationMatches(r))+(r.confirmedCents?'':button('Отменить реестр','registry-step',id+'|cancelled','danger')):
    r.status==='paid'?button('Оформить сторно','registry-step',id+'|reversed','danger'):'';
- const meta=[['Создан',stamp(r.at)],['Автор',r.by],['Плановая дата',date(r.date)],['Фактическая дата',date(r.actual)],['Подтвердил',r.confirmedBy||'—'],['Компания',r.company.name],['Коэффициент',fmtRatio(r.company.coefficient)],['Действует с',date(r.company.effective)]];
- modal(r.number,chip(regLabels[r.status],stateTag)+'<dl class="details">'+meta.map(([k,v])=>'<div><dt>'+k+'</dt><dd>'+esc(v)+'</dd></div>').join('')+'</dl>'+
-  metrics([['Итог выплаты',money(sum(r.lines,l=>l.cents))],['Расчётная сумма',money(sum(r.lines,l=>l.calculated))],['Разница',money(sum(r.lines,l=>l.calculated-l.cents))],['Эквивалент выплаты',paymentHourSummary(hourTotals)]])+
+ const meta=[['Создан',stamp(r.at)],['Автор',r.by],['Плановая дата',date(r.date)],['Фактическая дата',date(r.actual)],['Подтвердил',r.confirmedBy||'—'],...(r.cashDate?[['Дата отдельного перевода',date(r.cashDate)]]:[]),['Компания',r.company.name],['Коэффициент',fmtRatio(r.company.coefficient)],['Действует с',date(r.company.effective)]];
+ modal(r.number,'<div class="badges">'+chip(registryStatusLabel(r),stateTag)+(registryMatches(r)?chip('Готово к выгрузке','ok'):chip(r.alignVersion?'Обнаружено расхождение':'Исторический реестр без выравнивания','warn'))+'</div><dl class="details">'+meta.map(([k,v])=>'<div><dt>'+k+'</dt><dd>'+esc(v)+'</dd></div>').join('')+'</dl>'+
+  metrics([['Итог выплаты',money(sum(r.lines,l=>l.cents))],['Расчётная сумма (пример коэффициента)',money(sum(r.lines,l=>l.calculated))],['Разница (пример коэффициента)',money(sum(r.lines,l=>l.calculated-l.cents))],['Часы выплаты',paymentHourSummary(hourTotals)],['Целыми часами',r.alignVersion?money(sum(r.lines,l=>l.hourCents)):'—'],['Отдельный перевод',r.alignVersion?money(sum(r.lines,l=>l.separate)):'—']])+
   '<div class="actions" style="margin-top:12px">'+field('Представление выплат','<select id="registryUnit" aria-controls="registryRubles registryHours"><option value="rubles">Выплаты в рублях</option><option value="hours">Выплаты часами</option></select>')+'</div>'+
   '<div id="registryRubles">'+table(['Сотрудник','Сумма выплаты','Расчёт'],r.lines.map(l=>[personCell(l.employee)+'<small>'+esc(restaurantName(l.rest))+'</small>',moneyCell(l.cents),moneyCell(l.calculated)]))+'</div>'+
   '<div id="registryHours" hidden>'+table(['Сотрудник','Ставка, ₽/ч','Выплата часами'],hourRows.map(l=>[
    personCell(l.employee)+'<small>'+esc(restaurantName(l.rest))+'</small>',
    Number.isSafeInteger(l.hourlyRate)?moneyCell(l.hourlyRate):'—',
-   l.hourEquivalent===null?chip(missingHourlyRate,'warn'):'<span class="numeric">'+paymentHourFormat.format(l.hourEquivalent)+' ч</span>'
+   l.hourEquivalent===null?chip(validHourlyRate(l.hourlyRate)?'Историческая строка без выравнивания':missingHourlyRate,'warn'):'<span class="numeric">'+integerFormat.format(l.hourEquivalent)+' ч</span>'
   ]))+'<p class="sub">Расчётный эквивалент денежной выплаты.</p></div>'+
-  '<div class="actions" style="margin:12px 0">'+button('Скачать Excel','registry-export',id,'','download')+button('Печать','print')+cmds+'</div><h3>История реестра</h3>'+eventList(r.events),{drawer:true});
+  '<div class="actions" style="margin:12px 0">'+button('Скачать Excel','registry-export',id,'','download',!!r.alignVersion&&!registryMatches(r))+button('Печать','print')+cmds+'</div><h3>История реестра</h3>'+eventList(r.events),{drawer:true});
 }
 function registryTransition(value){
  const [id,target]=value.split('|');
  const r=W().registers.find(x=>x.id===id);
- const allowed=()=>admin()&&r&&(['paid','cancelled'].includes(target)?r.status==='planned':target==='reversed'&&r.status==='paid');
+ const allowed=()=>admin()&&r&&(target==='paid'?r.status==='planned':
+  target==='cancelled'?r.status==='planned'&&!r.confirmedCents:target==='reversed'&&r.status==='paid');
  if(!allowed())return;
+ if(target==='paid'&&(!registryMatches(r)||!confirmationMatches(r))){toast('Обнаружено расхождение. Подтверждение заблокировано.','alert');return;}
  const title={paid:'Подтвердить фактическую выплату',cancelled:'Отменить резервирование',reversed:'Сторнировать выплату'}[target];
  const reason=target!=='paid';
+ const hour=sum(r.lines,l=>l.hourCents||0),cash=sum(r.lines,l=>l.separate||0),hourOpen=hour>0&&!r.hourActual,cashOpen=cash>0&&!r.cashDate;
+ const confirmFields=hourOpen&&cashOpen? field('Подтверждаемые переводы','<select name="actualChannel"><option value="both">Оба канала</option><option value="hours">Только целыми часами</option><option value="cash">Только отдельный перевод</option></select>'):'';
  modal(title,'<form><p>'+esc(r.number+' · '+money(sum(r.lines,l=>l.cents)))+'</p>'+
-  (target==='paid'?field('Фактическая дата выплаты','<input name="actual" type="date" required value="'+esc(r.date)+'">')+'<p class="dashboardnote">Укажите дату уже состоявшейся выплаты. Эта операция фиксирует факт в учебной истории.</p>':
-  '<p class="dashboardnote">'+(target==='cancelled'?'Зарезервированные суммы снова станут доступны.':'Будет сохранена запись сторно с основанием. Сумма вернётся в доступный остаток, прежняя операция останется в истории.')+'</p>')+
+  (target==='paid'?confirmFields+
+   (hourOpen?field('Фактическая дата выплаты','<input name="actual" type="date" value="'+esc(r.date)+'">')+field('Фактически выплачено целыми часами, ₽','<input name="actualHours" inputmode="decimal" value="'+hour/100+'">'):'')+
+   (cashOpen?field('Дата отдельного перевода','<input type="date" name="cashDate" value="'+esc(r.date)+'">')+field('Фактически выплачено отдельно, ₽','<input name="actualCash" inputmode="decimal" value="'+cash/100+'">'):'')+
+   '<p class="dashboardnote">Подтвердите только уже состоявшиеся переводы. Ожидающий перевод остаётся в резерве.</p>':
+   '<p class="dashboardnote">'+(target==='cancelled'?'Зарезервированные суммы снова станут доступны.':'Будет сохранена запись сторно с основанием. Сумма вернётся в доступный остаток, прежняя операция останется в истории.')+'</p>')+
   field(reason?'Причина (обязательно)':'Комментарий','<textarea name="comment" maxlength="400" '+(reason?'required':'')+'></textarea>')+
   '<div class="actions"><button type="submit" class="primary">Подтвердить</button>'+button('Отмена','close')+'</div></form>',{submit:d=>{
    if(!allowed())return;
-   const comment=d.get('comment').trim(),actual=d.get('actual');
-   if(reason&&!comment||target==='paid'&&(!actual||actual>today())){showFormError(reason?'Укажите основание.':'Фактическая дата должна быть сегодня или раньше.');return;}
+   const comment=d.get('comment').trim(),actual=d.get('actual'),cashDate=d.get('cashDate'),channel=d.get('actualChannel')||'both';
+   const confirmHour=hourOpen&&channel!=='cash',confirmCash=cashOpen&&channel!=='hours';
+   if(reason&&!comment){showFormError('Укажите основание.');return;}
+   if(target==='paid'&&(!registryMatches(r)||!confirmationMatches(r)||(!confirmHour&&!confirmCash)||
+    (confirmHour&&(!actual||actual>today()||intMoney(d.get('actualHours'))!==hour))||
+    (confirmCash&&(!cashDate||cashDate>today()||intMoney(d.get('actualCash'))!==cash)))){
+    showFormError('Обнаружено расхождение: подтверждённые суммы и даты должны соответствовать реестру.');return;
+   }
    if(mutate(()=>{
-    const at=now();r.status=target;
-    if(target==='paid'){r.actual=actual;r.confirmedBy=actor();r.confirmedAt=at;}
-    if(target==='reversed')W().adjustments.unshift({id:uid(),register:id,cents:-sum(r.lines,l=>l.cents),at,by:actor(),reason:comment});
-    r.events.push({at,by:actor(),label:regLabels[target],comment});
-    audit(regLabels[target]+' реестр',r.number+' · '+money(sum(r.lines,l=>l.cents))+(comment?' · '+comment:''));
+    const at=now();
+    if(target==='paid'){
+     if(confirmHour)r.hourActual=actual;
+     if(confirmCash)r.cashDate=cashDate;
+     r.actual=r.hourActual||r.cashDate;
+     r.confirmedBy=actor();r.confirmedAt=at;r.confirmedCents=documentedPaid(r);
+     r.status=r.confirmedCents===hour+cash?'paid':'planned';
+     const label=r.status==='paid'?'Выплата подтверждена':'Подтверждена часть выплаты';
+     const channelNote=[confirmHour?'Целыми часами '+money(hour)+' · '+date(actual):'',confirmCash?'Отдельный перевод '+money(cash)+' · '+date(cashDate):'',comment].filter(Boolean).join(' · ');
+     r.events.push({at,by:actor(),label,comment:channelNote});audit(label,r.number+' · '+channelNote);
+    }else{
+     r.status=target;
+     if(target==='reversed')W().adjustments.unshift({id:uid(),register:id,cents:-sum(r.lines,l=>l.cents),at,by:actor(),reason:comment});
+     r.events.push({at,by:actor(),label:regLabels[target],comment});
+     audit(regLabels[target]+' реестр',r.number+' · '+money(sum(r.lines,l=>l.cents))+' · '+comment);
+    }
    })){close();render();toast('Статус реестра обновлён.');}
  }});
 }
@@ -1110,11 +1355,11 @@ function decideRate(id){
 const groups=[
  ['Устройство системы',['general','rates','rounding']],
  ['Импорт табеля',['errors','employees','restaurants','archive','options']],
- ['Финансы',['companies','coefficients','kinds']],
+ ['Финансы',['companies','coefficients','kinds','payround']],
  ['Журнал',['audit']]
 ];
 function settingsView(){
- const view={general:generalView,rates:()=>staffView(true),rounding:roundingView,companies:()=>companiesView(false),coefficients:()=>companiesView(true),kinds:kindsView,
+ const view={payround:paymentRoundingView,general:generalView,rates:()=>staffView(true),rounding:roundingView,companies:()=>companiesView(false),coefficients:()=>companiesView(true),kinds:kindsView,
   errors:errorPage,archive:()=>historyPage(true),audit:auditPage,options:optionsPage,employees:()=>matchingPage('employees'),restaurants:()=>matchingPage('restaurants')};
  const nav='<nav class="tabs" aria-label="Разделы настроек">'+groups.map(([label,keys])=>'<div class="mini muted" style="padding:5px 7px">'+label+'</div>'+keys.map(k=>'<button type="button" data-action="tab" data-value="'+k+'"'+(k===tab?' aria-current="page"':'')+'>'+tabs[k]+'</button>').join('')).join('')+'</nav>';
  return '<div class="major">'+titleFor('Настройки','Справочники, правила обработки и история операций.')+'<div class="settingsnav">'+nav+'<div>'+view[tab]()+'</div></div></div>';
@@ -1190,12 +1435,12 @@ function dateInput(label,name){return field(label,'<input type="date" data-view=
 function reportsView(){
  const m=filters.month||W().month;
  return '<div class="major">'+titleFor('Отчёты','Центр отчётности · демонстрационные наборы данных.')+panel('Сформировать отчёт',filterStrip(vm()+dateInput('С даты','from')+dateInput('До даты','to')+locationFilters()+(admin()?vfield('Компания','company',companyChoices(),filters.company):'')+vs('find','Сотрудник или вид отчёта')+
-  vfield('Вид отчёта','report',[['hours','Отработанное время'],...(admin()?[['balances','Остатки и выплаты']]:[])],filters.report||'hours',''))+
+  vfield('Вид отчёта','report',[['hours','Отработанное время'],...(admin()?[['balances','Остатки и выплаты'],['reconcile','Финансовая сверка'],['kol','КОЛ · фактические выплаты']]:[])],filters.report||'hours',''))+
   '<div class="actions">'+button('Сформировать отчёт','report-run','','primary','reports')+'</div>')+
   '<div id="reportResult">'+(generatedReport?reportResult(generatedReport):empty('Отчёт ещё не сформирован','Выберите параметры и сформируйте демонстрационный отчёт за '+monthLabel(m)+'.'))+'</div></div>';
 }
 function reportResult(r){
- return panel(r.title+' · '+esc(r.period),(r.rows.length?table(r.headers.map(esc),r.rows.map(row=>row.map(esc))):empty('Данных по выборке нет','Измените параметры или выберите другой период.'))+
+ return panel(r.title+' · '+esc(r.period),(r.moneyCols?.length?'<p class="sub">'+(r.title.startsWith('КОЛ')?'Демонстрационный отчёт по датам фактических операций.':'Сверяется долг с выплатами и резервом по каждому сотруднику.')+'</p>':'')+(r.rows.length?table(r.headers.map(esc),r.rows.map(row=>row.map((v,i)=>r.moneyCols?.includes(i)?moneyCell(Math.round(v*100)):esc(v)))):empty('Данных по выборке нет','Измените параметры или выберите другой период.'))+
  '<div class="actions">'+button('Скачать Excel','report-export','','','download',!r.rows.length)+button('Печать / PDF','print','','','',!r.rows.length)+'</div>');
 }
 function reportRun(){
@@ -1204,7 +1449,29 @@ function reportRun(){
  if(from&&to&&from>to){toast('Дата начала должна предшествовать дате окончания.','alert');return;}
  const balances=filters.report==='balances'&&admin();
  let title='Отработанное время',headers=['Сотрудник','Ресторан','Часы'],rows=[];
- if(balances){
+ let moneyCols=[];
+ if(filters.report==='kol'&&admin()){
+  title='КОЛ · фактические выплаты';headers=['Дата операции','Реестр','Сотрудник','Ресторан','Компания','Канал','Фактическая сумма, ₽'];moneyCols=[6];
+  const inRange=d=>d&&(from||to?(!from||d>=from)&&(!to||d<=to):d.startsWith(month));
+  for(const r of W().registers.filter(x=>(['paid','reversed'].includes(x.status)||x.status==='planned'&&x.confirmedCents)&&(!filters.company||x.company.id===filters.company))){
+   if(r.alignVersion&&(!registryMatches(r)||!confirmationMatches(r)))continue;
+   for(const l of r.lines.filter(x=>locationMatch(x.rest)&&matchesPerson(x.employee,filters.find))){
+    const add=(d,channel,cents)=>{if(inRange(d)&&cents)rows.push([date(d),r.number,employeeLabel(l.employee),restaurantName(l.rest),r.company.name,channel,cents/100]);};
+    add(r.alignVersion?r.hourActual:r.actual,r.alignVersion?'Целыми часами':'Историческая выплата',r.alignVersion?l.hourCents:l.cents);
+    add(r.cashDate,'Отдельный перевод',l.separate);
+    if(r.status==='reversed'){
+     const reversal=W().adjustments.find(a=>a.register===r.id);
+     const day=reversal?new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(reversal.at)):null;
+     add(day,'Учётное сторно',-l.cents);
+    }
+   }
+  }
+ }else if(filters.report==='reconcile'&&admin()){
+  title='Финансовая сверка';headers=['Сотрудник','Ресторан','Период','За часы, ₽','Доплаты, ₽','Корректировки, ₽','Обязательства, ₽','Целыми часами, ₽','Отдельно, ₽','Исторические выплаты, ₽','Долг, ₽','Резерв, ₽','Проверка'];moneyCols=[3,4,5,6,7,8,9,10,11];
+  rows=accounts().filter(a=>locationMatch(a.rest)&&matchesPerson(a.employee,filters.find)&&(!filters.company||a.companies.has(filters.company))&&
+   (from||to?(!from||a.month>=from.slice(0,7))&&(!to||a.month<=to.slice(0,7)):a.month===month)).map(a=>[
+   employeeLabel(a.employee),restaurantName(a.rest),monthLabel(a.month),...['earned','extras','correction','accrued','paidHours','paidCash','paidLegacy','balance','reserved'].map(k=>a[k]/100),reconcileAccount(a)?'Суммы сходятся':'Обнаружено расхождение']);
+ }else if(balances){
   title='Остатки и выплаты';headers=['Сотрудник','Ресторан','Начислено','Выплачено','Резерв','Доступно'];
   rows=filteredAccounts().filter(a=>(!from||a.month>=from.slice(0,7))&&(!to||a.month<=to.slice(0,7))).map(a=>[employeeLabel(a.employee),restaurantName(a.rest),money(a.accrued),money(a.paid),money(a.reserved),money(a.due)]);
  }else{
@@ -1216,7 +1483,7 @@ function reportRun(){
   }
   rows=[...grouped].map(([k,n])=>{const [id,r]=k.split('|');return [employeeLabel(id),restaurantName(r),hours(n)];});
  }
- generatedReport={title,month,period:from||to?[from?date(from):'…',to?date(to):'…'].join(' — '):monthLabel(month),headers,rows};render();
+ generatedReport={title,month,moneyCols,period:from||to?[from?date(from):'…',to?date(to):'…'].join(' — '):monthLabel(month),headers,rows};render();
 }
 // OOXML with stored ZIP entries. String cells remain literal text in Excel.
 const xml=value=>esc(String(value).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,''));
@@ -1251,15 +1518,15 @@ function sheetRows(rows,styleFor=()=>0,heights={}){
  }).join('')+'</row>').join('');
 }
 const spreadsheetNs='http://schemas.openxmlformats.org';
-function xlsx(label,headers,rows,extraSheet){
+function xlsx(label,headers,rows,...extraSheets){
  const ns=spreadsheetNs;
  const sheets=[{name:'Отчёт',xml:'<worksheet xmlns="'+ns+'/spreadsheetml/2006/main"><sheetData>'+sheetRows([headers,...rows])+'</sheetData></worksheet>'}];
- if(extraSheet)sheets.push(extraSheet);
+ sheets.push(...extraSheets);
  const overrides=sheets.map((_,i)=>'<Override PartName="/xl/worksheets/sheet'+(i+1)+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join('');
  const definitions=sheets.map((s,i)=>'<sheet name="'+xml(s.name)+'" sheetId="'+(i+1)+'" r:id="rId'+(i+1)+'"/>').join('');
  const links=sheets.map((_,i)=>'<Relationship Id="rId'+(i+1)+'" Type="'+ns+'/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'+(i+1)+'.xml"/>').join('');
- const styleOverride=extraSheet?'<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>':'';
- const styleLink=extraSheet?'<Relationship Id="rIdStyles" Type="'+ns+'/officeDocument/2006/relationships/styles" Target="styles.xml"/>':'';
+ const styleOverride=extraSheets.length?'<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>':'';
+ const styleLink=extraSheets.length?'<Relationship Id="rIdStyles" Type="'+ns+'/officeDocument/2006/relationships/styles" Target="styles.xml"/>':'';
  const parts=[
   ['[Content_Types].xml','<Types xmlns="'+ns+'/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'+overrides+styleOverride+'</Types>'],
   ['_rels/.rels','<Relationships xmlns="'+ns+'/package/2006/relationships"><Relationship Id="rId1" Type="'+ns+'/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
@@ -1267,11 +1534,11 @@ function xlsx(label,headers,rows,extraSheet){
   ['xl/_rels/workbook.xml.rels','<Relationships xmlns="'+ns+'/package/2006/relationships">'+links+styleLink+'</Relationships>'],
   ...sheets.map((s,i)=>['xl/worksheets/sheet'+(i+1)+'.xml',s.xml])
  ];
- if(extraSheet)parts.push(['xl/styles.xml',extraSheet.styles]);
+ if(extraSheets.length)parts.push(['xl/styles.xml',extraSheets[0].styles]);
  const url=URL.createObjectURL(zip(parts));hrefDownload(label+'.xlsx',url);setTimeout(()=>URL.revokeObjectURL(url),4000);
 }
 const payoutHoursStyles='<styleSheet xmlns="'+spreadsheetNs+'/spreadsheetml/2006/main">'+
- '<numFmts count="4"><numFmt numFmtId="164" formatCode="#,##0.00"/><numFmt numFmtId="165" formatCode="dd.mm.yyyy"/><numFmt numFmtId="166" formatCode="mm.yyyy"/><numFmt numFmtId="167" formatCode="0.00"/></numFmts>'+
+ '<numFmts count="4"><numFmt numFmtId="164" formatCode="#,##0.00"/><numFmt numFmtId="165" formatCode="dd.mm.yyyy"/><numFmt numFmtId="166" formatCode="mm.yyyy"/><numFmt numFmtId="167" formatCode="0"/></numFmts>'+
  '<fonts count="5"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="16"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FF172A24"/><name val="Calibri"/></font><font><sz val="11"/><color rgb="FF794700"/><name val="Calibri"/></font></fonts>'+
  '<fills count="6"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>'+
  [['172A24'],['12664E'],['EAF4ED'],['FFF0D6']].map(([rgb])=>'<fill><patternFill patternType="solid"><fgColor rgb="FF'+rgb+'"/><bgColor indexed="64"/></patternFill></fill>').join('')+'</fills>'+
@@ -1281,21 +1548,21 @@ const payoutHoursStyles='<styleSheet xmlns="'+spreadsheetNs+'/spreadsheetml/2006
 const excelDay=iso=>iso?Date.parse(iso+'T00:00:00Z')/86400000+25569:null;
 function payoutHoursSheet(registry){
  const rows=paymentHourRows(registry.lines), totals=paymentHourTotals(rows);
- const day=excelDay(registry.actual||registry.date);
+ const day=excelDay(registry.hourActual||registry.date);
  const head=['№','Табельный номер','ФИО сотрудника','Территория','Ресторан','Должность','Расчётный период','Дата выплаты','Компания выплаты','Почасовая ставка, ₽','Общая сумма выплаты, ₽','Выплата часами'];
  const data=[
   ['WOKKER · Выплаты часами'],
   ['Реестр',registry.number,'Компания',registry.company.name],
-  [registry.actual?'Дата выплаты':'Плановая дата',day],
+  [registry.hourActual?'Дата выплаты':'Плановая дата',day],
   head,
   ...rows.map((l,i)=>{
    const employee=byId('employees',l.employee);
    return [i+1,employee?.no||'—',employeeLabel(l.employee),territoryOf(l.rest),restaurantName(l.rest),employee?.position||'—',excelDay(l.month+'-01'),day,registry.company.name,
-    Number.isSafeInteger(l.hourlyRate)?l.hourlyRate/100:null,l.cents/100,l.hourEquivalent??missingHourlyRate];
+    Number.isSafeInteger(l.hourlyRate)?l.hourlyRate/100:null,l.hourCents===undefined?null:l.hourCents/100,l.hourEquivalent??(validHourlyRate(l.hourlyRate)?'Исторический расчёт':missingHourlyRate)];
   }),
-  ['Итого',new Set(rows.map(l=>l.employee)).size,'Количество сотрудников','','','','','','','',sum(rows,l=>l.cents)/100,totals.hours]
+  ['Итого',new Set(rows.map(l=>l.employee)).size,'Количество сотрудников','','','','','','','',sum(rows,l=>l.hourCents||0)/100,totals.hours]
  ];
- if(totals.missing)data.push(['Часы подсчитаны по строкам с действительной ставкой. Строк без расчёта: '+totals.missing]);
+ if(totals.missing)data.push(['В лист включаются подтверждённые расчётом целые часы. Строк без расчёта: '+totals.missing]);
  const totalRow=4+rows.length;
  const styles=(r,c)=>{
   if(r===0)return 1;
@@ -1318,6 +1585,27 @@ function payoutHoursSheet(registry){
   '<sheetViews><sheetView workbookViewId="0"><pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'+
   '<cols>'+cols+'</cols><sheetData>'+sheetRows(data,styles,{0:28,3:23,[totalRow]:21})+'</sheetData><autoFilter ref="A4:L'+(4+rows.length)+'"/>'+merge+'</worksheet>'};
 }
+function payoutReconciliationSheet(r){
+ const aligned=r.alignVersion===1;
+ const heading=['Сотрудник','Почасовая ставка, ₽','Первоначально начислено, ₽','Согласованные корректировки, ₽','Целые часы','Выплата часами, ₽','Денежный остаток, ₽','Отдельный перевод, ₽','Итог выплаты, ₽','Сверка','Распределение по периодам'];
+ const rows=r.lines.map(l=>[employeeLabel(l.employee),validHourlyRate(l.hourlyRate)?l.hourlyRate/100:null,aligned?l.initialAccrued/100:null,aligned?l.correction/100:null,
+  aligned?l.whole:null,aligned?l.hourCents/100:null,aligned?l.remainder/100:null,aligned?l.separate/100:null,l.cents/100,aligned&&lineMatches(l)?'Расчёт проверен':'Историческая операция',
+  allocationsOf(l).map(a=>a.month+' · '+money(a.cents)).join('; ')]);
+ const total=['Итого',null,...['initialAccrued','correction','whole','hourCents','remainder','separate','cents'].map(k=>aligned||k==='cents'?sum(r.lines,l=>l[k]||0)/(k==='whole'?1:100):null),registryMatches(r)?'Суммы сходятся':'Без сверки',''];
+ const data=[['WOKKER · Финансовая сверка'],['Реестр',r.number,'Компания',r.company.name],heading,...rows,total];
+ const cols=[28,24,30,29,17,24,24,25,25,27,44].map((w,i)=>'<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+w+'" customWidth="1"/>').join('');
+ const styleFor=(row,col)=>{
+  if(row===0)return 1;
+  if(row===2)return 2;
+  if(row<3)return 0;
+  const numeric=col>=1&&col<=8, isTotal=row===data.length-1;
+  return numeric?(col===4?(isTotal?7:4):(isTotal?6:3)):(isTotal?5:0);
+ };
+ return {name:'Финансовая сверка',xml:'<worksheet xmlns="'+spreadsheetNs+'/spreadsheetml/2006/main">'+
+  '<sheetViews><sheetView workbookViewId="0"><pane ySplit="3" topLeftCell="A4" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'+
+  '<cols>'+cols+'</cols><sheetData>'+sheetRows(data,styleFor,{0:28,2:23,[data.length-1]:21})+'</sheetData><autoFilter ref="A3:K'+(3+rows.length)+'"/>'+
+  '<mergeCells count="2"><mergeCell ref="A1:K1"/><mergeCell ref="D2:K2"/></mergeCells></worksheet>'};
+}
 function exportSheet(){
  const m=filters.month||W().month;
  const rows=actualShifts().filter(x=>x.day.startsWith(m)&&locationMatch(x.rest)&&matchesPerson(x.employee,filters.find)).map(x=>[employeeLabel(x.employee),restaurantName(x.rest),date(x.day),x.start||'',x.end||'',x.minutes/60,{work:'Работа',vacation:'Отпуск',sick:'Больничный',absent:'Неявка'}[x.status]||'Работа']);
@@ -1329,7 +1617,8 @@ function exportAccrual(){
 }
 function exportRegistry(id){
  const r=W().registers.find(x=>x.id===id);if(!admin()||!r)return;
- xlsx(r.number,['Реестр','Компания','Плановая дата','Фактическая дата','Статус','Сотрудник','Ресторан','К выплате','Коэффициент','Расчётная сумма'],r.lines.map(l=>[r.number,r.company.name,date(r.date),date(r.actual),regLabels[r.status],employeeLabel(l.employee),restaurantName(l.rest),l.cents/100,r.company.coefficient/10000,l.calculated/100]),payoutHoursSheet(r));
+ if(r.alignVersion&&!registryMatches(r)){toast('Обнаружено расхождение. Выгрузка заблокирована.','alert');return;}
+ xlsx(r.number,['Реестр','Компания','Плановая дата','Фактическая дата','Статус','Сотрудник','Ресторан','К выплате','Коэффициент','Расчётная сумма'],r.lines.map(l=>[r.number,r.company.name,date(r.date),date(r.actual),registryStatusLabel(r),employeeLabel(l.employee),restaurantName(l.rest),l.cents/100,r.company.coefficient/10000,l.calculated/100]),payoutHoursSheet(r),payoutReconciliationSheet(r));
 }
 const previousDetail=actions.detail;
 Object.assign(actions,{
@@ -1338,7 +1627,7 @@ Object.assign(actions,{
  'home-shop':r=>go('sheets','errors',{rest:r}),'home-extras':()=>goPay('pending'),
  'go-approval':()=>go('approval','errors',{month:filters.month,rest:filters.rest,territory:filters.territory}),
  'approval-log':value=>{const [r,m]=value.split('|');if(canRest(r))modal(restaurantName(r)+' · '+monthLabel(m),eventList(W().approvals[value]?.events||[]),{drawer:true});},
- 'approval-step':changeApproval,cell:openCell,'sheet-shift':v=>moveSheet(Number(v)),
+ 'approval-step':changeApproval,'approval-reopen':reopenApproval,'finance-detail':financeDetail,'finance-batch':financeBatch,'alignment-example':alignmentExample,cell:openCell,'sheet-shift':v=>moveSheet(Number(v)),
  'export-sheet':exportSheet,'export-accrual':exportAccrual,account:accountDetail,
  'pay-tab':goPay,'extra-new':()=>extraEditor(),'extra-edit':id=>extraEditor(ownedExtras().find(x=>x.id===id)),extra:extraDetail,'extra-step':extraTransition,
  'registry-new':()=>newRegistry(),'registry-back':()=>newRegistry(formPreview?.data),registry:registryDetail,'registry-step':registryTransition,'registry-export':exportRegistry,print:()=>window.print(),
@@ -1360,10 +1649,12 @@ function updateViewFilter(input){
 }
 document.addEventListener('input',e=>{
  if(e.target.matches('input[type=search][data-view]'))updateViewFilter(e.target);
+ if(e.target.form?.id==='alignmentExample')updateAlignmentExample(e.target.form);
 });
 document.addEventListener('change',e=>{
  const v=e.target;
  if(v.dataset.view&&v.type!=='search')updateViewFilter(v);
+ if(v.form?.id==='alignmentExample'&&v.tagName==='SELECT')updateAlignmentExample(v.form);
  if(v.id==='registryUnit'){
   $('registryRubles').hidden=v.value==='hours';
   $('registryHours').hidden=v.value!=='hours';
@@ -1375,7 +1666,7 @@ document.addEventListener('change',e=>{
   [...document.querySelectorAll('[data-pay]')].find(x=>x.dataset.pay===v.dataset.pay)?.focus({preventScroll:true});
  }
  if(v.id==='allPay'){
-  filteredAccounts().filter(a=>a.due>0).forEach(a=>{if(v.checked)chosenPay.add(a.key);else chosenPay.delete(a.key);});render();$('allPay')?.focus({preventScroll:true});
+  filteredAccounts().filter(a=>a.due>0&&approvedForPayment(a)).forEach(a=>{if(v.checked)chosenPay.add(a.key);else chosenPay.delete(a.key);});render();$('allPay')?.focus({preventScroll:true});
  }
 });
 document.addEventListener('submit',e=>{
@@ -1383,6 +1674,11 @@ document.addEventListener('submit',e=>{
  if(e.target.id==='generalForm'){
   const d=new FormData(e.target),name=d.get('name').trim(),month=d.get('month');
   if(name&&month&&mutate(()=>{W().general.name=name;W().month=month;audit('Общие настройки обновлены',name+' · '+monthLabel(month));})){render();toast('Настройки сохранены.');}
+ }
+ if(e.target.id==='payRoundForm'){
+  const d=new FormData(e.target),from=d.get('from'),mode=d.get('mode'),carry=d.has('carry');
+  if(!from||!Object.hasOwn(alignmentModes,mode)||policies().some(p=>p.from===from)){toast('Укажите уникальную дату вступления правила в силу.','alert');return;}
+  if(mutate(()=>{W().alignmentPolicies=[...policies(),{id:uid(),mode,from,carry,by:actor(),at:now()}];audit('Новое правило округления выплат',date(from)+' · '+alignmentModes[mode]);})){render();toast('Правило сохранено.');}
  }
  if(e.target.id==='roundForm'){
   const step=Number(new FormData(e.target).get('step'));

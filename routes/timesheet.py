@@ -697,7 +697,16 @@ def _sync_matching_registry(user, change=None):
             cur.execute("SELECT kind,source,target,actor_id,updated_at::text FROM attendance_matching ORDER BY kind,source")
             entries = [dict(r) for r in cur.fetchall()]
             cur.execute("SELECT id,kind,source,previous_target,new_target,actor_id,created_at::text FROM attendance_matching_history ORDER BY id DESC LIMIT 100")
-            return {"entries": entries, "history": [dict(r) for r in cur.fetchall()]}
+            history = [dict(r) for r in cur.fetchall()]
+            cur.execute("SELECT user_id::text AS id, full_name, personnel_number FROM users WHERE COALESCE(is_fired,FALSE)=FALSE ORDER BY full_name,user_id")
+            employees = [dict(r) for r in cur.fetchall()]
+            cur.execute("SELECT key AS id,name FROM restaurants ORDER BY name,key")
+            restaurants = [dict(r) for r in cur.fetchall()]
+            targets = {"employees": {r["id"]: r for r in employees},
+                       "restaurants": {r["id"]: r for r in restaurants}}
+            for entry in entries:
+                entry["stale"] = entry["target"] not in targets[entry["kind"]]
+            return {"entries": entries, "history": history, "employees": employees, "restaurants": restaurants}
 
 
 @routes.get('/api/timesheet/matching')

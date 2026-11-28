@@ -752,6 +752,7 @@ def test_full_size_attendance_import_postgres(monkeypatch):
                 cur.execute("INSERT INTO restaurants VALUES (%s,%s,999)", (str(i),f"Restaurant {i}"))
             for i in range(56):
                 cur.execute("INSERT INTO users VALUES (%s,%s,%s,false,%s)", (i+1,str(i+100),str(i%15),f"Test {i}"))
+            cur.execute("INSERT INTO users VALUES (999,NULL,'0',false,'Test Administrator')")
             for filename in ("007_attendance_imports.sql","015_attendance_matching.sql"):
                 cur.execute((Path(__file__).resolve().parents[1]/"database"/filename).read_text(encoding="utf-8"))
         monkeypatch.setattr(timesheet,"get_conn",lambda: nullcontext(conn))

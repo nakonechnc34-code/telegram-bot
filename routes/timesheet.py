@@ -1051,6 +1051,56 @@ def _sync_stage_attendance(user, rows, default_rest_key=None, partial=False, sou
             "partial": bool(partial and not result["ok"]), "errors": result["errors"], "error_count": result["error_count"]}
 
 
+def _sync_partial_report_list():
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""SELECT id, uploaded_by, created_at::text AS created_at,
+                diagnostics, resolved_at::text AS resolved_at
+                FROM attendance_partial_reports ORDER BY id DESC LIMIT 200""")
+            return [dict(row) for row in cur.fetchall()]
+
+
+def _sync_partial_report_file(report_id):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT source_file FROM attendance_partial_reports WHERE id=%s", (report_id,))
+            row = cur.fetchone()
+            return bytes(row["source_file"]) if row else None
+
+
+@routes.get('/api/timesheet/import_attendance/partial_reports')
+async def handle_partial_reports(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    _require_timesheet_access(user)
+    if not _is_hr_or_super(user):
+        return denied(403)
+    return web.json_response({"records": await _run(_sync_partial_report_list)}, headers={"Cache-Control": "no-store"})
+
+
+@routes.get('/api/timesheet/import_attendance/partial_reports/{report_id}/file')
+async def handle_partial_report_file(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    _require_timesheet_access(user)
+    if not _is_hr_or_super(user):
+        return denied(403)
+    try:
+        report_id = int(request.match_info["report_id"])
+        if not 0 < report_id < 2**63:
+            raise ValueError()
+    except ValueError:
+        return web.json_response({"error": "Некорректный номер отчёта"}, status=400)
+    source = await _run(_sync_partial_report_file, report_id)
+    if source is None:
+        return web.json_response({"error": "Отчёт не найден"}, status=404)
+    return web.Response(body=source, content_type="application/octet-stream",
+                        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
+                                 "Content-Disposition": f'attachment; filename="attendance-{report_id}.xlsx"'})
+
+
 @routes.post('/api/timesheet/import_attendance/stage')
 @routes.post('/api/timesheet/import_attendance/preview')
 @routes.post('/api/timesheet/import_attendance')

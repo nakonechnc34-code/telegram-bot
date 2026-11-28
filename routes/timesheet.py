@@ -851,7 +851,7 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
             errors.append("Конфликт статуса отсутствия и смены")
         else:
             status = {"В": "vacation", "Б": "sick", "Н": "absent"}[next(iter(values))]
-            records.append({"personnel_number": number, "date": day, "restaurant_key": key,
+            records.append({"user_id": number, "personnel_number": _normalize_attendance_number(users_by_id[str(number)]["personnel_number"]), "date": day, "restaurant_key": key,
                             "minutes": 0, "shifts": [], "status": status})
     for entries in status_days.values():
         if len(entries) > 1:

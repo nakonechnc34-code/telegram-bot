@@ -753,20 +753,38 @@ let registryVersion = 0;
 let registryBusy = false;
 function resetMatchingRegistry() {
     registryVersion++;
+    registryDirectory = {employees: [], restaurants: []};
+    byId('registry-form').elements.target.replaceChildren();
     byId('matching-registry').hidden = true;
     byId('registry-form').reset();
     byId('registry-rows').replaceChildren();
     byId('registry-history').replaceChildren();
     byId('registry-status').textContent = '';
 }
+let registryDirectory = {employees: [], restaurants: []};
+function updateRegistryChoices(selected = '') {
+    const form = byId('registry-form');
+    const kind = form.elements.kind.value;
+    const search = byId('registry-search').value.trim().toLocaleLowerCase('ru');
+    const target = form.elements.target;
+    target.replaceChildren(new Option('Выберите значение', ''));
+    for (const item of registryDirectory[kind]) {
+        const label = kind === 'employees' ? [item.full_name, item.personnel_number, 'ID '+item.id].filter(Boolean).join(' — ') : item.name;
+        if (!search || label.toLocaleLowerCase('ru').includes(search) || item.id === selected)
+            target.add(new Option(label, item.id));
+    }
+    target.value = selected;
+}
 function renderMatchingRegistry(data) {
+    registryDirectory = {employees: data.employees || [], restaurants: data.restaurants || []};
+    updateRegistryChoices();
     const form = byId('registry-form');
     const rows = byId('registry-rows');
     rows.replaceChildren();
     const kindLabel = kind => kind === 'employees' ? 'Сотрудник' : 'Ресторан';
     for (const entry of data.entries) {
         const row = rows.insertRow();
-        for (const value of [kindLabel(entry.kind), entry.source, entry.target])
+        for (const value of [kindLabel(entry.kind), entry.source, entry.target, entry.stale ? 'Устарело — требуется замена' : 'Активно'])
             row.insertCell().textContent = value;
         const actions = row.insertCell();
         const edit = document.createElement('button');
@@ -774,7 +792,8 @@ function renderMatchingRegistry(data) {
         edit.onclick = () => {
             form.elements.kind.value = entry.kind;
             form.elements.source.value = entry.source;
-            form.elements.target.value = entry.target;
+            byId('registry-search').value = '';
+            updateRegistryChoices(entry.target);
             form.elements.target.focus();
         };
         const remove = document.createElement('button');
@@ -816,12 +835,18 @@ async function changeMatchingRegistry(method, values) {
         if (version !== registryVersion || !token) return;
         renderMatchingRegistry(data);
         byId('registry-form').reset();
+        updateRegistryChoices();
         clearAttendancePreview();
         status.textContent = 'Изменения сохранены';
     } catch (error) {
         if (version === registryVersion) status.textContent = error.message;
     } finally { registryBusy = false; }
 }
+byId('registry-search').addEventListener('input', () => updateRegistryChoices());
+byId('registry-form').elements.kind.addEventListener('change', () => {
+    byId('registry-search').value = '';
+    updateRegistryChoices();
+});
 byId('registry-refresh').addEventListener('click', loadMatchingRegistry);
 byId('registry-form').addEventListener('submit', event => {
     event.preventDefault();

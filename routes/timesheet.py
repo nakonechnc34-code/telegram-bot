@@ -993,13 +993,16 @@ def _attendance_saved_conflict(cur, records, employee_ids, partial=False):
     return False
 
 
-def _sync_stage_attendance(user, rows, default_rest_key=None, partial=False):
+def _sync_stage_attendance(user, rows, default_rest_key=None, partial=False, source_file=None):
     """Store a validated batch for review, without affecting legacy payroll."""
     from utils.attendance_minutes import shift_interval
     result = _sync_preview_attendance(user, rows, default_rest_key)
     if (not result["ok"] and not (partial and result["partial_allowed"])) or not result["records"]:
         return {"ok": False, "errors": result["errors"] or ["Нет записей для загрузки"]}
     records = result["records"]
+    report_id = None
+    if partial and (not _is_hr_or_super(user) or not source_file):
+        raise ValueError("Partial import requires authorized source file")
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             # Serialize staged replacements; delete only exact restaurant/date pairs.
@@ -1038,7 +1041,13 @@ def _sync_stage_attendance(user, rows, default_rest_key=None, partial=False):
                 for start, end in sorted({shift_interval(v) for v in record["shifts"]}):
                     cur.execute("INSERT INTO attendance_import_intervals (day_id, start_minute, end_minute) VALUES (%s, %s, %s)",
                                 (day_id, start, end))
-    return {"ok": True, "import_id": import_id, "success_count": len(records), "staged": True,
+            if partial and not result["ok"]:
+                cur.execute("""INSERT INTO attendance_partial_reports
+                    (uploaded_by, source_file, diagnostics, default_restaurant_key)
+                    VALUES (%s,%s,%s::jsonb,%s) RETURNING id""",
+                    (user["user_id"], bytes(source_file), json.dumps({"errors": result["errors"], "matching": result["matching"], "error_count": result["error_count"]}), default_rest_key))
+                report_id = cur.fetchone()["id"]
+    return {"ok": True, "report_id": report_id, "import_id": import_id, "success_count": len(records), "staged": True,
             "partial": bool(partial and not result["ok"]), "errors": result["errors"], "error_count": result["error_count"]}
 
 
@@ -1122,7 +1131,7 @@ async def handle_import_attendance(request):
             if request.query.get("partial") == "1":
                 if not _is_hr_or_super(user):
                     return denied(403)
-                result = await _run(_sync_stage_attendance, user, rows, default_rest, True)
+                result = await _run(_sync_stage_attendance, user, rows, default_rest, True, file_data)
             else:
                 result = await _run(_sync_stage_attendance, user, rows, default_rest)
         except CheckViolation as exc:

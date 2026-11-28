@@ -728,3 +728,67 @@ def test_persistent_matching_postgres(monkeypatch):
     finally:
         conn.rollback()
         conn.close()
+
+
+def test_full_size_attendance_import_postgres(monkeypatch):
+    """Synthetic volume regression, without publishing employee data from the original workbook."""
+    from contextlib import nullcontext
+    from pathlib import Path
+    from io import BytesIO
+    from openpyxl import Workbook
+    from routes import timesheet
+    dsn = os.getenv("ATTENDANCE_TEST_DSN")
+    if not dsn:
+        pytest.skip("ATTENDANCE_TEST_DSN not configured")
+    conn = psycopg2.connect(dsn)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""CREATE SCHEMA attendance_volume_test;
+                SET LOCAL search_path TO attendance_volume_test;
+                CREATE TABLE users (user_id bigint PRIMARY KEY, personnel_number text,
+                    restaurant_key text, is_fired boolean, full_name text);
+                CREATE TABLE restaurants (key text PRIMARY KEY, name text, territory_manager_id bigint);""")
+            for i in range(15):
+                cur.execute("INSERT INTO restaurants VALUES (%s,%s,999)", (str(i),f"Restaurant {i}"))
+            for i in range(56):
+                cur.execute("INSERT INTO users VALUES (%s,%s,%s,false,%s)", (i+1,str(i+100),str(i%15),f"Test {i}"))
+            for filename in ("007_attendance_imports.sql","015_attendance_matching.sql"):
+                cur.execute((Path(__file__).resolve().parents[1]/"database"/filename).read_text(encoding="utf-8"))
+        monkeypatch.setattr(timesheet,"get_conn",lambda: nullcontext(conn))
+        actor = {"user_id":999,"is_super_admin":True}
+        book = Workbook()
+        sheet = book.active
+        sheet.append(["Табельный номер","Подразделение"]+[f"{d}.11.2026" for d in range(16,23)])
+        for i in range(327):
+            employee, day = i%56, i//56
+            minutes = 757 if i < 80 else 756
+            end = 480+minutes
+            shift = f"08:00-{end//60:02d}:{end%60:02d}"
+            values = [None]*7
+            values[day] = shift
+            sheet.append([str(employee+100),f"Restaurant {(employee+day)%15}"]+values)
+            if i == 0:
+                sheet.append([None,None,"22:05-22:12"])
+                sheet.merge_cells("A2:A3")
+                sheet.merge_cells("B2:B3")
+        buf = BytesIO()
+        book.save(buf)
+        rows = timesheet._parse_excel_rows(buf.getvalue())
+        assert len(rows) == 328
+        expected = 80*757+247*756+7
+        preview = timesheet._sync_preview_attendance(actor,rows)
+        assert preview["ok"], preview["errors"]
+        assert preview["total_minutes"] == expected
+        for _ in range(2):
+            result = timesheet._sync_stage_attendance(actor,rows)
+            assert result["ok"], result
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*),SUM(worked_minutes),COUNT(DISTINCT user_id),COUNT(DISTINCT restaurant_key) FROM attendance_import_days")
+                assert cur.fetchone() == (327,expected,56,15)
+                cur.execute("SELECT COUNT(*) FROM attendance_import_intervals")
+                assert cur.fetchone()[0] == 328
+                cur.execute("SELECT COUNT(*) FROM attendance_imports")
+                assert cur.fetchone()[0] == 1
+    finally:
+        conn.rollback()
+        conn.close()

@@ -370,7 +370,14 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
         assert report() == []
         assert transition(tu,"approve",1) == 403
         assert transition(admin,"approve",0) == 409
-        assert transition(admin,"approve",1) == 200
+        hr = {"user_id":30,"is_admin":True,"position":"HR"}
+        assert transition(hr,"approve",1) == 200
+        with conn.cursor() as cur:
+            cur.execute("SAVEPOINT approved_import")
+            with pytest.raises(psycopg2.errors.CheckViolation, match="Timesheet is locked for approval"):
+                cur.execute("UPDATE attendance_import_days SET worked_minutes=600 WHERE user_id=1")
+            cur.execute("ROLLBACK TO SAVEPOINT approved_import")
+            cur.execute("RELEASE SAVEPOINT approved_import")
         assert report()[0]["total_salary"] == Decimal("2970.00")
         partial = timesheet._sync_approved_reports(30,"2026-11-01","2026-11-15")
         assert partial[0]["total_salary"] == Decimal("2970.00")

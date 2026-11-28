@@ -303,3 +303,46 @@ jobs:
               print(f'CONTROL analytics {scope}: {ms:.2f} ms')
               assert ms<10000, (scope,ms)
           PY
+
+      - name: Verify historical guest task and photo privacy
+        run: |
+          python - <<'PY'
+          import ast
+          import subprocess
+          from pathlib import Path
+          tree=ast.parse(Path('routes/control.py').read_text())
+          def query(name, fragment):
+              fn=next(n for n in tree.body if isinstance(n,ast.AsyncFunctionDef) and n.name==name)
+              return next(n.value for n in ast.walk(fn) if isinstance(n,ast.Constant) and isinstance(n.value,str) and fragment in n.value)
+          fixture="""
+          BEGIN;
+          INSERT INTO users(user_id,full_name,position) VALUES (920001,'Historical guest','Тайный гость'),(920002,'Manager','УС');
+          INSERT INTO restaurants(key,name) VALUES ('privacy-ci','Privacy CI');
+          INSERT INTO control_templates(id,title,created_by) VALUES(920001,'Privacy',920002);
+          INSERT INTO control_template_versions(id,template_id,version,definition) VALUES(920001,920001,1,'{}');
+          INSERT INTO control_checks(id,restaurant_key,version_id,assigned_by,due_at) VALUES(920001,'privacy-ci',920001,920002,NOW());
+          INSERT INTO control_tasks(id,check_id,question_key,description,assignee_id) VALUES(920001,920001,'q','Privacy',920001);
+          INSERT INTO control_task_history(task_id,actor_id,action,details) VALUES(920001,920001,'assign','{"assignee_id":920001}');
+          INSERT INTO control_check_photos(check_id,question_key,uploaded_by,content_type,content) VALUES(920001,'q',920001,'image/png',decode('01','hex'));
+          INSERT INTO control_task_photos(task_id,uploaded_by,content_type,content) VALUES(920001,920001,'image/png',decode('01','hex'));
+          UPDATE users SET position='УС' WHERE user_id=920001;
+          """
+          cases=[
+              ('list_tasks','SELECT t.id,t.check_id','text[],boolean,bigint,boolean',"ARRAY['privacy-ci'],TRUE,920002", 'assignee_id'),
+              ('task_history','SELECT CASE WHEN $5','bigint,text[],boolean,bigint,boolean',"920001,ARRAY['privacy-ci'],TRUE,920002",'actor_id'),
+              ('list_check_photos','SELECT p.id,p.question_key','bigint,text[],boolean',"920001,ARRAY['privacy-ci']",'uploaded_by'),
+              ('task_photos','SELECT p.id,CASE WHEN $2','bigint,boolean',"920001",'uploaded_by'),
+          ]
+          # Use real SQL projections and CSV headers to detect duplicate columns.
+          for name,fragment,types,args,column in cases:
+              sql=query(name,fragment)
+              script=fixture+'PREPARE privacy('+types+') AS '+sql+'; EXECUTE privacy('+args+',FALSE); EXECUTE privacy('+args+',TRUE); ROLLBACK;'
+              result=subprocess.run(['psql','-X','--csv','-q','-h','localhost','-U','ci','-d','control_ci','-v','ON_ERROR_STOP=1'],input=script,text=True,check=True,capture_output=True)
+              import csv,io
+              rows=list(csv.reader(io.StringIO(result.stdout)))
+              assert len(rows)==4, (name,rows)
+              assert rows[0].count(column)==1, (name,rows[0])
+              idx=rows[0].index(column)
+              assert rows[1][idx]=='' and rows[3][idx]=='920001', (name,rows)
+              print(name+': historical identity redaction verified')
+          PY

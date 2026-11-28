@@ -884,7 +884,7 @@ def _sync_preview_attendance(user, rows, default_rest_key=None, pending=None):
     blocking_errors = len(errors)
     errors.extend(sorted(matching_errors))
     matching = {"employees": sorted(unresolved_employees), "restaurants": sorted(unresolved_restaurants)} if _is_hr_or_super(user) else None
-    return {"matching": matching, "ok": not errors, "partial_allowed": bool(records and matching_errors and not blocking_errors and _is_hr_or_super(user)), "preview": True, "records": records,
+    return {"matching": matching, "ok": not errors, "partial_allowed": bool(matching_errors and not blocking_errors and _is_hr_or_super(user)), "preview": True, "records": records,
             "total_minutes": sum(r["minutes"] for r in records) if not errors else None,
             "error_count": len(errors), "errors": errors[:50]}
 
@@ -1003,7 +1003,7 @@ def _sync_stage_attendance(user, rows, default_rest_key=None, partial=False, sou
     from utils.attendance_minutes import shift_interval
     pending = []
     result = _sync_preview_attendance(user, rows, default_rest_key, pending) if partial else _sync_preview_attendance(user, rows, default_rest_key)
-    if (not result["ok"] and (retry_id is not None or not (partial and result["partial_allowed"]))) or not result["records"]:
+    if (not result["ok"] and (retry_id is not None or not (partial and result["partial_allowed"]))) or (not result["records"] and not (partial and result["partial_allowed"])):
         return {"ok": False, "errors": result["errors"] or ["Нет записей для загрузки"]}
     records = result["records"]
     report_id = None
@@ -1013,6 +1013,14 @@ def _sync_stage_attendance(user, rows, default_rest_key=None, partial=False, sou
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             # Serialize staged replacements; delete only exact restaurant/date pairs.
             cur.execute("SELECT pg_advisory_xact_lock(814726, 2)")
+            if not records and partial and retry_id is None:
+                cur.execute("""INSERT INTO attendance_partial_reports
+                    (uploaded_by, source_file, diagnostics, default_restaurant_key)
+                    VALUES (%s,%s,%s::jsonb,%s) RETURNING id""",
+                    (user["user_id"], bytes(source_file), json.dumps({"errors": result["errors"], "matching": result["matching"], "error_count": result["error_count"], "pending_rows": pending}), default_rest_key))
+                return {"ok": True, "partial": True, "report_id": cur.fetchone()["id"],
+                        "import_id": None, "success_count": 0, "staged": True,
+                        "errors": result["errors"], "error_count": result["error_count"]}
             employee_ids = {}
             cur.execute("SELECT key, territory_manager_id FROM restaurants FOR SHARE")
             restaurants = cur.fetchall()

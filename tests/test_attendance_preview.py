@@ -351,3 +351,25 @@ def test_matching_registry_real_role_policy_http():
                             assert calls[0][1] == (None if method == "GET" else
                                 ("employees", "external", "1" if method == "POST" else None))
     asyncio.run(scenario())
+
+
+def test_excel_merged_restaurant_additional_shift():
+    from io import BytesIO
+    from openpyxl import Workbook
+    from routes import timesheet
+    book = Workbook()
+    sheet = book.active
+    sheet.append(["Табельный номер", "Подразделение", "20.11.2026", None, "21.11.2026"])
+    sheet.append(["021", "A", "09:00-12:00", None, None])
+    sheet.append([None, None, "22:05-22:12", None, None])
+    sheet.merge_cells("A2:A3")
+    sheet.merge_cells("B2:B3")
+    sheet.merge_cells("C1:D1")
+    sheet.append(["021", "B", None, None, "09:00-10:00"])
+    buf = BytesIO()
+    book.save(buf)
+    assert timesheet._parse_excel_rows(buf.getvalue()) == [
+        ("2026-11-20", "021", "09:00-12:00", "A"),
+        ("2026-11-20", "021", "22:05-22:12", "A"),
+        ("2026-11-21", "021", "09:00-10:00", "B"),
+    ]

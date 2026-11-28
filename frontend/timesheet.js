@@ -187,6 +187,69 @@ async function deleteAttendance(record, button) {
         button.disabled = false;
     }
 }
+async function loadPartialReports() {
+    const panel = byId('partial-report-list');
+    panel.replaceChildren();
+    try {
+        const result = await api('/api/timesheet/import_attendance/partial_reports', {method:'GET'});
+        for (const report of result.records) {
+            const item = document.createElement('div');
+            const title = document.createElement('p');
+            title.textContent = 'Отчёт №' + report.id + ' · ' + report.created_at + (report.resolved_at ? ' · Обработан' : ' · Ошибок: ' + report.diagnostics.error_count);
+            const status = document.createElement('p');
+            status.textContent = (report.diagnostics.errors || []).join(' · ');
+            item.append(title, status);
+            const base = '/api/timesheet/import_attendance/partial_reports/' + report.id;
+            const action = (label, fn) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.textContent = label;
+                button.addEventListener('click', async () => {
+                    button.disabled = true;
+                    try { await fn(); } catch (error) { status.textContent = error.message; }
+                    finally { button.disabled = false; }
+                });
+                item.append(button);
+                return button;
+            };
+            action('Скачать Excel', async () => {
+                const blob = await api(base + '/file', {method:'GET', binary:true});
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url; link.download = 'attendance-' + report.id + '.xlsx';
+                link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+            });
+            if (!report.resolved_at) {
+                const save = action('Сохранить исправленные часы', async () => {
+                    const data = await api(base + '/stage');
+                    status.textContent = data.ok ? 'Сохранено: ' + data.success_count : (data.errors || []).join(' · ');
+                    if (data.ok) { await loadPartialReports(); await loadDay(); }
+                });
+                save.disabled = true;
+                action('Повторная проверка', async () => {
+                    save.disabled = true;
+                    const data = await api(base + '/preview');
+                    status.textContent = data.ok ? 'Проверка пройдена' : (data.errors || []).join(' · ');
+                    save.disabled = !data.ok;
+                });
+            }
+            panel.append(item);
+        }
+        if (!result.records.length) panel.textContent = 'Нет отчётов с ошибками';
+    } catch (error) { panel.textContent = error.message; }
+}
+const partialPanel = document.createElement('details');
+const partialTitle = document.createElement('summary');
+partialTitle.textContent = 'Отчёты с ошибками';
+const partialList = document.createElement('div');
+partialList.id = 'partial-report-list';
+partialPanel.append(partialTitle, partialList);
+byId('attendance-history-status').before(partialPanel);
+partialPanel.addEventListener('toggle', () => {
+    if (partialPanel.open) loadPartialReports();
+    else partialList.replaceChildren();
+});
+
 async function loadAttendanceHistory() {
     const version = ++historyVersion;
     const status = byId('attendance-history-status');

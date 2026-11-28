@@ -269,6 +269,37 @@ def test_http_manual_mapping():
     asyncio.run(scenario())
 
 
+def test_http_excel_import_rejects_invalid_upload_forms():
+    import asyncio
+    from aiohttp import web
+    from aiohttp.test_utils import TestClient, TestServer
+    from unittest.mock import AsyncMock
+    from routes.timesheet import handle_import_attendance
+
+    async def scenario():
+        app = web.Application()
+        path = "/api/timesheet/import_attendance/{phase}"
+        app.router.add_post(path, handle_import_attendance)
+        async with TestClient(TestServer(app)) as client:
+            for phase in ("preview", "stage"):
+                url = path.format(phase=phase)
+                response = await client.post(url, json={})
+                assert response.status == 400
+                assert (await response.json())["error"] == "Загрузите Excel через форму выбора файла"
+                for content_type in ("multipart/form-data", "multipart/form-data; boundary=attendance"):
+                    response = await client.post(
+                        url, data=b"incomplete form", headers={"Content-Type": content_type}
+                    )
+                    assert response.status == 400
+                    assert (await response.json())["error"] == "Не удалось прочитать форму загрузки Excel"
+
+    with patch("routes.timesheet._timesheet_user", new=AsyncMock(return_value=({"user_id": 1}, None))), \
+         patch("routes.timesheet._require_timesheet_access"), \
+         patch("routes.timesheet._is_hr_or_super", return_value=True), \
+         patch("routes.timesheet._run", new=AsyncMock(side_effect=AssertionError("database must not be used"))):
+        asyncio.run(scenario())
+
+
 def test_saved_mapping_is_single_pass_and_manual_override():
     from routes.timesheet import _merge_saved_attendance_mapping
     rows = [("2026-11-16", "9181", "09:00-12:00", "A")]

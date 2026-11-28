@@ -160,6 +160,7 @@ def run_migrations():
                 cur.execute((migrations / "015_attendance_matching.sql").read_text(encoding="utf-8"))
                 cur.execute((migrations / "016_attendance_partial_reports.sql").read_text(encoding="utf-8"))
                 cur.execute((migrations / "017_attendance_archive_lookup.sql").read_text(encoding="utf-8"))
+                cur.execute((migrations / "018_timesheet_kol.sql").read_text(encoding="utf-8"))
                 cur.execute("SELECT 1 FROM users LIMIT 1")
                 if cur.fetchone() is None:
                     if not config.LOGIN_RE.fullmatch(config.ADMIN_LOGIN):

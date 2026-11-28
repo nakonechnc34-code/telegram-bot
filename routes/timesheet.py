@@ -1262,43 +1262,49 @@ async def handle_import_attendance(request):
     if request.path == "/api/timesheet/import_attendance":
         return web.json_response({"error": "Используйте предварительную проверку и сохранение отчёта"}, status=410)
 
-    reader = await request.multipart()
-    file_data = None
-    default_rest = request.query.get("restaurant_key")
-    mapping = None
-    mapping_seen = False
+    if request.content_type != "multipart/form-data":
+        return web.json_response({"error": "Загрузите Excel через форму выбора файла"}, status=400)
 
-    while True:
-        part = await reader.next()
-        if part is None:
-            break
-        if part.name == 'file':
-            if file_data is not None:
-                return web.json_response({"error": "Допускается один файл"}, status=400)
-            file_data = bytearray()
-            while chunk := await part.read_chunk():
-                file_data.extend(chunk)
-                if request.client_max_size and len(file_data) > request.client_max_size:
-                    return web.json_response({"error": "Файл слишком большой"}, status=413)
-        elif part.name == "mapping":
-            if not _is_hr_or_super(user):
-                return denied(403)
-            if mapping_seen:
-                return web.json_response({"error": "Допускается один набор соответствий"}, status=400)
-            mapping_seen = True
-            try:
-                raw_mapping = bytearray()
+    try:
+        reader = await request.multipart()
+        file_data = None
+        default_rest = request.query.get("restaurant_key")
+        mapping = None
+        mapping_seen = False
+
+        while True:
+            part = await reader.next()
+            if part is None:
+                break
+            if part.name == 'file':
+                if file_data is not None:
+                    return web.json_response({"error": "Допускается один файл"}, status=400)
+                file_data = bytearray()
                 while chunk := await part.read_chunk():
-                    raw_mapping.extend(chunk)
+                    file_data.extend(chunk)
+                    if request.client_max_size and len(file_data) > request.client_max_size:
+                        return web.json_response({"error": "Файл слишком большой"}, status=413)
+            elif part.name == "mapping":
+                if not _is_hr_or_super(user):
+                    return denied(403)
+                if mapping_seen:
+                    return web.json_response({"error": "Допускается один набор соответствий"}, status=400)
+                mapping_seen = True
+                try:
+                    raw_mapping = bytearray()
+                    while chunk := await part.read_chunk():
+                        raw_mapping.extend(chunk)
+                        if len(raw_mapping) > 100000:
+                            break
                     if len(raw_mapping) > 100000:
-                        break
-                if len(raw_mapping) > 100000:
-                    return web.json_response({"error": "Слишком много соответствий"}, status=400)
-                mapping = json.loads(raw_mapping)
-                if not isinstance(mapping, dict):
-                    raise ValueError("Invalid mapping")
-            except (ValueError, UnicodeError):
-                return web.json_response({"error": "Некорректные соответствия"}, status=400)
+                        return web.json_response({"error": "Слишком много соответствий"}, status=400)
+                    mapping = json.loads(raw_mapping)
+                    if not isinstance(mapping, dict):
+                        raise ValueError("Invalid mapping")
+                except (ValueError, UnicodeError):
+                    return web.json_response({"error": "Некорректные соответствия"}, status=400)
+    except (ValueError, AssertionError):
+        return web.json_response({"error": "Не удалось прочитать форму загрузки Excel"}, status=400)
 
     if not file_data:
         return web.json_response({"error": "Файл не загружен"}, status=400)
@@ -2307,3 +2313,181 @@ async def handle_rate_employees(request):
     if result is None:
         return denied(403)
     return web.json_response(result,headers={"Cache-Control":"no-store"})
+
+
+def _kol_scope(cursor, restaurant):
+    cursor.execute("SELECT key FROM restaurants WHERE %s IS NULL OR key = %s ORDER BY key",
+                   (restaurant, restaurant))
+    return [row["key"] for row in cursor.fetchall()]
+
+
+def _sync_kol_report(periods, restaurant):
+    from utils.attendance_kol import load_period
+
+    with get_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+        keys = _kol_scope(cur, restaurant)
+        if restaurant and not keys:
+            return None
+        return [load_period(cur, start, end, keys, all_restaurants=restaurant is None)
+                for start, end in periods]
+
+
+def _kol_date_range(data):
+    if not isinstance(data, dict):
+        raise ValueError
+    start, end = (date.fromisoformat(data[key]) for key in ("date_from", "date_to"))
+    if not 0 <= (end - start).days <= 366:
+        raise ValueError
+    return start, end
+
+
+def _kol_excel(periods):
+    workbook = Workbook()
+    for index, period in enumerate(periods):
+        sheet = workbook.active if index == 0 else workbook.create_sheet()
+        sheet.title = "КОЛ" if index == 0 else "Сравнение"
+        sheet.append(["Период", period["start"], period["end"]])
+        sheet.append(["Выплаты без ресторана", period["unattributed"]["count"], period["unattributed"]["amount"]])
+        sheet.append(["Объект", "Товарооборот", "Выплаты", "КОЛ, %", "План, %", "Отклонение, п. п.", "Отклонение, ₽"])
+        fields = ["turnover", "paid", "percentage", "planned_percentage", "difference_pp", "difference_rubles"]
+        for item in period["restaurants"]:
+            sheet.append([item["name"], *(item[key] for key in fields)])
+            sheet.cell(sheet.max_row, 1).data_type = "s"
+        for item in period["territories"]:
+            sheet.append([f"Территория ТУ №{item['territory_manager_id']}" if item["territory_manager_id"] else "Без территории",
+                          *(item[key] for key in fields)])
+        sheet.append(["Итого", *(period["total"][key] for key in fields)])
+        for cell in sheet[3]:
+            cell.font = Font(color="FFFFFF", bold=True)
+            cell.fill = PatternFill("solid", fgColor="12664E")
+        for row in sheet.iter_rows(min_row=4, min_col=2):
+            for cell in row:
+                cell.number_format = "#,##0.00"
+        for column in "ABCDEFG":
+            sheet.column_dimensions[column].width = 26
+        sheet.freeze_panes = "B4"
+    output = io.BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
+@routes.post("/api/timesheet/kol")
+@routes.post("/api/timesheet/kol/excel")
+async def handle_timesheet_kol(request):
+    from decimal import Decimal
+
+    user, err = await _timesheet_user(request)
+    if err or not _is_hr_or_super(user):
+        return denied(err or 403)
+    try:
+        body = await request.json()
+        periods = [_kol_date_range(body)]
+        comparison = body.get("comparison")
+        if comparison is not None:
+            periods.append(_kol_date_range(comparison))
+        restaurant = body.get("restaurant_key") or None
+        if restaurant is not None and (not isinstance(restaurant, str) or len(restaurant) > 255):
+            raise ValueError
+    except (ValueError, TypeError, KeyError):
+        return web.json_response({"error": "Укажите корректный период до 367 дней и ресторан"}, status=400)
+    result = await _run(_sync_kol_report, periods, restaurant)
+    if result is None:
+        return web.json_response({"error": "Ресторан не найден"}, status=404)
+    if request.path.endswith("/excel"):
+        return web.Response(body=_kol_excel(result), headers={
+            "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "Content-Disposition": 'attachment; filename="WOKKER_KOL.xlsx"',
+            "Cache-Control": "no-store",
+        })
+    return web.json_response({"periods": result}, dumps=lambda value: json.dumps(
+        value, default=lambda item: str(item) if isinstance(item, Decimal) else item.isoformat()),
+        headers={"Cache-Control": "no-store"})
+
+
+def _sync_add_kol_plan(actor, restaurant, effective, percentage):
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO timesheet_kol_plans(restaurant_key,effective_from,percentage,created_by)
+            SELECT key,%s,%s,%s FROM restaurants WHERE key=%s
+            ON CONFLICT (restaurant_key,effective_from) DO NOTHING
+        """, (effective, percentage, actor, restaurant))
+        return cur.rowcount == 1
+
+
+@routes.post("/api/timesheet/kol/plans")
+async def handle_timesheet_kol_plan(request):
+    from decimal import Decimal, InvalidOperation
+
+    user, err = await _timesheet_user(request)
+    if err or not _is_hr_or_super(user):
+        return denied(err or 403)
+    try:
+        body = await request.json()
+        restaurant = body["restaurant_key"]
+        effective = date.fromisoformat(body["effective_from"])
+        raw = body["percentage"]
+        if not isinstance(raw, str) or not re.fullmatch(r"\d{1,3}(?:\.\d{1,4})?", raw):
+            raise ValueError
+        percentage = Decimal(raw)
+        if not 0 <= percentage <= 100 or not isinstance(restaurant, str) or not 1 <= len(restaurant) <= 255:
+            raise ValueError
+    except (ValueError, TypeError, KeyError, InvalidOperation):
+        return web.json_response({"error": "Укажите ресторан, дату и план от 0 до 100%"}, status=400)
+    if not await _run(_sync_add_kol_plan, user["user_id"], restaurant, effective, percentage):
+        return web.json_response({"error": "Ресторан отсутствует или план на эту дату уже записан"}, status=409)
+    return web.json_response({"ok": True}, status=201)
+
+
+def _sync_kol_attribute(actor, restaurant, payment_id, reason):
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO timesheet_kol_payment_locations(payment_id, restaurant_key, created_by, reason)
+            SELECT p.id, r.key, %s, %s FROM payments p CROSS JOIN restaurants r
+            WHERE p.id=%s AND p.status='approved' AND p.record_type='payout'
+              AND p.payment_date IS NOT NULL AND r.key=%s
+            ON CONFLICT (payment_id) DO NOTHING
+        """, (actor, reason, payment_id, restaurant))
+        return cur.rowcount == 1
+
+
+@routes.post("/api/timesheet/kol/attribution")
+async def handle_timesheet_kol_attribution(request):
+    user, err = await _timesheet_user(request)
+    if err or not _is_hr_or_super(user):
+        return denied(err or 403)
+    try:
+        body = await request.json()
+        payment_id = body["payment_id"]
+        restaurant = body["restaurant_key"]
+        reason = body["reason"].strip() if isinstance(body["reason"], str) else ""
+        if type(payment_id) is not int or not 0 < payment_id < 2**31 or not reason or len(reason) > 1000:
+            raise ValueError
+        if not isinstance(restaurant, str) or not 1 <= len(restaurant) <= 255:
+            raise ValueError
+    except (TypeError, KeyError, ValueError):
+        return web.json_response({"error": "Укажите выплату, ресторан и основание"}, status=400)
+    if not await _run(_sync_kol_attribute, user["user_id"], restaurant, payment_id, reason):
+        return web.json_response({"error": "Выплата не найдена, не проведена или уже сопоставлена"}, status=409)
+    return web.json_response({"ok": True}, status=201)
+
+
+@routes.get("/api/timesheet/kol/plans")
+async def handle_timesheet_kol_plan_history(request):
+    user, err = await _timesheet_user(request)
+    if err or not _is_hr_or_super(user):
+        return denied(err or 403)
+    restaurant = request.query.get("restaurant_key", "")
+    if not 1 <= len(restaurant) <= 255:
+        return web.json_response({"error": "Выберите ресторан"}, status=400)
+
+    def load():
+        with get_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT effective_from::text, percentage::text, created_by, created_at::text
+                FROM timesheet_kol_plans WHERE restaurant_key=%s
+                ORDER BY effective_from DESC
+            """, (restaurant,))
+            return cur.fetchall()
+
+    return web.json_response({"plans": await _run(load)}, headers={"Cache-Control": "no-store"})

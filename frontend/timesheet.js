@@ -457,6 +457,11 @@ dateInput.value = [today.getFullYear(), String(today.getMonth() + 1).padStart(2,
     String(today.getDate()).padStart(2, '0')].join('-');
 for (const [key, label] of Object.entries(labels)) editForm.elements.status.add(new Option(label, key));
 function clearSession(){
+    kolVersion++;
+    byId('kol-result').replaceChildren();
+    byId('kol-status').textContent = '';
+    byId('kol-settings-status').textContent = '';
+    byId('kol-plan-result').replaceChildren();
     resetMatchingRegistry();
     resetRates();
     resetRounding();
@@ -583,6 +588,143 @@ function openReports(){
         const d=dateInput.value;
         form.elements.date_from.value=d.slice(0,7)+'-01';form.elements.date_to.value=d;
     }
+    const kol = byId('kol-form');
+    if (!kol.elements.date_from.value) {
+        kol.elements.date_from.value = form.elements.date_from.value;
+        kol.elements.date_to.value = form.elements.date_to.value;
+    }
+    const select = kol.elements.restaurant_key, previous = select.value;
+    select.replaceChildren(new Option('Вся сеть',''));
+    for (const [key,name] of restaurantNames) if (key) select.add(new Option(name,key));
+    select.value = previous;
+    for (const id of ['kol-plan-form','kol-attribution-form']) {
+        const picker = byId(id).elements.restaurant_key, prior = picker.value;
+        picker.replaceChildren(new Option('Выберите ресторан', ''));
+        for (const [key,name] of restaurantNames) if (key) picker.add(new Option(name,key));
+        picker.value = prior;
+    }
+
+
+}
+
+const kolForm = byId('kol-form');
+let kolVersion = 0;
+const kolNumber = new Intl.NumberFormat('ru-RU', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+function showKol(periods) {
+    const result = byId('kol-result');
+    result.replaceChildren();
+    for (const period of periods) {
+        const title = document.createElement('h3');
+        title.textContent = period.start + ' — ' + period.end;
+        const notice = document.createElement('p');
+        if (period.unattributed.count) {
+            notice.textContent = 'Выплат без привязки к ресторану: ' + period.unattributed.count +
+                '. Показатели ресторанов и территорий появятся после сверки.';
+        }
+        const grid = document.createElement('table');
+        const headers = grid.createTHead().insertRow();
+        for (const label of ['Объект','Товарооборот','Выплаты','КОЛ, %','План, %','Отклонение, п. п.','Отклонение, ₽']) {
+            const cell = document.createElement('th');
+            cell.scope = 'col';
+            cell.textContent = label;
+            headers.append(cell);
+        }
+        const rows = grid.createTBody();
+        const objects = [
+            ...period.restaurants,
+            ...period.territories.map(t => ({...t, name: t.territory_manager_id ? 'Территория ТУ №' + t.territory_manager_id : 'Без территории'})),
+            {...period.total, name:'Итого'}
+        ];
+        for (const object of objects) {
+            const row = rows.insertRow();
+            row.insertCell().textContent = object.name;
+            for (const key of ['turnover','paid','percentage','planned_percentage','difference_pp','difference_rubles']) {
+                row.insertCell().textContent = object[key] === null ? '—' : kolNumber.format(object[key]);
+            }
+        }
+        const wrap = document.createElement('div');
+        wrap.className = 'table';
+        wrap.tabIndex = 0;
+        wrap.append(grid);
+        result.append(title, notice, wrap);
+    }
+}
+async function submitKol(exportExcel) {
+    if (!kolForm.reportValidity()) return;
+    const version = ++kolVersion;
+    const status = byId('kol-status');
+    status.textContent = '';
+    const fields = new FormData(kolForm);
+    const read = key => fields.get(key);
+    const body = {date_from:read('date_from'), date_to:read('date_to'), restaurant_key:read('restaurant_key')};
+    const comparisonFrom = read('comparison_from'), comparisonTo = read('comparison_to');
+    if (comparisonFrom || comparisonTo) {
+        if (!comparisonFrom || !comparisonTo) {
+            status.textContent = 'Укажите обе даты периода сравнения';
+            return;
+        }
+        body.comparison = {date_from:comparisonFrom, date_to:comparisonTo};
+    }
+    byId('kol-result').replaceChildren();
+    try {
+        const data = await api('/api/timesheet/kol' + (exportExcel ? '/excel' : ''),
+                               {body: JSON.stringify(body), binary:exportExcel});
+        if (version !== kolVersion || !token) return;
+        if (exportExcel) {
+            const url = URL.createObjectURL(data), link = document.createElement('a');
+            link.href = url;
+            link.download = 'WOKKER_KOL.xlsx';
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } else {
+            showKol(data.periods);
+        }
+    } catch (error) {
+        if (version === kolVersion) status.textContent = error.message;
+    }
+}
+kolForm.addEventListener('submit', e => {e.preventDefault(); submitKol(false);});
+byId('kol-export').addEventListener('click', () => submitKol(true));
+
+const kolPlanForm = byId('kol-plan-form');
+async function loadKolPlans() {
+    const version = ++kolVersion;
+    const status = byId('kol-settings-status');
+    const list = byId('kol-plan-result');
+    list.replaceChildren();
+    const restaurant = kolPlanForm.elements.restaurant_key.value;
+    if (!restaurant) {status.textContent = 'Выберите ресторан';return;}
+    try {
+        const response = await api('/api/timesheet/kol/plans?' + new URLSearchParams({restaurant_key: restaurant}),
+                                   {method:'GET'});
+        if (version !== kolVersion || !token) return;
+        status.textContent = response.plans.length ? '' : 'Планы ещё не заданы';
+        for (const plan of response.plans) {
+            const item = document.createElement('li');
+            item.textContent = plan.effective_from + ' · ' + plan.percentage + '% · Автор №' + plan.created_by;
+            list.append(item);
+        }
+    } catch (error) {
+        if (version === kolVersion) status.textContent = error.message;
+    }
+}
+byId('kol-plan-history').addEventListener('click', loadKolPlans);
+for (const [id, resource] of [['kol-plan-form','plans'],['kol-attribution-form','attribution']]) {
+    byId(id).addEventListener('submit', async event => {
+        event.preventDefault();
+        const version = ++kolVersion;
+        const status = byId('kol-settings-status');
+        const payload = Object.fromEntries(new FormData(event.currentTarget));
+        if (resource === 'attribution') payload.payment_id = Number(payload.payment_id);
+        try {
+            await api('/api/timesheet/kol/' + resource, {body:JSON.stringify(payload)});
+            if (version !== kolVersion || !token) return;
+            status.textContent = resource === 'plans' ? 'Версия плана сохранена' : 'Выплата сопоставлена';
+            byId('kol-result').replaceChildren();
+        } catch (error) {
+            if (version === kolVersion) status.textContent = error.message;
+        }
+    });
 }
 
 const pageNames = ['Главная','Табель','Начисления','Отчёты','Согласование','Настройки','Панель загрузки','Ставки сотрудников'];

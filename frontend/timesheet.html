@@ -129,7 +129,36 @@
     <p id="accruals-status" role="status"></p><strong id="accruals-total"></strong></section>
     <section class="table" style="overflow-x:auto"><table><thead><tr><th>Сотрудник</th><th>Должность</th><th>Ресторан</th><th>Часы</th><th>Ставка / оклад</th><th>Начислено</th></tr></thead><tbody id="accruals-rows"></tbody></table></section>
   </div>
-  <div id="reports-panel" hidden><section><h2>Отчёты за период</h2><form id="reports-form" class="toolbar"><label>С <input name="date_from" type="date" required></label><label>По <input name="date_to" type="date" required></label><button type="submit">Скачать Excel</button></form><p id="reports-status" role="status"></p></section></div>
+  <div id="reports-panel" hidden><section><h2>Отчёты за период</h2><form id="reports-form" class="toolbar"><label>С <input name="date_from" type="date" required></label><label>По <input name="date_to" type="date" required></label><button type="submit">Скачать Excel</button></form><p id="reports-status" role="status"></p></section>
+  <section><h2>КОЛ</h2>
+    <form id="kol-form" class="toolbar">
+      <label>С <input name="date_from" type="date" required></label>
+      <label>По <input name="date_to" type="date" required></label>
+      <label>Ресторан <select name="restaurant_key"><option value="">Вся сеть</option></select></label>
+      <label>Сравнить с <input name="comparison_from" type="date"></label>
+      <label>По <input name="comparison_to" type="date"></label>
+      <button type="submit">Рассчитать КОЛ</button><button type="button" id="kol-export">Скачать Excel КОЛ</button>
+    </form>
+    <p id="kol-status" role="status"></p><div id="kol-result"></div>
+
+    <details><summary>Планы КОЛ и сверка выплат</summary>
+      <form id="kol-plan-form" class="toolbar">
+        <label>Ресторан <select name="restaurant_key" required></select></label>
+        <label>Действует с <input name="effective_from" type="date" required></label>
+        <label>План, % <input name="percentage" type="number" min="0" max="100" step="0.0001" required></label>
+        <button type="submit">Добавить версию</button>
+        <button type="button" id="kol-plan-history">История планов</button>
+      </form>
+      <form id="kol-attribution-form" class="toolbar">
+        <label>Ресторан <select name="restaurant_key" required></select></label>
+        <label>Номер выплаты <input name="payment_id" type="number" min="1" max="2147483647" step="1" required></label>
+        <label>Основание <input name="reason" maxlength="1000" required></label>
+        <button type="submit">Сопоставить выплату</button>
+      </form>
+      <p id="kol-settings-status" role="status"></p>
+      <ul id="kol-plan-result"></ul>
+    </details>
+  </section></div>
   <div id="approval-panel" hidden><section><h2>Согласование табелей</h2>
   <form id="approval-form" class="toolbar"><label>Ресторан <select id="approval-restaurant" required></select></label><label>Месяц <input id="approval-month" type="month" required></label><button type="submit">Показать</button></form>
   <p id="approval-status" role="status"></p><div id="approval-actions"></div>

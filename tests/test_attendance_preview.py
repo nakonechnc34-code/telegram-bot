@@ -373,3 +373,31 @@ def test_excel_merged_restaurant_additional_shift():
         ("2026-11-20", "021", "22:05-22:12", "A"),
         ("2026-11-21", "021", "09:00-10:00", "B"),
     ]
+
+
+def test_partial_preview_requires_privilege_and_matching_only():
+    rows = [
+        ("2026-11-16", "021", "09:00-12:00", "A"),
+        ("2026-11-16", "999", "10:00-13:00", "A"),
+    ]
+    with patch("routes.timesheet._is_hr_or_super", return_value=True):
+        result = preview(rows)
+        assert not result["ok"]
+        assert result["partial_allowed"]
+        assert len(result["records"]) == 1
+        assert result["records"][0]["minutes"] == 180
+        assert not preview(rows + [("2026-11-16", "021", "invalid", "A")])["partial_allowed"]
+    with patch("routes.timesheet._is_hr_or_super", return_value=False):
+        assert not preview(rows)["partial_allowed"]
+
+
+def test_partial_stage_rejects_missing_source():
+    import pytest
+    from routes.timesheet import _sync_stage_attendance
+    result = {"ok": False, "partial_allowed": True, "records": [{"user_id": 1}], "errors": ["matching"]}
+    with patch("routes.timesheet._sync_preview_attendance", return_value=result), \
+         patch("routes.timesheet._is_hr_or_super", return_value=True), \
+         patch("routes.timesheet.get_conn") as conn:
+        with pytest.raises(ValueError):
+            _sync_stage_attendance({"user_id": 1}, [], partial=True)
+        conn.assert_not_called()

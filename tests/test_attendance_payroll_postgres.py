@@ -615,9 +615,9 @@ def test_persistent_matching_postgres(monkeypatch):
             cur.execute("CREATE SCHEMA attendance_matching_test")
             cur.execute("SET LOCAL search_path TO attendance_matching_test")
             cur.execute("""CREATE TABLE users (user_id bigint PRIMARY KEY, personnel_number text,
-                restaurant_key text, is_fired boolean);
+                restaurant_key text, is_fired boolean, full_name text);
                 CREATE TABLE restaurants (key text PRIMARY KEY, name text, territory_manager_id bigint);
-                INSERT INTO users VALUES (1,'021','a',false),(2,NULL,'a',false),(3,'042','a',false);
+                INSERT INTO users VALUES (1,'021','a',false,'Test One'),(2,NULL,'a',false,'Test Two'),(3,'042','a',false,'Test Three');
                 INSERT INTO restaurants VALUES ('a','A',2)""")
             for filename in ("007_attendance_imports.sql", "015_attendance_matching.sql"):
                 sql = (Path(__file__).resolve().parents[1] / "database" / filename).read_text(encoding="utf-8")
@@ -632,6 +632,8 @@ def test_persistent_matching_postgres(monkeypatch):
         registry(actor, ("employees", "external", "1"))
         registry(actor, ("employees", "external", "1"))
         assert len(registry(actor)["history"]) == 4
+        assert registry(actor)["employees"][0]["full_name"] == "Test One"
+        assert not any(e["stale"] for e in registry(actor)["entries"])
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET personnel_number='099' WHERE user_id=1")
             cur.execute("UPDATE users SET personnel_number='021' WHERE user_id=3")
@@ -645,6 +647,7 @@ def test_persistent_matching_postgres(monkeypatch):
             assert cur.fetchall() == [(1, "a", 180)]
             cur.execute("UPDATE users SET is_fired=true WHERE user_id=1")
         assert not timesheet._sync_preview_attendance(actor, mapped())["ok"]
+        assert any(e["stale"] for e in registry(actor)["entries"] if e["kind"] == "employees")
         registry(actor, ("employees", "external", None))
         assert len(registry(actor)["history"]) == 5
         assert not timesheet._sync_preview_attendance(actor, mapped())["ok"]

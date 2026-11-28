@@ -66,11 +66,11 @@ const stamp = v => new Date(v).toLocaleString('ru-RU',{dateStyle:'short',timeSty
 const now = () => new Date().toISOString();
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)+Math.random().toString(36).slice(2);
 const people = [
- {id:'emp-1',no:'0101',name:'Сотрудник Альфа',rest:'r-1'},
- {id:'emp-2',no:'0102',name:'Сотрудник Бета',rest:'r-2'},
- {id:'emp-3',no:'0103',name:'Сотрудник Гамма',rest:'r-1'},
- {id:'emp-4',no:'0104',name:'Сотрудник Гамма',rest:'r-2'},
- {id:'emp-5',no:'0105',name:'Сотрудник Дельта',rest:'r-2'}
+ {id:'emp-1',position:'Повар',no:'0101',name:'Сотрудник Альфа',rest:'r-1'},
+ {id:'emp-2',position:'Кассир',no:'0102',name:'Сотрудник Бета',rest:'r-2'},
+ {id:'emp-3',position:'Повар',no:'0103',name:'Сотрудник Гамма',rest:'r-1'},
+ {id:'emp-4',position:'Кассир',no:'0104',name:'Сотрудник Гамма',rest:'r-2'},
+ {id:'emp-5',position:'Старший смены',no:'0105',name:'Сотрудник Дельта',rest:'r-2'}
 ];
 const rests = [{id:'r-1',name:'Метрополис'},{id:'r-2',name:'Город'},{id:'r-3',name:'Город Север'}];
 const status = {fix:'Требует исправления',wait:'Ожидает сопоставления',ready:'Готово к обработке',fixed:'Исправлено',done:'Обработано',conflict:'Конфликт данных'};
@@ -542,7 +542,7 @@ Object.assign(pages,{home:'Главная',sheets:'Табели',approval:'Со�
 const navigation=[['Рабочее время',['home','sheets','upload','approval']],['Расчёты',['accrual','payments','staff','reports']],['Управление',['history','settings']]];
 const roles={hr:'Кадровая служба',super:'Администратор',tu:'Управляющий · Центр',us:'Управляющий сменой'};
 const roleLabels={hr:'HR',super:'Супер администратор',tu:'ТУ',us:'УС'};
-people.push({id:'emp-6',no:'0106',name:'Сотрудник Эпсилон',rest:'r-3'},{id:'emp-7',no:'0107',name:'Сотрудник Дзета',rest:'r-3'});
+people.push({id:'emp-6',position:'Повар',no:'0106',name:'Сотрудник Эпсилон',rest:'r-3'},{id:'emp-7',position:'Кассир',no:'0107',name:'Сотрудник Дзета',rest:'r-3'});
 const territoryOf=r=>r==='r-3'?'Север':'Центр';
 const restaurantName=r=>byId('restaurants',r)?.name||'—';
 const initialMonth='2026-11';
@@ -979,7 +979,7 @@ function buildRegistryPreview(data,keys){
  const list=accounts();
  const rows=keys.map((key,i)=>{
   const a=list.find(x=>x.key===key),cents=intMoney(data.get('p'+i));
-  return a&&cents!==null&&cents<=a.due?{key,employee:a.employee,rest:a.rest,month:a.month,cents,due:a.due,balance:a.balance,accrued:a.accrued,calculated:calcRatio(cents,version.value,mode)}:null;
+  return a&&cents!==null&&cents<=a.due?{key,employee:a.employee,rest:a.rest,month:a.month,cents,hourlyRate:W().rates[a.employee]??null,due:a.due,balance:a.balance,accrued:a.accrued,calculated:calcRatio(cents,version.value,mode)}:null;
  });
  if(rows.some(x=>!x)||!rows.some(x=>x.cents))return null;
  return {company:{id:c.id,name:c.name,coefficient:version.value,effective:version.from},date:day,mode,lines:rows.filter(x=>x.cents>0),comment:data.get('comment').trim()};
@@ -1002,16 +1002,39 @@ function previewRegistry(result,data,keys){
    })){formPreview=null;close();chosenPay.clear();goPay('registers');toast('Реестр сформирован, суммы зарезервированы.');}
  }});
 }
+const missingHourlyRate='Не указана почасовая ставка';
+const paymentHourFormat=new Intl.NumberFormat('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2});
+function paymentHourRows(lines){
+ return lines.map(line=>{
+  const rate=line.hourlyRate;
+  return {...line,hourEquivalent:Number.isSafeInteger(rate)&&rate>0?line.cents/rate:null};
+ });
+}
+function paymentHourTotals(rows){
+ const valid=rows.filter(r=>r.hourEquivalent!==null);
+ return {hours:valid.length?sum(valid,r=>r.hourEquivalent):null,missing:rows.length-valid.length};
+}
+function paymentHourSummary({hours,missing}){
+ return (hours===null?'—':paymentHourFormat.format(hours)+' ч')+
+  (missing?' · без расчёта строк: '+missing:'');
+}
 function registryDetail(id){
  const r=W().registers.find(x=>x.id===id);
  if(!admin()||!r)return;
+ const hourRows=paymentHourRows(r.lines),hourTotals=paymentHourTotals(hourRows);
  const stateTag=r.status==='paid'?'ok':r.status==='planned'?'warn':'info';
  const cmds=r.status==='planned'?button('Подтвердить выплату','registry-step',id+'|paid','primary')+button('Отменить реестр','registry-step',id+'|cancelled','danger'):
    r.status==='paid'?button('Оформить сторно','registry-step',id+'|reversed','danger'):'';
  const meta=[['Создан',stamp(r.at)],['Автор',r.by],['Плановая дата',date(r.date)],['Фактическая дата',date(r.actual)],['Подтвердил',r.confirmedBy||'—'],['Компания',r.company.name],['Коэффициент',fmtRatio(r.company.coefficient)],['Действует с',date(r.company.effective)]];
  modal(r.number,chip(regLabels[r.status],stateTag)+'<dl class="details">'+meta.map(([k,v])=>'<div><dt>'+k+'</dt><dd>'+esc(v)+'</dd></div>').join('')+'</dl>'+
-  metrics([['Итог выплаты',money(sum(r.lines,l=>l.cents))],['Расчётная сумма',money(sum(r.lines,l=>l.calculated))],['Разница',money(sum(r.lines,l=>l.calculated-l.cents))]])+
-  table(['Сотрудник','Сумма выплаты','Расчёт'],r.lines.map(l=>[personCell(l.employee)+'<small>'+esc(restaurantName(l.rest))+'</small>',moneyCell(l.cents),moneyCell(l.calculated)]))+
+  metrics([['Итог выплаты',money(sum(r.lines,l=>l.cents))],['Расчётная сумма',money(sum(r.lines,l=>l.calculated))],['Разница',money(sum(r.lines,l=>l.calculated-l.cents))],['Эквивалент выплаты',paymentHourSummary(hourTotals)]])+
+  '<div class="actions" style="margin-top:12px">'+field('Представление выплат','<select id="registryUnit" aria-controls="registryRubles registryHours"><option value="rubles">Выплаты в рублях</option><option value="hours">Выплаты часами</option></select>')+'</div>'+
+  '<div id="registryRubles">'+table(['Сотрудник','Сумма выплаты','Расчёт'],r.lines.map(l=>[personCell(l.employee)+'<small>'+esc(restaurantName(l.rest))+'</small>',moneyCell(l.cents),moneyCell(l.calculated)]))+'</div>'+
+  '<div id="registryHours" hidden>'+table(['Сотрудник','Ставка, ₽/ч','Выплата часами'],hourRows.map(l=>[
+   personCell(l.employee)+'<small>'+esc(restaurantName(l.rest))+'</small>',
+   Number.isSafeInteger(l.hourlyRate)?moneyCell(l.hourlyRate):'—',
+   l.hourEquivalent===null?chip(missingHourlyRate,'warn'):'<span class="numeric">'+paymentHourFormat.format(l.hourEquivalent)+' ч</span>'
+  ]))+'<p class="sub">Расчётный эквивалент денежной выплаты.</p></div>'+
   '<div class="actions" style="margin:12px 0">'+button('Скачать Excel','registry-export',id,'','download')+button('Печать','print')+cmds+'</div><h3>История реестра</h3>'+eventList(r.events),{drawer:true});
 }
 function registryTransition(value){
@@ -1217,17 +1240,83 @@ function zip(parts){
  ed.setUint32(0,0x06054b50,true);ed.setUint16(8,parts.length,true);ed.setUint16(10,parts.length,true);ed.setUint32(12,central,true);ed.setUint32(16,offset,true);
  return new Blob([...files,...catalog,end],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
-function xlsx(label,headers,rows){
- const ns='http://schemas.openxmlformats.org';
- const sheet=[headers,...rows].map((row,r)=>'<row r="'+(r+1)+'">'+row.map(value=>typeof value==='number'?'<c><v>'+value+'</v></c>':'<c t="inlineStr"><is><t xml:space="preserve">'+xml(value)+'</t></is></c>').join('')+'</row>').join('');
- const data=zip([
-  ['[Content_Types].xml','<Types xmlns="'+ns+'/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>'],
+function sheetRows(rows,styleFor=()=>0,heights={}){
+ return rows.map((row,r)=>'<row r="'+(r+1)+'"'+(heights[r]?' ht="'+heights[r]+'" customHeight="1"':'')+'>'+row.map((value,c)=>{
+  const style=styleFor(r,c);
+  const ref=String.fromCharCode(65+c)+(r+1);
+  const attrs=' r="'+ref+'"'+(style?' s="'+style+'"':'');
+  if(value===null)return '<c'+attrs+'/>';
+  if(typeof value==='number')return '<c'+attrs+'><v>'+value+'</v></c>';
+  return '<c'+attrs+' t="inlineStr"><is><t xml:space="preserve">'+xml(value)+'</t></is></c>';
+ }).join('')+'</row>').join('');
+}
+const spreadsheetNs='http://schemas.openxmlformats.org';
+function xlsx(label,headers,rows,extraSheet){
+ const ns=spreadsheetNs;
+ const sheets=[{name:'Отчёт',xml:'<worksheet xmlns="'+ns+'/spreadsheetml/2006/main"><sheetData>'+sheetRows([headers,...rows])+'</sheetData></worksheet>'}];
+ if(extraSheet)sheets.push(extraSheet);
+ const overrides=sheets.map((_,i)=>'<Override PartName="/xl/worksheets/sheet'+(i+1)+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join('');
+ const definitions=sheets.map((s,i)=>'<sheet name="'+xml(s.name)+'" sheetId="'+(i+1)+'" r:id="rId'+(i+1)+'"/>').join('');
+ const links=sheets.map((_,i)=>'<Relationship Id="rId'+(i+1)+'" Type="'+ns+'/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'+(i+1)+'.xml"/>').join('');
+ const styleOverride=extraSheet?'<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>':'';
+ const styleLink=extraSheet?'<Relationship Id="rIdStyles" Type="'+ns+'/officeDocument/2006/relationships/styles" Target="styles.xml"/>':'';
+ const parts=[
+  ['[Content_Types].xml','<Types xmlns="'+ns+'/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'+overrides+styleOverride+'</Types>'],
   ['_rels/.rels','<Relationships xmlns="'+ns+'/package/2006/relationships"><Relationship Id="rId1" Type="'+ns+'/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
-  ['xl/workbook.xml','<workbook xmlns="'+ns+'/spreadsheetml/2006/main" xmlns:r="'+ns+'/officeDocument/2006/relationships"><sheets><sheet name="Отчёт" sheetId="1" r:id="rId1"/></sheets></workbook>'],
-  ['xl/_rels/workbook.xml.rels','<Relationships xmlns="'+ns+'/package/2006/relationships"><Relationship Id="rId1" Type="'+ns+'/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>'],
-  ['xl/worksheets/sheet1.xml','<worksheet xmlns="'+ns+'/spreadsheetml/2006/main"><sheetData>'+sheet+'</sheetData></worksheet>']
- ]);
- const url=URL.createObjectURL(data);hrefDownload(label+'.xlsx',url);setTimeout(()=>URL.revokeObjectURL(url),4000);
+  ['xl/workbook.xml','<workbook xmlns="'+ns+'/spreadsheetml/2006/main" xmlns:r="'+ns+'/officeDocument/2006/relationships"><sheets>'+definitions+'</sheets></workbook>'],
+  ['xl/_rels/workbook.xml.rels','<Relationships xmlns="'+ns+'/package/2006/relationships">'+links+styleLink+'</Relationships>'],
+  ...sheets.map((s,i)=>['xl/worksheets/sheet'+(i+1)+'.xml',s.xml])
+ ];
+ if(extraSheet)parts.push(['xl/styles.xml',extraSheet.styles]);
+ const url=URL.createObjectURL(zip(parts));hrefDownload(label+'.xlsx',url);setTimeout(()=>URL.revokeObjectURL(url),4000);
+}
+const payoutHoursStyles='<styleSheet xmlns="'+spreadsheetNs+'/spreadsheetml/2006/main">'+
+ '<numFmts count="4"><numFmt numFmtId="164" formatCode="#,##0.00"/><numFmt numFmtId="165" formatCode="dd.mm.yyyy"/><numFmt numFmtId="166" formatCode="mm.yyyy"/><numFmt numFmtId="167" formatCode="0.00"/></numFmts>'+
+ '<fonts count="5"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="16"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FF172A24"/><name val="Calibri"/></font><font><sz val="11"/><color rgb="FF794700"/><name val="Calibri"/></font></fonts>'+
+ '<fills count="6"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>'+
+ [['172A24'],['12664E'],['EAF4ED'],['FFF0D6']].map(([rgb])=>'<fill><patternFill patternType="solid"><fgColor rgb="FF'+rgb+'"/><bgColor indexed="64"/></patternFill></fill>').join('')+'</fills>'+
+ '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'+
+ '<cellXfs count="11">'+[[0,0,0],[1,2,0],[2,3,0],[0,0,164],[0,0,167],[3,4,0],[3,4,164],[3,4,167],[0,0,165],[0,0,166],[4,5,0]].map(([font,fill,num])=>'<xf numFmtId="'+num+'" fontId="'+font+'" fillId="'+fill+'" borderId="0" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1"/>').join('')+'</cellXfs>'+
+ '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+const excelDay=iso=>iso?Date.parse(iso+'T00:00:00Z')/86400000+25569:null;
+function payoutHoursSheet(registry){
+ const rows=paymentHourRows(registry.lines), totals=paymentHourTotals(rows);
+ const day=excelDay(registry.actual||registry.date);
+ const head=['№','Табельный номер','ФИО сотрудника','Территория','Ресторан','Должность','Расчётный период','Дата выплаты','Компания выплаты','Почасовая ставка, ₽','Общая сумма выплаты, ₽','Выплата часами'];
+ const data=[
+  ['WOKKER · Выплаты часами'],
+  ['Реестр',registry.number,'Компания',registry.company.name],
+  [registry.actual?'Дата выплаты':'Плановая дата',day],
+  head,
+  ...rows.map((l,i)=>{
+   const employee=byId('employees',l.employee);
+   return [i+1,employee?.no||'—',employeeLabel(l.employee),territoryOf(l.rest),restaurantName(l.rest),employee?.position||'—',excelDay(l.month+'-01'),day,registry.company.name,
+    Number.isSafeInteger(l.hourlyRate)?l.hourlyRate/100:null,l.cents/100,l.hourEquivalent??missingHourlyRate];
+  }),
+  ['Итого',new Set(rows.map(l=>l.employee)).size,'Количество сотрудников','','','','','','','',sum(rows,l=>l.cents)/100,totals.hours]
+ ];
+ if(totals.missing)data.push(['Часы подсчитаны по строкам с действительной ставкой. Строк без расчёта: '+totals.missing]);
+ const totalRow=4+rows.length;
+ const styles=(r,c)=>{
+  if(r===0)return 1;
+  if(r===2&&c===1)return 8;
+  if(r===3)return 2;
+  if(r===totalRow)return c===10?6:c===11?7:5;
+  if(r>totalRow)return 10;
+  if(r<4)return 0;
+  if(c===6)return 9;
+  if(c===7)return 8;
+  if(c===9||c===10)return 3;
+  if(c===11)return rows[r-4].hourEquivalent===null?10:4;
+  return 0;
+ };
+ const cols=[8,21,28,17,23,23,22,19,30,25,28,37].map((w,i)=>'<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+w+'" customWidth="1"/>').join('');
+ const merges=['A1:L1','D2:L2'];
+ if(totals.missing)merges.push('A'+data.length+':L'+data.length);
+ const merge='<mergeCells count="'+merges.length+'">'+merges.map(ref=>'<mergeCell ref="'+ref+'"/>').join('')+'</mergeCells>';
+ return {name:'Выплаты часами',styles:payoutHoursStyles,xml:'<worksheet xmlns="'+spreadsheetNs+'/spreadsheetml/2006/main">'+
+  '<sheetViews><sheetView workbookViewId="0"><pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'+
+  '<cols>'+cols+'</cols><sheetData>'+sheetRows(data,styles,{0:28,3:23,[totalRow]:21})+'</sheetData><autoFilter ref="A4:L'+(4+rows.length)+'"/>'+merge+'</worksheet>'};
 }
 function exportSheet(){
  const m=filters.month||W().month;
@@ -1240,7 +1329,7 @@ function exportAccrual(){
 }
 function exportRegistry(id){
  const r=W().registers.find(x=>x.id===id);if(!admin()||!r)return;
- xlsx(r.number,['Реестр','Компания','Плановая дата','Фактическая дата','Статус','Сотрудник','Ресторан','К выплате','Коэффициент','Расчётная сумма'],r.lines.map(l=>[r.number,r.company.name,date(r.date),date(r.actual),regLabels[r.status],employeeLabel(l.employee),restaurantName(l.rest),l.cents/100,r.company.coefficient/10000,l.calculated/100]));
+ xlsx(r.number,['Реестр','Компания','Плановая дата','Фактическая дата','Статус','Сотрудник','Ресторан','К выплате','Коэффициент','Расчётная сумма'],r.lines.map(l=>[r.number,r.company.name,date(r.date),date(r.actual),regLabels[r.status],employeeLabel(l.employee),restaurantName(l.rest),l.cents/100,r.company.coefficient/10000,l.calculated/100]),payoutHoursSheet(r));
 }
 const previousDetail=actions.detail;
 Object.assign(actions,{
@@ -1275,6 +1364,10 @@ document.addEventListener('input',e=>{
 document.addEventListener('change',e=>{
  const v=e.target;
  if(v.dataset.view&&v.type!=='search')updateViewFilter(v);
+ if(v.id==='registryUnit'){
+  $('registryRubles').hidden=v.value==='hours';
+  $('registryHours').hidden=v.value!=='hours';
+ }
  if(v.id==='extraRest')$('extraEmployee').innerHTML=extraPeople(v.value);
  if(v.dataset.pay){
   if(v.checked)chosenPay.add(v.dataset.pay);else chosenPay.delete(v.dataset.pay);

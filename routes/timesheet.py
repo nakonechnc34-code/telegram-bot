@@ -758,8 +758,8 @@ def _load_saved_attendance_mapping():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT kind,source,target FROM attendance_matching")
-            return [dict(entry, target=("employee_id", entry["target"]) if entry["kind"] == "employees"
-                         else ("restaurant_key", entry["target"])) for entry in cur.fetchall()]
+            return [dict(entry, target=("employee_id", entry["target"], entry["source"]) if entry["kind"] == "employees"
+                         else ("restaurant_key", entry["target"], entry["source"])) for entry in cur.fetchall()]
 
 
 def _apply_attendance_mapping(user, rows, mapping):
@@ -807,7 +807,7 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
     territory = {r["key"] for r in restaurants if r["territory_manager_id"] == user["user_id"]}
     known = {r["key"] for r in restaurants}
     for day, number, raw, name in rows:
-        original_number = number
+        original_number = number[2] if isinstance(number, tuple) and len(number) > 2 else number
         if isinstance(number, tuple):
             selected = users_by_id.get(number[1])
             candidates = [selected] if selected else []
@@ -828,7 +828,7 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
         key = matches[0] if len(matches) == 1 else (default_rest_key or employee["restaurant_key"]) if not name else None
         if key not in known or not _restaurant_in_scope(user, key, territory):
             if name:
-                unresolved_restaurants.add(name)
+                unresolved_restaurants.add(name[2] if isinstance(name, tuple) and len(name) > 2 else str(name))
             matching_errors.add(f"Неизвестный или недоступный ресторан: {name or '-'}")
             continue
         if raw in ("В", "Б", "Н"):

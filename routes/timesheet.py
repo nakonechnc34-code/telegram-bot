@@ -1030,14 +1030,24 @@ def _sync_stage_attendance(user, rows, default_rest_key=None, partial=False, sou
                 # Never overwrite existing employee-day records during archive recovery.
                 new_records = []
                 for record in records:
-                    cur.execute("SELECT 1 FROM attendance_import_days WHERE user_id=%s AND restaurant_key=%s AND work_date=%s", (record["user_id"], record["restaurant_key"], record["date"]))
-                    if not cur.fetchone():
+                    cur.execute("""SELECT d.status, d.worked_minutes, i.start_minute, i.end_minute
+                        FROM attendance_import_days d LEFT JOIN attendance_import_intervals i ON i.day_id=d.id
+                        WHERE d.user_id=%s AND d.restaurant_key=%s AND d.work_date=%s""",
+                        (record["user_id"], record["restaurant_key"], record["date"]))
+                    existing = cur.fetchall()
+                    if not existing:
                         new_records.append(record)
+                        continue
+                    expected = {shift_interval(value) for value in record["shifts"]}
+                    actual = {(row["start_minute"], row["end_minute"]) for row in existing if row["start_minute"] is not None}
+                    if expected != actual or any(row["status"] != record.get("status", "work") or row["worked_minutes"] != record["minutes"] for row in existing):
+                        return {"ok": False, "errors": ["Исправленный отчёт отличается от сохранённого рабочего дня. Требуется ручная сверка; отчёт не закрыт."]}
                 records = new_records
                 if _attendance_saved_conflict(cur, records, employee_ids, partial=True):
                     return {"ok": False, "errors": ["Конфликт с сохранёнными сменами"]}
                 if not records:
-                    return {"ok": False, "errors": ["Нет новых записей; требуется ручная сверка"]}
+                    cur.execute("UPDATE attendance_partial_reports SET resolved_at=now() WHERE id=%s", (retry_id,))
+                    return {"ok": True, "success_count": 0, "report_id": retry_id, "staged": True}
             if partial:
                 for uid, key, day in sorted({(r["user_id"], r["restaurant_key"], r["date"]) for r in records}):
                     cur.execute("DELETE FROM attendance_import_days WHERE user_id=%s AND restaurant_key=%s AND work_date=%s", (uid,key,day))

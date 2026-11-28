@@ -793,3 +793,53 @@ def test_full_size_attendance_import_postgres(monkeypatch):
     finally:
         conn.rollback()
         conn.close()
+
+
+def test_partial_archive_recovery_postgres(monkeypatch):
+    from contextlib import nullcontext
+    from pathlib import Path
+    from io import BytesIO
+    from openpyxl import Workbook
+    from routes import timesheet
+    dsn = os.getenv("ATTENDANCE_TEST_DSN")
+    if not dsn:
+        pytest.skip("ATTENDANCE_TEST_DSN not configured")
+    conn = psycopg2.connect(dsn)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""CREATE SCHEMA attendance_partial_test;
+                SET LOCAL search_path TO attendance_partial_test;
+                CREATE TABLE users (user_id bigint PRIMARY KEY, personnel_number text,
+                    restaurant_key text, is_fired boolean, full_name text);
+                CREATE TABLE restaurants (key text PRIMARY KEY, name text, territory_manager_id bigint);
+                INSERT INTO users VALUES (1,'021','a',false,'One'),(2,'042','a',false,'Two'),(999,NULL,'a',false,'Admin');
+                INSERT INTO restaurants VALUES ('a','A',999)""")
+            for filename in ("007_attendance_imports.sql", "015_attendance_matching.sql", "016_attendance_partial_reports.sql"):
+                cur.execute((Path(__file__).resolve().parents[1] / "database" / filename).read_text(encoding="utf-8"))
+        monkeypatch.setattr(timesheet, "get_conn", lambda: nullcontext(conn))
+        actor = {"user_id":999,"is_super_admin":True}
+        book = Workbook()
+        book.active.append(["Табельный номер","Подразделение","16.11.2026"])
+        book.active.append(["021","A","09:00-12:00"])
+        book.active.append(["external","A","10:00-14:00"])
+        buf = BytesIO()
+        book.save(buf)
+        source = buf.getvalue()
+        rows = timesheet._parse_excel_rows(source)
+        first = timesheet._sync_stage_attendance(actor, rows, partial=True, source_file=source)
+        assert first["ok"] and first["partial"] and first["success_count"] == 1
+        report_id = first["report_id"]
+        assert timesheet._sync_partial_report_file(report_id) == source
+        timesheet._sync_matching_registry(actor, ("employees","external","2"))
+        mapped = timesheet._merge_saved_attendance_mapping(rows, timesheet._load_saved_attendance_mapping(), None)
+        recovered = timesheet._sync_stage_attendance(actor, mapped, partial=True, source_file=source, retry_id=report_id)
+        assert recovered["ok"] and recovered["success_count"] == 1
+        assert not timesheet._sync_stage_attendance(actor, mapped, partial=True, source_file=source, retry_id=report_id)["ok"]
+        with conn.cursor() as cur:
+            cur.execute("SELECT user_id,worked_minutes FROM attendance_import_days ORDER BY user_id")
+            assert cur.fetchall() == [(1,180),(2,240)]
+            cur.execute("SELECT resolved_at IS NOT NULL FROM attendance_partial_reports WHERE id=%s",(report_id,))
+            assert cur.fetchone() == (True,)
+    finally:
+        conn.rollback()
+        conn.close()

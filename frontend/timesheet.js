@@ -369,6 +369,7 @@ dateInput.value = [today.getFullYear(), String(today.getMonth() + 1).padStart(2,
     String(today.getDate()).padStart(2, '0')].join('-');
 for (const [key, label] of Object.entries(labels)) editForm.elements.status.add(new Option(label, key));
 function clearSession(){
+    resetMatchingRegistry();
     resetRates();
     resetRounding();
     historyVersion++;
@@ -738,7 +739,7 @@ function showPage(index) {
     byId('accruals-panel').hidden = index !== 2;
     if(index === 2 && token) openAccruals();
     byId('upload-panel').hidden = index !== 6;
-    if (index === 6 && token) loadAttendanceHistory();
+    if (index === 6 && token) { loadAttendanceHistory(); loadMatchingRegistry(); }
     document.querySelectorAll('nav [data-page]').forEach(button => {
         if (Number(button.dataset.page) === index) button.setAttribute('aria-current','page');
         else button.removeAttribute('aria-current');
@@ -747,5 +748,85 @@ function showPage(index) {
 document.querySelectorAll('[data-page]').forEach(button => {
     button.addEventListener('click', () => showPage(Number(button.dataset.page)));
 });
+
+let registryVersion = 0;
+let registryBusy = false;
+function resetMatchingRegistry() {
+    registryVersion++;
+    byId('matching-registry').hidden = true;
+    byId('registry-form').reset();
+    byId('registry-rows').replaceChildren();
+    byId('registry-history').replaceChildren();
+    byId('registry-status').textContent = '';
+}
+function renderMatchingRegistry(data) {
+    const form = byId('registry-form');
+    const rows = byId('registry-rows');
+    rows.replaceChildren();
+    const kindLabel = kind => kind === 'employees' ? 'Сотрудник' : 'Ресторан';
+    for (const entry of data.entries) {
+        const row = rows.insertRow();
+        for (const value of [kindLabel(entry.kind), entry.source, entry.target])
+            row.insertCell().textContent = value;
+        const actions = row.insertCell();
+        const edit = document.createElement('button');
+        edit.type = 'button'; edit.textContent = 'Изменить';
+        edit.onclick = () => {
+            form.elements.kind.value = entry.kind;
+            form.elements.source.value = entry.source;
+            form.elements.target.value = entry.target;
+            form.elements.target.focus();
+        };
+        const remove = document.createElement('button');
+        remove.type = 'button'; remove.textContent = 'Удалить';
+        remove.onclick = () => {
+            if (window.confirm('Удалить соответствие: ' + entry.source + '?'))
+                changeMatchingRegistry('DELETE', {kind: entry.kind, source: entry.source});
+        };
+        actions.append(edit, remove);
+    }
+    const history = byId('registry-history');
+    history.replaceChildren();
+    for (const entry of data.history) {
+        const row = history.insertRow();
+        for (const value of [kindLabel(entry.kind), entry.source, entry.previous_target,
+            entry.new_target, entry.actor_id, entry.created_at])
+            row.insertCell().textContent = value ?? '—';
+    }
+}
+async function loadMatchingRegistry() {
+    const version = ++registryVersion;
+    try {
+        const data = await api('/api/timesheet/matching', {method: 'GET'});
+        if (version !== registryVersion || !token) return;
+        renderMatchingRegistry(data);
+        byId('matching-registry').hidden = false;
+        byId('registry-status').textContent = '';
+    } catch (error) {
+        if (version === registryVersion) resetMatchingRegistry();
+    }
+}
+async function changeMatchingRegistry(method, values) {
+    if (registryBusy || !token || byId('matching-registry').hidden) return;
+    registryBusy = true;
+    const version = ++registryVersion;
+    const status = byId('registry-status');
+    try {
+        const data = await api('/api/timesheet/matching', {method, body: JSON.stringify(values)});
+        if (version !== registryVersion || !token) return;
+        renderMatchingRegistry(data);
+        byId('registry-form').reset();
+        clearAttendancePreview();
+        status.textContent = 'Изменения сохранены';
+    } catch (error) {
+        if (version === registryVersion) status.textContent = error.message;
+    } finally { registryBusy = false; }
+}
+byId('registry-refresh').addEventListener('click', loadMatchingRegistry);
+byId('registry-form').addEventListener('submit', event => {
+    event.preventDefault();
+    changeMatchingRegistry('POST', Object.fromEntries(new FormData(event.currentTarget)));
+});
+
 showPage(0);
 startTimesheet();

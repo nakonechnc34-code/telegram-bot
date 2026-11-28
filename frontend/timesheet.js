@@ -187,6 +187,92 @@ async function deleteAttendance(record, button) {
         button.disabled = false;
     }
 }
+let archiveVersion = 0;
+async function loadPartialReports() {
+    const version = ++archiveVersion;
+    const panel = byId('partial-report-list');
+    panel.replaceChildren();
+    try {
+        const result = await api('/api/timesheet/import_attendance/partial_reports', {method:'GET'});
+        if (version !== archiveVersion || !token) return;
+        for (const report of result.records) {
+            const item = document.createElement('div');
+            const title = document.createElement('p');
+            title.textContent = 'Отчёт №' + report.id + ' · ' + report.created_at + (report.resolved_at ? ' · Обработан' : ' · Ошибок: ' + report.diagnostics.error_count);
+            const status = document.createElement('p');
+            status.textContent = (report.diagnostics.errors || []).join(' · ');
+            item.append(title, status);
+            const matching = document.createElement('div');
+            item.append(matching);
+            const showMatching = sources => {
+                matching.replaceChildren();
+                for (const [kind, values] of Object.entries(sources || {})) {
+                    for (const source of values) {
+                        const button = document.createElement('button');
+                        button.type = 'button';
+                        button.textContent = (kind === 'employees' ? 'Сопоставить сотрудника ' : 'Сопоставить ресторан ') + source;
+                        button.onclick = () => openRegistryEntry(kind, source);
+                        matching.append(button);
+                    }
+                }
+            };
+            showMatching(report.diagnostics.matching);
+            const base = '/api/timesheet/import_attendance/partial_reports/' + report.id;
+            const action = (label, fn) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.textContent = label;
+                button.addEventListener('click', async () => {
+                    button.disabled = true;
+                    try { await fn(); } catch (error) { status.textContent = error.message; }
+                    finally { button.disabled = false; }
+                });
+                item.append(button);
+                return button;
+            };
+            action('Скачать Excel', async () => {
+                const blob = await api(base + '/file', {method:'GET', binary:true});
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url; link.download = 'attendance-' + report.id + '.xlsx';
+                link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+            });
+            if (!report.resolved_at) {
+                const save = action('Сохранить исправленные часы', async () => {
+                    const data = await api(base + '/stage');
+                    status.textContent = data.ok ? 'Сохранено: ' + data.success_count : (data.errors || []).join(' · ');
+                    if (data.ok) { await loadPartialReports(); await loadDay(); }
+                });
+                save.disabled = true;
+                action('Повторная проверка', async () => {
+                    save.disabled = true;
+                    const data = await api(base + '/preview');
+                    status.textContent = data.ok ? 'Проверка пройдена' : (data.errors || []).join(' · ');
+                    showMatching(data.matching);
+                    save.disabled = !(data.ok || (data.partial_allowed && data.records?.length));
+                });
+            }
+            panel.append(item);
+        }
+        if (!result.records.length) panel.textContent = 'Нет отчётов с ошибками';
+    } catch (error) { if (version === archiveVersion) panel.textContent = error.message; }
+}
+const partialPanel = document.createElement('details');
+const partialTitle = document.createElement('summary');
+partialTitle.textContent = 'Отчёты с ошибками';
+const partialList = document.createElement('div');
+partialList.id = 'partial-report-list';
+partialPanel.append(partialTitle, partialList);
+byId('attendance-history-status').before(partialPanel);
+partialPanel.hidden = true;
+partialPanel.addEventListener('toggle', () => {
+    if (partialPanel.open && !partialPanel.hidden) loadPartialReports();
+    else {
+        archiveVersion++;
+        partialList.replaceChildren();
+    }
+});
+
 async function loadAttendanceHistory() {
     const version = ++historyVersion;
     const status = byId('attendance-history-status');
@@ -289,13 +375,15 @@ byId('import-form').addEventListener('submit', async event => {
         if (version !== previewVersion) return;
         renderAttendanceMatching(result.matching);
         const records = result.records;
-        if (result.ok && records.length) {
+        byId("confirm-attendance").textContent = result.partial_allowed ? "Сохранить отчёт с ошибками" : "Сохранить проверенный отчёт";
+        if (result.partial_allowed || (result.ok && records.length)) {
+            if (!result.ok) params.set("partial", "1");
             verifiedAttendance = {data, params, version};
             byId('confirm-attendance').disabled = false;
         }
         const duration = n => Math.floor(n / 60) + ' ч ' + (n % 60) + ' мин';
         byId('preview-summary').textContent = [
-            'Сотрудников: ' + new Set(records.map(r => r.personnel_number)).size,
+            'Сотрудников: ' + new Set(records.map(r => r.user_id ?? r.personnel_number)).size,
             'Ресторанов: ' + new Set(records.map(r => r.restaurant_key)).size,
             'Интервалов: ' + records.reduce((n,r) => n + r.shifts.length, 0),
             'Итого: ' + (result.total_minutes === null ? 'не рассчитано' : duration(result.total_minutes))
@@ -336,7 +424,7 @@ byId('confirm-attendance').addEventListener('click', async () => {
         const result = await api('/api/timesheet/import_attendance/stage?' + verified.params, {body: verified.data});
         if (verified.version !== previewVersion) return;
         byId('upload-status').textContent = result.ok
-            ? 'Отчёт №' + result.import_id + ' сохранён. Записей: ' + result.success_count + '. Данные будут учтены при расчёте начислений.'
+            ? (result.partial ? 'Отчёт с ошибками №' + result.report_id + ' сохранён. Корректных записей: ' + result.success_count + '. Ошибок: ' + result.error_count : 'Отчёт №' + result.import_id + ' сохранён. Записей: ' + result.success_count) + '. Начисления после утверждения HR.'
             : (result.errors || ['Отчёт не сохранён']).join('\n');
         if (result.ok) { await loadAttendanceHistory(); await loadDay(); }
     } catch (error) {
@@ -518,7 +606,8 @@ async function loadApproval(){
         }
         const options=[];
         if(['draft','returned'].includes(data.status))options.push(['submit','Отправить на согласование']);
-        if(data.can_review&&data.status==='pending')options.push(['approve','Утвердить'],['return','Вернуть на доработку']);
+        if(data.can_approve&&data.status==='pending')options.push(['approve','Утвердить']);
+        if(data.can_review&&data.status==='pending')options.push(['return','Вернуть на доработку']);
         if(data.can_review&&data.status==='approved')options.push(['reopen','Открыть повторно']);
         for(const [action,label] of options){
             const button=document.createElement('button');button.type='button';button.textContent=label;
@@ -756,6 +845,10 @@ function resetMatchingRegistry() {
     registryDirectory = {employees: [], restaurants: []};
     byId('registry-form').elements.target.replaceChildren();
     byId('matching-registry').hidden = true;
+    archiveVersion++;
+    partialPanel.hidden = true;
+    partialPanel.open = false;
+    partialList.replaceChildren();
     byId('registry-form').reset();
     byId('registry-rows').replaceChildren();
     byId('registry-history').replaceChildren();
@@ -775,10 +868,17 @@ function updateRegistryChoices(selected = '') {
     }
     target.value = selected;
 }
+function openRegistryEntry(kind, source, target = '') {
+    const form = byId('registry-form');
+    form.elements.kind.value = kind;
+    form.elements.source.value = source;
+    byId('registry-search').value = '';
+    updateRegistryChoices(target);
+    form.elements.target.focus();
+}
 function renderMatchingRegistry(data) {
     registryDirectory = {employees: data.employees || [], restaurants: data.restaurants || []};
     updateRegistryChoices();
-    const form = byId('registry-form');
     const rows = byId('registry-rows');
     rows.replaceChildren();
     const kindLabel = kind => kind === 'employees' ? 'Сотрудник' : 'Ресторан';
@@ -789,13 +889,7 @@ function renderMatchingRegistry(data) {
         const actions = row.insertCell();
         const edit = document.createElement('button');
         edit.type = 'button'; edit.textContent = 'Изменить';
-        edit.onclick = () => {
-            form.elements.kind.value = entry.kind;
-            form.elements.source.value = entry.source;
-            byId('registry-search').value = '';
-            updateRegistryChoices(entry.target);
-            form.elements.target.focus();
-        };
+        edit.onclick = () => openRegistryEntry(entry.kind, entry.source, entry.target);
         const remove = document.createElement('button');
         remove.type = 'button'; remove.textContent = 'Удалить';
         remove.onclick = () => {
@@ -820,6 +914,7 @@ async function loadMatchingRegistry() {
         if (version !== registryVersion || !token) return;
         renderMatchingRegistry(data);
         byId('matching-registry').hidden = false;
+        partialPanel.hidden = false;
         byId('registry-status').textContent = '';
     } catch (error) {
         if (version === registryVersion) resetMatchingRegistry();
@@ -838,6 +933,7 @@ async function changeMatchingRegistry(method, values) {
         updateRegistryChoices();
         clearAttendancePreview();
         status.textContent = 'Изменения сохранены';
+        if (partialPanel.open) await loadPartialReports();
     } catch (error) {
         if (version === registryVersion) status.textContent = error.message;
     } finally { registryBusy = false; }

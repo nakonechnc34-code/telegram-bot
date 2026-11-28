@@ -339,7 +339,8 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
                 UPDATE users SET personnel_number='021' WHERE user_id=1;""")
             root = Path(__file__).resolve().parents[1] / "database"
             for filename in ("007_attendance_imports.sql", "015_attendance_matching.sql", "008_timesheet_approval.sql", "009_timesheet_approval_locks.sql",
-                             "010_timesheet_accrual_snapshots.sql", "012_timesheet_individual_rates.sql", "013_timesheet_daily_snapshots.sql", "014_timesheet_rate_backfill.sql"):
+                             "010_timesheet_accrual_snapshots.sql", "012_timesheet_individual_rates.sql", "013_timesheet_daily_snapshots.sql", "014_timesheet_rate_backfill.sql",
+                             "016_attendance_partial_reports.sql", "017_attendance_archive_lookup.sql"):
                 cur.execute((root / filename).read_text(encoding="utf-8"))
         with conn.cursor() as cur:
             cur.execute("INSERT INTO attendance_imports(uploaded_by,date_from,date_to) VALUES (30,'2026-11-01','2026-11-01') RETURNING id")
@@ -371,8 +372,10 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
         assert transition(tu,"submit",0) == 200
         assert report() == []
         assert transition(tu,"approve",1) == 403
-        assert transition(admin,"approve",0) == 409
+        assert transition(admin,"approve",1) == 403
+        assert report() == []
         hr = {"user_id":30,"is_admin":True,"position":"HR"}
+        assert transition(hr,"approve",0) == 409
         assert transition(hr,"approve",1) == 200
         with conn.cursor() as cur:
             cur.execute("SAVEPOINT approved_import")
@@ -455,7 +458,7 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
         assert transition(admin,"reopen",2,"Correction") == 200
         assert report() == []
         assert transition(tu,"submit",3) == 200
-        assert transition(admin,"approve",4) == 200
+        assert transition(hr,"approve",4) == 200
         assert report()[0]["total_salary"] == Decimal("4800.00")
         with conn.cursor() as cur:
             cur.execute("SELECT revision,total_salary FROM timesheet_accrual_snapshots ORDER BY revision")
@@ -470,7 +473,7 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
             cur.execute("UPDATE attendance_imports SET date_to='2026-11-03' WHERE id=%s", (original_import,))
         assert timesheet._sync_set_individual_rate(30,1,Decimal("100")) == 200
         assert transition(tu,"submit",6) == 200
-        assert transition(admin,"approve",7) == 200
+        assert transition(hr,"approve",7) == 200
         assert report()[0]["total_salary"] == Decimal("5.00")
         parts = [timesheet._sync_approved_reports(30,f"2026-11-0{day}",f"2026-11-0{day}")[0]["total_salary"] for day in (1,2,3)]
         assert parts == [Decimal("1.67"),Decimal("1.66"),Decimal("1.67")]
@@ -547,13 +550,14 @@ def test_fixed_salary_snapshot_is_informational_postgres(monkeypatch):
         monkeypatch.setattr(timesheet, "get_conn", lambda: nullcontext(conn))
         admin = {"user_id":30,"is_super_admin":True}
         month = date(2026,11,1)
+        hr = {"user_id":30,"is_admin":True,"position":"HR"}
         def transition(key, action, revision, comment=""):
-            assert timesheet._sync_approval_transition(admin,key,month,action,comment,revision)[0] == 200
+            assert timesheet._sync_approval_transition(hr,key,month,action,comment,revision)[0] == 200
         def total():
             return sum(row["total_salary"] for row in
                        timesheet._sync_approved_reports(30,"2026-11-01","2026-11-30"))
         transition("a","submit",0)
-        status, result = timesheet._sync_approval_transition(admin,"a",month,"approve","",1)
+        status, result = timesheet._sync_approval_transition(hr,"a",month,"approve","",1)
         assert status == 409
         assert result == {"error":"missing_hourly_rates","employees":[{"user_id":1,"full_name":"Fixed"}]}
         with conn.cursor() as cur:
@@ -792,4 +796,105 @@ def test_full_size_attendance_import_postgres(monkeypatch):
                 assert cur.fetchone()[0] == 1
     finally:
         conn.rollback()
+        conn.close()
+
+
+def test_partial_archive_recovery_postgres(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from contextlib import closing, contextmanager
+    from json import dumps, loads
+    from pathlib import Path
+    from io import BytesIO
+    from openpyxl import Workbook
+    from routes import timesheet
+    dsn = os.getenv("ATTENDANCE_TEST_DSN")
+    if not dsn:
+        pytest.skip("ATTENDANCE_TEST_DSN not configured")
+    conn = psycopg2.connect(dsn)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""CREATE SCHEMA attendance_partial_test;
+                SET LOCAL search_path TO attendance_partial_test;
+                CREATE TABLE users (user_id bigint PRIMARY KEY, personnel_number text,
+                    restaurant_key text, is_fired boolean, full_name text);
+                CREATE TABLE restaurants (key text PRIMARY KEY, name text, territory_manager_id bigint);
+                INSERT INTO users VALUES (1,'021','a',false,'One'),(2,'042','a',false,'Two'),(3,NULL,'a',false,'Three'),(999,NULL,'a',false,'Admin');
+                INSERT INTO restaurants VALUES ('a','A',999)""")
+            for filename in ("007_attendance_imports.sql", "015_attendance_matching.sql", "016_attendance_partial_reports.sql", "017_attendance_archive_lookup.sql"):
+                cur.execute((Path(__file__).resolve().parents[1] / "database" / filename).read_text(encoding="utf-8"))
+        conn.commit()
+
+        @contextmanager
+        def test_connection():
+            with closing(psycopg2.connect(dsn, options="-c search_path=attendance_partial_test")) as connection:
+                with connection:
+                    yield connection
+
+        monkeypatch.setattr(timesheet, "get_conn", test_connection)
+        actor = {"user_id": 999, "is_super_admin": True}
+
+        def excel(*rows):
+            book = Workbook()
+            book.active.append(["Табельный номер", "Подразделение", "16.11.2026"])
+            for row in rows:
+                book.active.append(row)
+            buf = BytesIO()
+            book.save(buf)
+            return buf.getvalue()
+
+        source = excel(("021", "A", "09:00-12:00"), ("external", "A", "10:00-14:00"),
+                       ("042", "external restaurant", "15:00-17:00"))
+        rows = timesheet._parse_excel_rows(source)
+        first = timesheet._sync_stage_attendance(actor, rows, partial=True, source_file=source)
+        assert first["ok"] and first["partial"] and first["success_count"] == 1
+        report_id = first["report_id"]
+        assert timesheet._sync_partial_report_file(report_id) == source
+        assert not timesheet._sync_stage_attendance(actor, rows, partial=True, source_file=source)["ok"]
+
+        conflicting = excel(("021", "A", "07:00-12:00"), ("unknown", "A", "08:00-09:00"))
+        assert not timesheet._sync_stage_attendance(
+            actor, timesheet._parse_excel_rows(conflicting), partial=True, source_file=conflicting
+        )["ok"]
+
+        timesheet._sync_matching_registry(actor, ("employees", "external", "3"))
+
+        def recover():
+            pending, default_rest = timesheet._sync_partial_report_pending(report_id)
+            mapped = timesheet._merge_saved_attendance_mapping(pending, timesheet._load_saved_attendance_mapping(), None)
+            expected = loads(dumps(pending))
+            return lambda: timesheet._sync_stage_attendance(
+                actor, mapped, default_rest, partial=True, retry_id=report_id, expected_pending=expected
+            )
+
+        recovery = recover()
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(lambda _: recovery(), range(2)))
+        assert sorted(result["ok"] for result in results) == [False, True]
+        assert next(result for result in results if result["ok"])["success_count"] == 1
+        assert timesheet._sync_partial_report_pending(report_id)[0] == [
+            ("2026-11-16", "042", "15:00-17:00", "external restaurant")
+        ]
+
+        timesheet._sync_matching_registry(actor, ("restaurants", "external restaurant", "a"))
+        assert recover()()["success_count"] == 1
+        complete = timesheet._merge_saved_attendance_mapping(rows, timesheet._load_saved_attendance_mapping(), None)
+        assert not timesheet._sync_stage_attendance(actor, complete, source_file=source)["ok"]
+
+        unmatched = excel(("unknown", "A", "08:00-09:00"))
+        unmatched_rows = timesheet._parse_excel_rows(unmatched)
+        archived = timesheet._sync_stage_attendance(actor, unmatched_rows, partial=True, source_file=unmatched)
+        assert archived["ok"] and archived["partial"] and archived["success_count"] == 0
+        assert timesheet._sync_partial_report_pending(archived["report_id"])[0] == unmatched_rows
+
+        with test_connection() as connection, connection.cursor() as cur:
+            cur.execute("SELECT user_id,worked_minutes FROM attendance_import_days ORDER BY user_id")
+            assert cur.fetchall() == [(1, 180), (2, 120), (3, 240)]
+            cur.execute("SELECT resolved_at IS NOT NULL FROM attendance_partial_reports WHERE id=%s", (report_id,))
+            assert cur.fetchone() == (True,)
+            cur.execute("SELECT COUNT(*) FROM attendance_partial_reports")
+            assert cur.fetchone() == (2,)
+    finally:
+        conn.rollback()
+        with conn, conn.cursor() as cur:
+            cur.execute("DROP SCHEMA IF EXISTS attendance_partial_test CASCADE")
         conn.close()

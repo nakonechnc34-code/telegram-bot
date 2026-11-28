@@ -281,3 +281,24 @@ def test_saved_mapping_is_single_pass_and_manual_override():
         ("2026-11-16", "021", "09:00-12:00", "B")]
     assert _merge_saved_attendance_mapping(rows, saved, {"employees": {"9181": "42"}}) == [
         ("2026-11-16", "42", "09:00-12:00", "B")]
+
+
+def test_matching_registry_http_denies_non_privileged_users():
+    import asyncio
+    from aiohttp import web
+    from aiohttp.test_utils import TestClient, TestServer
+    from unittest.mock import AsyncMock
+    from routes.timesheet import handle_attendance_matching
+
+    async def scenario():
+        app = web.Application()
+        for method in ("GET", "POST", "DELETE"):
+            app.router.add_route(method, "/api/timesheet/matching", handle_attendance_matching)
+        async with TestClient(TestServer(app)) as client:
+            for method in ("GET", "POST", "DELETE"):
+                with patch("routes.timesheet._timesheet_user", new=AsyncMock(return_value=({"user_id": 1}, None))), patch("routes.timesheet._is_hr_or_super", return_value=False), patch("routes.timesheet._run", new=AsyncMock()) as run:
+                    response = await client.request(method, "/api/timesheet/matching")
+                    assert response.status == 403
+                    await response.read()
+                    run.assert_not_called()
+    asyncio.run(scenario())

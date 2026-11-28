@@ -1079,6 +1079,33 @@ async def handle_partial_reports(request):
     return web.json_response({"records": await _run(_sync_partial_report_list)}, headers={"Cache-Control": "no-store"})
 
 
+@routes.post('/api/timesheet/import_attendance/partial_reports/{report_id}/preview')
+async def handle_partial_report_preview(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    _require_timesheet_access(user)
+    if not _is_hr_or_super(user):
+        return denied(403)
+    try:
+        report_id = int(request.match_info["report_id"])
+        if not 0 < report_id < 2**63:
+            raise ValueError()
+    except ValueError:
+        return web.json_response({"error": "Некорректный номер отчёта"}, status=400)
+    source = await _run(_sync_partial_report_file, report_id)
+    if source is None:
+        return web.json_response({"error": "Отчёт не найден"}, status=404)
+    try:
+        rows = await _run(_parse_excel_rows, source)
+        saved = await _run(_load_saved_attendance_mapping)
+        rows = _merge_saved_attendance_mapping(rows, saved, None)
+        result = await _run(_sync_preview_attendance, user, rows, None)
+    except ValueError:
+        return web.json_response({"error": "Не удалось проверить отчёт"}, status=400)
+    return web.json_response(result, headers={"Cache-Control": "no-store"})
+
+
 @routes.get('/api/timesheet/import_attendance/partial_reports/{report_id}/file')
 async def handle_partial_report_file(request):
     user, err = await _timesheet_user(request)

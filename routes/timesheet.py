@@ -790,7 +790,7 @@ def _apply_attendance_mapping(user, rows, mapping):
             for day, number, raw, name in rows]
 
 
-def _sync_preview_attendance(user, rows, default_rest_key=None):
+def _sync_preview_attendance(user, rows, default_rest_key=None, pending=None):
     """Validate scope and calculate minutes without changing payroll records."""
     from utils.attendance_minutes import shift_interval, worked_minutes
     groups = {}
@@ -812,6 +812,7 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
     territory = {r["key"] for r in restaurants if r["territory_manager_id"] == user["user_id"]}
     known = {r["key"] for r in restaurants}
     for day, number, raw, name in rows:
+        original_row = (day, number, raw, name)
         original_number = number[2] if isinstance(number, tuple) and len(number) > 2 else number
         if isinstance(number, tuple):
             selected = users_by_id.get(number[1])
@@ -822,6 +823,8 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
             unresolved_employees.add(str(original_number))
             reason = "не найден" if not candidates else "неоднозначен"
             matching_errors.add(f"Табельный номер {original_number}: {reason} ({name or '-'})")
+            if pending is not None:
+                pending.append(original_row)
             continue
         employee = candidates[0]
         number = employee["user_id"]
@@ -835,6 +838,8 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
             if name:
                 unresolved_restaurants.add(name[2] if isinstance(name, tuple) and len(name) > 2 else str(name))
             matching_errors.add(f"Неизвестный или недоступный ресторан: {name or '-'}")
+            if pending is not None:
+                pending.append(original_row)
             continue
         if raw in ("В", "Б", "Н"):
             statuses.setdefault((number, day, key), set()).add(raw)
@@ -996,7 +1001,8 @@ def _attendance_saved_conflict(cur, records, employee_ids, partial=False):
 def _sync_stage_attendance(user, rows, default_rest_key=None, partial=False, source_file=None, retry_id=None):
     """Store a validated batch for review, without affecting legacy payroll."""
     from utils.attendance_minutes import shift_interval
-    result = _sync_preview_attendance(user, rows, default_rest_key)
+    pending = []
+    result = _sync_preview_attendance(user, rows, default_rest_key, pending) if partial else _sync_preview_attendance(user, rows, default_rest_key)
     if (not result["ok"] and (retry_id is not None or not (partial and result["partial_allowed"]))) or not result["records"]:
         return {"ok": False, "errors": result["errors"] or ["Нет записей для загрузки"]}
     records = result["records"]
@@ -1074,7 +1080,7 @@ def _sync_stage_attendance(user, rows, default_rest_key=None, partial=False, sou
                 cur.execute("""INSERT INTO attendance_partial_reports
                     (uploaded_by, source_file, diagnostics, default_restaurant_key)
                     VALUES (%s,%s,%s::jsonb,%s) RETURNING id""",
-                    (user["user_id"], bytes(source_file), json.dumps({"errors": result["errors"], "matching": result["matching"], "error_count": result["error_count"]}), default_rest_key))
+                    (user["user_id"], bytes(source_file), json.dumps({"errors": result["errors"], "matching": result["matching"], "error_count": result["error_count"], "pending_rows": pending}), default_rest_key))
                 report_id = cur.fetchone()["id"]
     return {"ok": True, "report_id": report_id, "import_id": import_id, "success_count": len(records), "staged": True,
             "partial": bool(partial and not result["ok"]), "errors": result["errors"], "error_count": result["error_count"]}
@@ -1084,9 +1090,23 @@ def _sync_partial_report_list():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""SELECT id, uploaded_by, created_at::text AS created_at,
-                diagnostics, resolved_at::text AS resolved_at
+                diagnostics - 'pending_rows' AS diagnostics, resolved_at::text AS resolved_at
                 FROM attendance_partial_reports ORDER BY id DESC LIMIT 200""")
             return [dict(row) for row in cur.fetchall()]
+
+
+def _sync_partial_report_pending(report_id):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT diagnostics, default_restaurant_key FROM attendance_partial_reports WHERE id=%s AND resolved_at IS NULL", (report_id,))
+            row = cur.fetchone()
+    if not row or not row["diagnostics"].get("pending_rows"):
+        raise ValueError("No recoverable pending rows")
+    pending = []
+    for day, number, raw, name in row["diagnostics"]["pending_rows"]:
+        pending.append((day, tuple(number) if isinstance(number, list) else number,
+                        raw, tuple(name) if isinstance(name, list) else name))
+    return pending, row["default_restaurant_key"]
 
 
 def _sync_partial_report_file(report_id):
@@ -1126,10 +1146,10 @@ async def handle_partial_report_preview(request):
     if source is None:
         return web.json_response({"error": "Отчёт не найден"}, status=404)
     try:
-        rows = await _run(_parse_excel_rows, source)
+        rows, default_rest = await _run(_sync_partial_report_pending, report_id)
         saved = await _run(_load_saved_attendance_mapping)
         rows = _merge_saved_attendance_mapping(rows, saved, None)
-        result = await _run(_sync_preview_attendance, user, rows, None)
+        result = await _run(_sync_preview_attendance, user, rows, default_rest)
     except ValueError:
         return web.json_response({"error": "Не удалось проверить отчёт"}, status=400)
     return web.json_response(result, headers={"Cache-Control": "no-store"})
@@ -1153,10 +1173,10 @@ async def handle_partial_report_stage(request):
     if source is None:
         return web.json_response({"error": "Отчёт не найден"}, status=404)
     try:
-        rows = await _run(_parse_excel_rows, source)
+        rows, default_rest = await _run(_sync_partial_report_pending, report_id)
         saved = await _run(_load_saved_attendance_mapping)
         rows = _merge_saved_attendance_mapping(rows, saved, None)
-        result = await _run(_sync_stage_attendance, user, rows, None, True, source, report_id)
+        result = await _run(_sync_stage_attendance, user, rows, default_rest, True, source, report_id)
     except CheckViolation as exc:
         if exc.diag.message_primary != "Timesheet is locked for approval":
             raise

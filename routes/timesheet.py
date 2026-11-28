@@ -993,7 +993,7 @@ def _attendance_saved_conflict(cur, records, employee_ids, partial=False):
     return False
 
 
-def _sync_stage_attendance(user, rows, default_rest_key=None, partial=False, source_file=None):
+def _sync_stage_attendance(user, rows, default_rest_key=None, partial=False, source_file=None, retry_id=None):
     """Store a validated batch for review, without affecting legacy payroll."""
     from utils.attendance_minutes import shift_interval
     result = _sync_preview_attendance(user, rows, default_rest_key)
@@ -1021,6 +1021,23 @@ def _sync_stage_attendance(user, rows, default_rest_key=None, partial=False, sou
                 raise ValueError("Restaurant changed during import")
             if _attendance_saved_conflict(cur, records, employee_ids, partial=True) if partial else _attendance_saved_conflict(cur, records, employee_ids):
                 return {"ok": False, "errors": ["Конфликт с ранее загруженным отчётом: пересечение смен или статусов отсутствия. Проверьте данные."]}
+            if retry_id is not None:
+                cur.execute("SELECT id FROM attendance_partial_reports WHERE id=%s AND resolved_at IS NULL FOR UPDATE", (retry_id,))
+                if not cur.fetchone():
+                    return {"ok": False, "errors": ["Отчёт уже обработан или не найден"]}
+                if not result["ok"]:
+                    return {"ok": False, "errors": result["errors"]}
+                # Never overwrite existing employee-day records during archive recovery.
+                new_records = []
+                for record in records:
+                    cur.execute("SELECT 1 FROM attendance_import_days WHERE user_id=%s AND restaurant_key=%s AND work_date=%s", (record["user_id"], record["restaurant_key"], record["date"]))
+                    if not cur.fetchone():
+                        new_records.append(record)
+                records = new_records
+                if _attendance_saved_conflict(cur, records, employee_ids, partial=True):
+                    return {"ok": False, "errors": ["Конфликт с сохранёнными сменами"]}
+                if not records:
+                    return {"ok": False, "errors": ["Нет новых записей; требуется ручная сверка"]}
             if partial:
                 for uid, key, day in sorted({(r["user_id"], r["restaurant_key"], r["date"]) for r in records}):
                     cur.execute("DELETE FROM attendance_import_days WHERE user_id=%s AND restaurant_key=%s AND work_date=%s", (uid,key,day))
@@ -1041,6 +1058,8 @@ def _sync_stage_attendance(user, rows, default_rest_key=None, partial=False, sou
                 for start, end in sorted({shift_interval(v) for v in record["shifts"]}):
                     cur.execute("INSERT INTO attendance_import_intervals (day_id, start_minute, end_minute) VALUES (%s, %s, %s)",
                                 (day_id, start, end))
+            if retry_id is not None:
+                cur.execute("UPDATE attendance_partial_reports SET resolved_at=now() WHERE id=%s", (retry_id,))
             if partial and not result["ok"]:
                 cur.execute("""INSERT INTO attendance_partial_reports
                     (uploaded_by, source_file, diagnostics, default_restaurant_key)

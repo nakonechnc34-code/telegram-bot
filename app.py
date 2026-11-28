@@ -9,6 +9,7 @@ from datetime import datetime, date
 from decimal import Decimal
 from email.utils import formatdate
 from pathlib import Path
+from urllib.parse import unquote_plus
 from aiohttp import web
 
 import config
@@ -292,6 +293,27 @@ async def _handle_html(name, cache):
     )
 
 
+_PLATFORM_PATHS = frozenset({"/", "/admin", "/admin/", "/sales", "/sales/", "/timesheet", "/timesheet/", "/academy", "/academy/"})
+_TRACKING_KEYS = frozenset({"fbclid", "gclid", "msclkid", "yclid", "dclid"})
+
+def _clean_platform_query(raw_query):
+    parts = raw_query.split("&")
+    return "&".join(part for part in parts if not (
+        unquote_plus(part.partition("=")[0]).lower().startswith("utm_")
+        or unquote_plus(part.partition("=")[0]).lower() in _TRACKING_KEYS
+    ))
+
+@web.middleware
+async def clean_platform_url_middleware(request, handler):
+    if request.method in ("GET", "HEAD") and request.path in _PLATFORM_PATHS:
+        raw_query = request.rel_url.raw_query_string
+        clean_query = _clean_platform_query(raw_query)
+        if clean_query != raw_query:
+            location = request.path + ("?" + clean_query if clean_query else "")
+            return web.Response(status=302, headers={"Location": location, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+    return await handler(request)
+
+
 async def handle_index(request):
     return await _handle_html("index.html", _INDEX_CACHE)
 
@@ -517,6 +539,7 @@ app = web.Application(
         api_rate_middleware,
         gzip_middleware,
         security_headers_middleware,
+        clean_platform_url_middleware,
     ],
     client_max_size=20 * 1024 * 1024,
 )

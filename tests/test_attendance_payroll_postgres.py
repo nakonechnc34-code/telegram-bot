@@ -372,8 +372,10 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
         assert transition(tu,"submit",0) == 200
         assert report() == []
         assert transition(tu,"approve",1) == 403
-        assert transition(admin,"approve",0) == 409
+        assert transition(admin,"approve",1) == 403
+        assert report() == []
         hr = {"user_id":30,"is_admin":True,"position":"HR"}
+        assert transition(hr,"approve",0) == 409
         assert transition(hr,"approve",1) == 200
         with conn.cursor() as cur:
             cur.execute("SAVEPOINT approved_import")
@@ -456,7 +458,7 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
         assert transition(admin,"reopen",2,"Correction") == 200
         assert report() == []
         assert transition(tu,"submit",3) == 200
-        assert transition(admin,"approve",4) == 200
+        assert transition(hr,"approve",4) == 200
         assert report()[0]["total_salary"] == Decimal("4800.00")
         with conn.cursor() as cur:
             cur.execute("SELECT revision,total_salary FROM timesheet_accrual_snapshots ORDER BY revision")
@@ -471,7 +473,7 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
             cur.execute("UPDATE attendance_imports SET date_to='2026-11-03' WHERE id=%s", (original_import,))
         assert timesheet._sync_set_individual_rate(30,1,Decimal("100")) == 200
         assert transition(tu,"submit",6) == 200
-        assert transition(admin,"approve",7) == 200
+        assert transition(hr,"approve",7) == 200
         assert report()[0]["total_salary"] == Decimal("5.00")
         parts = [timesheet._sync_approved_reports(30,f"2026-11-0{day}",f"2026-11-0{day}")[0]["total_salary"] for day in (1,2,3)]
         assert parts == [Decimal("1.67"),Decimal("1.66"),Decimal("1.67")]
@@ -548,13 +550,14 @@ def test_fixed_salary_snapshot_is_informational_postgres(monkeypatch):
         monkeypatch.setattr(timesheet, "get_conn", lambda: nullcontext(conn))
         admin = {"user_id":30,"is_super_admin":True}
         month = date(2026,11,1)
+        hr = {"user_id":30,"is_admin":True,"position":"HR"}
         def transition(key, action, revision, comment=""):
-            assert timesheet._sync_approval_transition(admin,key,month,action,comment,revision)[0] == 200
+            assert timesheet._sync_approval_transition(hr,key,month,action,comment,revision)[0] == 200
         def total():
             return sum(row["total_salary"] for row in
                        timesheet._sync_approved_reports(30,"2026-11-01","2026-11-30"))
         transition("a","submit",0)
-        status, result = timesheet._sync_approval_transition(admin,"a",month,"approve","",1)
+        status, result = timesheet._sync_approval_transition(hr,"a",month,"approve","",1)
         assert status == 409
         assert result == {"error":"missing_hourly_rates","employees":[{"user_id":1,"full_name":"Fixed"}]}
         with conn.cursor() as cur:

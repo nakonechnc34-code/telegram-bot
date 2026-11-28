@@ -375,7 +375,7 @@ def test_excel_merged_restaurant_additional_shift():
     ]
 
 
-def test_partial_preview_requires_privilege_and_matching_only():
+def test_partial_preview_requires_privilege_and_classifies_errors():
     rows = [
         ("2026-11-16", "021", "09:00-12:00", "A"),
         ("2026-11-16", "999", "10:00-13:00", "A"),
@@ -386,7 +386,11 @@ def test_partial_preview_requires_privilege_and_matching_only():
         assert result["partial_allowed"]
         assert len(result["records"]) == 1
         assert result["records"][0]["minutes"] == 180
-        assert not preview(rows + [("2026-11-16", "021", "invalid", "A")])["partial_allowed"]
+        invalid = preview(rows + [("2026-11-16", "021", "invalid", "A")])
+        assert invalid["partial_allowed"]
+        assert invalid["records"][0]["minutes"] == 180
+        assert any("некорректный интервал" in error for error in invalid["errors"])
+        assert not preview(rows + [("2026-11-16", "021", "Н", "A")])["partial_allowed"]
     with patch("routes.timesheet._is_hr_or_super", return_value=False):
         assert not preview(rows)["partial_allowed"]
 

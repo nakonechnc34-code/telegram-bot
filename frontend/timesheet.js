@@ -383,7 +383,7 @@ byId('import-form').addEventListener('submit', async event => {
         }
         const duration = n => Math.floor(n / 60) + ' ч ' + (n % 60) + ' мин';
         byId('preview-summary').textContent = [
-            'Сотрудников: ' + new Set(records.map(r => r.personnel_number)).size,
+            'Сотрудников: ' + new Set(records.map(r => r.user_id ?? r.personnel_number)).size,
             'Ресторанов: ' + new Set(records.map(r => r.restaurant_key)).size,
             'Интервалов: ' + records.reduce((n,r) => n + r.shifts.length, 0),
             'Итого: ' + (result.total_minutes === null ? 'не рассчитано' : duration(result.total_minutes))
@@ -606,7 +606,8 @@ async function loadApproval(){
         }
         const options=[];
         if(['draft','returned'].includes(data.status))options.push(['submit','Отправить на согласование']);
-        if(data.can_review&&data.status==='pending')options.push(['approve','Утвердить'],['return','Вернуть на доработку']);
+        if(data.can_approve&&data.status==='pending')options.push(['approve','Утвердить']);
+        if(data.can_review&&data.status==='pending')options.push(['return','Вернуть на доработку']);
         if(data.can_review&&data.status==='approved')options.push(['reopen','Открыть повторно']);
         for(const [action,label] of options){
             const button=document.createElement('button');button.type='button';button.textContent=label;

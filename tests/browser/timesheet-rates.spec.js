@@ -74,7 +74,7 @@ test('approval blocked by missing rate links to employee rates',async({page})=>{
     const data={
       restaurants:{restaurants:[{key:'a',name:'Ресторан А'}]},
       matrix:{employees:[]},
-      status:{status:'pending',revision:1,can_review:true,history:[]},
+      status:{status:'pending',revision:1,can_review:true,can_approve:true,history:[]},
       'rate-employees':{can_manage:true,can_request:false,employees:[{user_id:12,full_name:'Тест Сотрудник',restaurant_key:'a',restaurant_name:'Ресторан А',rate:0}]},
       'rate-requests':{requests:[]},'rate-history':{history:[]}
     };

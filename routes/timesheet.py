@@ -2,7 +2,7 @@ from aiohttp import web
 from psycopg2.extras import RealDictCursor
 from psycopg2.errors import CheckViolation
 from db import get_conn, _run
-from utils.auth_helpers import get_auth_user, denied, _is_hr_or_super, _is_tu, _sync_user_has_perm, _sync_get_tu_rests
+from utils.auth_helpers import get_auth_user, denied, _is_hr_or_super, _is_hr_position, _is_tu, _sync_user_has_perm, _sync_get_tu_rests
 from utils.attendance_rounding import allocate_daily_minutes, round_daily_minutes
 import calendar
 from datetime import datetime, date, time
@@ -805,6 +805,7 @@ def _sync_preview_attendance(user, rows, default_rest_key=None, pending=None):
     statuses = {}
     errors = []
     matching_errors = set()
+    cell_errors = []
     unresolved_employees = set()
     unresolved_restaurants = set()
     with get_conn() as conn:
@@ -821,6 +822,7 @@ def _sync_preview_attendance(user, rows, default_rest_key=None, pending=None):
     territory = {r["key"] for r in restaurants if r["territory_manager_id"] == user["user_id"]}
     known = {r["key"] for r in restaurants}
     for day, number, raw, name in rows:
+        original_row = (day, number, raw, name)
         original_number = number[2] if isinstance(number, tuple) else number
         original_name = name[2] if isinstance(name, tuple) else name
         if isinstance(number, tuple) and number[0] != "personnel_number":
@@ -875,7 +877,9 @@ def _sync_preview_attendance(user, rows, default_rest_key=None, pending=None):
         try:
             shift_interval(raw)
         except ValueError:
-            errors.append("Строка не содержит корректный интервал смены")
+            cell_errors.append(f"{day}, табельный номер {original_number}: некорректный интервал смены")
+            if pending is not None:
+                pending.append(tuple(value[:3] if isinstance(value, tuple) else value for value in original_row))
             continue
         groups.setdefault((number, day, key), []).append(raw)
     records = [{"user_id": number, "personnel_number": _normalize_attendance_number(users_by_id[str(number)]["personnel_number"] or ""), "date": day, "restaurant_key": key,
@@ -910,10 +914,13 @@ def _sync_preview_attendance(user, rows, default_rest_key=None, pending=None):
                     errors.append("Пересечение смен в разных ресторанах или рабочих датах")
                     break
     blocking_errors = len(errors)
+    errors.extend(cell_errors)
     errors.extend(sorted(matching_errors))
-    matching = {"employees": sorted(unresolved_employees), "restaurants": sorted(unresolved_restaurants)} if _is_hr_or_super(user) else None
-    return {"matching": matching, "ok": not errors, "partial_allowed": bool(matching_errors and not blocking_errors and _is_hr_or_super(user)), "preview": True, "records": records,
-            "total_minutes": sum(r["minutes"] for r in records) if not errors else None,
+    is_privileged = _is_hr_or_super(user)
+    matching = {"employees": sorted(unresolved_employees), "restaurants": sorted(unresolved_restaurants)} if is_privileged else None
+    partial_allowed = is_privileged and not blocking_errors and bool(matching_errors or cell_errors)
+    return {"matching": matching, "ok": not errors, "partial_allowed": partial_allowed, "preview": True, "records": records,
+            "total_minutes": sum(r["minutes"] for r in records) if not errors or partial_allowed else None,
             "error_count": len(errors), "errors": errors[:50]}
 
 
@@ -1947,6 +1954,10 @@ def _snapshot_approved_accruals(cur, key, month, revision):
 
 
 
+def _can_approve_timesheet(user):
+    return _is_hr_or_super(user) and _is_hr_position(user.get("position"))
+
+
 def _sync_approval_transition(user, key, month, action, comment, revision):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1956,6 +1967,8 @@ def _sync_approval_transition(user, key, month, action, comment, revision):
             if not restaurant or not _timesheet_role_allowed(user):
                 return 403, {"error": "forbidden"}
             privileged = _is_hr_or_super(user)
+            if action == "approve" and not _can_approve_timesheet(user):
+                return 403, {"error": "forbidden"}
             if not privileged and (restaurant["territory_manager_id"] != user["user_id"] or action != "submit"):
                 return 403, {"error": "forbidden"}
             cur.execute("INSERT INTO timesheet_approvals(restaurant_key,month_start) VALUES (%s,%s) ON CONFLICT DO NOTHING", (key,month))
@@ -2031,7 +2044,7 @@ def _sync_approval_status(user, key, month):
                            FROM timesheet_approval_history h LEFT JOIN users u ON u.user_id=h.actor_id
                            WHERE h.restaurant_key=%s AND h.month_start=%s AND h.revision<=%s
                            ORDER BY h.revision DESC""", (key,month,row["revision"]))
-            return {**row,"can_review":privileged,"history":[dict(h) for h in cur.fetchall()]}
+            return {**row,"can_review":privileged,"can_approve":_can_approve_timesheet(user),"history":[dict(h) for h in cur.fetchall()]}
 
 
 @routes.post('/api/timesheet/approval/status')

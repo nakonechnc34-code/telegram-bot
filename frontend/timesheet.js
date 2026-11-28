@@ -289,7 +289,9 @@ byId('import-form').addEventListener('submit', async event => {
         if (version !== previewVersion) return;
         renderAttendanceMatching(result.matching);
         const records = result.records;
-        if (result.ok && records.length) {
+        byId("confirm-attendance").textContent = result.partial_allowed ? "Сохранить отчёт с ошибками" : "Сохранить проверенный отчёт";
+        if ((result.ok || result.partial_allowed) && records.length) {
+            if (!result.ok) params.set("partial", "1");
             verifiedAttendance = {data, params, version};
             byId('confirm-attendance').disabled = false;
         }
@@ -336,7 +338,7 @@ byId('confirm-attendance').addEventListener('click', async () => {
         const result = await api('/api/timesheet/import_attendance/stage?' + verified.params, {body: verified.data});
         if (verified.version !== previewVersion) return;
         byId('upload-status').textContent = result.ok
-            ? 'Отчёт №' + result.import_id + ' сохранён. Записей: ' + result.success_count + '. Данные будут учтены при расчёте начислений.'
+            ? (result.partial ? 'Отчёт с ошибками №' + result.report_id + ' сохранён. Корректных записей: ' + result.success_count + '. Ошибок: ' + result.error_count : 'Отчёт №' + result.import_id + ' сохранён. Записей: ' + result.success_count) + '. Начисления после утверждения HR.'
             : (result.errors || ['Отчёт не сохранён']).join('\n');
         if (result.ok) { await loadAttendanceHistory(); await loadDay(); }
     } catch (error) {

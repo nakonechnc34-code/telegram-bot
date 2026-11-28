@@ -831,7 +831,9 @@ def test_partial_archive_recovery_postgres(monkeypatch):
         report_id = first["report_id"]
         assert timesheet._sync_partial_report_file(report_id) == source
         timesheet._sync_matching_registry(actor, ("employees","external","2"))
-        mapped = timesheet._merge_saved_attendance_mapping(rows, timesheet._load_saved_attendance_mapping(), None)
+        pending, default_rest = timesheet._sync_partial_report_pending(report_id)
+        assert pending == [("2026-11-16", "external", "10:00-14:00", "A")]
+        mapped = timesheet._merge_saved_attendance_mapping(pending, timesheet._load_saved_attendance_mapping(), None)
         recovered = timesheet._sync_stage_attendance(actor, mapped, partial=True, source_file=source, retry_id=report_id)
         assert recovered["ok"] and recovered["success_count"] == 1
         assert not timesheet._sync_stage_attendance(actor, mapped, partial=True, source_file=source, retry_id=report_id)["ok"]
@@ -840,6 +842,13 @@ def test_partial_archive_recovery_postgres(monkeypatch):
             assert cur.fetchall() == [(1,180),(2,240)]
             cur.execute("SELECT resolved_at IS NOT NULL FROM attendance_partial_reports WHERE id=%s",(report_id,))
             assert cur.fetchone() == (True,)
+        unmatched = [("2026-11-17","unknown","08:00-09:00","A")]
+        archived = timesheet._sync_stage_attendance(actor, unmatched, partial=True, source_file=source)
+        assert archived["ok"] and archived["partial"] and archived["success_count"] == 0
+        assert timesheet._sync_partial_report_pending(archived["report_id"])[0] == unmatched
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM attendance_import_days")
+            assert cur.fetchone() == (2,)
     finally:
         conn.rollback()
         conn.close()

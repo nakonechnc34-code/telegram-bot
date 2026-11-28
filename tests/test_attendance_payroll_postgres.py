@@ -638,7 +638,15 @@ def test_persistent_matching_postgres(monkeypatch):
             cur.execute("UPDATE users SET personnel_number='099' WHERE user_id=1")
             cur.execute("UPDATE users SET personnel_number='021' WHERE user_id=3")
             cur.execute("UPDATE restaurants SET name='Renamed' WHERE key='a'")
-        rows = [("2026-11-16", "external", "09:00-12:00", "old restaurant")]
+        from io import BytesIO
+        from openpyxl import Workbook
+        workbook = Workbook()
+        workbook.active.append(["Табельный номер", "Подразделение", "16.11.2026"])
+        workbook.active.append(["external", "old restaurant", "09:00-12:00"])
+        buffer = BytesIO()
+        workbook.save(buffer)
+        rows = timesheet._parse_excel_rows(buffer.getvalue())
+        assert rows == [("2026-11-16", "external", "09:00-12:00", "old restaurant")]
         def mapped():
             return timesheet._merge_saved_attendance_mapping(rows, timesheet._load_saved_attendance_mapping(), None)
         assert timesheet._sync_stage_attendance(actor, mapped())["ok"]

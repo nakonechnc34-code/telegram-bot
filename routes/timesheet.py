@@ -582,7 +582,12 @@ def _sync_import_attendance(user, rows, default_rest_key=None):
 def _parse_excel_rows(file_data):
     wb = load_workbook(filename=io.BytesIO(file_data), data_only=True)
     ws = wb.active
-    rows = list(ws.iter_rows(values_only=True))
+    rows = [list(row) for row in ws.iter_rows(values_only=True)]
+    for merged in ws.merged_cells.ranges:
+        if merged.min_col == merged.max_col and merged.min_row < merged.max_row:
+            value = rows[merged.min_row - 1][merged.min_col - 1]
+            for row_index in range(merged.min_row, merged.max_row):
+                rows[row_index][merged.min_col - 1] = value
 
     header_idx = -1
     for i, row in enumerate(rows):

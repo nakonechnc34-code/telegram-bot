@@ -23,17 +23,30 @@ jobs:
       ADMIN_PASSWORD: ci-only-placeholder-not-used-for-login
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Select checks for changed files
+        id: changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/changed-components.sh"
       - uses: actions/setup-python@v5
+        if: steps.changed.outputs.python == 'true'
         with:
           python-version: '3.11'
           cache: pip
       - name: Install dependencies
+        if: steps.changed.outputs.python == 'true'
         run: python -m pip install -r requirements.txt
       - name: Compile Python source
+        if: steps.changed.outputs.python == 'true'
         run: python -m compileall -q app.py config.py db.py routes utils middleware tests
       - name: Run tests
+        if: steps.changed.outputs.python == 'true'
         run: python -m pytest tests/ -q
       - name: Check shell script syntax
+        if: steps.changed.outputs.python == 'true'
         run: bash -n scripts/backup_postgres.sh scripts/verify_restore_postgres.sh
 
   dependency-audit:

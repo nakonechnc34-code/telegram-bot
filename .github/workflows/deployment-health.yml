@@ -1,0 +1,24 @@
+name: Deployment health
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      WOKKER_URL: ${{ vars.WOKKER_HEALTH_BASE_URL }}
+    steps:
+      - name: Check HTTP and database readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$WOKKER_URL" == https://* ]] || { echo 'Set WOKKER_HEALTH_BASE_URL to the HTTPS origin'; exit 1; }
+          curl --proto '=https' --fail --silent --show-error --max-time 10 --retry 5 --retry-all-errors -- "${WOKKER_URL%/}/api/health" |
+            jq -e '.status == "healthy" and .database == "ok"' > /dev/null
+          status=$(curl --proto '=https' --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}' -- "${WOKKER_URL%/}/timesheet")
+          test "$status" = 200

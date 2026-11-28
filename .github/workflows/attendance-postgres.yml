@@ -2,9 +2,14 @@ name: Attendance PostgreSQL
 on:
   pull_request:
   push:
-    branches: [feat/attendance-minute-validation]
+    branches: [main, feat/attendance-minute-validation]
+  workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   attendance:
     runs-on: ubuntu-latest
@@ -28,14 +33,27 @@ jobs:
       ADMIN_PASSWORD: ci-only-placeholder-not-used-for-login
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Select checks for changed files
+        id: changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/changed-components.sh"
       - uses: actions/setup-python@v5
+        if: steps.changed.outputs.attendance == 'true'
         with:
           python-version: '3.11'
+          cache: pip
       - run: pip install -r requirements.txt
+        if: steps.changed.outputs.attendance == 'true'
       - run: python -m pytest tests/test_attendance_payroll_postgres.py -q
+        if: steps.changed.outputs.attendance == 'true'
         env:
           ATTENDANCE_BACKUP_FIXTURE: '1'
       - name: Backup and restore payroll data
+        if: steps.changed.outputs.attendance == 'true'
         run: |
           set -euo pipefail
           docker exec ${{ job.services.postgres.id }} pg_dump -U attendance -Fc attendance_test > /tmp/attendance-test.dump

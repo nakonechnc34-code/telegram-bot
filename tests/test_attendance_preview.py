@@ -302,3 +302,52 @@ def test_matching_registry_http_denies_non_privileged_users():
                     await response.read()
                     run.assert_not_called()
     asyncio.run(scenario())
+
+
+def test_matching_registry_real_role_policy_http():
+    import asyncio
+    from aiohttp import web
+    from aiohttp.test_utils import TestClient, TestServer
+    from routes import timesheet
+
+    async def scenario():
+        app = web.Application()
+        for method in ("GET", "POST", "DELETE"):
+            app.router.add_route(method, "/api/timesheet/matching", timesheet.handle_attendance_matching)
+        cases = [
+            ({"is_super_admin": True}, True, 200),
+            ({"is_admin": True, "position": "HR"}, True, 200),
+            ({"position": "HR"}, True, 403),
+            ({"position": "Территориальный управляющий"}, True, 403),
+            ({"position": "Управляющий сменой"}, True, 403),
+            ({"position": "Повар"}, True, 403),
+            ({"position": "Тайный гость"}, True, 403),
+            ({"is_admin": True, "position": "Повар"}, True, 403),
+            ({"is_super_admin": True, "is_fired": True}, True, 403),
+            ({"is_admin": True, "position": "HR"}, False, 403),
+            (None, True, 401),
+        ]
+        async with TestClient(TestServer(app)) as client:
+            for role, permission, expected in cases:
+                user = dict(role, user_id=1) if role is not None else None
+                for method in ("GET", "POST", "DELETE"):
+                    calls = []
+                    async def run(fn, *args):
+                        if fn is timesheet._sync_timesheet_session:
+                            return user
+                        assert fn is timesheet._sync_matching_registry
+                        calls.append(args)
+                        return {"entries": [], "history": []}
+                    with patch.object(timesheet, "_run", side_effect=run), patch.object(
+                        timesheet, "_sync_user_has_perm", return_value=permission
+                    ):
+                        response = await client.request(method, "/api/timesheet/matching",
+                            headers={"Authorization": "Bearer test-token"},
+                            json={"kind": "employees", "source": "external", "target": "1"})
+                        assert response.status == expected, (role, method)
+                        await response.read()
+                        assert len(calls) == int(expected == 200)
+                        if calls:
+                            assert calls[0][1] == (None if method == "GET" else
+                                ("employees", "external", "1" if method == "POST" else None))
+    asyncio.run(scenario())

@@ -131,7 +131,7 @@ def test_delete_attendance_scoped_and_repeat():
 def test_saved_attendance_conflicts():
     from routes.timesheet import _attendance_saved_conflict
     cursor = MagicMock()
-    record = {"personnel_number": "021", "date": "2026-11-17",
+    record = {"user_id": 1, "personnel_number": "021", "date": "2026-11-17",
               "restaurant_key": "a", "shifts": ["05:00-09:00"]}
     saved = {"restaurant_key": "b", "work_date": "2026-11-16",
              "status": "work", "start_minute": 1320, "end_minute": 1800}
@@ -185,4 +185,191 @@ def test_preview_ambiguous_numeric_aliases_rejected():
     assert not result["ok"]
     assert not result["records"]
     assert "021" in result["errors"][0]
-    assert "2026-11-16" in result["errors"][0]
+    assert "неоднозначен" in result["errors"][0]
+
+
+def test_matching_errors_are_grouped_by_employee_and_restaurant():
+    result = preview([("2026-11-16", "9181", "10:03-21:59", "A"),
+                      ("2026-11-17", "9181", "9:59-21:59", "A")])
+    assert not result["ok"]
+    assert result["error_count"] == 1
+    assert "не найден" in result["errors"][0]
+
+
+def test_restaurant_name_normalization():
+    from routes.timesheet import _attendance_restaurant_name
+    assert _attendance_restaurant_name("  Белая   дача ") == _attendance_restaurant_name("БЕЛАЯ ДАЧА")
+
+
+def test_manual_mapping_permissions_and_validation():
+    import pytest
+    from routes.timesheet import _apply_attendance_mapping
+    rows = [("2026-11-16", "9181", "09:00-12:00", "Белая дача")]
+    mapping = {"employees": {"9181": "021"}, "restaurants": {"Белая дача": "A"}}
+    with patch("routes.timesheet._is_hr_or_super", return_value=False):
+        with pytest.raises(PermissionError):
+            _apply_attendance_mapping({"user_id": 1}, rows, mapping)
+    with patch("routes.timesheet._is_hr_or_super", return_value=True):
+        mapped = _apply_attendance_mapping({"user_id": 1}, rows, mapping)
+        assert mapped == [("2026-11-16", "021", "09:00-12:00", "A")]
+        assert preview(mapped)["total_minutes"] == 180
+        for invalid in [{"employees": {"missing": "021"}}, {"restaurants": {"Белая дача": 1}}, {"extra": {}}, {"employees": []}]:
+            with pytest.raises(ValueError):
+                _apply_attendance_mapping({"user_id": 1}, rows, invalid)
+
+
+def test_manual_mapping_unknown_target_still_blocks_save():
+    from routes.timesheet import _apply_attendance_mapping
+    rows = [("2026-11-16", "9181", "09:00-12:00", "A")]
+    with patch("routes.timesheet._is_hr_or_super", return_value=True):
+        mapped = _apply_attendance_mapping({"user_id": 1}, rows, {"employees": {"9181": "999"}})
+    assert not preview(mapped)["ok"]
+
+
+def test_http_manual_mapping():
+    import asyncio
+    import json
+    from aiohttp import web, FormData
+    from aiohttp.test_utils import TestClient, TestServer
+    from unittest.mock import AsyncMock
+    from routes.timesheet import handle_import_attendance
+
+    async def scenario():
+        app = web.Application()
+        for endpoint in ("preview", "stage"):
+            app.router.add_post("/api/timesheet/import_attendance/" + endpoint, handle_import_attendance)
+        rows = [("2026-11-16", "9181", "09:00-12:00", "A")]
+        async def run(fn, *args):
+            if fn.__name__ == "_parse_excel_rows":
+                return rows
+            if fn.__name__ == "_load_saved_attendance_mapping":
+                return []
+            assert args[1][0][1] == "021"
+            return {"ok": True}
+        async with TestClient(TestServer(app)) as client:
+            for endpoint in ("preview", "stage"):
+                for allowed, payload, expected in [
+                    (False, {"employees": {"9181": "021"}}, 403),
+                    (True, [], 400),
+                    (True, None, 400),
+                    (True, {"employees": {"absent": "021"}}, 400),
+                    (True, {"employees": {"9181": "021"}}, 200),
+                ]:
+                    data = FormData()
+                    data.add_field("file", b"fixture", filename="test.xlsx")
+                    data.add_field("mapping", json.dumps(payload))
+                    with patch("routes.timesheet._timesheet_user", new=AsyncMock(return_value=({"user_id": 1}, None))), \
+                         patch("routes.timesheet._require_timesheet_access"), \
+                         patch("routes.timesheet._is_hr_or_super", return_value=allowed), \
+                         patch("routes.timesheet._is_tu", return_value=not allowed), \
+                         patch("routes.timesheet._run", side_effect=run):
+                        response = await client.post("/api/timesheet/import_attendance/" + endpoint, data=data)
+                        assert response.status == expected
+                        await response.read()
+    asyncio.run(scenario())
+
+
+def test_saved_mapping_is_single_pass_and_manual_override():
+    from routes.timesheet import _merge_saved_attendance_mapping
+    rows = [("2026-11-16", "9181", "09:00-12:00", "A")]
+    saved = [
+        {"kind": "employees", "source": "9181", "target": "021"},
+        {"kind": "employees", "source": "021", "target": "999"},
+        {"kind": "restaurants", "source": "A", "target": "B"},
+    ]
+    assert _merge_saved_attendance_mapping(rows, saved, None) == [
+        ("2026-11-16", "021", "09:00-12:00", "B")]
+    assert _merge_saved_attendance_mapping(rows, saved, {"employees": {"9181": "42"}}) == [
+        ("2026-11-16", "42", "09:00-12:00", "B")]
+
+
+def test_matching_registry_http_denies_non_privileged_users():
+    import asyncio
+    from aiohttp import web
+    from aiohttp.test_utils import TestClient, TestServer
+    from unittest.mock import AsyncMock
+    from routes.timesheet import handle_attendance_matching
+
+    async def scenario():
+        app = web.Application()
+        for method in ("GET", "POST", "DELETE"):
+            app.router.add_route(method, "/api/timesheet/matching", handle_attendance_matching)
+        async with TestClient(TestServer(app)) as client:
+            for method in ("GET", "POST", "DELETE"):
+                with patch("routes.timesheet._timesheet_user", new=AsyncMock(return_value=({"user_id": 1}, None))), patch("routes.timesheet._is_hr_or_super", return_value=False), patch("routes.timesheet._run", new=AsyncMock()) as run:
+                    response = await client.request(method, "/api/timesheet/matching")
+                    assert response.status == 403
+                    await response.read()
+                    run.assert_not_called()
+    asyncio.run(scenario())
+
+
+def test_matching_registry_real_role_policy_http():
+    import asyncio
+    from aiohttp import web
+    from aiohttp.test_utils import TestClient, TestServer
+    from routes import timesheet
+
+    async def scenario():
+        app = web.Application()
+        for method in ("GET", "POST", "DELETE"):
+            app.router.add_route(method, "/api/timesheet/matching", timesheet.handle_attendance_matching)
+        cases = [
+            ({"is_super_admin": True}, True, 200),
+            ({"is_admin": True, "position": "HR"}, True, 200),
+            ({"position": "HR"}, True, 403),
+            ({"position": "Территориальный управляющий"}, True, 403),
+            ({"position": "Управляющий сменой"}, True, 403),
+            ({"position": "Повар"}, True, 403),
+            ({"position": "Тайный гость"}, True, 403),
+            ({"is_admin": True, "position": "Повар"}, True, 403),
+            ({"is_super_admin": True, "is_fired": True}, True, 403),
+            ({"is_admin": True, "position": "HR"}, False, 403),
+            (None, True, 401),
+        ]
+        async with TestClient(TestServer(app)) as client:
+            for role, permission, expected in cases:
+                user = dict(role, user_id=1) if role is not None else None
+                for method in ("GET", "POST", "DELETE"):
+                    calls = []
+                    async def run(fn, *args):
+                        if fn is timesheet._sync_timesheet_session:
+                            return user
+                        assert fn is timesheet._sync_matching_registry
+                        calls.append(args)
+                        return {"entries": [], "history": []}
+                    with patch.object(timesheet, "_run", side_effect=run), patch.object(
+                        timesheet, "_sync_user_has_perm", return_value=permission
+                    ):
+                        response = await client.request(method, "/api/timesheet/matching",
+                            headers={"Authorization": "Bearer test-token"},
+                            json={"kind": "employees", "source": "external", "target": "1"})
+                        assert response.status == expected, (role, method)
+                        await response.read()
+                        assert len(calls) == int(expected == 200)
+                        if calls:
+                            assert calls[0][1] == (None if method == "GET" else
+                                ("employees", "external", "1" if method == "POST" else None))
+    asyncio.run(scenario())
+
+
+def test_excel_merged_restaurant_additional_shift():
+    from io import BytesIO
+    from openpyxl import Workbook
+    from routes import timesheet
+    book = Workbook()
+    sheet = book.active
+    sheet.append(["Табельный номер", "Подразделение", "20.11.2026", None, "21.11.2026"])
+    sheet.append(["021", "A", "09:00-12:00", None, None])
+    sheet.append([None, None, "22:05-22:12", None, None])
+    sheet.merge_cells("A2:A3")
+    sheet.merge_cells("B2:B3")
+    sheet.merge_cells("C1:D1")
+    sheet.append(["021", "B", None, None, "09:00-10:00"])
+    buf = BytesIO()
+    book.save(buf)
+    assert timesheet._parse_excel_rows(buf.getvalue()) == [
+        ("2026-11-20", "021", "09:00-12:00", "A"),
+        ("2026-11-20", "021", "22:05-22:12", "A"),
+        ("2026-11-21", "021", "09:00-10:00", "B"),
+    ]

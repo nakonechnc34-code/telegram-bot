@@ -324,8 +324,7 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
                 CREATE TABLE restaurants (key text PRIMARY KEY, name text, territory_manager_id bigint);
                 CREATE TABLE position_rates (position_name text, rate numeric);
                 CREATE TABLE timesheet_records (user_id bigint, work_date date, restaurant_key text, hours numeric);
-                CREATE TABLE attendance_import_days (user_id bigint, work_date date, restaurant_key text,
-                    status text, worked_minutes integer);
+                ALTER TABLE users ADD COLUMN personnel_number text;
                 INSERT INTO restaurants VALUES ('a','A',10),('b','B',20);
                 INSERT INTO users VALUES (1,'Cook','Cook','a',360,'hourly',false,'cook',false,false),
                     (10,'TU','Территориальный управляющий','a',0,'hourly',false,NULL,true,false),
@@ -337,12 +336,15 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
                     (93,'Legacy fallback','Helper','a',0,'hourly',false,NULL,false,false),
                     (94,'Legacy zero','Zero','a',0,'hourly',false,NULL,false,false);
                 INSERT INTO position_rates VALUES ('Helper',250),('Zero',0);
-                INSERT INTO attendance_import_days VALUES (1,'2026-11-01','a','work',493);""")
+                UPDATE users SET personnel_number='021' WHERE user_id=1;""")
             root = Path(__file__).resolve().parents[1] / "database"
-            for filename in ("008_timesheet_approval.sql", "009_timesheet_approval_locks.sql",
+            for filename in ("007_attendance_imports.sql", "015_attendance_matching.sql", "008_timesheet_approval.sql", "009_timesheet_approval_locks.sql",
                              "010_timesheet_accrual_snapshots.sql", "012_timesheet_individual_rates.sql", "013_timesheet_daily_snapshots.sql", "014_timesheet_rate_backfill.sql"):
                 cur.execute((root / filename).read_text(encoding="utf-8"))
         with conn.cursor() as cur:
+            cur.execute("INSERT INTO attendance_imports(uploaded_by,date_from,date_to) VALUES (30,'2026-11-01','2026-11-01') RETURNING id")
+            original_import = cur.fetchone()[0]
+            cur.execute("INSERT INTO attendance_import_days(import_id,user_id,work_date,restaurant_key,status,worked_minutes) VALUES (%s,1,'2026-11-01','a','work',493)", (original_import,))
             cur.execute("SELECT hourly_rate FROM timesheet_individual_rates WHERE user_id=1")
             assert cur.fetchone()[0] == Decimal("360")
             cur.execute("SELECT user_id,hourly_rate FROM timesheet_individual_rates WHERE user_id BETWEEN 91 AND 94 ORDER BY user_id")
@@ -370,7 +372,48 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
         assert report() == []
         assert transition(tu,"approve",1) == 403
         assert transition(admin,"approve",0) == 409
-        assert transition(admin,"approve",1) == 200
+        hr = {"user_id":30,"is_admin":True,"position":"HR"}
+        assert transition(hr,"approve",1) == 200
+        with conn.cursor() as cur:
+            cur.execute("SAVEPOINT approved_import")
+            with pytest.raises(psycopg2.errors.CheckViolation, match="Timesheet is locked for approval"):
+                cur.execute("UPDATE attendance_import_days SET worked_minutes=600 WHERE user_id=1")
+            cur.execute("ROLLBACK TO SAVEPOINT approved_import")
+            cur.execute("RELEASE SAVEPOINT approved_import")
+        assert report()[0]["total_salary"] == Decimal("2970.00")
+        import asyncio
+        from io import BytesIO
+        from aiohttp import web, FormData
+        from aiohttp.test_utils import TestClient, TestServer
+        from openpyxl import Workbook
+        from unittest.mock import AsyncMock
+        async def repeat_import():
+            app = web.Application()
+            app.router.add_post("/api/timesheet/import_attendance/stage", timesheet.handle_import_attendance)
+            workbook = Workbook()
+            workbook.active.append(["Табельный номер","Ресторан","01.11.2026"])
+            workbook.active.append(["021","A","09:00-19:00"])
+            buf = BytesIO()
+            workbook.save(buf)
+            form = FormData()
+            form.add_field("file",buf.getvalue(),filename="attendance.xlsx")
+            async def run(fn,*args):
+                return fn(*args)
+            with monkeypatch.context() as mp:
+                mp.setattr(timesheet,"_timesheet_user",AsyncMock(return_value=(hr,None)))
+                mp.setattr(timesheet,"_require_timesheet_access",lambda user: None)
+                mp.setattr(timesheet,"_run",run)
+                async with TestClient(TestServer(app)) as client:
+                    response = await client.post("/api/timesheet/import_attendance/stage",data=form)
+                    assert response.status == 409
+                    assert "утверждён" in (await response.json())["error"]
+        with conn.cursor() as cur:
+            cur.execute("SAVEPOINT repeat_import")
+            asyncio.run(repeat_import())
+            cur.execute("ROLLBACK TO SAVEPOINT repeat_import")
+            cur.execute("RELEASE SAVEPOINT repeat_import")
+            cur.execute("SELECT import_id,worked_minutes FROM attendance_import_days")
+            assert cur.fetchall() == [(original_import,493)]
         assert report()[0]["total_salary"] == Decimal("2970.00")
         partial = timesheet._sync_approved_reports(30,"2026-11-01","2026-11-15")
         assert partial[0]["total_salary"] == Decimal("2970.00")
@@ -421,7 +464,10 @@ def test_approval_snapshot_cycle_postgres(monkeypatch):
         with conn.cursor() as cur:
             cur.execute("UPDATE timesheet_rounding_settings SET step_minutes=1")
             cur.execute("DELETE FROM attendance_import_days WHERE user_id=1")
-            cur.execute("INSERT INTO attendance_import_days VALUES (1,'2026-11-01','a','work',1),(1,'2026-11-02','a','work',1),(1,'2026-11-03','a','work',1)")
+            cur.execute("""INSERT INTO attendance_import_days(import_id,user_id,work_date,restaurant_key,status,worked_minutes)
+                VALUES (%s,1,'2026-11-01','a','work',1),(%s,1,'2026-11-02','a','work',1),(%s,1,'2026-11-03','a','work',1)""",
+                (original_import,original_import,original_import))
+            cur.execute("UPDATE attendance_imports SET date_to='2026-11-03' WHERE id=%s", (original_import,))
         assert timesheet._sync_set_individual_rate(30,1,Decimal("100")) == 200
         assert transition(tu,"submit",6) == 200
         assert transition(admin,"approve",7) == 200
@@ -600,3 +646,150 @@ def test_payroll_transaction_lock_postgres():
         second.rollback()
         first.close()
         second.close()
+
+
+def test_persistent_matching_postgres(monkeypatch):
+    from contextlib import nullcontext
+    from pathlib import Path
+    from routes import timesheet
+    dsn = os.getenv("ATTENDANCE_TEST_DSN")
+    if not dsn:
+        pytest.skip("ATTENDANCE_TEST_DSN not configured")
+    conn = psycopg2.connect(dsn)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("CREATE SCHEMA attendance_matching_test")
+            cur.execute("SET LOCAL search_path TO attendance_matching_test")
+            cur.execute("""CREATE TABLE users (user_id bigint PRIMARY KEY, personnel_number text,
+                restaurant_key text, is_fired boolean, full_name text);
+                CREATE TABLE restaurants (key text PRIMARY KEY, name text, territory_manager_id bigint);
+                INSERT INTO users VALUES (1,'021','a',false,'Test One'),(2,NULL,'a',false,'Test Two'),(3,'042','a',false,'Test Three');
+                INSERT INTO restaurants VALUES ('a','A',2)""")
+            for filename in ("007_attendance_imports.sql", "015_attendance_matching.sql"):
+                sql = (Path(__file__).resolve().parents[1] / "database" / filename).read_text(encoding="utf-8")
+                cur.execute(sql)
+                cur.execute(sql)
+        monkeypatch.setattr(timesheet, "get_conn", lambda: nullcontext(conn))
+        actor = {"user_id": 2, "is_super_admin": True}
+        registry = timesheet._sync_matching_registry
+        registry(actor, ("employees", "external", "1"))
+        registry(actor, ("restaurants", "old restaurant", "a"))
+        registry(actor, ("employees", "external", "3"))
+        registry(actor, ("employees", "external", "1"))
+        registry(actor, ("employees", "external", "1"))
+        assert len(registry(actor)["history"]) == 4
+        assert registry(actor)["employees"][0]["full_name"] == "Test One"
+        assert not any(e["stale"] for e in registry(actor)["entries"])
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET personnel_number='099' WHERE user_id=1")
+            cur.execute("UPDATE users SET personnel_number='021' WHERE user_id=3")
+            cur.execute("UPDATE restaurants SET name='Renamed' WHERE key='a'")
+        from io import BytesIO
+        from openpyxl import Workbook
+        workbook = Workbook()
+        workbook.active.append(["Табельный номер", "Подразделение", "16.11.2026"])
+        workbook.active.append(["external", "old restaurant", "09:00-12:00"])
+        buffer = BytesIO()
+        workbook.save(buffer)
+        rows = timesheet._parse_excel_rows(buffer.getvalue())
+        assert rows == [("2026-11-16", "external", "09:00-12:00", "old restaurant")]
+        def mapped():
+            return timesheet._merge_saved_attendance_mapping(rows, timesheet._load_saved_attendance_mapping(), None)
+        first = timesheet._sync_stage_attendance(actor, mapped())
+        assert first["ok"]
+        second = timesheet._sync_stage_attendance(actor, mapped())
+        assert second["ok"]
+        assert first["import_id"] != second["import_id"]
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM attendance_imports")
+            assert cur.fetchall() == [(second["import_id"],)]
+            cur.execute("SELECT start_minute,end_minute FROM attendance_import_intervals")
+            assert cur.fetchall() == [(540,720)]
+        with conn.cursor() as cur:
+            cur.execute("SELECT user_id,restaurant_key,worked_minutes FROM attendance_import_days")
+            assert cur.fetchall() == [(1, "a", 180)]
+        absence_rows = [("2026-11-17", "external", "В", "old restaurant"),
+                        ("2026-11-18", "external", "Б", "old restaurant"),
+                        ("2026-11-19", "external", "Н", "old restaurant")]
+        absence_mapped = timesheet._merge_saved_attendance_mapping(
+            absence_rows, timesheet._load_saved_attendance_mapping(), None)
+        assert timesheet._sync_stage_attendance(actor, absence_mapped)["ok"]
+        with conn.cursor() as cur:
+            cur.execute("SELECT user_id,status,worked_minutes FROM attendance_import_days WHERE work_date > '2026-11-16' ORDER BY work_date")
+            assert cur.fetchall() == [(1,"vacation",0),(1,"sick",0),(1,"absent",0)]
+            cur.execute("UPDATE users SET is_fired=true WHERE user_id=1")
+        stale = timesheet._sync_preview_attendance(actor, mapped())
+        assert not stale["ok"]
+        assert stale["matching"]["employees"] == ["external"]
+        assert any(e["stale"] for e in registry(actor)["entries"] if e["kind"] == "employees")
+        registry(actor, ("employees", "external", None))
+        assert len(registry(actor)["history"]) == 5
+        assert not timesheet._sync_preview_attendance(actor, mapped())["ok"]
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+def test_full_size_attendance_import_postgres(monkeypatch):
+    """Synthetic volume regression, without publishing employee data from the original workbook."""
+    from contextlib import nullcontext
+    from pathlib import Path
+    from io import BytesIO
+    from openpyxl import Workbook
+    from routes import timesheet
+    dsn = os.getenv("ATTENDANCE_TEST_DSN")
+    if not dsn:
+        pytest.skip("ATTENDANCE_TEST_DSN not configured")
+    conn = psycopg2.connect(dsn)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""CREATE SCHEMA attendance_volume_test;
+                SET LOCAL search_path TO attendance_volume_test;
+                CREATE TABLE users (user_id bigint PRIMARY KEY, personnel_number text,
+                    restaurant_key text, is_fired boolean, full_name text);
+                CREATE TABLE restaurants (key text PRIMARY KEY, name text, territory_manager_id bigint);""")
+            for i in range(15):
+                cur.execute("INSERT INTO restaurants VALUES (%s,%s,999)", (str(i),f"Restaurant {i}"))
+            for i in range(56):
+                cur.execute("INSERT INTO users VALUES (%s,%s,%s,false,%s)", (i+1,str(i+100),str(i%15),f"Test {i}"))
+            cur.execute("INSERT INTO users VALUES (999,NULL,'0',false,'Test Administrator')")
+            for filename in ("007_attendance_imports.sql","015_attendance_matching.sql"):
+                cur.execute((Path(__file__).resolve().parents[1]/"database"/filename).read_text(encoding="utf-8"))
+        monkeypatch.setattr(timesheet,"get_conn",lambda: nullcontext(conn))
+        actor = {"user_id":999,"is_super_admin":True}
+        book = Workbook()
+        sheet = book.active
+        sheet.append(["Табельный номер","Подразделение"]+[f"{d}.11.2026" for d in range(16,23)])
+        for i in range(327):
+            employee, day = i%56, i//56
+            minutes = 757 if i < 80 else 756
+            end = 480+minutes
+            shift = f"08:00-{end//60:02d}:{end%60:02d}"
+            values = [None]*7
+            values[day] = shift
+            sheet.append([str(employee+100),f"Restaurant {(employee+day)%15}"]+values)
+            if i == 0:
+                sheet.append([None,None,"22:05-22:12"])
+                sheet.merge_cells("A2:A3")
+                sheet.merge_cells("B2:B3")
+        buf = BytesIO()
+        book.save(buf)
+        rows = timesheet._parse_excel_rows(buf.getvalue())
+        assert len(rows) == 328
+        expected = 80*757+247*756+7
+        preview = timesheet._sync_preview_attendance(actor,rows)
+        assert preview["ok"], preview["errors"]
+        assert preview["total_minutes"] == expected
+        for _ in range(2):
+            result = timesheet._sync_stage_attendance(actor,rows)
+            assert result["ok"], result
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*),SUM(worked_minutes),COUNT(DISTINCT user_id),COUNT(DISTINCT restaurant_key) FROM attendance_import_days")
+                assert cur.fetchone() == (327,expected,56,15)
+                cur.execute("SELECT COUNT(*) FROM attendance_import_intervals")
+                assert cur.fetchone()[0] == 328
+                cur.execute("SELECT COUNT(*) FROM attendance_imports")
+                assert cur.fetchone()[0] == 1
+    finally:
+        conn.rollback()
+        conn.close()

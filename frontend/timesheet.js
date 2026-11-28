@@ -226,6 +226,35 @@ async function loadAttendanceHistory() {
     }
 }
 byId('refresh-attendance-history').addEventListener('click', loadAttendanceHistory);
+let attendanceMapping = {employees: Object.create(null), restaurants: Object.create(null)};
+function renderAttendanceMatching(matching) {
+    const fields = byId('matching-fields');
+    fields.replaceChildren();
+    byId('attendance-matching').hidden = !matching || !(matching.employees.length || matching.restaurants.length);
+    if (!matching) return;
+    for (const [kind, sources] of Object.entries(matching)) {
+        for (const source of sources) {
+            const label = document.createElement('label');
+            label.textContent = (kind === 'employees' ? 'Табельный номер ' : 'Ресторан ') + source + ' → ';
+            const control = document.createElement(kind === 'employees' ? 'input' : 'select');
+            if (kind === 'employees') {
+                control.placeholder = 'Номер из админ-панели';
+                control.maxLength = 50;
+            } else {
+                control.add(new Option('Выберите ресторан', ''));
+                for (const [key, name] of restaurantNames) if (key) control.add(new Option(name, name));
+            }
+            control.value = attendanceMapping[kind][source] || '';
+            control.addEventListener('change', () => {
+                if (control.value.trim()) attendanceMapping[kind][source] = control.value.trim();
+                else delete attendanceMapping[kind][source];
+                clearAttendancePreview();
+            });
+            label.append(control);
+            fields.append(label, document.createElement('br'));
+        }
+    }
+}
 let previewVersion = 0;
 let verifiedAttendance = null;
 let stagingAttendance = false;
@@ -238,7 +267,11 @@ function clearAttendancePreview() {
     byId('preview-summary').textContent = '';
     byId('upload-status').textContent = '';
 }
-byId('import-form').addEventListener('change', clearAttendancePreview);
+byId('import-form').addEventListener('change', () => {
+    attendanceMapping = {employees: Object.create(null), restaurants: Object.create(null)};
+    renderAttendanceMatching(null);
+    clearAttendancePreview();
+});
 byId('import-form').addEventListener('submit', async event => {
     event.preventDefault();
     if (stagingAttendance) return;
@@ -251,8 +284,10 @@ byId('import-form').addEventListener('submit', async event => {
         const data = new FormData(event.currentTarget);
         const params = new URLSearchParams({restaurant_key: data.get('restaurant_key')});
         data.delete('restaurant_key');
+        if (Object.values(attendanceMapping).some(entries => Object.keys(entries).length)) data.append('mapping', JSON.stringify(attendanceMapping));
         const result = await api('/api/timesheet/import_attendance/preview?' + params, {body: data});
         if (version !== previewVersion) return;
+        renderAttendanceMatching(result.matching);
         const records = result.records;
         if (result.ok && records.length) {
             verifiedAttendance = {data, params, version};
@@ -334,6 +369,7 @@ dateInput.value = [today.getFullYear(), String(today.getMonth() + 1).padStart(2,
     String(today.getDate()).padStart(2, '0')].join('-');
 for (const [key, label] of Object.entries(labels)) editForm.elements.status.add(new Option(label, key));
 function clearSession(){
+    resetMatchingRegistry();
     resetRates();
     resetRounding();
     historyVersion++;
@@ -703,7 +739,7 @@ function showPage(index) {
     byId('accruals-panel').hidden = index !== 2;
     if(index === 2 && token) openAccruals();
     byId('upload-panel').hidden = index !== 6;
-    if (index === 6 && token) loadAttendanceHistory();
+    if (index === 6 && token) { loadAttendanceHistory(); loadMatchingRegistry(); }
     document.querySelectorAll('nav [data-page]').forEach(button => {
         if (Number(button.dataset.page) === index) button.setAttribute('aria-current','page');
         else button.removeAttribute('aria-current');
@@ -712,5 +748,110 @@ function showPage(index) {
 document.querySelectorAll('[data-page]').forEach(button => {
     button.addEventListener('click', () => showPage(Number(button.dataset.page)));
 });
+
+let registryVersion = 0;
+let registryBusy = false;
+function resetMatchingRegistry() {
+    registryVersion++;
+    registryDirectory = {employees: [], restaurants: []};
+    byId('registry-form').elements.target.replaceChildren();
+    byId('matching-registry').hidden = true;
+    byId('registry-form').reset();
+    byId('registry-rows').replaceChildren();
+    byId('registry-history').replaceChildren();
+    byId('registry-status').textContent = '';
+}
+let registryDirectory = {employees: [], restaurants: []};
+function updateRegistryChoices(selected = '') {
+    const form = byId('registry-form');
+    const kind = form.elements.kind.value;
+    const search = byId('registry-search').value.trim().toLocaleLowerCase('ru');
+    const target = form.elements.target;
+    target.replaceChildren(new Option('Выберите значение', ''));
+    for (const item of registryDirectory[kind]) {
+        const label = kind === 'employees' ? [item.full_name, item.personnel_number, 'ID '+item.id].filter(Boolean).join(' — ') : item.name;
+        if (!search || label.toLocaleLowerCase('ru').includes(search) || item.id === selected)
+            target.add(new Option(label, item.id));
+    }
+    target.value = selected;
+}
+function renderMatchingRegistry(data) {
+    registryDirectory = {employees: data.employees || [], restaurants: data.restaurants || []};
+    updateRegistryChoices();
+    const form = byId('registry-form');
+    const rows = byId('registry-rows');
+    rows.replaceChildren();
+    const kindLabel = kind => kind === 'employees' ? 'Сотрудник' : 'Ресторан';
+    for (const entry of data.entries) {
+        const row = rows.insertRow();
+        for (const value of [kindLabel(entry.kind), entry.source, entry.target, entry.stale ? 'Устарело — требуется замена' : 'Активно'])
+            row.insertCell().textContent = value;
+        const actions = row.insertCell();
+        const edit = document.createElement('button');
+        edit.type = 'button'; edit.textContent = 'Изменить';
+        edit.onclick = () => {
+            form.elements.kind.value = entry.kind;
+            form.elements.source.value = entry.source;
+            byId('registry-search').value = '';
+            updateRegistryChoices(entry.target);
+            form.elements.target.focus();
+        };
+        const remove = document.createElement('button');
+        remove.type = 'button'; remove.textContent = 'Удалить';
+        remove.onclick = () => {
+            if (window.confirm('Удалить соответствие: ' + entry.source + '?'))
+                changeMatchingRegistry('DELETE', {kind: entry.kind, source: entry.source});
+        };
+        actions.append(edit, remove);
+    }
+    const history = byId('registry-history');
+    history.replaceChildren();
+    for (const entry of data.history) {
+        const row = history.insertRow();
+        for (const value of [kindLabel(entry.kind), entry.source, entry.previous_target,
+            entry.new_target, entry.actor_id, entry.created_at])
+            row.insertCell().textContent = value ?? '—';
+    }
+}
+async function loadMatchingRegistry() {
+    const version = ++registryVersion;
+    try {
+        const data = await api('/api/timesheet/matching', {method: 'GET'});
+        if (version !== registryVersion || !token) return;
+        renderMatchingRegistry(data);
+        byId('matching-registry').hidden = false;
+        byId('registry-status').textContent = '';
+    } catch (error) {
+        if (version === registryVersion) resetMatchingRegistry();
+    }
+}
+async function changeMatchingRegistry(method, values) {
+    if (registryBusy || !token || byId('matching-registry').hidden) return;
+    registryBusy = true;
+    const version = ++registryVersion;
+    const status = byId('registry-status');
+    try {
+        const data = await api('/api/timesheet/matching', {method, body: JSON.stringify(values)});
+        if (version !== registryVersion || !token) return;
+        renderMatchingRegistry(data);
+        byId('registry-form').reset();
+        updateRegistryChoices();
+        clearAttendancePreview();
+        status.textContent = 'Изменения сохранены';
+    } catch (error) {
+        if (version === registryVersion) status.textContent = error.message;
+    } finally { registryBusy = false; }
+}
+byId('registry-search').addEventListener('input', () => updateRegistryChoices());
+byId('registry-form').elements.kind.addEventListener('change', () => {
+    byId('registry-search').value = '';
+    updateRegistryChoices();
+});
+byId('registry-refresh').addEventListener('click', loadMatchingRegistry);
+byId('registry-form').addEventListener('submit', event => {
+    event.preventDefault();
+    changeMatchingRegistry('POST', Object.fromEntries(new FormData(event.currentTarget)));
+});
+
 showPage(0);
 startTimesheet();

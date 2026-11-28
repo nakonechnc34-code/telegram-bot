@@ -7,6 +7,7 @@ from utils.attendance_rounding import allocate_daily_minutes, round_daily_minute
 import calendar
 from datetime import datetime, date, time
 import io
+import json
 import math
 import re
 import traceback
@@ -581,7 +582,12 @@ def _sync_import_attendance(user, rows, default_rest_key=None):
 def _parse_excel_rows(file_data):
     wb = load_workbook(filename=io.BytesIO(file_data), data_only=True)
     ws = wb.active
-    rows = list(ws.iter_rows(values_only=True))
+    rows = [list(row) for row in ws.iter_rows(values_only=True)]
+    for merged in ws.merged_cells.ranges:
+        if merged.min_col == merged.max_col and merged.min_row < merged.max_row:
+            value = rows[merged.min_row - 1][merged.min_col - 1]
+            for row_index in range(merged.min_row, merged.max_row):
+                rows[row_index][merged.min_col - 1] = value
 
     header_idx = -1
     for i, row in enumerate(rows):
@@ -665,38 +671,170 @@ def _normalize_attendance_number(value):
     return number
 
 
+def _attendance_restaurant_name(value):
+    return " ".join(str(value).casefold().replace("ё", "е").split())
+
+
+def _sync_matching_registry(user, change=None):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            if change is not None:
+                kind, source, target = change
+                cur.execute("SELECT pg_advisory_xact_lock(814726, 3)")
+                if target is not None:
+                    if kind == "employees":
+                        cur.execute("SELECT user_id FROM users WHERE user_id::text=%s AND COALESCE(is_fired,FALSE)=FALSE", (target,))
+                        matches = cur.fetchall()
+                    else:
+                        cur.execute("SELECT key FROM restaurants WHERE key=%s", (target,))
+                        matches = cur.fetchall()
+                    if len(matches) != 1:
+                        raise ValueError("Unknown or ambiguous target")
+                cur.execute("SELECT target FROM attendance_matching WHERE kind=%s AND source=%s FOR UPDATE", (kind, source))
+                row = cur.fetchone()
+                previous = row["target"] if row else None
+                if previous != target:
+                    if target is None:
+                        cur.execute("DELETE FROM attendance_matching WHERE kind=%s AND source=%s", (kind, source))
+                    else:
+                        cur.execute("INSERT INTO attendance_matching(kind,source,target,actor_id) VALUES (%s,%s,%s,%s) ON CONFLICT(kind,source) DO UPDATE SET target=EXCLUDED.target,actor_id=EXCLUDED.actor_id,updated_at=now()", (kind,source,target,user["user_id"]))
+                    cur.execute("INSERT INTO attendance_matching_history(kind,source,previous_target,new_target,actor_id) VALUES (%s,%s,%s,%s,%s)", (kind,source,previous,target,user["user_id"]))
+            cur.execute("SELECT kind,source,target,actor_id,updated_at::text FROM attendance_matching ORDER BY kind,source")
+            entries = [dict(r) for r in cur.fetchall()]
+            cur.execute("SELECT id,kind,source,previous_target,new_target,actor_id,created_at::text FROM attendance_matching_history ORDER BY id DESC LIMIT 100")
+            history = [dict(r) for r in cur.fetchall()]
+            cur.execute("SELECT user_id::text AS id, full_name, personnel_number FROM users WHERE COALESCE(is_fired,FALSE)=FALSE ORDER BY full_name,user_id")
+            employees = [dict(r) for r in cur.fetchall()]
+            cur.execute("SELECT key AS id,name FROM restaurants ORDER BY name,key")
+            restaurants = [dict(r) for r in cur.fetchall()]
+            targets = {"employees": {r["id"]: r for r in employees},
+                       "restaurants": {r["id"]: r for r in restaurants}}
+            for entry in entries:
+                entry["stale"] = entry["target"] not in targets[entry["kind"]]
+            return {"entries": entries, "history": history, "employees": employees, "restaurants": restaurants}
+
+
+@routes.get('/api/timesheet/matching')
+@routes.post('/api/timesheet/matching')
+@routes.delete('/api/timesheet/matching')
+async def handle_attendance_matching(request):
+    user, err = await _timesheet_user(request)
+    if err:
+        return denied(err)
+    if not _is_hr_or_super(user):
+        return denied(403)
+    change = None
+    if request.method != "GET":
+        try:
+            data = await request.json()
+            if not isinstance(data, dict):
+                raise ValueError()
+            kind, source = data.get("kind"), data.get("source")
+            target = data.get("target") if request.method == "POST" else None
+            if kind not in ("employees", "restaurants") or not isinstance(source,str) or not 1 <= len(source.strip()) <= 200:
+                raise ValueError()
+            if request.method == "POST" and (not isinstance(target,str) or not 1 <= len(target.strip()) <= 200):
+                raise ValueError()
+            change = (kind,source.strip(),target.strip() if target is not None else None)
+        except (ValueError, TypeError):
+            return web.json_response({"error":"Некорректное соответствие"},status=400)
+    try:
+        result = await _run(_sync_matching_registry,user,change)
+    except ValueError:
+        return web.json_response({"error":"Назначение не найдено или неоднозначно"},status=400)
+    return web.json_response(result,headers={"Cache-Control":"no-store"})
+
+
+def _merge_saved_attendance_mapping(rows, saved, manual):
+    numbers = {str(number) for _, number, _, _ in rows}
+    names = {name for _, _, _, name in rows}
+    merged = {"employees": {}, "restaurants": {}}
+    for entry in saved:
+        kind, source = entry["kind"], entry["source"]
+        if source in (numbers if kind == "employees" else names):
+            merged[kind][source] = entry["target"]
+    for kind in merged:
+        merged[kind].update((manual or {}).get(kind, {}))
+    return [(day, merged["employees"].get(str(number), number), raw,
+             merged["restaurants"].get(name, name)) for day, number, raw, name in rows]
+
+
+def _load_saved_attendance_mapping():
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT kind,source,target FROM attendance_matching")
+            return [dict(entry, target=("employee_id", entry["target"], entry["source"]) if entry["kind"] == "employees"
+                         else ("restaurant_key", entry["target"], entry["source"])) for entry in cur.fetchall()]
+
+
+def _apply_attendance_mapping(user, rows, mapping):
+    if mapping is None:
+        return rows
+    if not _is_hr_or_super(user):
+        raise PermissionError("Manual matching requires HR or super administrator")
+    if not isinstance(mapping, dict) or set(mapping) - {"employees", "restaurants"}:
+        raise ValueError("Invalid mapping")
+    employees = mapping.get("employees", {})
+    restaurants = mapping.get("restaurants", {})
+    for entries in (employees, restaurants):
+        if not isinstance(entries, dict) or len(entries) > 500 or any(
+            not isinstance(k, str) or not isinstance(v, str) or not k.strip() or not v.strip()
+            or len(k) > 200 or len(v) > 200 for k, v in entries.items()
+        ):
+            raise ValueError("Invalid mapping entries")
+    source_numbers = {str(number) for _, number, _, _ in rows}
+    source_names = {name for _, _, _, name in rows}
+    if set(employees) - source_numbers or set(restaurants) - source_names:
+        raise ValueError("Mapping source not present in report")
+    return [(day, employees.get(str(number), number), raw, restaurants.get(name, name))
+            for day, number, raw, name in rows]
+
+
 def _sync_preview_attendance(user, rows, default_rest_key=None):
     """Validate scope and calculate minutes without changing payroll records."""
     from utils.attendance_minutes import shift_interval, worked_minutes
     groups = {}
     statuses = {}
     errors = []
+    matching_errors = set()
+    unresolved_employees = set()
+    unresolved_restaurants = set()
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT user_id, personnel_number, restaurant_key FROM users WHERE personnel_number IS NOT NULL AND COALESCE(is_fired, FALSE) = FALSE")
             users = {}
+            users_by_id = {}
             for employee in cur.fetchall():
+                users_by_id[str(employee["user_id"])] = employee
                 users.setdefault(_normalize_attendance_number(employee["personnel_number"]), []).append(employee)
             cur.execute("SELECT key, name, territory_manager_id FROM restaurants")
             restaurants = cur.fetchall()
     territory = {r["key"] for r in restaurants if r["territory_manager_id"] == user["user_id"]}
     known = {r["key"] for r in restaurants}
     for day, number, raw, name in rows:
-        original_number = number
-        number = _normalize_attendance_number(number)
-        candidates = users.get(number, [])
+        original_number = number[2] if isinstance(number, tuple) and len(number) > 2 else number
+        if isinstance(number, tuple):
+            selected = users_by_id.get(number[1])
+            candidates = [selected] if selected else []
+        else:
+            candidates = users.get(_normalize_attendance_number(number), [])
         if len(candidates) != 1:
-            errors.append(f"Табельный номер {original_number}: не найден или неоднозначен ({name or '-'}, {day})")
+            unresolved_employees.add(str(original_number))
+            reason = "не найден" if not candidates else "неоднозначен"
+            matching_errors.add(f"Табельный номер {original_number}: {reason} ({name or '-'})")
             continue
         employee = candidates[0]
+        number = employee["user_id"]
         if not _is_hr_or_super(user) and employee["user_id"] != user["user_id"]:
             if not (_is_tu(user) or "управляющий сменой" in (user.get("position") or "").lower()) or not _restaurant_in_scope(user, employee["restaurant_key"], territory):
                 errors.append("Нет доступа к сотруднику")
                 continue
-        matches = [r["key"] for r in restaurants if r["name"].strip().casefold() == name.strip().casefold()] if name else []
+        matches = [name[1]] if isinstance(name, tuple) else [r["key"] for r in restaurants if _attendance_restaurant_name(r["name"]) == _attendance_restaurant_name(name)] if name else []
         key = matches[0] if len(matches) == 1 else (default_rest_key or employee["restaurant_key"]) if not name else None
         if key not in known or not _restaurant_in_scope(user, key, territory):
-            errors.append("Неизвестный или недоступный ресторан")
+            if name:
+                unresolved_restaurants.add(name[2] if isinstance(name, tuple) and len(name) > 2 else str(name))
+            matching_errors.add(f"Неизвестный или недоступный ресторан: {name or '-'}")
             continue
         if raw in ("В", "Б", "Н"):
             statuses.setdefault((number, day, key), set()).add(raw)
@@ -707,7 +845,7 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
             errors.append("Строка не содержит корректный интервал смены")
             continue
         groups.setdefault((number, day, key), []).append(raw)
-    records = [{"personnel_number": number, "date": day, "restaurant_key": key,
+    records = [{"user_id": number, "personnel_number": _normalize_attendance_number(users_by_id[str(number)]["personnel_number"]), "date": day, "restaurant_key": key,
                 "minutes": worked_minutes(values), "shifts": values}
                for (number, day, key), values in sorted(groups.items())]
     work_days = {(number, day) for number, day, key in groups}
@@ -718,7 +856,7 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
             errors.append("Конфликт статуса отсутствия и смены")
         else:
             status = {"В": "vacation", "Б": "sick", "Н": "absent"}[next(iter(values))]
-            records.append({"personnel_number": number, "date": day, "restaurant_key": key,
+            records.append({"user_id": number, "personnel_number": _normalize_attendance_number(users_by_id[str(number)]["personnel_number"]), "date": day, "restaurant_key": key,
                             "minutes": 0, "shifts": [], "status": status})
     for entries in status_days.values():
         if len(entries) > 1:
@@ -738,7 +876,9 @@ def _sync_preview_attendance(user, rows, default_rest_key=None):
                 if start < right and (other_key != key or other_day != day):
                     errors.append("Пересечение смен в разных ресторанах или рабочих датах")
                     break
-    return {"ok": not errors, "preview": True, "records": records,
+    errors.extend(sorted(matching_errors))
+    matching = {"employees": sorted(unresolved_employees), "restaurants": sorted(unresolved_restaurants)} if _is_hr_or_super(user) else None
+    return {"matching": matching, "ok": not errors, "preview": True, "records": records,
             "total_minutes": sum(r["minutes"] for r in records) if not errors else None,
             "error_count": len(errors), "errors": errors[:50]}
 
@@ -831,7 +971,7 @@ def _attendance_saved_conflict(cur, records, employee_ids):
             FROM attendance_import_days d
             LEFT JOIN attendance_import_intervals i ON i.day_id = d.id
             WHERE d.user_id = %s AND d.work_date BETWEEN %s::date - 1 AND %s::date + 1""",
-                    (employee_ids[record["personnel_number"]], day, day))
+                    (record["user_id"], day, day))
         offset = day.toordinal() * 1440
         incoming = [(offset + a, offset + b) for a, b in
                     (shift_interval(v) for v in record["shifts"])]
@@ -863,12 +1003,17 @@ def _sync_stage_attendance(user, rows, default_rest_key=None):
             # Serialize staged replacements; delete only exact restaurant/date pairs.
             cur.execute("SELECT pg_advisory_xact_lock(814726, 2)")
             employee_ids = {}
-            for number in sorted({r["personnel_number"] for r in records}):
-                cur.execute("SELECT user_id FROM users WHERE personnel_number IS NOT NULL AND (CASE WHEN BTRIM(personnel_number::text) ~ '^[0-9]+$' THEN COALESCE(NULLIF(LTRIM(BTRIM(personnel_number::text), '0'), ''), '0') ELSE BTRIM(personnel_number::text) END) = %s AND COALESCE(is_fired, FALSE) = FALSE FOR SHARE", (number,))
-                employees = cur.fetchall()
-                if len(employees) != 1:
+            cur.execute("SELECT key, territory_manager_id FROM restaurants FOR SHARE")
+            restaurants = cur.fetchall()
+            territory = {r["key"] for r in restaurants if r["territory_manager_id"] == user["user_id"]}
+            known = {r["key"] for r in restaurants}
+            for uid in sorted({r["user_id"] for r in records}):
+                cur.execute("SELECT user_id,restaurant_key FROM users WHERE user_id=%s AND COALESCE(is_fired,FALSE)=FALSE FOR SHARE", (uid,))
+                employee = cur.fetchone()
+                if not employee or (not _is_hr_or_super(user) and not _restaurant_in_scope(user, employee["restaurant_key"], territory)):
                     raise ValueError("Employee changed during import")
-                employee_ids[number] = employees[0]["user_id"]
+            if any(r["restaurant_key"] not in known or not _restaurant_in_scope(user,r["restaurant_key"],territory) for r in records):
+                raise ValueError("Restaurant changed during import")
             if _attendance_saved_conflict(cur, records, employee_ids):
                 return {"ok": False, "errors": ["Конфликт с ранее загруженным отчётом: пересечение смен или статусов отсутствия. Проверьте данные."]}
             for key, day in sorted({(r["restaurant_key"], r["date"]) for r in records}):
@@ -881,7 +1026,7 @@ def _sync_stage_attendance(user, rows, default_rest_key=None):
                 cur.execute("""INSERT INTO attendance_import_days
                     (import_id, user_id, work_date, restaurant_key, status, worked_minutes)
                     VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
-                    (import_id, employee_ids[record["personnel_number"]], record["date"], record["restaurant_key"],
+                    (import_id, record["user_id"], record["date"], record["restaurant_key"],
                      record.get("status", "work"), record["minutes"]))
                 day_id = cur.fetchone()["id"]
                 for start, end in sorted({shift_interval(v) for v in record["shifts"]}):
@@ -907,18 +1052,40 @@ async def handle_import_attendance(request):
     reader = await request.multipart()
     file_data = None
     default_rest = request.query.get("restaurant_key")
+    mapping = None
+    mapping_seen = False
 
     while True:
         part = await reader.next()
         if part is None:
             break
         if part.name == 'file':
+            if file_data is not None:
+                return web.json_response({"error": "Допускается один файл"}, status=400)
             file_data = bytearray()
             while chunk := await part.read_chunk():
                 file_data.extend(chunk)
                 if request.client_max_size and len(file_data) > request.client_max_size:
                     return web.json_response({"error": "Файл слишком большой"}, status=413)
-            break
+        elif part.name == "mapping":
+            if not _is_hr_or_super(user):
+                return denied(403)
+            if mapping_seen:
+                return web.json_response({"error": "Допускается один набор соответствий"}, status=400)
+            mapping_seen = True
+            try:
+                raw_mapping = bytearray()
+                while chunk := await part.read_chunk():
+                    raw_mapping.extend(chunk)
+                    if len(raw_mapping) > 100000:
+                        break
+                if len(raw_mapping) > 100000:
+                    return web.json_response({"error": "Слишком много соответствий"}, status=400)
+                mapping = json.loads(raw_mapping)
+                if not isinstance(mapping, dict):
+                    raise ValueError("Invalid mapping")
+            except (ValueError, UnicodeError):
+                return web.json_response({"error": "Некорректные соответствия"}, status=400)
 
     if not file_data:
         return web.json_response({"error": "Файл не загружен"}, status=400)
@@ -927,6 +1094,15 @@ async def handle_import_attendance(request):
         rows = await _run(_parse_excel_rows, file_data)
     except Exception:
         return web.json_response({"error": "Не удалось прочитать Excel"}, status=400)
+
+    try:
+        _apply_attendance_mapping(user, rows, mapping)
+        saved = await _run(_load_saved_attendance_mapping)
+        rows = _merge_saved_attendance_mapping(rows, saved, mapping)
+    except PermissionError:
+        return denied(403)
+    except ValueError:
+        return web.json_response({"error": "Некорректные соответствия"}, status=400)
 
     if request.path.endswith("/preview"):
         result = await _run(_sync_preview_attendance, user, rows, default_rest)

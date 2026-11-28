@@ -1262,43 +1262,49 @@ async def handle_import_attendance(request):
     if request.path == "/api/timesheet/import_attendance":
         return web.json_response({"error": "Используйте предварительную проверку и сохранение отчёта"}, status=410)
 
-    reader = await request.multipart()
-    file_data = None
-    default_rest = request.query.get("restaurant_key")
-    mapping = None
-    mapping_seen = False
+    if request.content_type != "multipart/form-data":
+        return web.json_response({"error": "Загрузите Excel через форму выбора файла"}, status=400)
 
-    while True:
-        part = await reader.next()
-        if part is None:
-            break
-        if part.name == 'file':
-            if file_data is not None:
-                return web.json_response({"error": "Допускается один файл"}, status=400)
-            file_data = bytearray()
-            while chunk := await part.read_chunk():
-                file_data.extend(chunk)
-                if request.client_max_size and len(file_data) > request.client_max_size:
-                    return web.json_response({"error": "Файл слишком большой"}, status=413)
-        elif part.name == "mapping":
-            if not _is_hr_or_super(user):
-                return denied(403)
-            if mapping_seen:
-                return web.json_response({"error": "Допускается один набор соответствий"}, status=400)
-            mapping_seen = True
-            try:
-                raw_mapping = bytearray()
+    try:
+        reader = await request.multipart()
+        file_data = None
+        default_rest = request.query.get("restaurant_key")
+        mapping = None
+        mapping_seen = False
+
+        while True:
+            part = await reader.next()
+            if part is None:
+                break
+            if part.name == 'file':
+                if file_data is not None:
+                    return web.json_response({"error": "Допускается один файл"}, status=400)
+                file_data = bytearray()
                 while chunk := await part.read_chunk():
-                    raw_mapping.extend(chunk)
+                    file_data.extend(chunk)
+                    if request.client_max_size and len(file_data) > request.client_max_size:
+                        return web.json_response({"error": "Файл слишком большой"}, status=413)
+            elif part.name == "mapping":
+                if not _is_hr_or_super(user):
+                    return denied(403)
+                if mapping_seen:
+                    return web.json_response({"error": "Допускается один набор соответствий"}, status=400)
+                mapping_seen = True
+                try:
+                    raw_mapping = bytearray()
+                    while chunk := await part.read_chunk():
+                        raw_mapping.extend(chunk)
+                        if len(raw_mapping) > 100000:
+                            break
                     if len(raw_mapping) > 100000:
-                        break
-                if len(raw_mapping) > 100000:
-                    return web.json_response({"error": "Слишком много соответствий"}, status=400)
-                mapping = json.loads(raw_mapping)
-                if not isinstance(mapping, dict):
-                    raise ValueError("Invalid mapping")
-            except (ValueError, UnicodeError):
-                return web.json_response({"error": "Некорректные соответствия"}, status=400)
+                        return web.json_response({"error": "Слишком много соответствий"}, status=400)
+                    mapping = json.loads(raw_mapping)
+                    if not isinstance(mapping, dict):
+                        raise ValueError("Invalid mapping")
+                except (ValueError, UnicodeError):
+                    return web.json_response({"error": "Некорректные соответствия"}, status=400)
+    except (ValueError, AssertionError):
+        return web.json_response({"error": "Не удалось прочитать форму загрузки Excel"}, status=400)
 
     if not file_data:
         return web.json_response({"error": "Файл не загружен"}, status=400)

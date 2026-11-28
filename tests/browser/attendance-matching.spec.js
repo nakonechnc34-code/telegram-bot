@@ -63,3 +63,40 @@ test('matching registry remains hidden on forbidden response', async ({page}) =>
   expect((await response).status()).toBe(403);
   await expect(page.locator('#matching-registry')).toBeHidden();
 });
+
+
+test('partial archive requires successful preview before recovery', async ({page}) => {
+  await openRegistry(page);
+  let ready = false, resolved = false, saves = 0;
+  await page.route('**/api/timesheet/import_attendance/partial_reports**', async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/preview')) return route.fulfill({json:{ok:ready,errors:ready?[]:['Не найден сотрудник']}});
+    if (path.endsWith('/stage')) {
+      saves++;
+      resolved = true;
+      return route.fulfill({json:{ok:true,success_count:1}});
+    }
+    return route.fulfill({json:{records:[{id:7,created_at:'2026-11-28',resolved_at:resolved?'2026-11-28':null,diagnostics:{error_count:1,errors:['Не найден сотрудник']}}]}});
+  });
+  await page.getByText('Отчёты с ошибками',{exact:true}).click();
+  const panel = page.locator('#partial-report-list');
+  await expect(panel).toContainText('Отчёт №7');
+  const save = panel.getByRole('button',{name:'Сохранить исправленные часы'});
+  await expect(save).toBeDisabled();
+  await panel.getByRole('button',{name:'Повторная проверка'}).click();
+  await expect(save).toBeDisabled();
+  ready = true;
+  await panel.getByRole('button',{name:'Повторная проверка'}).click();
+  await expect(save).toBeEnabled();
+  await save.click();
+  await expect(panel).toContainText('Обработан');
+  await expect(save).toHaveCount(0);
+  expect(saves).toBe(1);
+});
+
+test('partial archive does not expose records on forbidden response', async ({page}) => {
+  await openRegistry(page,false);
+  await page.route('**/api/timesheet/import_attendance/partial_reports', route => route.fulfill({status:403,json:{error:'Forbidden'}}));
+  await page.getByText('Отчёты с ошибками',{exact:true}).click();
+  await expect(page.locator('#partial-report-list button')).toHaveCount(0);
+});
